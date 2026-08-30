@@ -28,6 +28,7 @@
 | Phase 6 | ✅ 完成 | 96/96 测试过；四视图同源 JSON；追问课时边界；Markdown 导出 | 提交 7d3947e |
 | Phase 7 | ✅ 完成 | NSIS 安装包 257.6MB 构建成功（含 ffmpeg）；MVP.md 逐条验收（6 项✅自动化，5 项⚠️待人工） | 提交 7d220af |
 | UI 组装 | ✅ 完成 | IPC 16 通道+AppContext+三栏主界面+真实 Electron 烟测通过；修复 gitignore 吞掉 src/main/library 的 CI 失败（7204093 CI success） | 提交 72be62f、7837368、7204093 |
+| 增强 | ✅ 完成 | 手动课程/课时 ID 后备入口（spec §2，幂等落库）+ Provider 设置界面（保存并绑定三能力，Key 仅存内存后加密落库）；114/114 测试 | 提交 bf952de |
 
 ## 遗留（诚实清单）
 
