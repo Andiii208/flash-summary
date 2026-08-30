@@ -30,7 +30,7 @@
 
 ## 遗留（诚实清单）
 
-- **UI 主界面组装未实装**：renderer 仍是脚手架占位页。模块层（队列/编排器/笔记/追问）全部完成并有测试；缺的是 Electron IPC handlers、preload 桥接与页面布局接线。
+- **UI 主界面组装 ✅ 已完成**（提交 72be62f/7837368，2026-08-30）：AppContext（资料库+会话+Provider+媒体路径组装）、IPC API surface（school/providers/tasks/notes/qa 共 16 通道）、preload 桥接（SeuSummaryBridge 类型化）、renderer 三栏主界面（课程列表/任务面板/四视图笔记+追问）。真实 Electron 启动烟测通过：7 秒运行日志干净、资料库三目录+app.db 正常建立、renderer 标题正确。112/112 测试绿。
 - **需人工验证的 5 项**：见 docs/acceptance/MVP.md（干净机器安装、真实 CAS 登录、真实课程拉取、45 分钟端到端、过期重登恢复）。
 - **待确认删除项**：无（构建产物 release/ 已 ignore，未入库）。
 

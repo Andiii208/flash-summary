@@ -4,7 +4,7 @@
 **诚实原则**：只标记已在实际环境中验证的内容；需真机/真实账号人工验证的条目如实标注，不夸大。
 
 验收环境：Windows（本机），node v24.15.0，Electron v44.0.0。
-自动化验证：`npm run lint && npm run typecheck && npm test && npm run build`（96 个测试，2026-08-30 全绿）；CI（GitHub Actions windows-latest）对每个 push 运行同样门禁。
+自动化验证：`npm run lint && npm run typecheck && npm test && npm run build`（112 个测试 / 19 文件，2026-08-30 全绿）；CI（GitHub Actions windows-latest）对每个 push 运行同样门禁。另做真实 Electron 启动烟测：应用 7 秒运行日志干净、资料库目录与 app.db 正常建立、renderer 装载成功。
 
 ## 逐条验收
 
@@ -13,7 +13,7 @@
 | 1 | 无开发环境的 Windows 机器双击安装即用 | ⚠️ 部分验证 | `npm run dist` 产出 NSIS 安装包（release/ 下 exe）；oneClick/perMachine=false 配置正确。**未在干净 Windows 机器上人工安装验证**（需真机） |
 | 2 | 应用内 CAS 登录，会话有效期内重启免登录 | ⚠️ 部分验证 | 登录窗口模块（cas-login.ts，会话隔离 partition）、DPAPI 加密会话存储（session.bin，加密往返+反明文测试通过）。**真实 CAS 登录流程需真实账号人工验证** |
 | 3 | 会话过期时重开 CAS 并从失败阶段恢复 | ⚠️ 部分验证 | 过期检测三通道单测过（302/location、落地 URL、HTML body）；失败→重试从失败阶段恢复、不重复已完成阶段单测过。**真实过期场景需人工验证** |
-| 4 | 自动列出课程/课时；手动输入课程 ID 或回放 URL 作为后备 | ⚠️ 部分验证 | API 客户端 fixture 回放测试过（课程列表、课时详情、流地址映射）；数据库表+路径就绪。UI 列表页面与手动输入入口**尚未实装**（见 PROGRESS「遗留」） |
+| 4 | 自动列出课程/课时；手动输入课程 ID 或回放 URL 作为后备 | ⚠️ 大部分验证 | API 客户端 fixture 回放测试过；UI 三栏主界面已组装（课程列表+任务面板+笔记视图），IPC 16 通道测试过；真实 Electron 启动烟测通过。**手动输入课程 ID 的后备入口尚未加 UI**；真实课程拉取需人工 |
 | 5 | 一节 ≥45 分钟真实课完整跑通下载→抽音频→ASR→PPT/关键帧→笔记→追问 | ⚠️ 部分验证 | 管线各阶段独立测试过（真实 ffmpeg 6s 样例音频提取、3 帧关键帧、感知哈希去重、下载重试、schema 校验）。**真实 45 分钟课程端到端需真实账号+Provider Key 人工跑** |
 | 6 | 失败/中断任务恢复且不重复已完成阶段 | ✅ 自动化验证 | 失败注入测试：首跑失败于 transcribing → retryTask 只重跑 transcribing 及之后，fetching_course/downloading_video/extracting_audio 不再执行；多次失败 failed_stage 正确更新 |
 | 7 | 成功后原视频/音频删除，转写/PPT/关键帧/笔记/问答保留 | ✅ 自动化验证 | 生命周期断言：屏幕流视频在关键帧提取成功后删除（rmSync）；24h 缓存清理反向验证（旧目录删除、新目录保留）；transcripts/ppt_pages/keyframes/notes/qa 表保留产物 |
