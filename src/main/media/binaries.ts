@@ -7,9 +7,27 @@
  * system-wide ffmpeg installation is required.
  */
 import { existsSync } from 'fs'
+import { join } from 'path'
+
+/**
+ * Resolve a bundled binary: in dev it lives in node_modules; when packaged
+ * (electron-builder extraResources) it sits under <resources>/ffmpeg/.
+ */
+function packagedBinary(name: string): string | null {
+  try {
+    // process.resourcesPath exists only inside a packaged Electron app.
+    const resourcesDir = (process as unknown as { resourcesPath?: string }).resourcesPath
+    if (resourcesDir == null) return null
+    const candidate = join(resourcesDir, 'ffmpeg', `${name}.exe`)
+    return existsSync(candidate) ? candidate : null
+  } catch {
+    return null
+  }
+}
 
 function resolveFfmpegPath(): string {
-  // electron-vite bundles main to CJS out/main/index.js; require stays intact.
+  const packaged = packagedBinary('ffmpeg')
+  if (packaged != null) return packaged
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ffmpegStatic = require('ffmpeg-static') as string | null
   if (typeof ffmpegStatic === 'string' && ffmpegStatic !== '' && existsSync(ffmpegStatic)) return ffmpegStatic
@@ -17,6 +35,8 @@ function resolveFfmpegPath(): string {
 }
 
 function resolveFfprobePath(): string {
+  const packaged = packagedBinary('ffprobe')
+  if (packaged != null) return packaged
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ffprobeStatic = require('ffprobe-static') as { path: string }
   if (ffprobeStatic && typeof ffprobeStatic.path === 'string' && existsSync(ffprobeStatic.path)) return ffprobeStatic.path
