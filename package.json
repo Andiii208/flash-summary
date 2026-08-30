@@ -2,7 +2,7 @@
   "name": "seu-summary",
   "version": "0.1.0",
   "description": "SEU Summary - turn SEU Kedacom course recordings into structured study notes (Windows MVP)",
-  "main": "./out/main/index.js",
+  "main": "./out/main/index.cjs",
   "author": "SEU Summary contributors",
   "license": "MIT",
   "private": true,
