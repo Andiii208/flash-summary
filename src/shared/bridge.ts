@@ -10,6 +10,7 @@ export interface SchoolBridge {
   logout(): Promise<ApiResult<{ state: string }>>
   session(): Promise<ApiResult<{ state: string }>>
   listCourses(): Promise<ApiResult<Array<{ id: string; name: string; term?: string; teacher?: string }>>>
+  addManualCourse(courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>>
 }
 
 export interface ProvidersBridge {

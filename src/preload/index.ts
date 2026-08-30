@@ -13,7 +13,9 @@ const api: SeuSummaryBridge = {
     logout: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:logout'),
     session: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:session'),
     listCourses: (): Promise<ApiResult<Array<{ id: string; name: string; term?: string; teacher?: string }>>> =>
-      ipcRenderer.invoke('school:listCourses')
+      ipcRenderer.invoke('school:listCourses'),
+    addManualCourse: (courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>> =>
+      ipcRenderer.invoke('school:addManualCourse', courseId, lessonId)
   },
   providers: {
     list: (): Promise<ApiResult<unknown>> => ipcRenderer.invoke('providers:list'),

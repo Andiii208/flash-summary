@@ -58,6 +58,15 @@ export function boot(): void {
   const courseMsg = el('p', 'msg')
   left.append(refreshBtn, courseMsg, courseList)
 
+  // Manual fallback (spec §2): register a course/lesson by id.
+  left.appendChild(el('h3', 'subheading', '手动添加（后备）'))
+  const manualCourse = el('input', 'qa-input') as HTMLInputElement
+  manualCourse.placeholder = '课程 ID'
+  const manualLesson = el('input', 'qa-input') as HTMLInputElement
+  manualLesson.placeholder = '课时 ID（回放页可查）'
+  const manualBtn = el('button', 'btn small', '添加课程')
+  left.append(manualCourse, manualLesson, manualBtn)
+
   let currentLesson = ''
   let currentTask = ''
 
@@ -69,6 +78,29 @@ export function boot(): void {
   const taskMsg = el('p', 'msg')
   const taskState = el('p', 'task-state', '无任务')
   center.append(createTaskBtn, runBtn, retryBtn, taskMsg, taskState)
+
+  // ---- center bottom: provider settings ----
+  center.appendChild(el('h2', undefined, 'Provider 设置'))
+  const provName = el('input', 'qa-input') as HTMLInputElement
+  provName.placeholder = '名称（如 OpenAI）'
+  const provUrl = el('input', 'qa-input') as HTMLInputElement
+  provUrl.placeholder = 'Base URL（https://api.openai.com/v1）'
+  const provKey = el('input', 'qa-input') as HTMLInputElement
+  provKey.placeholder = 'API Key（仅存内存，DPAPI 加密落库）'
+  provKey.type = 'password'
+  const provModel = el('select', 'qa-input') as HTMLSelectElement
+  for (const cap of ['asr', 'multimodal', 'text']) {
+    const opt = document.createElement('option')
+    opt.value = cap
+    opt.textContent = cap === 'asr' ? 'ASR 转写' : cap === 'multimodal' ? '多模态总结' : '文本问答'
+    provModel.appendChild(opt)
+  }
+  const provModelName = el('input', 'qa-input') as HTMLInputElement
+  provModelName.placeholder = '模型名（如 whisper-1 / gpt-4o）'
+  const provSaveBtn = el('button', 'btn small', '保存并绑定')
+  const provMsg = el('p', 'msg')
+  const provList = el('div', 'list')
+  center.append(provName, provUrl, provKey, provModel, provModelName, provSaveBtn, provMsg, provList)
 
   // ---- right: note viewer + qa ----
   right.appendChild(el('h2', undefined, '笔记'))
@@ -112,6 +144,76 @@ export function boot(): void {
     })().catch((e) => show(courseMsg, (e as Error).message, true))
   }
   refreshBtn.addEventListener('click', refreshCourses)
+
+  // Manual fallback: register course/lesson rows by id, then allow tasks.
+  manualBtn.addEventListener('click', () => {
+    void (async () => {
+      const cid = manualCourse.value.trim()
+      const lid = manualLesson.value.trim()
+      if (cid === '' || lid === '') {
+        show(courseMsg, '请填写课程 ID 和课时 ID', true)
+        return
+      }
+      const res = (await bridge.school.addManualCourse(cid, lid)) as Res<{ courseId: string; lessonId: string }>
+      if (!res.ok) {
+        show(courseMsg, res.error, true)
+        return
+      }
+      manualCourse.value = ''
+      manualLesson.value = ''
+      currentLesson = lid
+      show(courseMsg, `已添加课程 ${cid}，课时 ${lid} 已选中`)
+      show(taskState, `已选课时 ${lid}`)
+    })().catch((e) => show(courseMsg, (e as Error).message, true))
+  })
+
+  // Provider settings: save provider then bind capability, in one action.
+  provSaveBtn.addEventListener('click', () => {
+    void (async () => {
+      const name = provName.value.trim()
+      const baseUrl = provUrl.value.trim()
+      const apiKey = provKey.value
+      const capability = provModel.value
+      const model = provModelName.value.trim()
+      if (name === '' || baseUrl === '' || model === '') {
+        show(provMsg, '名称、Base URL、模型名必填', true)
+        return
+      }
+      const saved = (await bridge.providers.save({ name, baseUrl, apiKey })) as Res<{ id: string }>
+      if (!saved.ok) {
+        show(provMsg, saved.error, true)
+        return
+      }
+      const bound = (await bridge.providers.bind(capability, saved.value.id, model)) as Res<boolean>
+      if (!bound.ok) {
+        show(provMsg, bound.error, true)
+        return
+      }
+      show(provMsg, `已保存并绑定 ${capability} → ${name}/${model}`)
+      provKey.value = ''
+      await refreshProviders()
+    })().catch((e) => show(provMsg, (e as Error).message, true))
+  })
+
+  function refreshProviders(): Promise<void> {
+    return (async () => {
+      const res = (await bridge.providers.list()) as Res<{ providers: Array<{ id: string; name: string; hasKey: boolean }>; bindings: Array<{ capability: string; providerId: string; model: string }> }>
+      if (!res.ok) {
+        show(provMsg, res.error, true)
+        return
+      }
+      provList.textContent = ''
+      for (const p of res.value.providers) {
+        const binding = res.value.bindings.find((b) => b.providerId === p.id)
+        const boundCaps = res.value.bindings.filter((b) => b.providerId === p.id).map((b) => b.capability).join(', ')
+        provList.appendChild(
+          el('div', 'item', `${p.name} — ${boundCaps || '未绑定'}${binding ? `（${binding.model}）` : ''}${p.hasKey ? ' ✓' : ' 无Key'}`)
+        )
+      }
+      if (res.value.providers.length === 0) provList.appendChild(el('div', 'item', '尚无 Provider，先在上方添加'))
+    })()
+  }
+  void refreshProviders()
 
   createTaskBtn.addEventListener('click', () => {
     void (async () => {

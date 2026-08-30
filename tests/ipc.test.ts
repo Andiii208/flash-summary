@@ -55,7 +55,7 @@ describe('ipc handlers over a real context', () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     for (const channel of [
-      'school:login', 'school:logout', 'school:session', 'school:listCourses',
+      'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse',
       'providers:list', 'providers:save', 'providers:delete', 'providers:bind',
       'tasks:create', 'tasks:get', 'tasks:run', 'tasks:retry',
       'notes:latest', 'notes:versions',
@@ -158,6 +158,35 @@ describe('ipc handlers over a real context', () => {
     const res = (await ipc.invoke('qa:ask', 'l1', '什么是极限?')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('未绑定')
+  })
+
+  it('school:addManualCourse registers durable rows and is idempotent', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+
+    const first = (await ipc.invoke('school:addManualCourse', 'C100', 'L200')) as { ok: boolean; value?: { courseId: string; lessonId: string } }
+    expect(first.ok).toBe(true)
+
+    // Duplicate registration must not fail (ON CONFLICT DO NOTHING).
+    const again = (await ipc.invoke('school:addManualCourse', 'C100', 'L200')) as { ok: boolean }
+    expect(again.ok).toBe(true)
+
+    const course = db.prepare('SELECT id, name FROM courses WHERE id = ?').get('C100') as { id: string; name: string }
+    const lesson = db.prepare('SELECT id, course_id FROM lessons WHERE id = ?').get('L200') as { id: string; course_id: string }
+    expect(course.id).toBe('C100')
+    expect(lesson.course_id).toBe('C100')
+
+    // A task can then be created for the manual lesson.
+    const task = (await ipc.invoke('tasks:create', 'L200')) as { ok: boolean }
+    expect(task.ok).toBe(true)
+  })
+
+  it('school:addManualCourse rejects empty ids', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('school:addManualCourse', '', 'L1')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('courseId')
   })
 
   it('qa:history returns prior exchanges for the lesson only', async () => {

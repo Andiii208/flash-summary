@@ -57,6 +57,32 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
     }
   })
 
+  // Manual fallback entry (spec §2): register a course/lesson by id when the
+  // school API list is unavailable. The task's fetching_course stage will
+  // pull the real detail later; here we only need durable rows to exist.
+  ipc.handle('school:addManualCourse', (_e, courseId: unknown, lessonId: unknown) => {
+    try {
+      const cid = str(courseId, 'courseId')
+      const lid = str(lessonId, 'lessonId')
+      const now = new Date().toISOString()
+      ctx.db
+        .prepare(
+          `INSERT INTO courses (id, name, fetched_at) VALUES (?, ?, ?)
+           ON CONFLICT(id) DO NOTHING`
+        )
+        .run(cid, `课程 ${cid}`, now)
+      ctx.db
+        .prepare(
+          `INSERT INTO lessons (id, course_id, title, fetched_at) VALUES (?, ?, ?, ?)
+           ON CONFLICT(id) DO NOTHING`
+        )
+        .run(lid, cid, `课时 ${lid}`, now)
+      return ok({ courseId: cid, lessonId: lid })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
   // ---- providers ----
   ipc.handle('providers:list', () => ok(ctx.providers()))
   ipc.handle('providers:save', (_e, input: unknown) => {
