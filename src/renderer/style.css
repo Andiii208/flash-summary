@@ -1,0 +1,33 @@
+:root {
+  color-scheme: light dark;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f6f7f9;
+  color: #1c1e21;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #17181a;
+    color: #e8e8e8;
+  }
+}
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+#status {
+  font-family: Consolas, monospace;
+  opacity: 0.8;
+}

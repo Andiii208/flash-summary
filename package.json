@@ -1,0 +1,30 @@
+{
+  "name": "seu-summary",
+  "version": "0.1.0",
+  "description": "SEU Summary - turn SEU Kedacom course recordings into structured study notes (Windows MVP)",
+  "main": "./out/main/index.js",
+  "author": "SEU Summary contributors",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.16.0",
+    "electron": "^44.0.0",
+    "electron-vite": "^4.0.0",
+    "eslint": "^9.30.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.0",
+    "vitest": "^3.2.4"
+  }
+}
