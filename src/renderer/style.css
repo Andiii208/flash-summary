@@ -3,6 +3,8 @@
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
+* { box-sizing: border-box; }
+
 body {
   margin: 0;
   background: #f6f7f9;
@@ -10,24 +12,104 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  body {
-    background: #17181a;
-    color: #e8e8e8;
-  }
+  body { background: #17181a; color: #e8e8e8; }
 }
 
-.shell {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 48px 24px;
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(128,128,128,.25);
 }
 
-h1 {
-  font-size: 28px;
-  margin-bottom: 8px;
+.topbar h1 { font-size: 20px; margin: 0; flex: 1; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: 12px;
+  padding: 12px;
+  flex: 1;
+  min-height: 0;
 }
 
-#status {
+.pane {
+  border: 1px solid rgba(128,128,128,.25);
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.pane h2 { font-size: 15px; margin: 4px 0 10px; }
+
+.btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(128,128,128,.4);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+.btn.small { font-size: 12px; padding: 4px 10px; }
+.btn:hover { background: rgba(128,128,128,.12); }
+
+.list .item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  background: rgba(128,128,128,.08);
+  font-size: 13px;
+}
+
+.msg { font-size: 12px; opacity: .7; min-height: 16px; }
+.msg.error { color: #d33; opacity: 1; }
+.error { color: #d33; }
+
+.task-state {
   font-family: Consolas, monospace;
-  opacity: 0.8;
+  font-size: 12px;
+  background: rgba(128,128,128,.08);
+  padding: 8px;
+  border-radius: 6px;
+  word-break: break-all;
+}
+
+.note-root .note-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.note-root .note-tabs button {
+  border: 1px solid rgba(128,128,128,.4);
+  background: transparent;
+  color: inherit;
+  border-radius: 6px 6px 0 0;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.note-root .note-tabs button.active { background: rgba(128,128,128,.2); font-weight: 600; }
+.note-root .note-body h2 { font-size: 13px; margin: 12px 0 4px; }
+.note-root .note-body pre {
+  font-family: inherit;
+  white-space: pre-wrap;
+  background: rgba(128,128,128,.08);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.qa-log { max-height: 180px; overflow: auto; margin-bottom: 8px; }
+.qa-q { font-size: 13px; font-weight: 600; margin: 6px 0 2px; }
+.qa-a { font-size: 13px; margin: 0 0 6px; }
+.qa-input {
+  width: calc(100% - 76px);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(128,128,128,.4);
+  background: transparent;
+  color: inherit;
+  margin-right: 6px;
 }

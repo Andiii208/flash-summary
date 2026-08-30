@@ -1,6 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
-import { APP_TITLE, type AppInfo, type PingResult } from '../shared/types'
+import { APP_TITLE } from '../shared/types'
+import { createContext } from './app-context'
+import { registerIpc } from './ipc'
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -24,21 +26,9 @@ function createMainWindow(): BrowserWindow {
   return win
 }
 
-function registerIpcHandlers(): void {
-  ipcMain.handle('app:info', (): AppInfo => ({
-    name: APP_TITLE,
-    version: app.getVersion(),
-    platform: process.platform
-  }))
-
-  ipcMain.handle('app:ping', (_event, message: unknown): PingResult => {
-    const text = typeof message === 'string' ? message : ''
-    return { ok: true, pong: `pong:${text}` }
-  })
-}
-
 app.whenReady().then(() => {
-  registerIpcHandlers()
+  const ctx = createContext()
+  registerIpc(ctx)
   createMainWindow()
 
   app.on('activate', () => {
