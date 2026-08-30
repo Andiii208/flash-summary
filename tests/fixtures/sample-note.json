@@ -1,0 +1,22 @@
+{
+  "overview": "本讲介绍极限的定义与计算方法。",
+  "knowledgeTree": {
+    "title": "极限",
+    "children": [
+      { "title": "定义", "children": [{ "title": "ε-δ 定义", "children": [] }] },
+      { "title": "计算", "children": [{ "title": "洛必达法则", "children": [] }] }
+    ]
+  },
+  "timeline": [
+    { "at": 0, "title": "开场", "detail": "回顾上讲内容", "refs": [], "evidence": [] }
+  ],
+  "concepts": [
+    { "term": "极限", "definition": "当 x 趋于 a 时 f(x) 无限接近 L", "refs": [] }
+  ],
+  "formulasAndSteps": [],
+  "methodology": "先从直观出发，再引入严格定义，最后用法则计算。",
+  "examCues": ["ε-δ 语言证明题几乎每年必考"],
+  "questionsAndGaps": [],
+  "transcriptRefs": [],
+  "evidence": []
+}
