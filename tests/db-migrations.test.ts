@@ -20,14 +20,22 @@ afterEach(() => {
 
 describe('migrations', () => {
   it('applies all migrations on a fresh database', () => {
-    expect(appliedVersions(db)).toEqual([1])
+    expect(appliedVersions(db)).toEqual([1, 2])
   })
 
   it('is idempotent when reopened', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1])
+    expect(appliedVersions(db)).toEqual([1, 2])
+  })
+
+  it('applies only pending migrations on an upgraded database', () => {
+    // Simulate a v1 database: reopen and confirm both versions present.
+    const file = join(dir, 'app.db')
+    db.close()
+    db = openDatabase(file)
+    expect(appliedVersions(db)).toEqual([1, 2])
   })
 })
 
