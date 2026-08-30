@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.16.0",
     "electron": "^44.0.0",
@@ -26,5 +27,8 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.35.0",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
   }
 }
