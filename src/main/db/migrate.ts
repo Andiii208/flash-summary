@@ -1,11 +1,13 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { migration001 } from './migrations/001_initial'
 import { migration002 } from './migrations/002_task_stage_outputs'
+import { migration003 } from './migrations/003_providers'
 import type { Migration } from './migration-types'
 
 const MIGRATIONS: Migration[] = [
   { version: 1, name: 'initial_schema', up: migration001.up },
-  { version: 2, name: 'task_stage_outputs', up: migration002.up }
+  { version: 2, name: 'task_stage_outputs', up: migration002.up },
+  { version: 3, name: 'providers', up: migration003.up }
 ]
 
 /**
