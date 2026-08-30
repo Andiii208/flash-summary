@@ -1,0 +1,180 @@
+# SEU Summary Desktop MVP Design
+
+## 1. Product Position
+
+SEU Summary is a Windows desktop application that turns Southeast University Kedacom course recordings into structured study notes. The application is local-first, distributable to other students, and requires no developer-owned server. Each user logs in with their own SEU CAS account and provides their own model provider credentials.
+
+The MVP focuses exclusively on `cvs.seu.edu.cn` recordings. Bilibili support, cloud sync, multi-user accounts, local ASR, macOS support, and PDF export are outside MVP scope.
+
+## 2. User Experience
+
+- The installed application opens by double-clicking; no command-line operation is required.
+- On first launch, the user configures model providers.
+- The user logs in through an in-app SEU CAS window. The saved session is reused when the application restarts.
+- The application automatically lists the user's courses and lessons. Manual entry of a course ID or playback URL remains available as a fallback.
+- The user selects lessons to process. Processing runs as a local task queue with visible progress and retry actions.
+- When a school session expires, the application opens the in-app CAS login window. After a successful re-login, the failed task resumes from its failed stage without restarting the application.
+
+## 3. Core Pipeline
+
+For each selected lesson:
+
+1. Fetch lesson metadata and video URLs through the authenticated school API.
+2. Temporarily download the teacher stream and screen/PPT stream.
+3. Extract audio from the teacher stream.
+4. Send the audio to a user-configured OpenAI-compatible ASR provider.
+5. Fetch the school platform's PPT images.
+6. Extract deduplicated keyframes from the screen/PPT stream using perceptual hashing.
+7. Generate one structured note with a multimodal model using the transcript, PPT images, and keyframes.
+8. Delete temporary video and audio files after successful processing.
+
+### Stream Strategy
+
+- Teacher stream `1170193-1`: audio source only.
+- Screen/PPT stream `1170195-5`: visual source for keyframes.
+- Classroom panorama stream `1170194-3`: not downloaded or processed in MVP.
+
+### Visual Source Priority
+
+1. PPT images from `/v1/course/ai/ppt?courseId=` are the primary visual source.
+2. Keyframes supplement missing PPT pages, mismatches with the lesson timeline, board writing, software operations, and code demonstrations.
+
+## 4. Model Provider Configuration
+
+Users can configure multiple providers. Each provider has:
+
+- Base URL
+- API key
+- Optional ASR model name
+- Optional multimodal model name
+- Optional text model name
+
+Capabilities are bound independently:
+
+- ASR: provider + model
+- Multimodal summarization: provider + model
+- Text summarization: provider + model, optional
+
+The first-run experience recommends a single provider that supports both ASR and multimodal input. Advanced settings allow ASR, multimodal summarization, and text summarization to use different providers and keys.
+
+All provider communication uses OpenAI-compatible APIs. The default note generation path uses a multimodal model. A text-only model is a fallback for users who explicitly choose it.
+
+## 5. Structured Notes
+
+The model produces one structured note stored as JSON. The UI renders this note natively and offers four reading views:
+
+- Detailed notes
+- Standard summary
+- Key points
+- Methodology analysis
+
+All views are filtered and reorganized from the same structured note. The model does not generate four independent summaries.
+
+The note schema contains:
+
+- Lesson overview
+- Knowledge structure tree
+- Timeline of the lesson
+- Concepts and definitions
+- Formulas, code, and operation steps
+- Methodology analysis
+- Exam and assignment cues
+- Questions and gaps
+- Timestamped transcript references
+- PPT and keyframe evidence references
+
+Markdown export is a secondary exchange format. PDF export is not included in MVP.
+
+## 6. Follow-Up Questions
+
+MVP supports questions about the current lesson only. The context is:
+
+- Lesson transcript
+- Structured note
+- PPT images
+- Keyframes
+- Prior questions and answers for that lesson
+
+The data model reserves course-level relationships so course-wide Q&A can be added later without redesigning storage.
+
+## 7. Task Lifecycle and Resume
+
+Tasks use this state machine:
+
+`pending -> fetching_course -> downloading_video -> extracting_audio -> transcribing -> extracting_visuals -> summarizing -> succeeded`
+
+Any stage can fail and enter `failed(stage)`. Users can retry the task.
+
+Retention and reuse rules:
+
+- Course metadata: retained permanently.
+- PPT images: retained after successful download.
+- Keyframes: retained after successful extraction.
+- Transcript: retained after successful transcription.
+- Audio: temporary; deleted after successful transcription.
+- Teacher-stream video: temporary; deleted after successful audio extraction.
+- Screen-stream video: temporary; deleted after successful keyframe extraction.
+- Notes: retained after successful generation; older versions are retained as history when regenerated.
+
+Retries resume from the failed stage and reuse all previously successful outputs.
+
+## 8. Local Library
+
+Default library path:
+
+`C:\Users\<username>\Documents\SEU Summary\Library`
+
+Structure:
+
+- `app.db`: SQLite database for courses, lessons, tasks, structured notes, and Q&A.
+- `attachments/`: PPT images, keyframes, and exported Markdown.
+- `cache/`: temporary videos, audio, and unfinished task data.
+- `exports/`: user-exported files.
+
+Users can move the library by selecting a new empty directory. MVP performs a one-time migration and does not support multi-disk synchronization.
+
+## 9. Privacy and Security
+
+- The application has no developer-owned backend.
+- Audio, text, and images are sent only to user-configured ASR/LLM providers.
+- Logs must not contain CAS cookies, TGTs, API keys, full video URLs, or `auth_key` values.
+- Crash reporting and telemetry are disabled in MVP.
+- School sessions and provider API keys are encrypted with Windows DPAPI.
+- Credentials are never written to Git.
+- Exports can omit attachments, but the UI warns that course materials are school teaching resources and should not be publicly redistributed.
+- Temporary task files older than 24 hours are cleaned on application startup.
+- Verbose network logging is disabled in release builds.
+
+## 10. Technology Direction
+
+The selected application form is an Electron desktop application:
+
+- Main process: TypeScript orchestration, school API client, task queue, storage, and pipeline.
+- Renderer: native note and course management UI.
+- Local storage: SQLite.
+- External tools: `ffmpeg` for media processing; a packaged distribution strategy will be defined during implementation planning.
+- Existing Playwright scripts are exploration assets only and are not bundled with the application.
+
+## 11. MVP Acceptance Criteria
+
+1. On a Windows machine without a development environment, the installed application starts by double-clicking and requires no command-line operation.
+2. The user logs in through the in-app SEU CAS window and does not need to log in again after restarting within the session validity period.
+3. When the school session expires, the app opens CAS again and resumes the failed task after re-login.
+4. The app automatically lists courses and lessons. Manual course ID or playback URL entry works as a fallback.
+5. A real lesson of at least 45 minutes completes download, audio extraction, ASR, PPT/keyframe extraction, structured note generation, and follow-up Q&A.
+6. A failed or interrupted task resumes without redownloading, retranscribing, or re-extracting already successful outputs.
+7. After success, original videos and audio are deleted while the transcript, PPT, keyframes, notes, and Q&A remain in the library.
+8. Multiple providers can be configured, with independent ASR, multimodal, and text model bindings; keys are encrypted with DPAPI.
+9. Structured notes support detailed, standard, key-points, and methodology views and retain timestamped references.
+10. School session expiry, download failure, ASR failure, and unsupported visual model input produce clear messages with a next action.
+
+## 12. Deferred Work
+
+- Bilibili source support
+- Course-level Q&A
+- Local ASR
+- PDF export
+- macOS support
+- Cloud sync
+- Automatic crash reporting
+- Reusing or distributing school course materials beyond personal study
