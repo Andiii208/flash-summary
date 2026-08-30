@@ -12,5 +12,7 @@ release/
 *.session
 *.cookies
 
-# local library artifacts (never commit user data)
-Library/
+# local library artifacts (never commit user data); anchor to repo root so
+# source dirs like src/main/library/ are NOT ignored
+/Library/
+data/
