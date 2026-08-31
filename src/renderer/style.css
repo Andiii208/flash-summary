@@ -70,6 +70,80 @@ body {
 .msg.error { color: #d33; opacity: 1; }
 .error { color: #d33; }
 
+.subheading { font-size: 13px; margin: 14px 0 6px; color: inherit; opacity: .85; }
+
+/* U1: feedback + task progress */
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.attention { border-color: #d33; color: #d33; }
+
+.toast-area {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #2f3337;
+  color: #f0f0f0;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  max-width: 70vw;
+}
+.toast-success { background: #1e7e34; }
+.toast-error { background: #b3261e; }
+
+.progress {
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(128,128,128,.2);
+  margin: 8px 0;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0;
+  background: #2f6fdb;
+  transition: width .25s ease;
+}
+.progress.active .progress-bar { background: #2f6fdb; }
+
+/* U1: course tree */
+.course-head { cursor: pointer; font-weight: 600; user-select: none; }
+.lesson-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 18px;
+  margin-top: 4px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.lesson-row:hover { background: rgba(128,128,128,.12); }
+.lesson-row.selected { background: rgba(47,111,219,.18); outline: 1px solid rgba(47,111,219,.5); }
+.lesson-row.empty { cursor: default; opacity: .6; }
+.badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(128,128,128,.2);
+  white-space: nowrap;
+}
+.badge.ok { background: rgba(30,126,52,.25); color: #1e7e34; }
+@media (prefers-color-scheme: dark) {
+  .badge.ok { color: #59c96f; }
+}
+
 .task-state {
   font-family: Consolas, monospace;
   font-size: 12px;
