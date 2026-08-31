@@ -5,6 +5,14 @@
   "main": "./out/main/index.cjs",
   "author": "SEU Summary contributors",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Andiii208/seu-summary.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Andiii208/seu-summary/issues"
+  },
+  "homepage": "https://github.com/Andiii208/seu-summary#readme",
   "private": true,
   "type": "module",
   "build": {
