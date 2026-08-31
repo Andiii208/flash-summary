@@ -8,7 +8,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { readFileSync } from 'fs'
 import { openDatabase, type Db } from './db/open'
-import { defaultLibraryRoot, ensureLibraryLayout } from './library/paths'
+import { defaultLibraryRoot, ensureLibraryLayout, resolveCacheDir, exportsPath } from './library/paths'
 import { dpapiCryptor } from './auth/electron-cryptor'
 import type { Cryptor } from './auth/session-crypto'
 import { loadSession, saveSession, clearSession, sessionDir } from './auth/session-store'
@@ -21,6 +21,7 @@ import { ffmpegPath, ffprobePath } from './media/binaries'
 import { cleanStaleCache } from './tasks/cache-clean'
 import type { StageOutputStore } from './tasks/queue'
 import type { Grid8x8 } from './media/phash'
+import { getSetting, setSetting, readSettings, type AppSettings } from './settings/store'
 
 export const CAS_BASE_URL = 'https://cvs.seu.edu.cn'
 
@@ -46,6 +47,13 @@ export interface AppContext {
   stageOutputs: StageOutputStore
   /** Resolve which capability should answer lesson Q&A (text if bound, else multimodal). */
   qaCapability: () => Capability
+  /** User settings (U3): libraryRoot/cacheDir/theme. */
+  settings: () => AppSettings
+  setSetting: (key: string, value: string) => void
+  /** Effective task-cache dir (re-read live so changes apply without restart). */
+  cacheDir: () => string
+  /** Directory for markdown exports. */
+  exportsDir: () => string
 }
 
 export function createContext(overrides: Partial<{
@@ -56,9 +64,11 @@ export function createContext(overrides: Partial<{
   const libraryRoot = overrides.libraryRoot ?? defaultLibraryRoot()
   ensureLibraryLayout(libraryRoot)
   const db = openDatabase(join(libraryRoot, 'app.db'))
+  const settings = (): AppSettings => readSettings(db, libraryRoot)
+  const cacheDir = (): string => resolveCacheDir(getSetting(db, 'cacheDir', ''), libraryRoot)
 
   // Startup cleanup: remove cache entries older than 24h (spec §9).
-  cleanStaleCache(libraryRoot)
+  cleanStaleCache(cacheDir())
 
   const cryptor = overrides.cryptor ?? dpapiCryptor
   const userDataDir = overrides.userDataDir ?? app.getPath('userData')
@@ -175,7 +185,11 @@ export function createContext(overrides: Partial<{
     qaCapability: () => {
       const s = providers()
       return s.bindings.some((b) => b.capability === 'text') ? 'text' : 'multimodal'
-    }
+    },
+    settings,
+    setSetting: (key, value) => setSetting(db, key, value),
+    cacheDir,
+    exportsDir: () => exportsPath(settings().libraryRoot)
   }
 }
 

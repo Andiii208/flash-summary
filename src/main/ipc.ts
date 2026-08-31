@@ -7,7 +7,9 @@
  * immediately; stage progress is pushed to the main window over the
  * 'tasks:progress' channel so the renderer never blocks.
  */
-import { ipcMain, type WebContents } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import type { AppContext } from './app-context'
 import { TaskRepository, runTask, retryTask, type TaskProgress } from './tasks/queue'
 import { createExecutors } from './tasks/orchestrator'
@@ -15,8 +17,11 @@ import type { Stage } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { parseNote } from '../shared/notes/schema'
+import { noteToMarkdown } from '../shared/notes/markdown'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import type { Note } from '../shared/notes/schema'
+import { resolveCacheDir } from './library/paths'
+import { migrateLibrary } from './library/migrate'
 
 function ok<T>(value: T): ApiResult<T> {
   return okResult(value)
@@ -29,6 +34,14 @@ function err(error: unknown): ApiResult<never> {
 function str(v: unknown, name: string): string {
   if (typeof v !== 'string' || v === '') throw new Error(`${name} must be a non-empty string`)
   return v
+}
+
+/** Validate a directory is creatable/writable by probing it (U3). */
+function assertWritable(dir: string): void {
+  mkdirSync(dir, { recursive: true })
+  const probe = join(dir, `.seu-write-test-${Date.now()}`)
+  writeFileSync(probe, 'probe')
+  rmSync(probe, { force: true })
 }
 
 /** Compute the resume point for a task: pending stages start from the top,
@@ -62,6 +75,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     createExecutors({
       db: ctx.db,
       libraryRoot: ctx.libraryRoot,
+      cacheDir: ctx.cacheDir,
       ffmpeg: ctx.ffmpegPath(),
       ffprobe: ctx.ffprobePath(),
       school: ctx.school,
@@ -206,6 +220,62 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
 
+  // ---- settings (U3) ----
+  ipc.handle('settings:get', () => {
+    try {
+      const s = ctx.settings()
+      return ok({ libraryRoot: s.libraryRoot, cacheDir: resolveCacheDir(s.cacheDir, s.libraryRoot), theme: s.theme })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  ipc.handle('settings:setCacheDir', (_e, dir: unknown) => {
+    try {
+      const d = str(dir, 'cacheDir')
+      assertWritable(d)
+      ctx.setSetting('cacheDir', d)
+      return ok({ cacheDir: resolveCacheDir(d, ctx.settings().libraryRoot) })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  ipc.handle('settings:setTheme', (_e, theme: unknown) => {
+    try {
+      const t = str(theme, 'theme')
+      if (t !== 'auto' && t !== 'light' && t !== 'dark') throw new Error('invalid theme (auto|light|dark)')
+      ctx.setSetting('theme', t)
+      return ok({ theme: t })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  ipc.handle('settings:chooseLibrary', async () => {
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const options: OpenDialogOptions = { title: '选择新的资料库目录（需为空目录）', properties: ['openDirectory', 'createDirectory'] }
+      const result = win == null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(win, options)
+      if (result.canceled || result.filePaths.length === 0) return ok({ canceled: true })
+      const migration = await migrateLibrary(ctx.db, ctx.libraryRoot, result.filePaths[0] as string)
+      if (!migration.ok) return err(new Error(migration.error))
+      ctx.setSetting('libraryRoot', migration.dest)
+      return ok({ canceled: false, libraryRoot: migration.dest, restartRequired: true })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  ipc.handle('settings:openPath', (_e, kind: unknown) => {
+    try {
+      const k = str(kind, 'kind')
+      const s = ctx.settings()
+      const target =
+        k === 'cache' ? resolveCacheDir(s.cacheDir, s.libraryRoot) : k === 'exports' ? ctx.exportsDir() : s.libraryRoot
+      void shell.openPath(target)
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
   // ---- tasks ----
   ipc.handle('tasks:create', (_e, lessonId: unknown) => {
     try {
@@ -306,6 +376,31 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+  // Export the latest note as Markdown via the system save dialog (U3).
+  ipc.handle('notes:exportMarkdown', async (_e, lessonId: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const row = ctx.db
+        .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
+        .get(id) as { note_json: string } | undefined
+      if (row == null) throw new Error('该课时尚无笔记')
+      const lesson = ctx.db.prepare('SELECT title FROM lessons WHERE id = ?').get(id) as { title: string } | undefined
+      const title = lesson?.title ?? id
+      const md = noteToMarkdown(parseNote(row.note_json), title)
+      const win = BrowserWindow.getFocusedWindow()
+      const options: SaveDialogOptions = {
+        title: '导出笔记为 Markdown',
+        defaultPath: join(ctx.exportsDir(), `${safeFileName(title)}.md`),
+        filters: [{ name: 'Markdown', extensions: ['md'] }]
+      }
+      const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
+      if (canceled || filePath == null) return ok({ canceled: true })
+      writeFileSync(filePath, md, 'utf8')
+      return ok({ canceled: false, path: filePath })
+    } catch (e) {
+      return err(e)
+    }
+  })
 
   // ---- Q&A ----
   ipc.handle('qa:ask', async (_e, lessonId: unknown, question: unknown) => {
@@ -349,4 +444,9 @@ export function webContentsSender(win: { webContents: WebContents } | null): Pro
       if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
     }
   }
+}
+
+/** Strip characters that are unsafe in a Windows file name. */
+function safeFileName(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'note'
 }

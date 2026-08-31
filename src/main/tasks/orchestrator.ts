@@ -6,7 +6,7 @@
 import { mkdirSync, rmSync, existsSync } from 'fs'
 import { join, basename } from 'path'
 import type { Db } from '../db/open'
-import { attachmentsPath, cachePath } from '../library/paths'
+import { attachmentsPath } from '../library/paths'
 import { extractAudio, extractKeyframes, run as runProcess } from '../media/ffmpeg'
 import { dedupeKeyframes, type Grid8x8 } from '../media/phash'
 import { downloadToFile } from '../media/download'
@@ -19,6 +19,8 @@ import type { OpenAiCompatibleClient } from '../providers/openai-client'
 export interface OrchestratorDeps {
   db: Db
   libraryRoot: string
+  /** Effective task-cache dir; re-read per task so a settings change takes effect immediately (U3). */
+  cacheDir: () => string
   ffmpeg: string
   ffprobe: string
   school: SchoolClient
@@ -36,7 +38,7 @@ function nowIso(deps: OrchestratorDeps): string {
 }
 
 function taskDir(deps: OrchestratorDeps, taskId: string): string {
-  const dir = join(cachePath(deps.libraryRoot), taskId)
+  const dir = join(deps.cacheDir(), taskId)
   mkdirSync(dir, { recursive: true })
   return dir
 }

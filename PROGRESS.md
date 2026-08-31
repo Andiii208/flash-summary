@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- **已完成阶段**：Phase 0-7 全部完成（工程基线 → 数据库 → CAS/API → 队列 → 媒体 → Provider → 笔记/追问 → 打包验收）；U1 主流程修复完成；U2 UI 重做完成（Preact）
-- **进行中**：U3 设置与下载位置
-- **下一步**：U3 — 004_settings 迁移、缓存目录可改、资料库迁移、导出另存为
+- **已完成阶段**：Phase 0-7 全部完成（工程基线 → 数据库 → CAS/API → 队列 → 媒体 → Provider → 笔记/追问 → 打包验收）；U1 主流程修复完成；U2 UI 重做完成（Preact）；U3 设置与下载位置完成
+- **进行中**：U4 管线质量
+- **下一步**：U4 — ASR 分片转写（必做）、多模态真发图、ffmpeg 超时、任务队列化+单实例锁、取消、缓存清理修正
 
 ## 环境实测（2026-08-30）
 
@@ -31,7 +31,8 @@
 | 增强 | ✅ 完成 | 手动课程/课时 ID 后备入口（spec §2，幂等落库）+ Provider 设置界面（保存并绑定三能力，Key 仅存内存后加密落库）；114/114 测试 | 提交 bf952de |
 | 发布事故修复 | ✅ 完成 | v0.1.1 重发：asar 含完整 UI（旧脚手架残留=0）、6 层尺寸图标、桌面/开始菜单快捷方式；release 已上线 | 提交 dfb0af9、tag v0.1.1 |
 | U1 主流程修复 | ✅ 完成 | 四门禁绿（128/128 测试，新增 14 个）；真实 Electron 启动烟测通过（页面渲染无错误、toast 区存在）；U1 验收判据「登录→课程树→点课时→创建并运行→实时进度」已接线，真实 CAS/45 分钟端到端仍属人工验证 5 项 | 提交 318d49d（后端）、3356b06（前端） |
-| U2 UI 重做 | ✅ 完成 | Preact 引入（preact/hooks、@preact/preset-vite、happy-dom）；组件化（App/Sidebar/TaskPanel/NoteViewer/QaPanel/Toast/EmptyState/ProviderPanel/WelcomeGuide/ManualAdd/TopBar/ProgressBar）；CSS 变量设计系统明暗双主题；CSP 收紧 connect-src 'none'；组件测试 25 个（≥10 达标）；四门禁绿 153/153；真实 Electron 烟测：4 页签+侧栏+引导卡+空态渲染正常无错误 | 提交 u2-preact（本次） |
+| U2 UI 重做 | ✅ 完成 | Preact 引入（preact/hooks、@preact/preset-vite、happy-dom）；组件化（App/Sidebar/TaskPanel/NoteViewer/QaPanel/Toast/EmptyState/ProviderPanel/WelcomeGuide/ManualAdd/TopBar/ProgressBar）；CSS 变量设计系统明暗双主题；CSP 收紧 connect-src 'none'；组件测试 25 个（≥10 达标）；四门禁绿 153/153；真实 Electron 烟测：4 页签+侧栏+引导卡+空态渲染正常无错误 | 提交 afc03a2 |
+| U3 设置与下载位置 | ✅ 完成 | 004_settings 迁移（key-value）；IPC settings:get/setCacheDir/setTheme/chooseLibrary/openPath；资料库迁移（SQLite backup API 复制 db+attachments，迁移前备份+失败回滚+重启生效）；notes:exportMarkdown 走系统保存对话框；缓存目录可改即时生效（orchestrator/cache-clean 读设置）；设置页 UI（账号/Provider/位置/主题，主题覆盖明暗）；四门禁绿 169/169（新增 16 测试）；真实 Electron 烟测设置页渲染正常 | 提交 u3-settings（本次） |
 
 ## 遗留（诚实清单）
 
@@ -48,6 +49,8 @@
 - **U1 重试统一走 runAsync（2026-08-31）**：后端 `tasks:runAsync` 的 `firstStageFor(state, failed_stage)` 对 failed 任务自动从失败阶段恢复，语义等同 retryTask；前端「重试」不再调阻塞式 `tasks:retry`，统一非阻塞路径，避免 UI 冻结。更简单方案，符合计划「选更简单方案」约定。
 - **U2 组件测试环境分治（2026-08-31）**：vitest 默认环境保留 `node`（main 层测试用真实 fetch/better-sqlite3），仅 `tests/components/**` 用 `happy-dom`——否则 happy-dom 的 CORS fetch 会弄挂 downloadToFile 测试。交互用 `preact/test-utils` 的 act 包裹以 flush 异步批处理。
 - **U2 Provider 管理暂留「设置」页签（2026-08-31）**：计划 U2 主区页签为 任务/笔记/追问，但 Provider 表单必须保留且 U3 才做完整设置页，故先以第四个页签「设置」承载 ProviderPanel，U3 增量扩展资料库/缓存/主题。
+- **U3 资料库迁移后重启生效（2026-09-01）**：计划任务 2「设置变更后即时生效」针对 cacheDir（orchestrator 每次读设置，已即时生效）；资料库迁移涉及重开 db 与 stageOutputs 等运行时单例，热切换复杂易错，选「迁移完成写 settings.libraryRoot + 提示重启」更简单可靠（计划未强制迁移即时生效）。
+- **U3 缓存目录用文本输入而非对话框（2026-09-01）**：cacheDir 变更走输入框+保存（后端校验可写），比多一个 chooseCacheDir 对话框通道更简单；资料库位置必须走目录选择对话框（用户选空目录），两者分工与计划一致。
 - **session_expired 重登重试（2026-08-31）**：`school.login` 会打开 CAS 登录窗口（用户交互），故不做静默自动重登；invoke 通道用 `withSessionRetry`（shared/session-retry.ts，纯函数可测），任务运行中会话过期则在 toast 提示 + 登录按钮高亮，用户重登成功后手动重试历史任务。
 - ROADMAP 按 leader 方法论写入 docs/plans/ROADMAP.md：8 阶段（0-7），每阶段含验收命令与完成判据（2026-08-30）。
 - 上传超时重试上限设为 20 次（用户要求，网络不稳定环境下的长程任务保障）。

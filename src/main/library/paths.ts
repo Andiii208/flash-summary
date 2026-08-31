@@ -27,6 +27,15 @@ export function cachePath(root: string): string {
   return join(root, 'cache')
 }
 
+/**
+ * Effective task-cache directory (U3). A user-set cacheDir (e.g. another
+ * drive) overrides the default under the library; empty means default.
+ */
+export function resolveCacheDir(cacheSetting: string, libraryRoot: string): string {
+  const trimmed = (cacheSetting ?? '').trim()
+  return trimmed === '' ? cachePath(libraryRoot) : trimmed
+}
+
 export function exportsPath(root: string): string {
   return join(root, 'exports')
 }

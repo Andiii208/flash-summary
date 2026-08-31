@@ -31,7 +31,7 @@ describe('stale cache cleanup (reverse-verified)', () => {
     mkdirSync(freshDir, { recursive: true })
     writeFileSync(freshFile, 'fresh video bytes')
 
-    const removed = cleanStaleCache(root)
+    const removed = cleanStaleCache(cache)
     expect(removed).toEqual(['task-old'])
     expect(existsSync(oldDir)).toBe(false)
     expect(existsSync(freshDir)).toBe(true)
@@ -42,8 +42,9 @@ describe('stale cache cleanup (reverse-verified)', () => {
 
   it('is a no-op on an empty or missing cache dir', () => {
     const root = makeLibrary()
-    rmSync(join(root, 'cache'), { recursive: true, force: true })
-    expect(cleanStaleCache(root)).toEqual([])
+    const cache = join(root, 'cache')
+    rmSync(cache, { recursive: true, force: true })
+    expect(cleanStaleCache(cache)).toEqual([])
     rmSync(root, { recursive: true, force: true })
   })
 })

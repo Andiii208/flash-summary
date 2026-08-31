@@ -4,14 +4,14 @@ import { cachePath } from '../library/paths'
 
 /**
  * Startup cleanup: remove cache entries older than 24h (spec §9).
+ * `cacheDir` is the effective directory (user override respected, U3).
  * Returns the deleted entry names for logging (names only, never URLs).
  */
-export function cleanStaleCache(libraryRoot: string, now = Date.now(), maxAgeMs = 24 * 60 * 60 * 1000): string[] {
-  const cache = cachePath(libraryRoot)
-  if (!existsSync(cache)) return []
+export function cleanStaleCache(cacheDir: string, now = Date.now(), maxAgeMs = 24 * 60 * 60 * 1000): string[] {
+  if (!existsSync(cacheDir)) return []
   const removed: string[] = []
-  for (const entry of readdirSync(cache)) {
-    const full = join(cache, entry)
+  for (const entry of readdirSync(cacheDir)) {
+    const full = join(cacheDir, entry)
     try {
       const stats = statSync(full)
       if (now - stats.mtimeMs > maxAgeMs) {

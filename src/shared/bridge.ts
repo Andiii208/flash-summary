@@ -92,6 +92,21 @@ export interface TasksBridge {
 export interface NotesBridge {
   latest(lessonId: string): Promise<ApiResult<unknown>>
   versions(lessonId: string): Promise<ApiResult<unknown>>
+  exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
+}
+
+export interface AppSettingsInfo {
+  libraryRoot: string
+  cacheDir: string
+  theme: string
+}
+
+export interface SettingsBridge {
+  get(): Promise<ApiResult<AppSettingsInfo>>
+  setCacheDir(dir: string): Promise<ApiResult<{ cacheDir: string }>>
+  setTheme(theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>>
+  chooseLibrary(): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>>
+  openPath(kind: 'library' | 'cache' | 'exports'): Promise<ApiResult<boolean>>
 }
 
 export interface QaBridge {
@@ -105,4 +120,5 @@ export interface SeuSummaryBridge {
   tasks: TasksBridge
   notes: NotesBridge
   qa: QaBridge
+  settings: SettingsBridge
 }

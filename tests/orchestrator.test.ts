@@ -53,6 +53,7 @@ function makeDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
   return {
     db,
     libraryRoot: dir,
+    cacheDir: () => join(dir, 'cache'),
     ffmpeg: realFfmpeg(),
     ffprobe: 'ffprobe',
     school,

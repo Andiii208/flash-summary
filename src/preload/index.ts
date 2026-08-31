@@ -6,7 +6,8 @@ import type {
   CourseTreeInfo,
   ProvidersListResult,
   TaskRowInfo,
-  TaskProgressInfo
+  TaskProgressInfo,
+  AppSettingsInfo
 } from '../shared/bridge'
 
 /**
@@ -47,13 +48,23 @@ const api: SeuSummaryBridge = {
   },
   notes: {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
-    versions: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:versions', lessonId)
+    versions: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:versions', lessonId),
+    exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
+      ipcRenderer.invoke('notes:exportMarkdown', lessonId)
   },
   qa: {
     ask: (lessonId: string, question: string): Promise<ApiResult<{ id: string; answer: string }>> =>
       ipcRenderer.invoke('qa:ask', lessonId, question),
     history: (lessonId: string): Promise<ApiResult<Array<{ question: string; answer: string; created_at: string }>>> =>
       ipcRenderer.invoke('qa:history', lessonId)
+  },
+  settings: {
+    get: (): Promise<ApiResult<AppSettingsInfo>> => ipcRenderer.invoke('settings:get'),
+    setCacheDir: (dir: string): Promise<ApiResult<{ cacheDir: string }>> => ipcRenderer.invoke('settings:setCacheDir', dir),
+    setTheme: (theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>> => ipcRenderer.invoke('settings:setTheme', theme),
+    chooseLibrary: (): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>> =>
+      ipcRenderer.invoke('settings:chooseLibrary'),
+    openPath: (kind: 'library' | 'cache' | 'exports'): Promise<ApiResult<boolean>> => ipcRenderer.invoke('settings:openPath', kind)
   }
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import type { CourseTreeInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { withSessionRetry } from '../shared/session-retry'
 import type { ApiResult } from '../shared/api-result'
@@ -8,11 +8,11 @@ import { CourseTree } from './components/CourseTree'
 import { TaskPanel } from './components/TaskPanel'
 import { NoteViewer } from './components/NoteViewer'
 import { QaPanel, type QaEntry } from './components/QaPanel'
-import { ProviderPanel } from './components/ProviderPanel'
 import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
+import { SettingsPanel } from './components/SettingsPanel'
 
 type MainTab = 'tasks' | 'notes' | 'qa' | 'settings'
 
@@ -64,10 +64,24 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onRetry={state.retryTask}
             />
           )}
-          {tab === 'notes' && <NoteViewer note={state.note} />}
+          {tab === 'notes' && <NoteViewer note={state.note} onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined} />}
           {tab === 'qa' && <QaPanel entries={state.qaEntries} busy={state.qaBusy} onAsk={state.ask} />}
           {tab === 'settings' && (
-            <ProviderPanel providers={state.providers} busy={state.providerBusy} onSave={state.saveProvider} onRemove={state.removeProvider} />
+            <SettingsPanel
+              settings={state.settings}
+              session={state.session}
+              sessionBusy={state.sessionBusy}
+              onLogin={state.login}
+              onLogout={state.logout}
+              providers={state.providers}
+              providerBusy={state.providerBusy}
+              onSaveProvider={state.saveProvider}
+              onRemoveProvider={state.removeProvider}
+              onSetCacheDir={state.setCacheDir}
+              onSetTheme={state.setTheme}
+              onChooseLibrary={state.chooseLibrary}
+              onOpenPath={state.openPath}
+            />
           )}
         </main>
       </div>
@@ -91,6 +105,7 @@ interface AppState {
   qaBusy: boolean
   providers: ProvidersListResult | null
   providerBusy: boolean
+  settings: AppSettingsInfo | null
   toasts: ToastItem[]
   login: () => void
   logout: () => void
@@ -103,6 +118,11 @@ interface AppState {
   ask: (question: string) => void
   saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
   removeProvider: (id: string) => void
+  exportNote: (lessonId: string) => void
+  setCacheDir: (dir: string) => void
+  setTheme: (theme: 'auto' | 'light' | 'dark') => void
+  chooseLibrary: () => void
+  openPath: (kind: 'library' | 'cache' | 'exports') => void
 }
 
 function useAppState(bridge: SeuSummaryBridge): AppState {
@@ -121,9 +141,18 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   const [qaBusy, setQaBusy] = useState(false)
   const [providers, setProviders] = useState<ProvidersListResult | null>(null)
   const [providerBusy, setProviderBusy] = useState(false)
+  const [settings, setSettings] = useState<AppSettingsInfo | null>(null)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastId = useRef(0)
   const lessonRef = useRef('')
+
+  // Theme override (U3): auto follows the system via CSS; explicit light/dark
+  // sets an html data attribute that wins over prefers-color-scheme.
+  useEffect(() => {
+    const root = document.documentElement
+    if (settings == null || settings.theme === 'auto') delete root.dataset.theme
+    else root.dataset.theme = settings.theme
+  }, [settings])
 
   const toast = useCallback((message: string, kind: ToastKind = 'info'): void => {
     const id = ++toastId.current
@@ -150,6 +179,11 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     if (res.ok && res.value != null) setProviders(res.value)
   }, [bridge])
 
+  const refreshSettings = useCallback(async (): Promise<void> => {
+    const res = await bridge.settings.get()
+    if (res.ok && res.value != null) setSettings(res.value)
+  }, [bridge])
+
   const loadNote = useCallback(async (lessonId: string): Promise<void> => {
     const res = (await bridge.notes.latest(lessonId)) as ApiResult<Note | null>
     if (res.ok && res.value != null) setNote(res.value)
@@ -168,6 +202,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     })()
     void refreshTree()
     void refreshProviders()
+    void refreshSettings()
     const off = bridge.tasks.onProgress((p) => {
       setProgress(p)
       const lid = lessonRef.current
@@ -188,7 +223,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, refreshTree, refreshProviders, loadNote, loadHistory])
+  }, [bridge, toast, refreshTree, refreshProviders, refreshSettings, loadNote, loadHistory])
 
   const login = useCallback((): void => {
     void (async () => {
@@ -351,6 +386,70 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     [bridge, toast, refreshProviders]
   )
 
+  const exportNote = useCallback(
+    (lessonId: string): void => {
+      void (async () => {
+        const res = await bridge.notes.exportMarkdown(lessonId)
+        if (!res.ok) {
+          toast(res.error ?? '导出失败', 'error')
+          return
+        }
+        if (res.value?.canceled) return
+        toast(`已导出：${res.value?.path ?? ''}`, 'success')
+      })()
+    },
+    [bridge, toast]
+  )
+
+  const setCacheDir = useCallback(
+    (dir: string): void => {
+      void (async () => {
+        const res = await bridge.settings.setCacheDir(dir)
+        if (!res.ok) {
+          toast(res.error ?? '设置失败', 'error')
+          return
+        }
+        toast('缓存目录已更新，新任务将写入新位置', 'success')
+        await refreshSettings()
+      })()
+    },
+    [bridge, toast, refreshSettings]
+  )
+
+  const setTheme = useCallback(
+    (theme: 'auto' | 'light' | 'dark'): void => {
+      void (async () => {
+        const res = await bridge.settings.setTheme(theme)
+        if (!res.ok) {
+          toast(res.error ?? '设置失败', 'error')
+          return
+        }
+        await refreshSettings()
+      })()
+    },
+    [bridge, toast, refreshSettings]
+  )
+
+  const chooseLibrary = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.settings.chooseLibrary()
+      if (!res.ok) {
+        toast(res.error ?? '迁移失败', 'error')
+        return
+      }
+      if (res.value?.canceled) return
+      toast(`资料库已迁移，重启应用后生效`, 'success')
+      await refreshSettings()
+    })()
+  }, [bridge, toast, refreshSettings])
+
+  const openPath = useCallback(
+    (kind: 'library' | 'cache' | 'exports'): void => {
+      void bridge.settings.openPath(kind)
+    },
+    [bridge]
+  )
+
   return {
     session,
     sessionBusy,
@@ -367,6 +466,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     qaBusy,
     providers,
     providerBusy,
+    settings,
     toasts,
     login,
     logout,
@@ -378,6 +478,11 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     retryTask,
     ask,
     saveProvider,
-    removeProvider
+    removeProvider,
+    exportNote,
+    setCacheDir,
+    setTheme,
+    chooseLibrary,
+    openPath
   }
 }
