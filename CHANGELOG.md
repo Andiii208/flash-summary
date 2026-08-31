@@ -2,6 +2,20 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.1.1] - 2026-08-31
+
+修复 v0.1.0 发布事故的紧急重发。
+
+### 修复
+
+- **安装包内容过期**：v0.1.0 安装包内的 `app.asar` 是 UI 主界面与 Provider 设置实装之前的旧构建，导致用户看到的是 Phase 0 脚手架页而非完整应用。v0.1.1 从当前代码完整重新构建。
+- **无应用图标**：补充 `build/icon.ico`（6 层尺寸 256/128/64/48/32/16，AI 生成「笔记起飞」方案），接入 electron-builder `win.icon`，安装器与桌面快捷方式不再显示默认 Electron 图标。
+- **无快捷方式**：NSIS 配置补充 `createDesktopShortcut` / `createStartMenuShortcut`，安装后自动创建桌面与开始菜单快捷方式。
+
+### 说明
+
+- v0.1.0 的 Git tag 虽指向最新提交，但发布资产构建于更早时点，tag 与资产不一致。今后发布资产必须在打 tag 的同一提交上构建。
+
 ## [0.1.0] - 2026-08-30
 
 首个可安装版本（MVP）。
