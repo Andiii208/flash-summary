@@ -87,7 +87,14 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
       recordStage(deps, ctx.taskId, ctx.stage, { lessonId: detail.id })
       return { status: 'ok' }
     } catch (err) {
-      return { status: 'failed', error: `获取课时信息失败: ${(err as Error).message}` }
+      // Spec §2/§11.3: a session expiry mid-task is recognizable so the UI
+      // can offer re-login instead of a generic failure.
+      const kind = (err as { kind?: string }).kind
+      return {
+        status: 'failed',
+        error: `获取课时信息失败: ${(err as Error).message}`,
+        ...(kind === 'session_expired' ? { kind: 'session_expired' as const } : {})
+      }
     }
   }
 }

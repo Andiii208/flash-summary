@@ -1,8 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
-import { registerIpc } from './ipc'
+import { registerIpc, webContentsSender } from './ipc'
+
+let mainWindow: BrowserWindow | null = null
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -23,16 +25,24 @@ function createMainWindow(): BrowserWindow {
     void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
+
   return win
 }
 
 app.whenReady().then(() => {
   const ctx = createContext()
-  registerIpc(ctx)
-  createMainWindow()
+  mainWindow = createMainWindow()
+  // The main window reference lets IPC push task progress to the renderer.
+  registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      mainWindow = createMainWindow()
+      registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+    }
   })
 })
 

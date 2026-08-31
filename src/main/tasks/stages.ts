@@ -23,6 +23,17 @@ export function stagesAfter(stage: Stage): Stage[] {
   return PIPELINE_STAGES.slice(i + 1)
 }
 
+/**
+ * Rough completion percentage of a stage for progress display:
+ * stage k of N reports round((k+1)/N * 100) — the stage is *done* when its
+ * event fires (we emit on completion, see runTask's onProgress).
+ */
+export function stagePercent(stage: Stage): number {
+  const i = PIPELINE_STAGES.indexOf(stage)
+  if (i < 0) return 0
+  return Math.min(100, Math.round(((i + 1) / PIPELINE_STAGES.length) * 100))
+}
+
 /** Stages at or before the given one (inclusive) — the ones a retry reuses. */
 export function stagesUpTo(stage: Stage): Stage[] {
   const i = PIPELINE_STAGES.indexOf(stage)
@@ -38,7 +49,7 @@ export interface StageOutcome {
 
 export type StageResult =
   | { status: 'ok' }
-  | { status: 'failed'; error: string }
+  | { status: 'failed'; error: string; kind?: 'session_expired' }
 
 export interface TaskRow {
   id: string

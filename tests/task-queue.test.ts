@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
-import { TaskRepository, runTask, retryTask, type StageExecutor, type StageOutputStore } from '../src/main/tasks/queue'
+import { TaskRepository, runTask, retryTask, type StageExecutor, type StageOutputStore, type TaskProgress } from '../src/main/tasks/queue'
 import type { StageResult } from '../src/main/tasks/stages'
-import { PIPELINE_STAGES, canTransition, type Stage } from '../src/main/tasks/stages'
+import { PIPELINE_STAGES, canTransition, stagePercent, type Stage } from '../src/main/tasks/stages'
 
 let db: Db
 let dir: string
@@ -141,5 +141,64 @@ describe('retry resumes from the failed stage without redoing completed stages',
     await expect(retryTask(repo, 't5', executorsThatFailAt('pending' as Stage).executors, makeOutputs())).rejects.toThrowError(
       /not in a failed state/
     )
+  })
+})
+
+describe('U1: progress events and stage percent', () => {
+  it('stagePercent maps each stage to a monotonically increasing percent', () => {
+    const percents = PIPELINE_STAGES.map((s) => stagePercent(s))
+    expect(percents[0]).toBeGreaterThan(0)
+    expect(percents[percents.length - 1]).toBe(100)
+    for (let i = 1; i < percents.length; i++) {
+      expect(percents[i]).toBeGreaterThan(percents[i - 1])
+    }
+  })
+
+  it('runTask emits a progress event for every stage and one for success', async () => {
+    const repo = new TaskRepository(db)
+    repo.create('p1', 'l1')
+    const { executors } = executorsThatFailAt('__never__')
+    const events: TaskProgress[] = []
+    const result = await runTask(repo, 'p1', executors, makeOutputs(), 'fetching_course', (p) => events.push(p))
+    expect(result).toBe('succeeded')
+    // one event per stage + final succeeded
+    expect(events).toHaveLength(PIPELINE_STAGES.length + 1)
+    expect(events.map((e) => e.state)).toEqual([...PIPELINE_STAGES, 'succeeded'])
+    expect(events[0].taskId).toBe('p1')
+    expect(events[events.length - 1].percent).toBe(100)
+    // percentages grow through the stages
+    for (let i = 1; i < PIPELINE_STAGES.length; i++) {
+      expect(events[i].percent).toBeGreaterThan(events[i - 1].percent)
+    }
+  })
+
+  it('runTask marks a session_expired failure with kind so the UI can offer re-login', async () => {
+    const repo = new TaskRepository(db)
+    repo.create('p2', 'l1')
+    const events: TaskProgress[] = []
+    const executors = Object.fromEntries(
+      PIPELINE_STAGES.map((stage) => [
+        stage,
+        (): StageResult =>
+          stage === 'fetching_course'
+            ? { status: 'failed', error: 'school session expired (redirect to CAS)', kind: 'session_expired' }
+            : { status: 'ok' }
+      ])
+    ) as unknown as Record<Stage, StageExecutor>
+
+    const result = await runTask(repo, 'p2', executors, makeOutputs(), 'fetching_course', (p) => events.push(p))
+    expect(result).toBe('failed')
+    const failed = events.find((e) => e.state === 'failed')
+    expect(failed?.kind).toBe('session_expired')
+    expect(failed?.stage).toBe('fetching_course')
+    expect(repo.get('p2')?.state).toBe('failed')
+  })
+
+  it('runTask without a listener still succeeds (listener optional)', async () => {
+    const repo = new TaskRepository(db)
+    repo.create('p3', 'l1')
+    const { executors } = executorsThatFailAt('__never__')
+    const result = await runTask(repo, 'p3', executors, makeOutputs(), 'fetching_course')
+    expect(result).toBe('succeeded')
   })
 })

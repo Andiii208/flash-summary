@@ -1,5 +1,5 @@
 import type { Db } from '../db/open'
-import { PIPELINE_STAGES, type Stage, type StageResult } from './stages'
+import { PIPELINE_STAGES, stagePercent, type Stage, type StageResult, type TaskState } from './stages'
 
 export interface StageContext {
   taskId: string
@@ -58,19 +58,36 @@ export class TaskRepository {
   }
 }
 
+/** Progress payload pushed to the renderer on every stage transition. */
+export interface TaskProgress {
+  taskId: string
+  state: TaskState
+  stage: Stage | null
+  message: string
+  percent: number
+  /** Set when the failure is a school session expiry (UI offers re-login). */
+  kind?: 'session_expired'
+}
+
+export type ProgressListener = (p: TaskProgress) => void
+
 /**
  * Run (or resume) a task through the pipeline.
  *
  * `firstStage` is where execution starts: on retry it is the failed stage.
  * Completed stages before it are never re-executed — their outputs are
  * reused (checked via StageOutputStore.has and asserted in tests).
+ *
+ * `onProgress` (optional) is invoked after every stage transition and on
+ * completion/failure so the renderer can show live state.
  */
 export async function runTask(
   repo: TaskRepository,
   taskId: string,
   executors: Record<Stage, StageExecutor>,
   outputs: StageOutputStore,
-  firstStage: Stage
+  firstStage: Stage,
+  onProgress?: ProgressListener
 ): Promise<'succeeded' | 'failed'> {
   const startIdx = PIPELINE_STAGES.indexOf(firstStage)
   for (let i = startIdx; i < PIPELINE_STAGES.length; i++) {
@@ -82,14 +99,24 @@ export async function runTask(
     if (i < startIdx && outputs.has(ctx)) continue
 
     repo.markStage(taskId, stage)
+    onProgress?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: stagePercent(stage) })
     const result = await executors[stage](ctx)
     if (result.status === 'failed') {
       repo.markFailed(taskId, stage, result.error)
+      onProgress?.({
+        taskId,
+        state: 'failed',
+        stage,
+        message: result.error,
+        percent: stagePercent(stage),
+        ...(result.kind === 'session_expired' ? { kind: 'session_expired' as const } : {})
+      })
       return 'failed'
     }
     outputs.record(ctx, { stage, at: new Date().toISOString() })
   }
   repo.markSucceeded(taskId)
+  onProgress?.({ taskId, state: 'succeeded', stage: null, message: '任务完成', percent: 100 })
   return 'succeeded'
 }
 
@@ -98,12 +125,13 @@ export async function retryTask(
   repo: TaskRepository,
   taskId: string,
   executors: Record<Stage, StageExecutor>,
-  outputs: StageOutputStore
+  outputs: StageOutputStore,
+  onProgress?: ProgressListener
 ): Promise<'succeeded' | 'failed'> {
   const row = repo.get(taskId)
   if (row == null) throw new Error(`task ${taskId} not found`)
   if (row.state !== 'failed' || row.failed_stage == null) {
     throw new Error(`task ${taskId} is not in a failed state (state=${row.state})`)
   }
-  return runTask(repo, taskId, executors, outputs, row.failed_stage as Stage)
+  return runTask(repo, taskId, executors, outputs, row.failed_stage as Stage, onProgress)
 }

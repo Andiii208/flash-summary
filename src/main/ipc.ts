@@ -2,11 +2,17 @@
  * IPC API surface: thin handlers over the AppContext.
  * Each handler validates argument shapes and converts provider/school
  * errors into { ok:false, error, kind } envelopes the renderer can show.
+ *
+ * Task execution is asynchronous: tasks:runAsync enqueues and returns
+ * immediately; stage progress is pushed to the main window over the
+ * 'tasks:progress' channel so the renderer never blocks.
  */
-import { ipcMain } from 'electron'
+import { ipcMain, type WebContents } from 'electron'
 import type { AppContext } from './app-context'
-import { TaskRepository, runTask, retryTask } from './tasks/queue'
+import { TaskRepository, runTask, retryTask, type TaskProgress } from './tasks/queue'
 import { createExecutors } from './tasks/orchestrator'
+import type { Stage } from './tasks/stages'
+import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { parseNote } from '../shared/notes/schema'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
@@ -32,7 +38,39 @@ function firstStageFor(state: string, failedStage: string | null): Parameters<ty
   return 'fetching_course'
 }
 
-export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
+/** Progress-channel interface so tests can substitute a fake sender. */
+export interface ProgressSender {
+  send: (channel: string, payload: TaskProgress) => void
+}
+
+export interface IpcOptions {
+  /** Main window webContents; progress events go here when present. */
+  sender?: ProgressSender
+  /** Overrides the auto task id (used by tests for determinism). */
+  newTaskId?: () => string
+  /** Test hook: replace the pipeline executors (progress tests stub stages). */
+  executorsOverride?: () => Record<Stage, StageExecutor>
+}
+
+export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions = {}): void {
+  const sendProgress = (p: TaskProgress): void => {
+    options.sender?.send('tasks:progress', p)
+  }
+
+  const makeExecutors = (): Record<Stage, StageExecutor> =>
+    options.executorsOverride?.() ??
+    createExecutors({
+      db: ctx.db,
+      libraryRoot: ctx.libraryRoot,
+      ffmpeg: ctx.ffmpegPath(),
+      ffprobe: ctx.ffprobePath(),
+      school: ctx.school,
+      chat: (capability) => ctx.chatFor(capability),
+      gridDecoder: ctx.gridDecoder
+    })
+
+  const newId = options.newTaskId ?? (() => `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+
   // ---- school session ----
   ipc.handle('school:login', async () => {
     try {
@@ -49,9 +87,22 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
   ipc.handle('school:session', () => ok({ state: ctx.sessionState() }))
 
   // ---- courses / lessons ----
+  // The school list is the source; rows are upserted into the library so the
+  // course tree (school:courseTree) has durable data even offline.
   ipc.handle('school:listCourses', async () => {
     try {
-      return ok(await ctx.school.listCourses())
+      const courses = await ctx.school.listCourses()
+      const now = new Date().toISOString()
+      const upsert = ctx.db.prepare(
+        `INSERT INTO courses (id, name, term, teacher, fetched_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, term = excluded.term,
+           teacher = excluded.teacher, fetched_at = excluded.fetched_at`
+      )
+      for (const c of courses) {
+        if (c.id === '') continue
+        upsert.run(c.id, c.name, c.term ?? null, c.teacher ?? null, now)
+      }
+      return ok(courses)
     } catch (e) {
       return err(e)
     }
@@ -83,8 +134,45 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
     }
   })
 
+  // Course → lesson tree (U1): one shot payload for the sidebar. Lesson rows
+  // come from the DB (auto list or manual fallback); each lesson reports
+  // whether a note already exists so the UI can badge processed lessons.
+  ipc.handle('school:courseTree', () => {
+    try {
+      const courses = ctx.db
+        .prepare('SELECT id, name, term, teacher FROM courses ORDER BY fetched_at DESC')
+        .all() as Array<{ id: string; name: string; term: string | null; teacher: string | null }>
+      const lessonRows = ctx.db
+        .prepare(
+          `SELECT l.id, l.course_id, l.title, l.started_at,
+                  (SELECT COUNT(*) FROM notes n WHERE n.lesson_id = l.id) AS note_count
+           FROM lessons l ORDER BY l.started_at, l.id`
+        )
+        .all() as Array<{ id: string; course_id: string; title: string; started_at: string | null; note_count: number }>
+      const tree = courses.map((c) => ({
+        id: c.id,
+        name: c.name,
+        term: c.term ?? undefined,
+        teacher: c.teacher ?? undefined,
+        lessons: lessonRows
+          .filter((l) => l.course_id === c.id)
+          .map((l) => ({ id: l.id, title: l.title, hasNote: l.note_count > 0 }))
+      }))
+      return ok(tree)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
   // ---- providers ----
-  ipc.handle('providers:list', () => ok(ctx.providers()))
+  // List never carries the plaintext key: renderer receives shape only
+  // (spec §9 — keys are decrypted and used exclusively in main).
+  ipc.handle('providers:list', () =>
+    ok({
+      providers: ctx.providers().providers.map((p) => ({ id: p.id, name: p.name, baseUrl: p.baseUrl, hasKey: p.hasKey })),
+      bindings: ctx.providers().bindings
+    })
+  )
   ipc.handle('providers:save', (_e, input: unknown) => {
     try {
       const i = input as { id?: string; name?: string; baseUrl?: string; apiKey?: string }
@@ -121,7 +209,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
   // ---- tasks ----
   ipc.handle('tasks:create', (_e, lessonId: unknown) => {
     try {
-      const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const id = newId()
       new TaskRepository(ctx.db).create(id, str(lessonId, 'lessonId'))
       return ok({ id })
     } catch (e) {
@@ -136,23 +224,49 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
       return err(e)
     }
   })
+  // tasks:list (U1): history so the UI can show past/failed tasks.
+  ipc.handle('tasks:list', (_e, lessonId: unknown) => {
+    try {
+      const rows = (
+        lessonId == null
+          ? ctx.db.prepare('SELECT id, lesson_id, state, failed_stage, error_message, created_at, updated_at FROM tasks ORDER BY created_at DESC LIMIT 50').all()
+          : ctx.db
+              .prepare(
+                'SELECT id, lesson_id, state, failed_stage, error_message, created_at, updated_at FROM tasks WHERE lesson_id = ? ORDER BY created_at DESC LIMIT 50'
+              )
+              .all(str(lessonId, 'lessonId'))
+      ) as Array<{ id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null; created_at: string; updated_at: string }>
+      return ok(rows)
+    } catch (e) {
+      return err(e)
+    }
+  })
   ipc.handle('tasks:run', async (_e, taskId: unknown) => {
     try {
       const id = str(taskId, 'taskId')
       const repo = new TaskRepository(ctx.db)
       const row = repo.get(id)
       if (row == null) throw new Error(`task ${id} not found`)
-      const executors = createExecutors({
-        db: ctx.db,
-        libraryRoot: ctx.libraryRoot,
-        ffmpeg: ctx.ffmpegPath(),
-        ffprobe: ctx.ffprobePath(),
-        school: ctx.school,
-        chat: (capability) => ctx.chatFor(capability),
-        gridDecoder: ctx.gridDecoder
-      })
-      const result = await runTask(repo, id, executors, ctx.stageOutputs, firstStageFor(row.state, row.failed_stage))
+      const executors = makeExecutors()
+      const result = await runTask(repo, id, executors, ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress)
       return ok({ result, task: repo.get(id) })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // tasks:runAsync (U1): fire-and-return; progress streams via the
+  // 'tasks:progress' channel. Errors surface as a failed progress event
+  // plus the returned envelope.
+  ipc.handle('tasks:runAsync', async (_e, taskId: unknown) => {
+    try {
+      const id = str(taskId, 'taskId')
+      const repo = new TaskRepository(ctx.db)
+      const row = repo.get(id)
+      if (row == null) throw new Error(`task ${id} not found`)
+      void runTask(repo, id, makeExecutors(), ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress).catch((e) => {
+        sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
+      })
+      return ok({ id, state: 'running' })
     } catch (e) {
       return err(e)
     }
@@ -161,16 +275,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
     try {
       const id = str(taskId, 'taskId')
       const repo = new TaskRepository(ctx.db)
-      const executors = createExecutors({
-        db: ctx.db,
-        libraryRoot: ctx.libraryRoot,
-        ffmpeg: ctx.ffmpegPath(),
-        ffprobe: ctx.ffprobePath(),
-        school: ctx.school,
-        chat: (capability) => ctx.chatFor(capability),
-        gridDecoder: ctx.gridDecoder
-      })
-      const result = await retryTask(repo, id, executors, ctx.stageOutputs)
+      const executors = makeExecutors()
+      const result = await retryTask(repo, id, executors, ctx.stageOutputs, sendProgress)
       return ok({ result, task: repo.get(id) })
     } catch (e) {
       return err(e)
@@ -233,4 +339,14 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain): void {
       return err(e)
     }
   })
+}
+
+/** Convenience: a ProgressSender backed by real WebContents (auto no-op when the window is gone). */
+export function webContentsSender(win: { webContents: WebContents } | null): ProgressSender | undefined {
+  if (win == null) return undefined
+  return {
+    send: (channel, payload) => {
+      if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
+    }
+  }
 }

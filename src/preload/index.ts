@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiResult } from '../shared/api-result'
-import type { SeuSummaryBridge } from '../shared/bridge'
+import type {
+  SeuSummaryBridge,
+  CourseSummaryInfo,
+  CourseTreeInfo,
+  ProvidersListResult,
+  TaskRowInfo,
+  TaskProgressInfo
+} from '../shared/bridge'
 
 /**
  * Renderer bridge. Every call returns an ApiResult envelope; the renderer
@@ -12,13 +19,13 @@ const api: SeuSummaryBridge = {
     login: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:login'),
     logout: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:logout'),
     session: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:session'),
-    listCourses: (): Promise<ApiResult<Array<{ id: string; name: string; term?: string; teacher?: string }>>> =>
-      ipcRenderer.invoke('school:listCourses'),
+    listCourses: (): Promise<ApiResult<CourseSummaryInfo[]>> => ipcRenderer.invoke('school:listCourses'),
     addManualCourse: (courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>> =>
-      ipcRenderer.invoke('school:addManualCourse', courseId, lessonId)
+      ipcRenderer.invoke('school:addManualCourse', courseId, lessonId),
+    courseTree: (): Promise<ApiResult<CourseTreeInfo[]>> => ipcRenderer.invoke('school:courseTree')
   },
   providers: {
-    list: (): Promise<ApiResult<unknown>> => ipcRenderer.invoke('providers:list'),
+    list: (): Promise<ApiResult<ProvidersListResult>> => ipcRenderer.invoke('providers:list'),
     save: (input: { id?: string; name: string; baseUrl: string; apiKey: string }): Promise<ApiResult<{ id: string; hasKey: boolean }>> =>
       ipcRenderer.invoke('providers:save', input),
     remove: (id: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('providers:delete', id),
@@ -27,9 +34,16 @@ const api: SeuSummaryBridge = {
   },
   tasks: {
     create: (lessonId: string): Promise<ApiResult<{ id: string }>> => ipcRenderer.invoke('tasks:create', lessonId),
-    get: (taskId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('tasks:get', taskId),
+    get: (taskId: string): Promise<ApiResult<TaskRowInfo | null>> => ipcRenderer.invoke('tasks:get', taskId),
+    list: (lessonId?: string): Promise<ApiResult<TaskRowInfo[]>> => ipcRenderer.invoke('tasks:list', lessonId),
     run: (taskId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('tasks:run', taskId),
-    retry: (taskId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('tasks:retry', taskId)
+    runAsync: (taskId: string): Promise<ApiResult<{ id: string; state: string }>> => ipcRenderer.invoke('tasks:runAsync', taskId),
+    retry: (taskId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('tasks:retry', taskId),
+    onProgress: (cb: (p: TaskProgressInfo) => void): (() => void) => {
+      const listener = (_e: unknown, p: TaskProgressInfo): void => cb(p)
+      ipcRenderer.on('tasks:progress', listener)
+      return () => ipcRenderer.removeListener('tasks:progress', listener)
+    }
   },
   notes: {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),

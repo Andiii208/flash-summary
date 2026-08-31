@@ -5,16 +5,73 @@
  */
 import type { ApiResult } from './api-result'
 
+export interface CourseSummaryInfo {
+  id: string
+  name: string
+  term?: string
+  teacher?: string
+}
+
+export interface LessonTreeInfo {
+  id: string
+  title: string
+  hasNote: boolean
+}
+
+export interface CourseTreeInfo extends CourseSummaryInfo {
+  lessons: LessonTreeInfo[]
+}
+
+export interface TaskProgressInfo {
+  taskId: string
+  state: string
+  stage: string | null
+  message: string
+  percent: number
+  /** Set when the failure is a school session expiry (UI offers re-login). */
+  kind?: 'session_expired'
+}
+
+export interface TaskRowInfo {
+  id: string
+  lesson_id: string
+  state: string
+  failed_stage: string | null
+  error_message: string | null
+  created_at?: string
+  updated_at?: string
+}
+
 export interface SchoolBridge {
   login(): Promise<ApiResult<{ state: string }>>
   logout(): Promise<ApiResult<{ state: string }>>
   session(): Promise<ApiResult<{ state: string }>>
-  listCourses(): Promise<ApiResult<Array<{ id: string; name: string; term?: string; teacher?: string }>>>
+  listCourses(): Promise<ApiResult<CourseSummaryInfo[]>>
   addManualCourse(courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>>
+  courseTree(): Promise<ApiResult<CourseTreeInfo[]>>
+}
+
+export interface ProviderListInfo {
+  id: string
+  name: string
+  baseUrl: string
+  hasKey: boolean
+}
+
+export interface ProviderBindingInfo {
+  capability: string
+  providerId: string
+  model: string
+}
+
+export interface ProvidersListResult {
+  providers: ProviderListInfo[]
+  bindings: ProviderBindingInfo[]
 }
 
 export interface ProvidersBridge {
-  list(): Promise<ApiResult<unknown>>
+  /** Shape only — the plaintext apiKey never leaves the main process. */
+  list(): Promise<ApiResult<ProvidersListResult>>
   save(input: { id?: string; name: string; baseUrl: string; apiKey: string }): Promise<ApiResult<{ id: string; hasKey: boolean }>>
   remove(id: string): Promise<ApiResult<boolean>>
   bind(capability: string, providerId: string, model: string): Promise<ApiResult<boolean>>
@@ -22,9 +79,14 @@ export interface ProvidersBridge {
 
 export interface TasksBridge {
   create(lessonId: string): Promise<ApiResult<{ id: string }>>
-  get(taskId: string): Promise<ApiResult<unknown>>
+  get(taskId: string): Promise<ApiResult<TaskRowInfo | null>>
+  list(lessonId?: string): Promise<ApiResult<TaskRowInfo[]>>
+  /** Blocking run (kept for tests/tools); prefer runAsync in the UI. */
   run(taskId: string): Promise<ApiResult<unknown>>
+  /** Fire-and-return execution; progress arrives via onProgress. */
+  runAsync(taskId: string): Promise<ApiResult<{ id: string; state: string }>>
   retry(taskId: string): Promise<ApiResult<unknown>>
+  onProgress(cb: (p: TaskProgressInfo) => void): () => void
 }
 
 export interface NotesBridge {
