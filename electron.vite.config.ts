@@ -1,5 +1,6 @@
 import { defineConfig } from 'electron-vite'
 import { resolve } from 'path'
+import preact from '@preact/preset-vite'
 
 export default defineConfig({
   main: {
@@ -27,6 +28,7 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
+    plugins: [preact()],
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/renderer/index.html') }

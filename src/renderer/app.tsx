@@ -1,0 +1,383 @@
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import type { JSX } from 'preact'
+import type { CourseTreeInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { Note } from '../shared/notes/schema'
+import { withSessionRetry } from '../shared/session-retry'
+import type { ApiResult } from '../shared/api-result'
+import { CourseTree } from './components/CourseTree'
+import { TaskPanel } from './components/TaskPanel'
+import { NoteViewer } from './components/NoteViewer'
+import { QaPanel, type QaEntry } from './components/QaPanel'
+import { ProviderPanel } from './components/ProviderPanel'
+import { TopBar, type SessionState } from './components/TopBar'
+import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
+import { WelcomeGuide } from './components/WelcomeGuide'
+import { ManualAdd } from './components/ManualAdd'
+
+type MainTab = 'tasks' | 'notes' | 'qa' | 'settings'
+
+const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
+  { id: 'tasks', label: '任务' },
+  { id: 'notes', label: '笔记' },
+  { id: 'qa', label: '追问' },
+  { id: 'settings', label: '设置' }
+]
+
+export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
+  const state = useAppState(bridge)
+  const [tab, setTab] = useState<MainTab>('tasks')
+  const showWelcome = state.treeLoaded && state.tree.length === 0
+
+  return (
+    <div class="app-shell">
+      <TopBar session={state.session} busy={state.sessionBusy} onLogin={state.login} onLogout={state.logout} />
+      <ToastArea toasts={state.toasts} />
+      <div class="app-main">
+        <aside class="sidebar">
+          <h2>课程</h2>
+          <button class="btn small" onClick={state.refreshTree}>
+            刷新课程
+          </button>
+          {showWelcome ? (
+            <WelcomeGuide onLogin={state.login} onOpenSettings={() => setTab('settings')} />
+          ) : (
+            <CourseTree tree={state.tree} selectedLesson={state.currentLesson} collapsed={state.collapsed} onToggle={state.toggleCourse} onSelect={state.selectLesson} />
+          )}
+          <ManualAdd onAdd={state.addManual} />
+        </aside>
+        <main class="content">
+          <nav class="tabs" role="tablist">
+            {TAB_LABELS.map((t) => (
+              <button key={t.id} role="tab" aria-selected={tab === t.id} class={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </nav>
+          {tab === 'tasks' && (
+            <TaskPanel
+              currentLesson={state.currentLesson}
+              running={state.running}
+              busy={state.submitBusy}
+              progress={state.progress}
+              history={state.history}
+              onCreateRun={state.createAndRun}
+              onRetry={state.retryTask}
+            />
+          )}
+          {tab === 'notes' && <NoteViewer note={state.note} />}
+          {tab === 'qa' && <QaPanel entries={state.qaEntries} busy={state.qaBusy} onAsk={state.ask} />}
+          {tab === 'settings' && (
+            <ProviderPanel providers={state.providers} busy={state.providerBusy} onSave={state.saveProvider} onRemove={state.removeProvider} />
+          )}
+        </main>
+      </div>
+    </div>
+  )
+}
+
+interface AppState {
+  session: SessionState
+  sessionBusy: boolean
+  tree: CourseTreeInfo[]
+  treeLoaded: boolean
+  collapsed: ReadonlySet<string>
+  currentLesson: string
+  note: Note | null
+  history: TaskRowInfo[]
+  progress: TaskProgressInfo | null
+  running: boolean
+  submitBusy: boolean
+  qaEntries: QaEntry[]
+  qaBusy: boolean
+  providers: ProvidersListResult | null
+  providerBusy: boolean
+  toasts: ToastItem[]
+  login: () => void
+  logout: () => void
+  refreshTree: () => void
+  toggleCourse: (courseId: string) => void
+  selectLesson: (lessonId: string) => void
+  addManual: (courseId: string, lessonId: string) => void
+  createAndRun: () => void
+  retryTask: (taskId: string) => void
+  ask: (question: string) => void
+  saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
+  removeProvider: (id: string) => void
+}
+
+function useAppState(bridge: SeuSummaryBridge): AppState {
+  const [session, setSession] = useState<SessionState>('logged_out')
+  const [sessionBusy, setSessionBusy] = useState(false)
+  const [tree, setTree] = useState<CourseTreeInfo[]>([])
+  const [treeLoaded, setTreeLoaded] = useState(false)
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const [currentLesson, setCurrentLesson] = useState('')
+  const [note, setNote] = useState<Note | null>(null)
+  const [history, setHistory] = useState<TaskRowInfo[]>([])
+  const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
+  const [running, setRunning] = useState(false)
+  const [submitBusy, setSubmitBusy] = useState(false)
+  const [qaEntries, setQaEntries] = useState<QaEntry[]>([])
+  const [qaBusy, setQaBusy] = useState(false)
+  const [providers, setProviders] = useState<ProvidersListResult | null>(null)
+  const [providerBusy, setProviderBusy] = useState(false)
+  const [toasts, setToasts] = useState<ToastItem[]>([])
+  const toastId = useRef(0)
+  const lessonRef = useRef('')
+
+  const toast = useCallback((message: string, kind: ToastKind = 'info'): void => {
+    const id = ++toastId.current
+    setToasts((ts) => [...ts, { id, message, kind }])
+    const ms = kind === 'error' ? 6500 : 3500
+    window.setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), ms)
+  }, [])
+
+  const refreshTree = useCallback(async (): Promise<void> => {
+    const list = (await withSessionRetry(
+      () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
+      () => bridge.school.login()
+    )) as ApiResult<CourseTreeInfo[]>
+    if (!list.ok && list.kind === 'session_expired') toast('会话已过期，请重新登录', 'error')
+    const res = await bridge.school.courseTree()
+    if (res.ok && res.value != null) {
+      setTree(res.value)
+      setTreeLoaded(true)
+    }
+  }, [bridge, toast])
+
+  const refreshProviders = useCallback(async (): Promise<void> => {
+    const res = await bridge.providers.list()
+    if (res.ok && res.value != null) setProviders(res.value)
+  }, [bridge])
+
+  const loadNote = useCallback(async (lessonId: string): Promise<void> => {
+    const res = (await bridge.notes.latest(lessonId)) as ApiResult<Note | null>
+    if (res.ok && res.value != null) setNote(res.value)
+  }, [bridge])
+
+  const loadHistory = useCallback(async (lessonId: string): Promise<void> => {
+    const res = await bridge.tasks.list(lessonId)
+    if (res.ok && res.value != null) setHistory(res.value)
+  }, [bridge])
+
+  useEffect(() => {
+    let disposed = false
+    void (async () => {
+      const s = await bridge.school.session()
+      if (!disposed && s.ok && s.value != null && s.value.state === 'logged_in') setSession('logged_in')
+    })()
+    void refreshTree()
+    void refreshProviders()
+    const off = bridge.tasks.onProgress((p) => {
+      setProgress(p)
+      const lid = lessonRef.current
+      if (p.state === 'succeeded') {
+        setRunning(false)
+        toast(`任务 ${p.taskId} 完成`, 'success')
+        if (lid !== '') {
+          void loadNote(lid)
+          void loadHistory(lid)
+        }
+      } else if (p.state === 'failed') {
+        setRunning(false)
+        toast(p.message, 'error')
+        if (p.kind === 'session_expired') toast('会话已过期，登录后可重试此任务', 'error')
+      }
+    })
+    return () => {
+      disposed = true
+      off()
+    }
+  }, [bridge, toast, refreshTree, refreshProviders, loadNote, loadHistory])
+
+  const login = useCallback((): void => {
+    void (async () => {
+      setSessionBusy(true)
+      try {
+        const res = await bridge.school.login()
+        if (!res.ok) {
+          toast(res.error ?? '登录失败', 'error')
+          return
+        }
+        setSession('logged_in')
+        toast('登录成功', 'success')
+        await refreshTree()
+      } finally {
+        setSessionBusy(false)
+      }
+    })()
+  }, [bridge, toast, refreshTree])
+
+  const logout = useCallback((): void => {
+    void bridge.school.logout()
+    setSession('logged_out')
+    setTree([])
+    setCurrentLesson('')
+    setNote(null)
+    setHistory([])
+    toast('已退出登录', 'info')
+  }, [bridge, toast])
+
+  const toggleCourse = useCallback((courseId: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(courseId)) next.delete(courseId)
+      else next.add(courseId)
+      return next
+    })
+  }, [])
+
+  const selectLesson = useCallback(
+    (lessonId: string): void => {
+      setCurrentLesson(lessonId)
+      lessonRef.current = lessonId
+      void loadNote(lessonId)
+      void loadHistory(lessonId)
+    },
+    [loadNote, loadHistory]
+  )
+
+  const addManual = useCallback(
+    (courseId: string, lessonId: string): void => {
+      void (async () => {
+        const res = await bridge.school.addManualCourse(courseId, lessonId)
+        if (!res.ok) {
+          toast(res.error ?? '添加失败', 'error')
+          return
+        }
+        toast('已添加课程与课时', 'success')
+        await refreshTree()
+        selectLesson(lessonId)
+      })()
+    },
+    [bridge, toast, refreshTree, selectLesson]
+  )
+
+  const launch = useCallback(
+    async (taskId: string): Promise<void> => {
+      setProgress({ taskId, state: 'pending', stage: null, message: '排队中', percent: 0 })
+      setRunning(true)
+      const res = await bridge.tasks.runAsync(taskId)
+      if (!res.ok) {
+        setRunning(false)
+        toast(res.error ?? '启动失败', 'error')
+      }
+    },
+    [bridge, toast]
+  )
+
+  const createAndRun = useCallback((): void => {
+    if (currentLesson === '' || running) return
+    void (async () => {
+      setSubmitBusy(true)
+      try {
+        const created = await bridge.tasks.create(currentLesson)
+        if (!created.ok) {
+          toast(created.error ?? '创建任务失败', 'error')
+          return
+        }
+        await launch((created.value as { id: string }).id)
+      } finally {
+        setSubmitBusy(false)
+      }
+    })()
+  }, [bridge, currentLesson, running, toast, launch])
+
+  const retryTask = useCallback(
+    (taskId: string): void => {
+      if (running) return
+      void launch(taskId)
+    },
+    [running, launch]
+  )
+
+  const ask = useCallback(
+    (question: string): void => {
+      const lid = lessonRef.current
+      if (lid === '' || qaBusy) return
+      void (async () => {
+        setQaBusy(true)
+        try {
+          const res = await bridge.qa.ask(lid, question)
+          const entry: QaEntry = res.ok
+            ? { question, answer: (res.value as { answer: string }).answer }
+            : { question, answer: `失败：${res.error ?? '未知错误'}` }
+          setQaEntries((es) => [...es, entry])
+        } finally {
+          setQaBusy(false)
+        }
+      })()
+    },
+    [bridge, qaBusy]
+  )
+
+  const saveProvider = useCallback(
+    (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }): void => {
+      void (async () => {
+        setProviderBusy(true)
+        try {
+          const saved = await bridge.providers.save({ name: input.name, baseUrl: input.baseUrl, apiKey: input.apiKey })
+          if (!saved.ok) {
+            toast(saved.error ?? '保存失败', 'error')
+            return
+          }
+          const bound = await bridge.providers.bind(input.capability, (saved.value as { id: string }).id, input.model)
+          if (!bound.ok) {
+            toast(bound.error ?? '绑定失败', 'error')
+            return
+          }
+          toast(`已绑定 ${input.capability} → ${input.name}/${input.model}`, 'success')
+          await refreshProviders()
+        } finally {
+          setProviderBusy(false)
+        }
+      })()
+    },
+    [bridge, toast, refreshProviders]
+  )
+
+  const removeProvider = useCallback(
+    (id: string): void => {
+      void (async () => {
+        const res = await bridge.providers.remove(id)
+        if (!res.ok) {
+          toast(res.error ?? '删除失败', 'error')
+          return
+        }
+        toast('已删除 Provider', 'success')
+        await refreshProviders()
+      })()
+    },
+    [bridge, toast, refreshProviders]
+  )
+
+  return {
+    session,
+    sessionBusy,
+    tree,
+    treeLoaded,
+    collapsed,
+    currentLesson,
+    note,
+    history,
+    progress,
+    running,
+    submitBusy,
+    qaEntries,
+    qaBusy,
+    providers,
+    providerBusy,
+    toasts,
+    login,
+    logout,
+    refreshTree,
+    toggleCourse,
+    selectLesson,
+    addManual,
+    createAndRun,
+    retryTask,
+    ask,
+    saveProvider,
+    removeProvider
+  }
+}
