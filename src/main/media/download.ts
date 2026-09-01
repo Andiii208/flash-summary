@@ -1,10 +1,12 @@
 /**
- * HTTP(S) download to file with retry — network is unreliable in the field,
- * so every download retries up to MAX_ATTEMPTS with a small backoff.
- * Only the target path and byte counts are logged upstream; never URLs with
- * auth_key query parameters.
+ * HTTP(S) download to file with retry and Range resume (U4).
+ * Network is unreliable in the field: transient failures retry with a small
+ * backoff, and a partial file is kept between attempts so a server that
+ * honors `Range: bytes=N-` lets the next attempt resume instead of starting
+ * over. Only the target path and byte counts are logged upstream; never
+ * URLs with auth_key query parameters.
  */
-import { createWriteStream } from 'fs'
+import { createWriteStream, existsSync, statSync } from 'fs'
 import { unlink } from 'fs/promises'
 
 export const MAX_ATTEMPTS = 20
@@ -15,12 +17,19 @@ export interface DownloadStats {
 }
 
 async function attempt(url: string, target: string, signalTimeoutMs: number): Promise<number> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(signalTimeoutMs) })
+  const existing = existsSync(target) ? statSync(target).size : 0
+  const headers: Record<string, string> | undefined = existing > 0 ? { Range: `bytes=${existing}-` } : undefined
+  const res = await fetch(url, { signal: AbortSignal.timeout(signalTimeoutMs), headers })
   if (!res.ok || res.body == null) throw new Error(`download HTTP ${res.status}`)
 
-  let bytes = 0
-  const writer = createWriteStream(target)
+  const append = res.status === 206
+  if (!append && existing > 0) {
+    // Server ignored the Range header — restart from an empty file.
+    await unlink(target).catch(() => undefined)
+  }
+  const writer = createWriteStream(target, { flags: append ? 'a' : 'w' })
   const reader = res.body.getReader()
+  let bytes = append ? existing : 0
   try {
     for (;;) {
       const { done, value } = await reader.read()
@@ -43,12 +52,13 @@ export async function downloadToFile(url: string, target: string, attempts = MAX
       return { bytes, attempts: i }
     } catch (err) {
       lastError = err as Error
-      await unlink(target).catch(() => undefined)
+      // Keep the partial file for a Range resume on the next attempt.
       if (i < attempts) {
         const backoff = Math.min(1000 * 2 ** Math.min(i - 1, 6), 30_000)
         await new Promise((r) => setTimeout(r, backoff))
       }
     }
   }
+  await unlink(target).catch(() => undefined)
   throw new Error(`download failed after ${attempts} attempts: ${lastError?.message ?? 'unknown'}`)
 }

@@ -14,17 +14,75 @@ export interface RunResult {
   stderr: string
 }
 
-/** Promisified execFile with args; rejects with combined stderr on failure. */
-export function run(bin: string, args: string[]): Promise<RunResult> {
+export interface RunOptions {
+  /** Kill the process (and reject) after this many ms. */
+  timeoutMs?: number
+  /** Abort externally (task cancellation, U4). */
+  signal?: AbortSignal
+  /** Kill the process if this file's size stops growing within stallMs. */
+  stallGuard?: { file: string; stallMs: number }
+}
+
+/**
+ * Promisified execFile with args; rejects with combined stderr on failure.
+ * Supports a wall-clock timeout and a "no progress" stall guard (U4): the
+ * video stream download remuxes with `-c copy` and ffmpeg can hang on a
+ * stalled campus-network stream — the guard kills it instead of hanging
+ * the whole task forever.
+ */
+export function run(bin: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    execFile(bin, args, { maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+    let settled = false
+    let stallTimer: NodeJS.Timeout | undefined
+    const finish = (err: Error | null, stdout: string, stderr: string): void => {
+      if (settled) return
+      settled = true
+      if (stallTimer != null) clearInterval(stallTimer)
       if (err != null) {
-        reject(new Error(`ffmpeg command failed: ${String(stderr).slice(-2000) || err.message}`))
+        const killedByTimeout = options.timeoutMs != null && (err as { killed?: boolean }).killed
+        const reason = killedByTimeout ? `process timed out after ${options.timeoutMs}ms` : 'process failed'
+        reject(new Error(`${reason}: ${String(stderr).slice(-2000) || err.message}`))
         return
       }
-      resolve({ stdout: String(stdout), stderr: String(stderr) })
-    })
+      resolve({ stdout, stderr })
+    }
+
+    const child = execFile(
+      bin,
+      args,
+      {
+        maxBuffer: 64 * 1024 * 1024,
+        windowsHide: true,
+        timeout: options.timeoutMs,
+        signal: options.signal
+      },
+      (err, stdout, stderr) => finish(err, String(stdout), String(stderr))
+    )
+
+    if (options.stallGuard != null) {
+      let lastSize = safeSize(options.stallGuard.file)
+      let lastGrow = Date.now()
+      stallTimer = setInterval(() => {
+        if (settled) return
+        const size = safeSize(options.stallGuard?.file ?? '')
+        if (size > lastSize) {
+          lastSize = size
+          lastGrow = Date.now()
+        } else if (Date.now() - lastGrow > (options.stallGuard?.stallMs ?? 0)) {
+          child.kill()
+          finish(new Error('stalled: no output progress'), '', '')
+        }
+      }, 1000)
+    }
   })
+}
+
+function safeSize(file: string): number {
+  try {
+    return statSync(file).size
+  } catch {
+    return 0
+  }
 }
 
 export interface AudioExtractionResult {

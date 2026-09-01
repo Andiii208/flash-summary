@@ -106,7 +106,10 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
 
 /** Default stream fetch: remux via ffmpeg (stream copy, no re-encode). */
 async function fetchStreamDefault(ffmpeg: string, url: string, target: string): Promise<void> {
-  await runProcess(ffmpeg, ['-y', '-i', url, '-c', 'copy', target])
+  await runProcess(ffmpeg, ['-y', '-i', url, '-c', 'copy', target], {
+    timeoutMs: 30 * 60 * 1000,
+    stallGuard: { file: target, stallMs: 60_000 }
+  })
 }
 
 /** 2. downloading_video — fetch teacher + screen streams into cache (panorama never). */
