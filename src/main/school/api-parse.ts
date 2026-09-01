@@ -57,22 +57,42 @@ export function mergeCookieStrings(existing: string, incoming: string): string {
 }
 
 /**
- * Parse the course list payload. The school platform returns either an array
- * or a `{ list: [...] }` wrapper; tolerate both, map unknown fields to ''.
+ * Best-effort: find the course array inside a platform envelope. The
+ * cloud-classroom API (field-calibrated 2026-09) wraps pages as
+ * {code,result:{records|list|rows|data}} or returns a bare array;
+ * tolerate every observed shape.
+ */
+function findCourseArray(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload
+  if (payload == null || typeof payload !== 'object') return []
+  const obj = payload as Record<string, unknown>
+  const levels: unknown[] = [obj.result, obj.data, obj]
+  for (const level of levels) {
+    if (Array.isArray(level)) return level
+    if (level != null && typeof level === 'object') {
+      const inner = level as Record<string, unknown>
+      for (const key of ['records', 'list', 'rows', 'data', 'resources']) {
+        if (Array.isArray(inner[key])) return inner[key] as unknown[]
+      }
+    }
+  }
+  return []
+}
+
+/**
+ * Parse the course list payload. Field names come from the cloud-classroom
+ * front-end (courId/courName with verify?courId= usage); tolerate the older
+ * shapes as well, mapping unknown fields to ''.
  */
 export function parseCourseList(payload: unknown): CourseSummary[] {
-  const list = Array.isArray(payload)
-    ? payload
-    : payload != null && typeof payload === 'object' && Array.isArray((payload as { list?: unknown[] }).list)
-      ? (payload as { list: unknown[] }).list
-      : []
+  const list = findCourseArray(payload)
   return list
     .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
     .map((item) => {
-      const id = pickString(item, ['courseId', 'course_id', 'id', 'courseNo'])
-      const name = pickString(item, ['courseName', 'course_name', 'name', 'title'])
-      const term = pickString(item, ['term', 'semester', 'termName'])
-      const teacher = pickString(item, ['teacher', 'teacherName', 'lecturer'])
+      const id = pickString(item, ['courId', 'courseId', 'course_id', 'id', 'courseNo', 'resId'])
+      const name = pickString(item, ['courName', 'courseName', 'course_name', 'name', 'title'])
+      const term = pickString(item, ['term', 'semester', 'termName', 'yearName'])
+      const teacher = pickString(item, ['teacher', 'teacherName', 'lecturer', 'speakerName'])
       return { id, name, ...(term ? { term } : {}), ...(teacher ? { teacher } : {}) }
     })
     .filter((c) => c.id !== '')

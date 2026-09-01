@@ -80,17 +80,28 @@ export function createContext(overrides: Partial<{
   const logger = new Logger(join(userDataDir, 'logs'))
   logger.info(`context created (library=${libraryRoot})`)
 
-  const cookieOf = async (): Promise<string> => {
+  const jwtOf = async (): Promise<string> => {
     try {
       const session = loadSession(userDataDir, cryptor)
-      return session?.cookies ?? ''
+      return session?.jwt ?? ''
     } catch {
-      // Corrupted session file: treat as logged out.
       return ''
     }
   }
 
-  const school = new SchoolClient(CAS_BASE_URL, cookieOf, globalThis.fetch as never)
+  const school = new SchoolClient(
+    `${CAS_BASE_URL}/jy-application-resourcemanage`,
+    async () => {
+      try {
+        const session = loadSession(userDataDir, cryptor)
+        return session?.cookies ?? ''
+      } catch {
+        return ''
+      }
+    },
+    globalThis.fetch as never,
+    jwtOf
+  )
 
   const providers = (): ProviderSettings => {
     try {
@@ -132,10 +143,10 @@ export function createContext(overrides: Partial<{
       try {
         await openCasLoginWindow({
           serviceOrigin: CAS_BASE_URL,
-          onSession: (cookies) => {
+          onSession: ({ cookieString, jwt }) => {
             saveSession(
               userDataDir,
-              { cookies, baseUrl: CAS_BASE_URL, savedAt: new Date().toISOString() },
+              { cookies: cookieString, baseUrl: CAS_BASE_URL, savedAt: new Date().toISOString(), jwt },
               cryptor
             )
           }

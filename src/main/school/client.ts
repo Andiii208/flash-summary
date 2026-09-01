@@ -34,17 +34,24 @@ export interface FetchLike {
 
 export class SchoolClient {
   constructor(
+    /** API base, e.g. https://cvs.seu.edu.cn/jy-application-resourcemanage */
     private readonly baseUrl: string,
     private readonly getCookie: () => Promise<string>,
-    private readonly fetchImpl: FetchLike
+    private readonly fetchImpl: FetchLike,
+    /** Platform JWT provider; sent as the `jwt-token` header (U: field-calibrated). */
+    private readonly getJwt?: () => Promise<string>
   ) {}
 
   private async request(path: string): Promise<unknown> {
     const cookie = await this.getCookie()
+    const jwt = (await this.getJwt?.()) ?? ''
+    const headers: Record<string, string> = {}
+    if (cookie !== '') headers.Cookie = cookie
+    if (jwt !== '') headers['jwt-token'] = jwt
     let res
     try {
       res = await this.fetchImpl(`${this.baseUrl}${path}`, {
-        headers: cookie === '' ? {} : { Cookie: cookie },
+        headers,
         redirect: 'manual'
       })
     } catch (err) {
@@ -70,7 +77,10 @@ export class SchoolClient {
   }
 
   async listCourses(): Promise<CourseSummary[]> {
-    return parseCourseList(await this.request('/v1/course/list'))
+    // Field-calibrated endpoint (2026-09): cloud-classroom VOD list, tenant
+    // group t-1, paged. The page size covers a full semester in one call.
+    const payload = await this.request('/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500')
+    return parseCourseList(payload)
   }
 
   async lessonDetail(lessonId: string, courseId: string): Promise<LessonDetail> {

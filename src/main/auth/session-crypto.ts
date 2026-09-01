@@ -13,11 +13,13 @@ export interface Cryptor {
 }
 
 export interface SessionRecord {
-  /** CAS cookie string (`k=v; k2=v2`), encrypted at rest. */
+  /** Platform cookie string (`k=v; k2=v2`), encrypted at rest. */
   cookies: string
   /** Base URL the session belongs to (e.g. https://cvs.seu.edu.cn). */
   baseUrl: string
   savedAt: string
+  /** Platform JWT (sent as the `jwt-token` request header), encrypted at rest. */
+  jwt?: string
 }
 
 const MAGIC = 'SEUSUM1'

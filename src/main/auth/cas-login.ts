@@ -21,9 +21,22 @@ export interface CasLoginOptions {
   serviceOrigin: string
   /** Login page override; defaults to the platform origin itself. */
   casUrl?: string
-  /** Test hook: called with merged cookie string when login completes. */
-  onSession: (cookieString: string) => void
+  /** Test hook: called with the harvested session when login completes. */
+  onSession: (session: { cookieString: string; jwt: string }) => void
 }
+
+/**
+ * The SPA stores its JWT in sessionStorage under appName-prefixed keys;
+ * appName = the first URL path segment (see the platform bundle).
+ * Key names only — values are read inside the window and never logged.
+ */
+const SESSION_STORAGE_KEYS_SCRIPT = `(function () {
+  var appName = (location.pathname.split('/').find(function (p) { return p !== ''; }) || 'JY_');
+  return JSON.stringify({
+    jwt: sessionStorage.getItem(appName + '_STORAGE_KEY_JWT_TOKEN') || '',
+    refresh: localStorage.getItem(appName + '_STORAGE_KEY_REFRESH_TOKEN') || ''
+  });
+})()`
 
 const PARTITION = 'persist:seu-cas'
 /** Wall-clock budget for the first page load (user typing time is not limited). */
@@ -174,9 +187,21 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
       if (pollTimer != null) clearInterval(pollTimer)
       try {
         if (code === 'ok') {
+          // The landing page writes its JWT to sessionStorage shortly after
+          // the redirect completes; give it a moment before harvesting.
+          await new Promise((r) => setTimeout(r, 1500))
           const cookies = await ses.cookies.get({ url: options.serviceOrigin })
           const merged = mergeCookieStrings('', cookies.map((c) => `${c.name}=${c.value}`).join('; '))
-          options.onSession(merged)
+          let jwt = ''
+          try {
+            if (!win.isDestroyed() && !win.webContents.isLoading()) {
+              const raw = await win.webContents.executeJavaScript(SESSION_STORAGE_KEYS_SCRIPT, true)
+              jwt = (JSON.parse(raw) as { jwt?: string }).jwt ?? ''
+            }
+          } catch {
+            // JWT harvest is best-effort; cookie session still works.
+          }
+          options.onSession({ cookieString: merged, jwt })
           void tracePostLoginProbes(merged, options.serviceOrigin)
         }
       } finally {

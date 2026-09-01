@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { SchoolClient, SchoolApiError } from '../src/main/school/client'
 
+const API_BASE = 'https://cvs.seu.edu.cn/jy-application-resourcemanage'
+const COURSE_LIST_URL = `${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500`
+
 interface FakeResponse {
   ok: boolean
   status: number
@@ -22,42 +25,57 @@ function jsonResponse(body: unknown, status = 200, url = 'https://cvs.seu.edu.cn
 }
 
 /** Replay-style fake fetch: maps request URL to a canned response. */
-function makeFetch(routes: Record<string, FakeResponse>, capture?: { cookies: string[] }) {
+function makeFetch(routes: Record<string, FakeResponse>, capture?: { headers: Array<Record<string, string>> }) {
   const cap = capture
   return async (url: string, init?: { headers?: Record<string, string> }) => {
-    if (cap) cap.cookies.push(init?.headers?.Cookie ?? '')
+    if (cap) cap.headers.push(init?.headers ?? {})
     const hit = routes[url]
     if (hit == null) throw new Error(`no fixture route for ${url}`)
     return hit
   }
 }
 
-describe('SchoolClient (fixture replay)', () => {
-  it('sends the session cookie and parses the course list', async () => {
-    const captured: { cookies: string[] } = { cookies: [] }
+describe('SchoolClient (fixture replay, field-calibrated endpoints)', () => {
+  it('sends cookie + jwt-token headers and parses the wrapped course list', async () => {
+    const captured: { headers: Array<Record<string, string>> } = { headers: [] }
     const client = new SchoolClient(
-      'https://cvs.seu.edu.cn',
-      async () => 'JSESSIONID=abc; CASTGT=t1',
+      API_BASE,
+      async () => 'JSESSIONID=abc; route=r1',
       makeFetch(
         {
-          'https://cvs.seu.edu.cn/v1/course/list': jsonResponse({
-            list: [{ courseId: 'c1', courseName: '高等数学' }]
+          [COURSE_LIST_URL]: jsonResponse({
+            code: '0',
+            result: { records: [{ courId: 'c1', courName: 'C++程序设计课程设计' }] }
           })
         },
         captured
-      )
+      ),
+      async () => 'jwt-token-value'
     )
     const courses = await client.listCourses()
-    expect(captured.cookies[0]).toBe('JSESSIONID=abc; CASTGT=t1')
-    expect(courses).toEqual([{ id: 'c1', name: '高等数学' }])
+    expect(captured.headers[0]?.Cookie).toBe('JSESSIONID=abc; route=r1')
+    expect(captured.headers[0]?.['jwt-token']).toBe('jwt-token-value')
+    expect(courses).toEqual([{ id: 'c1', name: 'C++程序设计课程设计' }])
+  })
+
+  it('parses the course list when result is a bare array', async () => {
+    const client = new SchoolClient(
+      API_BASE,
+      async () => '',
+      makeFetch({
+        [COURSE_LIST_URL]: jsonResponse({ code: '0', result: [{ courId: 'c2', courName: '当代科技' }] })
+      }),
+      async () => ''
+    )
+    expect(await client.listCourses()).toEqual([{ id: 'c2', name: '当代科技' }])
   })
 
   it('parses lesson detail from a data-wrapped payload', async () => {
     const client = new SchoolClient(
-      'https://cvs.seu.edu.cn',
+      API_BASE,
       async () => 'JSESSIONID=abc',
       makeFetch({
-        'https://cvs.seu.edu.cn/v1/course/rec/l1': jsonResponse({
+        [`${API_BASE}/v1/course/rec/l1`]: jsonResponse({
           data: {
             id: 'l1',
             title: '第六讲',
@@ -74,14 +92,14 @@ describe('SchoolClient (fixture replay)', () => {
 
   it('throws session_expired on a 302 redirect to CAS', async () => {
     const client = new SchoolClient(
-      'https://cvs.seu.edu.cn',
+      API_BASE,
       async () => 'JSESSIONID=stale',
       makeFetch({
-        'https://cvs.seu.edu.cn/v1/course/list': {
+        [COURSE_LIST_URL]: {
           ok: false,
           status: 302,
           headers: { get: (n) => (n.toLowerCase() === 'location' ? 'https://ids.seu.edu.cn/authserver/login?service=x' : null) },
-          url: 'https://cvs.seu.edu.cn/v1/course/list',
+          url: COURSE_LIST_URL,
           json: async () => ({}),
           text: async () => ''
         }
@@ -95,14 +113,14 @@ describe('SchoolClient (fixture replay)', () => {
 
   it('throws session_expired when the body is an HTML login page', async () => {
     const client = new SchoolClient(
-      'https://cvs.seu.edu.cn',
+      API_BASE,
       async () => 'JSESSIONID=stale',
       makeFetch({
-        'https://cvs.seu.edu.cn/v1/course/list': {
+        [COURSE_LIST_URL]: {
           ok: true,
           status: 200,
           headers: { get: () => null },
-          url: 'https://cvs.seu.edu.cn/v1/course/list',
+          url: COURSE_LIST_URL,
           json: async () => {
             throw new Error('not json')
           },
@@ -115,17 +133,17 @@ describe('SchoolClient (fixture replay)', () => {
 
   it('throws bad_response on HTTP 500', async () => {
     const client = new SchoolClient(
-      'https://cvs.seu.edu.cn',
+      API_BASE,
       async () => '',
       makeFetch({
-        'https://cvs.seu.edu.cn/v1/course/list': jsonResponse({ error: 'boom' }, 500)
+        [COURSE_LIST_URL]: jsonResponse({ error: 'boom' }, 500)
       })
     )
     await expect(client.listCourses()).rejects.toMatchObject({ kind: 'bad_response' })
   })
 
   it('throws network on transport failure', async () => {
-    const client = new SchoolClient('https://cvs.seu.edu.cn', async () => '', async () => {
+    const client = new SchoolClient(API_BASE, async () => '', async () => {
       throw new Error('ECONNREFUSED')
     })
     await expect(client.listCourses()).rejects.toMatchObject({ kind: 'network' })
@@ -133,10 +151,10 @@ describe('SchoolClient (fixture replay)', () => {
 
   it('lists PPT urls from array or object payloads', async () => {
     const client = new SchoolClient(
-      'https://cvs.seu.edu.cn',
+      API_BASE,
       async () => 'C=1',
       makeFetch({
-        'https://cvs.seu.edu.cn/v1/course/ai/ppt?courseId=c1': jsonResponse([
+        [`${API_BASE}/v1/course/ai/ppt?courseId=c1`]: jsonResponse([
           'http://a/1.png',
           { url: 'http://a/2.png' },
           { nope: true }
