@@ -104,39 +104,50 @@ function traceSession(ses: Session): void {
 }
 
 /** Post-login endpoint probes (diagnostics): which platform APIs answer with JSON. */
-async function tracePostLoginProbes(cookieHeader: string, serviceOrigin: string): Promise<void> {
-  const candidates = [
-    '/authority/me',
-    '/kiaf/menuhome',
-    '/kiaf/homepage',
-    '/kiaf/internalPage',
-    '/v1/portal/mediaConfig/resources',
-    '/v1/course/list'
+async function tracePostLoginProbes(cookieHeader: string, serviceOrigin: string, jwt: string): Promise<void> {
+  const apiBase = `${serviceOrigin}/jy-application-resourcemanage`
+  const candidates: Array<{ path: string; method: 'GET' | 'POST' }> = [
+    { path: '/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=5', method: 'GET' },
+    { path: '/v1/course/verify?courId=154592', method: 'GET' },
+    { path: '/authority/me', method: 'GET' }
   ]
-  for (const path of candidates) {
-    for (const method of ['GET', 'POST']) {
-      try {
-        const res = await fetch(`${serviceOrigin}${path}`, {
-          method,
-          headers: { Cookie: cookieHeader, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(6000)
-        })
-        const body = await res.text()
-        let shape = `non-json(${body.length}b)`
-        try {
-          const parsed = JSON.parse(body) as unknown
-          shape =
-            typeof parsed === 'object' && parsed != null
-              ? `json{${Object.keys(parsed as Record<string, unknown>).join(',')}}`
-              : typeof parsed
-        } catch {
-          // Keep the non-json shape.
-        }
-        traceLine(`PROBE ${method} ${path} -> ${res.status} ${shape}`)
-      } catch (err) {
-        traceLine(`PROBE ${method} ${path} -> ERR ${(err as Error).message}`)
-      }
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(`${apiBase}${candidate.path}`, {
+        method: candidate.method,
+        headers: {
+          Cookie: cookieHeader,
+          'jwt-token': jwt,
+          'Content-Type': 'application/json;charset=utf-8'
+        },
+        signal: AbortSignal.timeout(6000)
+      })
+      const body = await res.text()
+      traceLine(`PROBE ${candidate.method} ${candidate.path} -> ${res.status} ${describeJsonShape(body)}`)
+    } catch (err) {
+      traceLine(`PROBE ${candidate.method} ${candidate.path} -> ERR ${(err as Error).message}`)
     }
+  }
+}
+
+/** Two-level key structure of a JSON body (field names only, no values). */
+function describeJsonShape(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as unknown
+    if (parsed == null || typeof parsed !== 'object') return typeof parsed
+    const top = parsed as Record<string, unknown>
+    const parts = Object.keys(top).map((k) => {
+      const v = top[k]
+      if (Array.isArray(v)) {
+        const first = v[0]
+        return `${k}[${v.length}]{${first != null && typeof first === 'object' ? Object.keys(first as Record<string, unknown>).join(',') : typeof first}}`
+      }
+      if (v != null && typeof v === 'object') return `${k}{${Object.keys(v as Record<string, unknown>).join(',')}}`
+      return k
+    })
+    return `json{${parts.join(' | ')}}`
+  } catch {
+    return `non-json(${body.length}b)`
   }
 }
 
@@ -202,10 +213,12 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
             // JWT harvest is best-effort; cookie session still works.
           }
           options.onSession({ cookieString: merged, jwt })
-          void tracePostLoginProbes(merged, options.serviceOrigin)
+          void tracePostLoginProbes(merged, options.serviceOrigin, jwt)
         }
       } finally {
-        if (!win.isDestroyed()) win.close()
+        // --seu-trace-keep-window (field diagnosis): keep the window open so
+        // the user can walk into course pages while every request is traced.
+        if (!win.isDestroyed() && !process.argv.includes('--seu-trace-keep-window')) win.close()
         if (code === 'ok') resolve()
         else reject(new Error('CAS login window closed before login completed'))
       }
