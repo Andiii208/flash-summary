@@ -34,7 +34,8 @@
 | U2 UI 重做 | ✅ 完成 | Preact 引入（preact/hooks、@preact/preset-vite、happy-dom）；组件化（App/Sidebar/TaskPanel/NoteViewer/QaPanel/Toast/EmptyState/ProviderPanel/WelcomeGuide/ManualAdd/TopBar/ProgressBar）；CSS 变量设计系统明暗双主题；CSP 收紧 connect-src 'none'；组件测试 25 个（≥10 达标）；四门禁绿 153/153；真实 Electron 烟测：4 页签+侧栏+引导卡+空态渲染正常无错误 | 提交 afc03a2 |
 | U3 设置与下载位置 | ✅ 完成 | 004_settings 迁移（key-value）；IPC settings:get/setCacheDir/setTheme/chooseLibrary/openPath；资料库迁移（SQLite backup API 复制 db+attachments，迁移前备份+失败回滚+重启生效）；notes:exportMarkdown 走系统保存对话框；缓存目录可改即时生效（orchestrator/cache-clean 读设置）；设置页 UI（账号/Provider/位置/主题，主题覆盖明暗）；四门禁绿 169/169（新增 16 测试）；真实 Electron 烟测设置页渲染正常 | 提交 96e7b80 |
 | U4 管线质量 | ✅ 完成 | ASR 按 10 分钟分片转写（ffmpeg -ss/-t 切片，拼接保留片偏移，分片进度事件）；多模态真发图（PPT/关键帧 base64 data URL，上限 20 张，unsupported_visual 回退纯文本）；ffmpeg 超时 30min+停滞检测 60s（输出无增长即 kill）+AbortSignal；downloadToFile Range 续传（206 续传/200 重来）；SerialTaskQueue 串行队列+runAsync 入队；单实例锁（二开聚焦主窗口）；tasks:cancel（AbortController+阶段边界 cancelled）；005 error_kind 迁移；缓存清理跳过运行中任务；UI 取消按钮；四门禁绿 187/187（U4 共 +18 测试）；启动烟测通过 | 提交 425a1ae、5c9f5e7、49d8423 |
-| U5 基建与文档 | ✅ 完成 | logger（userData/logs 每日轮转 7 份、redact 脱敏 cookie/key/URL、渲染错误经 log:rendererError 入同一日志、设置页打开日志目录）；scripts/release.md 发布清单 + scripts/verify-asar.mjs sha256 抽验 + npm run verify:asar；版本号 0.2.0；README/CHANGELOG 与代码事实同步（28 IPC 通道、32 测试文件、187 用例）；+4 测试 191/191 | 提交 u5-infra（本次） |
+| U5 基建与文档 | ✅ 完成 | logger（userData/logs 每日轮转 7 份、redact 脱敏 cookie/key/URL、渲染错误经 log:rendererError 入同一日志、设置页打开日志目录）；scripts/release.md 发布清单 + scripts/verify-asar.mjs sha256 抽验 + npm run verify:asar；版本号 0.2.0；README/CHANGELOG 与代码事实同步（28 IPC 通道、32 测试文件、187 用例）；+4 测试 191/191 | 提交 9fbeda5 |
+| v0.2.0 发布 | ✅ 完成 | 四门禁绿 191/191；npm run dist 产出「SEU Summary Setup 0.2.0.exe」；asar 抽验通过（out/ 7 文件 sha256 与当前构建一致，tag 同提交构建）；verify-asar 脚本修复 @electron/asar 4.x Windows 路径解析问题（改按 header offset 直读）；tag v0.2.0 + GitHub Release 资产已上传 | 提交 u5-release（本次）、tag v0.2.0 |
 
 ## 遗留（诚实清单）
 
