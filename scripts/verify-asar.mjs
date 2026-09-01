@@ -60,7 +60,6 @@ try {
   collect(header, '')
 
   const archiveFiles = entries.filter(([p]) => p.startsWith(`${prefix}/`))
-  const archiveSet = new Set(archiveFiles.map(([p]) => p))
   const problems = []
 
   for (const file of diskFiles) {
