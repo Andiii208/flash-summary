@@ -64,7 +64,10 @@ const LOADING_HTML =
 export function casLoadErrorMessage(kind: 'timeout' | 'load' | 'precheck', detail: string): string {
   const hint = '请确认校园网内网或 VPN 可访问录播平台后重试'
   if (kind === 'precheck') return `录播平台无法连接（${detail}）。${hint}`
-  if (kind === 'timeout') return `录播平台响应超时（${CAS_LOAD_TIMEOUT_MS / 1000} 秒）。${hint}`
+  if (kind === 'timeout') {
+    const stage = detail === '' ? '' : `，阶段：${detail}`
+    return `录播平台响应超时（${CAS_LOAD_TIMEOUT_MS / 1000} 秒${stage}）。${hint}`
+  }
   return `录播平台登录页加载失败（${detail}）。${hint}`
 }
 
@@ -211,6 +214,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
   return await new Promise((resolve, reject) => {
     let settled = false
     let pollTimer: NodeJS.Timeout | undefined
+    let firstPaintTimer: NodeJS.Timeout | undefined
     // The platform redirects to auth.seu.edu.cn for sign-in and lands back
     // on the origin afterwards; that round-trip is the primary "logged in"
     // signal (the API probe is the fallback for an existing session).
@@ -220,6 +224,11 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
       if (settled) return
       settled = true
       if (pollTimer != null) clearInterval(pollTimer)
+      if (firstPaintTimer != null) {
+        clearTimeout(firstPaintTimer)
+        firstPaintTimer = undefined
+      }
+      traceLine(`FAIL ${message.slice(0, 200)}`)
       if (!win.isDestroyed()) win.destroy()
       reject(new Error(message))
     }
@@ -296,24 +305,38 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
     win.on('closed', () => {
       if (!settled) {
         settled = true
+        if (firstPaintTimer != null) {
+          clearTimeout(firstPaintTimer)
+          firstPaintTimer = undefined
+        }
         reject(new Error('CAS login window closed before login completed'))
       }
     })
 
     // Show the local loading page immediately, then load the platform login
-    // page with a wall-clock budget so a dead upstream can't hang a white
-    // window. The user's typing time afterwards is not limited.
+    // page. One wall-clock budget covers window creation → loading page →
+    // platform first paint: without it a hang on any of those steps is
+    // invisible (no error, no window, no timeout — field case 2026-09-01).
+    // The user's typing time after the platform page loads is not limited.
+    firstPaintTimer = setTimeout(() => fail(casLoadErrorMessage('timeout', '首帧')), CAS_LOAD_TIMEOUT_MS)
     win.once('ready-to-show', () => win.show())
     void win
       .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(LOADING_HTML)}`)
       .then(() => {
         if (settled) return
-        const load = win.loadURL(casUrl)
-        const timer = setTimeout(() => fail(casLoadErrorMessage('timeout', '')), CAS_LOAD_TIMEOUT_MS)
-        void load
-          .then(() => startPolling())
-          .catch(() => undefined)
-          .finally(() => clearTimeout(timer))
+        traceLine('LOADING page ready -> loading platform page')
+        void win
+          .loadURL(casUrl)
+          .then(() => {
+            if (settled) return
+            traceLine('PLATFORM page loaded')
+            startPolling()
+            if (firstPaintTimer != null) {
+              clearTimeout(firstPaintTimer)
+              firstPaintTimer = undefined
+            }
+          })
+          .catch(() => undefined) // interrupted navigation; did-fail-load owns real failures
       })
       .catch((err) => fail(`登录窗口初始化失败: ${(err as Error).message}`))
   })
