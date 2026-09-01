@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- **已完成阶段**：Phase 0-7 全部完成（工程基线 → 数据库 → CAS/API → 队列 → 媒体 → Provider → 笔记/追问 → 打包验收）；U1-U4 全部完成（主流程修复 / Preact UI / 设置与下载位置 / 管线质量）；U5 基建完成（日志/发布清单/文档同步）
-- **进行中**：v0.2.0 打包发布（dist + asar 抽验 + tag/release）
-- **下一步**：执行 scripts/release.md 清单完成发布
+- **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；**v0.2.0 已发布**（tag + GitHub Release 资产在线）
+- **进行中**：用户实测暴露两问题——①登录链路已修复并实测成功（cvs→auth.seu.edu.cn OAuth2 静默授权→跳回 cvs→收割会话）；②课程 API 已校准（真实 base 无 -ui + jwt-token 头 + t-1 端点）。**头号堵点：Chromium 窗口加载 cvs.seu.edu.cn 间歇挂起**（node fetch/curl 秒通 200/40ms，Chromium 无请求无错误），导致重新登录拿不到新 JWT → listCourses 401 → 课程树空
+- **下一步**：①用户完全退出 Clash Mi（托盘退出，非仅关开关）后重试登录；仍挂起则用 `--seu-direct-net`（或环境变量 SEU_DIRECT_NET=1）做 A/B 定位；②用户 F12 提供 t-1 响应样本 → parser 字段精修；③播放页请求（getList/m3u8）→ 校准课时与视频流发现；④四门禁 → 发 v0.2.1
 
 ## 环境实测（2026-08-30）
 
@@ -37,7 +37,8 @@
 | U5 基建与文档 | ✅ 完成 | logger（userData/logs 每日轮转 7 份、redact 脱敏 cookie/key/URL、渲染错误经 log:rendererError 入同一日志、设置页打开日志目录）；scripts/release.md 发布清单 + scripts/verify-asar.mjs sha256 抽验 + npm run verify:asar；版本号 0.2.0；README/CHANGELOG 与代码事实同步（28 IPC 通道、32 测试文件、187 用例）；+4 测试 191/191 | 提交 9fbeda5 |
 | v0.2.0 发布 | ✅ 完成 | 四门禁绿 191/191；npm run dist 产出「SEU Summary Setup 0.2.0.exe」；asar 抽验通过（out/ 7 文件 sha256 与当前构建一致，tag 同提交构建）；verify-asar 脚本修复 @electron/asar 4.x Windows 路径解析问题（改按 header offset 直读）；tag v0.2.0 + GitHub Release 资产已上传 | 提交 e8ec4de、c22add0、tag v0.2.0 |
 | CAS 登录白屏修复 | ✅ 完成 | 用户实测反馈：登录窗口白屏长时间无响应。根因=应用打开的 ids.seu.edu.cn 在用户网段 TCP 不可达（实测 80/443 全超时，而公网/cvs/auth 均可达）；叠加缺陷：失败不关窗/无日志/零反馈。修复：10s 预检 fail-fast、本地 loading 页、25s 首屏超时、ERR_ABORTED 不误判、失败关窗+日志。实测校园网内**登录链路全自动静默完成**（cvs→auth.seu.edu.cn OAuth2 prompt=NONE→跳回 cvs→收割会话→session=logged_in 落盘）。**修正认知：平台登录走 auth.seu.edu.cn 的 OAuth2/RBAC，不经过 ids**；ids 老入口保留为可选 casUrl 覆盖。+4 测试 195/195 | 提交 cas-fix |
-| 课程接口校准 | ⏳ 进行中 | 已落地（提交 api-calibration）：①SchoolClient 换真实 API base `https://cvs.seu.edu.cn/jy-application-resourcemanage`（API 前缀无 -ui，UI 静态资源才有）；②请求带 `jwt-token` 头（getJwt 注入）；③登录窗口收割 JWT（落地页 sessionStorage 键 `jy-application-resourcemanage-ui_STORAGE_KEY_JWT_TOKEN`，appName=pathname 首段），SessionRecord 加 jwt 字段加密落盘；④listCourses 切真实端点 `/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500`（云课堂点播分页，t-1=分组）；⑤parser 容错 {code,result:{records|list|rows|data}} 包装 + courId/courName 字段。**待真实样本精修：t-1 响应的课程字段名（用户 F12 提供）与课时/视频流接口（进入播放页后的请求）**。接口全景（自前端 bundle 逆向）：/v1/course/verify?courId、/v1/vod/addVodWatchRecord、/v1/list/recentWatchRecord、/v1/config/vodNmediaConfigInfo、/v1/app/info、/resource/resources_tree_me(RBAC 菜单树) | 提交 api-calibration（本次） |
+| 课程接口校准 | ✅ 主体完成 | 已落地（提交 8dec927）：①SchoolClient 换真实 API base `https://cvs.seu.edu.cn/jy-application-resourcemanage`（API 前缀无 -ui，UI 静态资源才有）；②请求带 `jwt-token` 头（getJwt 注入）；③登录窗口收割 JWT（sessionStorage 键 `jy-application-resourcemanage-ui_STORAGE_KEY_JWT_TOKEN`，appName=pathname 首段），SessionRecord 加 jwt 字段加密落盘；④listCourses 切真实端点 `/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500`；⑤parser 容错 {code,result:{records|list|rows|data}} 包装 + courId/courName 字段候选。**待真实样本精修：t-1 课程字段名（用户 F12 提供）与课时/视频流接口（播放页 getList/lastPlayInfoById/m3u8）**。接口全景（自前端 bundle 逆向）记于上一次会话台账：/v1/course/verify?courId、/v1/vod/addVodWatchRecord、/v1/list/recentWatchRecord、/v1/config/vodNmediaConfigInfo、/v1/app/info、/resource/resources_tree_me(RBAC 菜单树) | 提交 8dec927 |
+| 登录挂起诊断与探测修复 | ⏳ 进行中 | 提交 64a6fce/6f1b3eb/79cca90：①登录后探测器探真实端点并带 jwt-token，字段结构记录升级为深度受限递归（t-1 的 result.records[].课程字段可完整落 net-trace.log）；②`--seu-trace-keep-window` 保留登录窗供现场采集请求；③新增 `--seu-direct-net`（no-proxy-server + disable-quic + disable-async-dns，SEU_DIRECT_NET=1 环境变量后备）A/B 隔离 Chromium 网络层挂起；④修会话探测旧 404 端点 `/v1/course/list` → 真实 t-1 端点 + jwt-token 头（否则已登录用户二次开窗永远不完成）。**待现场：用户退出 Clash Mi 重试登录，或 --seu-direct-net A/B 定位挂起层**。四门禁绿 206/206 | 提交 64a6fce、6f1b3eb、79cca90 |
 
 ## 遗留（诚实清单）
 
@@ -46,6 +47,8 @@
 - **待确认删除项**：无（构建产物 release/ 已 ignore，未入库）。
 
 ## 失败与卡点
+
+- **Chromium 窗口加载 cvs.seu.edu.cn 间歇挂起（未解，2026-09-01）**：node fetch / curl 直连秒通（200/40ms），但 Electron 窗口 loadURL 常无响应（无请求发出、无错误、25s 超时偶不触发）。已排除系统代理开关（用户已在 Clash 界面关闭）；**未排除：Clash Mi 进程残留的系统代理/TUN（实测 clashmi.exe 仍在运行）、Chromium 安全 DNS（DoH）、QUIC/UDP、IPv6 优先**。旁证：node fetch 不走系统代理而 Chromium 走，挂起且"无请求发出"与流量进本地代理被吞一致。诊断工具：`--seu-direct-net`（绕过代理/QUIC/DoH 三层，A/B 后可逐项 bisect）。环境坑：独立 `electron tmp-script.cjs` 探针进程窗口加载必挂（ERR_FAILED，连 data: URL 都挂）——只有正式应用进程网络正常，调试要挂在正式应用上。
 
 - **v0.1.0 发布事故（已修复，2026-08-31）**：tag 打在最新提交但发布资产是 Phase 7 时点的旧构建（asar 含脚手架页，无 UI/Provider 代码），且无应用图标、oneClick 静默安装无桌面快捷方式。根因：打包（7d220af）之后又提交了 UI 组装/Provider 等功能但从未重新 `npm run dist`，而发布时未校验资产与 tag 一致。教训已记入 CHANGELOG 0.1.1：**发布资产必须在打 tag 的同一提交上构建，发布前用 @electron/asar 抽验包内产物**。
 
