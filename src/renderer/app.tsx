@@ -39,7 +39,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             刷新课程
           </button>
           {showWelcome ? (
-            <WelcomeGuide onLogin={state.login} onOpenSettings={() => setTab('settings')} />
+            <WelcomeGuide onLogin={state.login} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
           ) : (
             <CourseTree tree={state.tree} selectedLesson={state.currentLesson} collapsed={state.collapsed} onToggle={state.toggleCourse} onSelect={state.selectLesson} />
           )}
@@ -163,18 +163,27 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     window.setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), ms)
   }, [])
 
-  const refreshTree = useCallback(async (): Promise<void> => {
-    const list = (await withSessionRetry(
-      () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
-      () => bridge.school.login()
-    )) as ApiResult<CourseTreeInfo[]>
-    if (!list.ok && list.kind === 'session_expired') toast('会话已过期，请重新登录', 'error')
+  const applyLocalTree = useCallback(async (): Promise<void> => {
     const res = await bridge.school.courseTree()
     if (res.ok && res.value != null) {
       setTree(res.value)
       setTreeLoaded(true)
     }
-  }, [bridge, toast])
+  }, [bridge])
+
+  const refreshTree = useCallback(async (): Promise<void> => {
+    // User-triggered refresh (spec §2): on session expiry the renderer opens
+    // the CAS login once and retries the course list.
+    const list = (await withSessionRetry(
+      () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
+      () => bridge.school.login()
+    )) as ApiResult<CourseTreeInfo[]>
+    if (!list.ok && list.kind === 'session_expired') {
+      setSession('logged_out')
+      toast('会话已过期，请重新登录', 'error')
+    }
+    await applyLocalTree()
+  }, [bridge, toast, applyLocalTree])
 
   const refreshProviders = useCallback(async (): Promise<void> => {
     const res = await bridge.providers.list()
@@ -202,7 +211,11 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       const s = await bridge.school.session()
       if (!disposed && s.ok && s.value != null && s.value.state === 'logged_in') setSession('logged_in')
     })()
-    void refreshTree()
+    // Mount reads the local tree only: a mount-time listCourses on an expired
+    // session auto-opened the CAS login window via withSessionRetry, which
+    // read as "the app did nothing" (field case 2026-09-01). Network refresh
+    // stays behind the explicit 刷新课程 button.
+    void applyLocalTree()
     void refreshProviders()
     void refreshSettings()
     const off = bridge.tasks.onProgress((p) => {
@@ -225,9 +238,10 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, refreshTree, refreshProviders, refreshSettings, loadNote, loadHistory])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory])
 
   const login = useCallback((): void => {
+    if (sessionBusy) return // one login window at a time (stacked windows field case 2026-09-01)
     void (async () => {
       setSessionBusy(true)
       try {
@@ -243,7 +257,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
         setSessionBusy(false)
       }
     })()
-  }, [bridge, toast, refreshTree])
+  }, [bridge, toast, refreshTree, sessionBusy])
 
   const logout = useCallback((): void => {
     void bridge.school.logout()

@@ -56,6 +56,16 @@ describe('WelcomeGuide', () => {
     click(buttons[1])
     expect(onSettings).toHaveBeenCalledOnce()
   })
+
+  it('disables the login action while a login is in flight', () => {
+    const onLogin = vi.fn()
+    const host = mount(<WelcomeGuide onLogin={onLogin} onOpenSettings={() => undefined} busy />)
+    const loginButton = host.querySelector<HTMLButtonElement>('.guide-actions button.primary')
+    expect(loginButton?.disabled).toBe(true)
+    expect(host.textContent).toContain('登录中…')
+    click(loginButton)
+    expect(onLogin).not.toHaveBeenCalled()
+  })
 })
 
 describe('TopBar', () => {
