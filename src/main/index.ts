@@ -32,20 +32,34 @@ function createMainWindow(): BrowserWindow {
   return win
 }
 
-app.whenReady().then(() => {
-  const ctx = createContext()
-  mainWindow = createMainWindow()
-  // The main window reference lets IPC push task progress to the renderer.
-  registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createMainWindow()
-      registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+// Single-instance lock (U4): a second launch focuses the existing window
+// instead of opening a second process on the same app.db (WAL cross-write).
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow != null) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
     }
   })
-})
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+  app.whenReady().then(() => {
+    const ctx = createContext()
+    mainWindow = createMainWindow()
+    // The main window reference lets IPC push task progress to the renderer.
+    registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        mainWindow = createMainWindow()
+        registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+      }
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+}

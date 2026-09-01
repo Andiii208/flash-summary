@@ -127,6 +127,8 @@ body {
 .btn:hover { background: var(--surface-2); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
+.btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .btn.small { font-size: var(--font-size-sm); padding: 3px 9px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 

@@ -3,13 +3,15 @@ import { migration001 } from './migrations/001_initial'
 import { migration002 } from './migrations/002_task_stage_outputs'
 import { migration003 } from './migrations/003_providers'
 import { migration004 } from './migrations/004_settings'
+import { migration005 } from './migrations/005_error_kind'
 import type { Migration } from './migration-types'
 
 const MIGRATIONS: Migration[] = [
   { version: 1, name: 'initial_schema', up: migration001.up },
   { version: 2, name: 'task_stage_outputs', up: migration002.up },
   { version: 3, name: 'providers', up: migration003.up },
-  { version: 4, name: 'settings', up: migration004.up }
+  { version: 4, name: 'settings', up: migration004.up },
+  { version: 5, name: 'error_kind', up: migration005.up }
 ]
 
 /**

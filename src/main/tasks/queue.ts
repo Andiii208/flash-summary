@@ -6,6 +6,8 @@ export interface StageContext {
   lessonId: string
   /** The stage being executed. */
   stage: Stage
+  /** Cancellation signal (U4): executors pass it to ffmpeg/download. */
+  signal?: AbortSignal
 }
 
 export interface StageExecutor {
@@ -33,22 +35,26 @@ export class TaskRepository {
       .run(taskId, lessonId, now, now)
   }
 
-  get(taskId: string): { id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null } | undefined {
-    return this.db.prepare('SELECT id, lesson_id, state, failed_stage, error_message FROM tasks WHERE id = ?').get(taskId) as
-      | { id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null }
+  get(
+    taskId: string
+  ): { id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null; error_kind: string | null } | undefined {
+    return this.db
+      .prepare('SELECT id, lesson_id, state, failed_stage, error_message, error_kind FROM tasks WHERE id = ?')
+      .get(taskId) as
+      | { id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null; error_kind: string | null }
       | undefined
   }
 
   markStage(taskId: string, stage: Stage): void {
     this.db
-      .prepare("UPDATE tasks SET state = ?, failed_stage = NULL, error_message = NULL, updated_at = ? WHERE id = ?")
+      .prepare("UPDATE tasks SET state = ?, failed_stage = NULL, error_message = NULL, error_kind = NULL, updated_at = ? WHERE id = ?")
       .run(stage, new Date().toISOString(), taskId)
   }
 
-  markFailed(taskId: string, stage: Stage, error: string): void {
+  markFailed(taskId: string, stage: Stage, error: string, kind?: string): void {
     this.db
-      .prepare("UPDATE tasks SET state = 'failed', failed_stage = ?, error_message = ?, updated_at = ? WHERE id = ?")
-      .run(stage, error, new Date().toISOString(), taskId)
+      .prepare("UPDATE tasks SET state = 'failed', failed_stage = ?, error_message = ?, error_kind = ?, updated_at = ? WHERE id = ?")
+      .run(stage, error, kind ?? null, new Date().toISOString(), taskId)
   }
 
   markSucceeded(taskId: string): void {
@@ -65,8 +71,8 @@ export interface TaskProgress {
   stage: Stage | null
   message: string
   percent: number
-  /** Set when the failure is a school session expiry (UI offers re-login). */
-  kind?: 'session_expired'
+  /** Failure taxonomy: session expiry (UI offers re-login) or user cancellation. */
+  kind?: 'session_expired' | 'cancelled'
 }
 
 export type ProgressListener = (p: TaskProgress) => void
@@ -80,6 +86,10 @@ export type ProgressListener = (p: TaskProgress) => void
  *
  * `onProgress` (optional) is invoked after every stage transition and on
  * completion/failure so the renderer can show live state.
+ *
+ * `signal` (U4): when aborted, the task is marked failed(cancelled) at the
+ * next stage boundary; the signal is also passed to executors so long
+ * ffmpeg/download work can be killed promptly.
  */
 export async function runTask(
   repo: TaskRepository,
@@ -87,12 +97,16 @@ export async function runTask(
   executors: Record<Stage, StageExecutor>,
   outputs: StageOutputStore,
   firstStage: Stage,
-  onProgress?: ProgressListener
+  onProgress?: ProgressListener,
+  signal?: AbortSignal
 ): Promise<'succeeded' | 'failed'> {
   const startIdx = PIPELINE_STAGES.indexOf(firstStage)
   for (let i = startIdx; i < PIPELINE_STAGES.length; i++) {
+    if (signal?.aborted) {
+      return cancelTask(repo, taskId, PIPELINE_STAGES[i] as Stage, onProgress)
+    }
     const stage = PIPELINE_STAGES[i]
-    const ctx: StageContext = { taskId, lessonId: repo.get(taskId)!.lesson_id, stage }
+    const ctx: StageContext = { taskId, lessonId: repo.get(taskId)!.lesson_id, stage, signal }
 
     // Reuse fast-path: a stage with persisted output that lies before the
     // resume point is skipped (test: failure injection + retry).
@@ -101,15 +115,18 @@ export async function runTask(
     repo.markStage(taskId, stage)
     onProgress?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: stagePercent(stage) })
     const result = await executors[stage](ctx)
+    if (signal?.aborted) {
+      return cancelTask(repo, taskId, stage, onProgress)
+    }
     if (result.status === 'failed') {
-      repo.markFailed(taskId, stage, result.error)
+      repo.markFailed(taskId, stage, result.error, result.kind)
       onProgress?.({
         taskId,
         state: 'failed',
         stage,
         message: result.error,
         percent: stagePercent(stage),
-        ...(result.kind === 'session_expired' ? { kind: 'session_expired' as const } : {})
+        ...(result.kind != null ? { kind: result.kind } : {})
       })
       return 'failed'
     }
@@ -120,18 +137,31 @@ export async function runTask(
   return 'succeeded'
 }
 
+/** Mark the task as failed with the cancellation reason (U4). */
+function cancelTask(
+  repo: TaskRepository,
+  taskId: string,
+  stage: Stage,
+  onProgress?: ProgressListener
+): 'failed' {
+  repo.markFailed(taskId, stage, '任务已取消', 'cancelled')
+  onProgress?.({ taskId, state: 'failed', stage, message: '任务已取消', percent: stagePercent(stage), kind: 'cancelled' })
+  return 'failed'
+}
+
 /** Resume entry point: retry a failed task from its failed stage. */
 export async function retryTask(
   repo: TaskRepository,
   taskId: string,
   executors: Record<Stage, StageExecutor>,
   outputs: StageOutputStore,
-  onProgress?: ProgressListener
+  onProgress?: ProgressListener,
+  signal?: AbortSignal
 ): Promise<'succeeded' | 'failed'> {
   const row = repo.get(taskId)
   if (row == null) throw new Error(`task ${taskId} not found`)
   if (row.state !== 'failed' || row.failed_stage == null) {
     throw new Error(`task ${taskId} is not in a failed state (state=${row.state})`)
   }
-  return runTask(repo, taskId, executors, outputs, row.failed_stage as Stage, onProgress)
+  return runTask(repo, taskId, executors, outputs, row.failed_stage as Stage, onProgress, signal)
 }

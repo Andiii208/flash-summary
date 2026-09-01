@@ -12,6 +12,7 @@ export interface TaskPanelProps {
   history: TaskRowInfo[]
   onCreateRun: () => void
   onRetry: (taskId: string) => void
+  onCancel: () => void
 }
 
 export function TaskPanel({
@@ -21,7 +22,8 @@ export function TaskPanel({
   progress,
   history,
   onCreateRun,
-  onRetry
+  onRetry,
+  onCancel
 }: TaskPanelProps): JSX.Element {
   const noLesson = currentLesson === ''
   return (
@@ -35,6 +37,11 @@ export function TaskPanel({
           <button class="btn primary" onClick={onCreateRun} disabled={running || busy}>
             {busy ? '提交中…' : running ? '运行中…' : '创建并运行'}
           </button>
+          {running && (
+            <button class="btn danger" onClick={onCancel} disabled={busy}>
+              取消任务
+            </button>
+          )}
           {progress != null && <TaskStatusCard progress={progress} />}
           <h3 class="subheading">本课时历史任务</h3>
           <HistoryList history={history} onRetry={onRetry} disabled={running} />

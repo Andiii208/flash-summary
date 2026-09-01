@@ -38,6 +38,7 @@ export interface TaskRowInfo {
   state: string
   failed_stage: string | null
   error_message: string | null
+  error_kind?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -83,8 +84,9 @@ export interface TasksBridge {
   list(lessonId?: string): Promise<ApiResult<TaskRowInfo[]>>
   /** Blocking run (kept for tests/tools); prefer runAsync in the UI. */
   run(taskId: string): Promise<ApiResult<unknown>>
-  /** Fire-and-return execution; progress arrives via onProgress. */
+  /** Fire-and-return execution (serialized in main, U4); progress via onProgress. */
   runAsync(taskId: string): Promise<ApiResult<{ id: string; state: string }>>
+  cancel(taskId: string): Promise<ApiResult<{ cancelled: boolean }>>
   retry(taskId: string): Promise<ApiResult<unknown>>
   onProgress(cb: (p: TaskProgressInfo) => void): () => void
 }

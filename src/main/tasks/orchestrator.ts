@@ -30,7 +30,7 @@ export interface OrchestratorDeps {
   /** Decodes a jpg into an 8x8 luminance grid for phash. */
   gridDecoder: (path: string) => Grid8x8
   /** Stream fetch: url → local file. Default remuxes via ffmpeg; tests stub it. */
-  fetchStream?: (url: string, target: string) => Promise<void>
+  fetchStream?: (url: string, target: string, signal?: AbortSignal) => Promise<void>
   /** Per-chunk ASR progress (U4): index and total let the UI show chunk-level progress. */
   onChunkProgress?: (ctx: StageContext, index: number, total: number) => void
   now?: () => Date
@@ -105,10 +105,11 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
 }
 
 /** Default stream fetch: remux via ffmpeg (stream copy, no re-encode). */
-async function fetchStreamDefault(ffmpeg: string, url: string, target: string): Promise<void> {
+async function fetchStreamDefault(ffmpeg: string, url: string, target: string, signal?: AbortSignal): Promise<void> {
   await runProcess(ffmpeg, ['-y', '-i', url, '-c', 'copy', target], {
     timeoutMs: 30 * 60 * 1000,
-    stallGuard: { file: target, stallMs: 60_000 }
+    stallGuard: { file: target, stallMs: 60_000 },
+    signal
   })
 }
 
@@ -130,9 +131,9 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
       if (urls.teacher.includes('1170194-3') || urls.screen.includes('1170194-3')) {
         return { status: 'failed', error: '检测到全景流地址（1170194-3），按规格禁止下载' }
       }
-      const fetchStream = deps.fetchStream ?? (async (url: string, target: string) => fetchStreamDefault(deps.ffmpeg, url, target))
-      await fetchStream(urls.teacher, teacherPath)
-      await fetchStream(urls.screen, screenPath)
+      const fetchStream = deps.fetchStream ?? ((url: string, target: string, signal?: AbortSignal) => fetchStreamDefault(deps.ffmpeg, url, target, signal))
+      await fetchStream(urls.teacher, teacherPath, ctx.signal)
+      await fetchStream(urls.screen, screenPath, ctx.signal)
       recordStage(deps, ctx.taskId, ctx.stage, { teacherPath, screenPath })
       return { status: 'ok' }
     } catch (err) {

@@ -20,14 +20,14 @@ afterEach(() => {
 
 describe('migrations', () => {
   it('applies all migrations on a fresh database', () => {
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5])
   })
 
   it('is idempotent when reopened', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5])
   })
 
   it('applies only pending migrations on an upgraded database', () => {
@@ -35,7 +35,7 @@ describe('migrations', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5])
   })
 })
 

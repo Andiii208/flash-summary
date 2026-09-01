@@ -62,6 +62,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               history={state.history}
               onCreateRun={state.createAndRun}
               onRetry={state.retryTask}
+              onCancel={state.cancelTask}
             />
           )}
           {tab === 'notes' && <NoteViewer note={state.note} onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined} />}
@@ -115,6 +116,7 @@ interface AppState {
   addManual: (courseId: string, lessonId: string) => void
   createAndRun: () => void
   retryTask: (taskId: string) => void
+  cancelTask: () => void
   ask: (question: string) => void
   saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
   removeProvider: (id: string) => void
@@ -326,6 +328,13 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     [running, launch]
   )
 
+  const cancelTask = useCallback((): void => {
+    if (!running) return
+    const id = progress?.taskId
+    if (id == null) return
+    void bridge.tasks.cancel(id)
+  }, [bridge, running, progress])
+
   const ask = useCallback(
     (question: string): void => {
       const lid = lessonRef.current
@@ -476,6 +485,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     addManual,
     createAndRun,
     retryTask,
+    cancelTask,
     ask,
     saveProvider,
     removeProvider,

@@ -49,7 +49,7 @@ export interface StageOutcome {
 
 export type StageResult =
   | { status: 'ok' }
-  | { status: 'failed'; error: string; kind?: 'session_expired' }
+  | { status: 'failed'; error: string; kind?: 'session_expired' | 'cancelled' }
 
 export interface TaskRow {
   id: string

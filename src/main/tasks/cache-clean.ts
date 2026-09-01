@@ -5,12 +5,20 @@ import { cachePath } from '../library/paths'
 /**
  * Startup cleanup: remove cache entries older than 24h (spec §9).
  * `cacheDir` is the effective directory (user override respected, U3).
+ * Entries whose name matches a running/queued task id are always kept
+ * (U4) — never delete a task's in-flight cache by mtime alone.
  * Returns the deleted entry names for logging (names only, never URLs).
  */
-export function cleanStaleCache(cacheDir: string, now = Date.now(), maxAgeMs = 24 * 60 * 60 * 1000): string[] {
+export function cleanStaleCache(
+  cacheDir: string,
+  now = Date.now(),
+  maxAgeMs = 24 * 60 * 60 * 1000,
+  runningTaskIds: ReadonlySet<string> = new Set()
+): string[] {
   if (!existsSync(cacheDir)) return []
   const removed: string[] = []
   for (const entry of readdirSync(cacheDir)) {
+    if (runningTaskIds.has(entry)) continue
     const full = join(cacheDir, entry)
     try {
       const stats = statSync(full)

@@ -12,6 +12,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AppContext } from './app-context'
 import { TaskRepository, runTask, retryTask, type TaskProgress } from './tasks/queue'
+import { SerialTaskQueue } from './tasks/serial-queue'
 import { createExecutors } from './tasks/orchestrator'
 import type { Stage } from './tasks/stages'
 import { stagePercent } from './tasks/stages'
@@ -67,6 +68,12 @@ export interface IpcOptions {
 }
 
 export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions = {}): void {
+  // Serial task executor + cancellation registry (U4): one task at a time,
+  // cancellable via AbortController keyed by task id.
+  const queue = new SerialTaskQueue()
+  const abortControllers = new Map<string, AbortController>()
+  const abortOf = (taskId: string): AbortSignal | undefined => abortControllers.get(taskId)?.signal
+
   const sendProgress = (p: TaskProgress): void => {
     options.sender?.send('tasks:progress', p)
   }
@@ -311,13 +318,13 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       const rows = (
         lessonId == null
-          ? ctx.db.prepare('SELECT id, lesson_id, state, failed_stage, error_message, created_at, updated_at FROM tasks ORDER BY created_at DESC LIMIT 50').all()
+          ? ctx.db.prepare('SELECT id, lesson_id, state, failed_stage, error_message, error_kind, created_at, updated_at FROM tasks ORDER BY created_at DESC LIMIT 50').all()
           : ctx.db
               .prepare(
-                'SELECT id, lesson_id, state, failed_stage, error_message, created_at, updated_at FROM tasks WHERE lesson_id = ? ORDER BY created_at DESC LIMIT 50'
+                'SELECT id, lesson_id, state, failed_stage, error_message, error_kind, created_at, updated_at FROM tasks WHERE lesson_id = ? ORDER BY created_at DESC LIMIT 50'
               )
               .all(str(lessonId, 'lessonId'))
-      ) as Array<{ id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null; created_at: string; updated_at: string }>
+      ) as Array<{ id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null; error_kind: string | null; created_at: string; updated_at: string }>
       return ok(rows)
     } catch (e) {
       return err(e)
@@ -330,25 +337,52 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const row = repo.get(id)
       if (row == null) throw new Error(`task ${id} not found`)
       const executors = makeExecutors()
-      const result = await runTask(repo, id, executors, ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress)
+      const result = await runTask(repo, id, executors, ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress, abortOf(id))
       return ok({ result, task: repo.get(id) })
     } catch (e) {
       return err(e)
     }
   })
-  // tasks:runAsync (U1): fire-and-return; progress streams via the
-  // 'tasks:progress' channel. Errors surface as a failed progress event
-  // plus the returned envelope.
+  // tasks:runAsync (U4): enqueued on the serial executor (at most one task
+  // runs at a time); progress streams via 'tasks:progress'. Errors surface
+  // as a failed progress event plus the returned envelope.
   ipc.handle('tasks:runAsync', async (_e, taskId: unknown) => {
     try {
       const id = str(taskId, 'taskId')
       const repo = new TaskRepository(ctx.db)
       const row = repo.get(id)
       if (row == null) throw new Error(`task ${id} not found`)
-      void runTask(repo, id, makeExecutors(), ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress).catch((e) => {
-        sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
-      })
+      const controller = new AbortController()
+      abortControllers.set(id, controller)
+      void queue.enqueue(id, () =>
+        runTask(repo, id, makeExecutors(), ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress, controller.signal)
+          .catch((e) => {
+            sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
+          })
+          .finally(() => abortControllers.delete(id))
+      )
       return ok({ id, state: 'running' })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // tasks:cancel (U4): abort the running/queued task; it flips to failed(cancelled).
+  ipc.handle('tasks:cancel', (_e, taskId: unknown) => {
+    try {
+      const id = str(taskId, 'taskId')
+      const controller = abortControllers.get(id)
+      if (controller != null) {
+        controller.abort()
+        return ok({ cancelled: true })
+      }
+      // Not currently running: mark failed(cancelled) directly so the UI state is consistent.
+      const repo = new TaskRepository(ctx.db)
+      const row = repo.get(id)
+      if (row != null && row.state !== 'succeeded' && row.state !== 'failed') {
+        repo.markFailed(id, (row.state as Stage) ?? 'pending', '任务已取消', 'cancelled')
+        sendProgress({ taskId: id, state: 'failed', stage: row.state as Stage, message: '任务已取消', percent: 0, kind: 'cancelled' })
+      }
+      return ok({ cancelled: true })
     } catch (e) {
       return err(e)
     }
@@ -358,7 +392,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const id = str(taskId, 'taskId')
       const repo = new TaskRepository(ctx.db)
       const executors = makeExecutors()
-      const result = await retryTask(repo, id, executors, ctx.stageOutputs, sendProgress)
+      const result = await retryTask(repo, id, executors, ctx.stageOutputs, sendProgress, abortOf(id))
       return ok({ result, task: repo.get(id) })
     } catch (e) {
       return err(e)
