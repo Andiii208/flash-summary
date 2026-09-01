@@ -129,16 +129,22 @@ export function createContext(overrides: Partial<{
     bind: (capability, providerId, model) => setBinding(db, { capability, providerId, model }),
     chatFor,
     login: async () => {
-      await openCasLoginWindow({
-        serviceOrigin: CAS_BASE_URL,
-        onSession: (cookies) => {
-          saveSession(
-            userDataDir,
-            { cookies, baseUrl: CAS_BASE_URL, savedAt: new Date().toISOString() },
-            cryptor
-          )
-        }
-      })
+      try {
+        await openCasLoginWindow({
+          serviceOrigin: CAS_BASE_URL,
+          onSession: (cookies) => {
+            saveSession(
+              userDataDir,
+              { cookies, baseUrl: CAS_BASE_URL, savedAt: new Date().toISOString() },
+              cryptor
+            )
+          }
+        })
+        logger.info('cas login succeeded (session encrypted at rest)')
+      } catch (err) {
+        logger.error(`cas login failed: ${(err as Error).message}`)
+        throw err
+      }
     },
     logout: () => clearSession(userDataDir),
     sessionState: () => {
