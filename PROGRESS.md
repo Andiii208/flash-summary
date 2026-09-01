@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- **已完成阶段**：Phase 0-7 全部完成（工程基线 → 数据库 → CAS/API → 队列 → 媒体 → Provider → 笔记/追问 → 打包验收）；U1-U4 全部完成（主流程修复 / Preact UI / 设置与下载位置 / 管线质量）
-- **进行中**：U5 基建与发布
-- **下一步**：U5 — 日志落盘、文档同步、asar 抽验脚本、发布 v0.2.0
+- **已完成阶段**：Phase 0-7 全部完成（工程基线 → 数据库 → CAS/API → 队列 → 媒体 → Provider → 笔记/追问 → 打包验收）；U1-U4 全部完成（主流程修复 / Preact UI / 设置与下载位置 / 管线质量）；U5 基建完成（日志/发布清单/文档同步）
+- **进行中**：v0.2.0 打包发布（dist + asar 抽验 + tag/release）
+- **下一步**：执行 scripts/release.md 清单完成发布
 
 ## 环境实测（2026-08-30）
 
@@ -33,7 +33,8 @@
 | U1 主流程修复 | ✅ 完成 | 四门禁绿（128/128 测试，新增 14 个）；真实 Electron 启动烟测通过（页面渲染无错误、toast 区存在）；U1 验收判据「登录→课程树→点课时→创建并运行→实时进度」已接线，真实 CAS/45 分钟端到端仍属人工验证 5 项 | 提交 318d49d（后端）、3356b06（前端） |
 | U2 UI 重做 | ✅ 完成 | Preact 引入（preact/hooks、@preact/preset-vite、happy-dom）；组件化（App/Sidebar/TaskPanel/NoteViewer/QaPanel/Toast/EmptyState/ProviderPanel/WelcomeGuide/ManualAdd/TopBar/ProgressBar）；CSS 变量设计系统明暗双主题；CSP 收紧 connect-src 'none'；组件测试 25 个（≥10 达标）；四门禁绿 153/153；真实 Electron 烟测：4 页签+侧栏+引导卡+空态渲染正常无错误 | 提交 afc03a2 |
 | U3 设置与下载位置 | ✅ 完成 | 004_settings 迁移（key-value）；IPC settings:get/setCacheDir/setTheme/chooseLibrary/openPath；资料库迁移（SQLite backup API 复制 db+attachments，迁移前备份+失败回滚+重启生效）；notes:exportMarkdown 走系统保存对话框；缓存目录可改即时生效（orchestrator/cache-clean 读设置）；设置页 UI（账号/Provider/位置/主题，主题覆盖明暗）；四门禁绿 169/169（新增 16 测试）；真实 Electron 烟测设置页渲染正常 | 提交 96e7b80 |
-| U4 管线质量 | ✅ 完成 | ASR 按 10 分钟分片转写（ffmpeg -ss/-t 切片，拼接保留片偏移，分片进度事件）；多模态真发图（PPT/关键帧 base64 data URL，上限 20 张，unsupported_visual 回退纯文本）；ffmpeg 超时 30min+停滞检测 60s（输出无增长即 kill）+AbortSignal；downloadToFile Range 续传（206 续传/200 重来）；SerialTaskQueue 串行队列+runAsync 入队；单实例锁（二开聚焦主窗口）；tasks:cancel（AbortController+阶段边界 cancelled）；005 error_kind 迁移；缓存清理跳过运行中任务；UI 取消按钮；四门禁绿 187/187（U4 共 +18 测试）；启动烟测通过 | 提交 425a1ae、5c9f5e7、u4c（本次） |
+| U4 管线质量 | ✅ 完成 | ASR 按 10 分钟分片转写（ffmpeg -ss/-t 切片，拼接保留片偏移，分片进度事件）；多模态真发图（PPT/关键帧 base64 data URL，上限 20 张，unsupported_visual 回退纯文本）；ffmpeg 超时 30min+停滞检测 60s（输出无增长即 kill）+AbortSignal；downloadToFile Range 续传（206 续传/200 重来）；SerialTaskQueue 串行队列+runAsync 入队；单实例锁（二开聚焦主窗口）；tasks:cancel（AbortController+阶段边界 cancelled）；005 error_kind 迁移；缓存清理跳过运行中任务；UI 取消按钮；四门禁绿 187/187（U4 共 +18 测试）；启动烟测通过 | 提交 425a1ae、5c9f5e7、49d8423 |
+| U5 基建与文档 | ✅ 完成 | logger（userData/logs 每日轮转 7 份、redact 脱敏 cookie/key/URL、渲染错误经 log:rendererError 入同一日志、设置页打开日志目录）；scripts/release.md 发布清单 + scripts/verify-asar.mjs sha256 抽验 + npm run verify:asar；版本号 0.2.0；README/CHANGELOG 与代码事实同步（28 IPC 通道、32 测试文件、187 用例）；+4 测试 191/191 | 提交 u5-infra（本次） |
 
 ## 遗留（诚实清单）
 

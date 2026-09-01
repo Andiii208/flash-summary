@@ -17,7 +17,7 @@ export interface SettingsPanelProps {
   onSetCacheDir: (dir: string) => void
   onSetTheme: (theme: 'auto' | 'light' | 'dark') => void
   onChooseLibrary: () => void
-  onOpenPath: (kind: 'library' | 'cache' | 'exports') => void
+  onOpenPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
 }
 
 const THEME_OPTIONS: Array<{ value: 'auto' | 'light' | 'dark'; label: string }> = [
@@ -75,6 +75,10 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
           <span class="settings-label">笔记导出</span>
           <button class="btn small" onClick={() => props.onOpenPath('exports')}>
             打开导出目录
+          </button>
+          <span class="settings-label">日志</span>
+          <button class="btn small" onClick={() => props.onOpenPath('logs')}>
+            打开日志目录
           </button>
         </div>
       </section>

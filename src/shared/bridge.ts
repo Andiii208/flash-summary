@@ -108,7 +108,12 @@ export interface SettingsBridge {
   setCacheDir(dir: string): Promise<ApiResult<{ cacheDir: string }>>
   setTheme(theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>>
   chooseLibrary(): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>>
-  openPath(kind: 'library' | 'cache' | 'exports'): Promise<ApiResult<boolean>>
+  openPath(kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>>
+}
+
+export interface LogBridge {
+  /** Forward a renderer-side error into the main file log (redacted). */
+  rendererError(message: string): Promise<ApiResult<boolean>>
 }
 
 export interface QaBridge {
@@ -123,4 +128,5 @@ export interface SeuSummaryBridge {
   notes: NotesBridge
   qa: QaBridge
   settings: SettingsBridge
+  log: LogBridge
 }

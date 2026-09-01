@@ -1,6 +1,6 @@
 {
   "name": "seu-summary",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "SEU Summary - turn SEU Kedacom course recordings into structured study notes (Windows MVP)",
   "main": "./out/main/index.cjs",
   "author": "SEU Summary contributors",
@@ -57,9 +57,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:asar": "node scripts/verify-asar.mjs"
   },
   "devDependencies": {
+    "@electron/asar": "^4.3.0",
     "@eslint/js": "^9.30.0",
     "@preact/preset-vite": "^2.10.6",
     "@types/better-sqlite3": "^9.6.0",

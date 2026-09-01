@@ -124,7 +124,7 @@ interface AppState {
   setCacheDir: (dir: string) => void
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   chooseLibrary: () => void
-  openPath: (kind: 'library' | 'cache' | 'exports') => void
+  openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
 }
 
 function useAppState(bridge: SeuSummaryBridge): AppState {
@@ -453,11 +453,26 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   }, [bridge, toast, refreshSettings])
 
   const openPath = useCallback(
-    (kind: 'library' | 'cache' | 'exports'): void => {
+    (kind: 'library' | 'cache' | 'exports' | 'logs'): void => {
       void bridge.settings.openPath(kind)
     },
     [bridge]
   )
+
+  // Renderer errors reach the same redacted file log (U5).
+  useEffect(() => {
+    const report = (message: string): void => {
+      void bridge.log.rendererError(message)
+    }
+    const onError = (event: ErrorEvent): void => report(event.message ?? 'unknown error')
+    const onRejection = (event: PromiseRejectionEvent): void => report(`unhandled rejection: ${String(event.reason)}`)
+    window.addEventListener('error', onError)
+    window.addEventListener('unhandledrejection', onRejection)
+    return () => {
+      window.removeEventListener('error', onError)
+      window.removeEventListener('unhandledrejection', onRejection)
+    }
+  }, [bridge])
 
   return {
     session,

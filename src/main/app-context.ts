@@ -22,6 +22,7 @@ import { cleanStaleCache } from './tasks/cache-clean'
 import type { StageOutputStore } from './tasks/queue'
 import type { Grid8x8 } from './media/phash'
 import { getSetting, setSetting, readSettings, type AppSettings } from './settings/store'
+import { Logger } from './logger'
 
 export const CAS_BASE_URL = 'https://cvs.seu.edu.cn'
 
@@ -54,6 +55,10 @@ export interface AppContext {
   cacheDir: () => string
   /** Directory for markdown exports. */
   exportsDir: () => string
+  /** File logger (U5): userData/logs, redacted, daily-rotated. */
+  logger: Logger
+  /** Directory holding the log files. */
+  logsDir: () => string
 }
 
 export function createContext(overrides: Partial<{
@@ -72,6 +77,8 @@ export function createContext(overrides: Partial<{
 
   const cryptor = overrides.cryptor ?? dpapiCryptor
   const userDataDir = overrides.userDataDir ?? app.getPath('userData')
+  const logger = new Logger(join(userDataDir, 'logs'))
+  logger.info(`context created (library=${libraryRoot})`)
 
   const cookieOf = async (): Promise<string> => {
     try {
@@ -189,7 +196,9 @@ export function createContext(overrides: Partial<{
     settings,
     setSetting: (key, value) => setSetting(db, key, value),
     cacheDir,
-    exportsDir: () => exportsPath(settings().libraryRoot)
+    exportsDir: () => exportsPath(settings().libraryRoot),
+    logger,
+    logsDir: () => join(userDataDir, 'logs')
   }
 }
 

@@ -65,7 +65,10 @@ const api: SeuSummaryBridge = {
     setTheme: (theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>> => ipcRenderer.invoke('settings:setTheme', theme),
     chooseLibrary: (): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>> =>
       ipcRenderer.invoke('settings:chooseLibrary'),
-    openPath: (kind: 'library' | 'cache' | 'exports'): Promise<ApiResult<boolean>> => ipcRenderer.invoke('settings:openPath', kind)
+    openPath: (kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>> => ipcRenderer.invoke('settings:openPath', kind)
+  },
+  log: {
+    rendererError: (message: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('log:rendererError', message)
   }
 }
 

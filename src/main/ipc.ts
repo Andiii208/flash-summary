@@ -75,6 +75,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   const abortOf = (taskId: string): AbortSignal | undefined => abortControllers.get(taskId)?.signal
 
   const sendProgress = (p: TaskProgress): void => {
+    if (p.state === 'failed') {
+      ctx.logger.error(`task ${p.taskId} failed at stage ${p.stage ?? '-'} (${p.kind ?? 'generic'}): ${p.message}`)
+    }
     options.sender?.send('tasks:progress', p)
   }
 
@@ -287,8 +290,24 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const k = str(kind, 'kind')
       const s = ctx.settings()
       const target =
-        k === 'cache' ? resolveCacheDir(s.cacheDir, s.libraryRoot) : k === 'exports' ? ctx.exportsDir() : s.libraryRoot
+        k === 'cache'
+          ? resolveCacheDir(s.cacheDir, s.libraryRoot)
+          : k === 'exports'
+            ? ctx.exportsDir()
+            : k === 'logs'
+              ? ctx.logsDir()
+              : s.libraryRoot
       void shell.openPath(target)
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // ---- logging (U5): renderer errors reach the same redacted file log ----
+  ipc.handle('log:rendererError', (_e, message: unknown) => {
+    try {
+      ctx.logger.error(`renderer: ${str(message, 'message')}`)
       return ok(true)
     } catch (e) {
       return err(e)
