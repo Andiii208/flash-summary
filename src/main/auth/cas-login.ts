@@ -15,6 +15,7 @@ import { appendFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { BrowserWindow, session, app, type Session } from 'electron'
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
+import { directNetRequested } from '../net-diagnostics'
 
 export interface CasLoginOptions {
   /** e.g. https://cvs.seu.edu.cn */
@@ -45,8 +46,10 @@ export const CAS_LOAD_TIMEOUT_MS = 25_000
 export const CAS_PRECHECK_TIMEOUT_MS = 10_000
 /** How often the session probe hits the school API while the user logs in. */
 export const CAS_POLL_INTERVAL_MS = 3_000
-/** API path used to detect that the session works. */
-export const SESSION_PROBE_PATH = '/v1/course/list'
+/** API base path on the platform origin (only static UI assets carry the -ui suffix). */
+export const PLATFORM_API_BASE_PATH = '/jy-application-resourcemanage'
+/** API path used to detect that the session works (course list pagination, jwt-token authenticated). */
+export const SESSION_PROBE_PATH = '/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=1'
 
 const LOADING_HTML =
   '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
@@ -105,7 +108,7 @@ function traceSession(ses: Session): void {
 
 /** Post-login endpoint probes (diagnostics): which platform APIs answer with JSON. */
 async function tracePostLoginProbes(cookieHeader: string, serviceOrigin: string, jwt: string): Promise<void> {
-  const apiBase = `${serviceOrigin}/jy-application-resourcemanage`
+  const apiBase = `${serviceOrigin}${PLATFORM_API_BASE_PATH}`
   const candidates: Array<{ path: string; method: 'GET' | 'POST' }> = [
     { path: '/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=5', method: 'GET' },
     { path: '/v1/course/verify?courId=154592', method: 'GET' },
@@ -130,24 +133,50 @@ async function tracePostLoginProbes(cookieHeader: string, serviceOrigin: string,
   }
 }
 
-/** Two-level key structure of a JSON body (field names only, no values). */
-function describeJsonShape(body: string): string {
+/**
+ * Field-name shape of a JSON body, depth-capped (t-1 nests course fields at
+ * result.records[]). Key names, counts and types only — never values.
+ */
+export function describeJsonShape(body: string): string {
   try {
     const parsed = JSON.parse(body) as unknown
     if (parsed == null || typeof parsed !== 'object') return typeof parsed
-    const top = parsed as Record<string, unknown>
-    const parts = Object.keys(top).map((k) => {
-      const v = top[k]
-      if (Array.isArray(v)) {
-        const first = v[0]
-        return `${k}[${v.length}]{${first != null && typeof first === 'object' ? Object.keys(first as Record<string, unknown>).join(',') : typeof first}}`
-      }
-      if (v != null && typeof v === 'object') return `${k}{${Object.keys(v as Record<string, unknown>).join(',')}}`
-      return k
-    })
-    return `json{${parts.join(' | ')}}`
+    return `json${describeValueShape(parsed, 2)}`
   } catch {
     return `non-json(${body.length}b)`
+  }
+}
+
+/** Shape of one JSON value: `{fields}` for objects, `[n]{elem}` for arrays. */
+function describeValueShape(value: unknown, depth: number): string {
+  if (value == null || typeof value !== 'object') return typeof value
+  if (Array.isArray(value)) {
+    const first: unknown = value.length > 0 ? value[0] : undefined
+    // Object elements carry their own braces; scalars render as their type.
+    return `[${value.length}]${first === undefined ? '' : describeValueShape(first, depth)}`
+  }
+  if (depth <= 0) return '{…}'
+  const fields = Object.entries(value as Record<string, unknown>)
+    .map(([key, child]) => {
+      if (child != null && typeof child === 'object') {
+        // Arrays are transparent (no named level): the element shape keeps
+        // the current depth so record fields stay visible.
+        return `${key}${describeValueShape(child, Array.isArray(child) ? depth : depth - 1)}`
+      }
+      return key
+    })
+    .join(',')
+  return `{${fields}}`
+}
+
+/** Best-effort JWT read from the login window's sessionStorage ('' when unavailable). */
+async function readWindowJwt(win: BrowserWindow): Promise<string> {
+  try {
+    if (win.isDestroyed() || win.webContents.isLoading()) return ''
+    const raw = await win.webContents.executeJavaScript(SESSION_STORAGE_KEYS_SCRIPT, true)
+    return (JSON.parse(raw) as { jwt?: string }).jwt ?? ''
+  } catch {
+    return ''
   }
 }
 
@@ -162,6 +191,9 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
   await precheck(casUrl)
   const ses = session.fromPartition(PARTITION)
   traceSession(ses)
+  traceLine(
+    `LOGIN window open (net=${directNetRequested(process.argv, process.env.SEU_DIRECT_NET) ? 'direct' : 'default'})`
+  )
 
   const win = new BrowserWindow({
     width: 960,
@@ -203,15 +235,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
           await new Promise((r) => setTimeout(r, 1500))
           const cookies = await ses.cookies.get({ url: options.serviceOrigin })
           const merged = mergeCookieStrings('', cookies.map((c) => `${c.name}=${c.value}`).join('; '))
-          let jwt = ''
-          try {
-            if (!win.isDestroyed() && !win.webContents.isLoading()) {
-              const raw = await win.webContents.executeJavaScript(SESSION_STORAGE_KEYS_SCRIPT, true)
-              jwt = (JSON.parse(raw) as { jwt?: string }).jwt ?? ''
-            }
-          } catch {
-            // JWT harvest is best-effort; cookie session still works.
-          }
+          const jwt = await readWindowJwt(win)
           options.onSession({ cookieString: merged, jwt })
           void tracePostLoginProbes(merged, options.serviceOrigin, jwt)
         }
@@ -234,7 +258,15 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
         }
         void (async () => {
           try {
-            const res = await ses.fetch(`${options.serviceOrigin}${SESSION_PROBE_PATH}`)
+            // The API is jwt-token authenticated; send it when the SPA has
+            // already written one to sessionStorage.
+            const jwt = await readWindowJwt(win)
+            const headers: Record<string, string> = {}
+            if (jwt !== '') headers['jwt-token'] = jwt
+            const res = await ses.fetch(
+              `${options.serviceOrigin}${PLATFORM_API_BASE_PATH}${SESSION_PROBE_PATH}`,
+              { headers }
+            )
             const body = await res.text()
             if (probeSaysLoggedIn(res.status, body)) await finish('ok')
           } catch {
