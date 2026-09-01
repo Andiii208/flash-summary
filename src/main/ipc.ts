@@ -14,6 +14,7 @@ import type { AppContext } from './app-context'
 import { TaskRepository, runTask, retryTask, type TaskProgress } from './tasks/queue'
 import { createExecutors } from './tasks/orchestrator'
 import type { Stage } from './tasks/stages'
+import { stagePercent } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { parseNote } from '../shared/notes/schema'
@@ -80,7 +81,18 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       ffprobe: ctx.ffprobePath(),
       school: ctx.school,
       chat: (capability) => ctx.chatFor(capability),
-      gridDecoder: ctx.gridDecoder
+      gridDecoder: ctx.gridDecoder,
+      onChunkProgress: (taskCtx, index, total) => {
+        const base = stagePercent('transcribing')
+        const span = stagePercent('extracting_visuals') - base
+        sendProgress({
+          taskId: taskCtx.taskId,
+          state: 'transcribing',
+          stage: 'transcribing',
+          message: `转写分片 ${index + 1}/${total}`,
+          percent: Math.min(100, Math.round(base + ((index + 1) / total) * span))
+        })
+      }
     })
 
   const newId = options.newTaskId ?? (() => `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)

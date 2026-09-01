@@ -1,0 +1,45 @@
+/**
+ * ASR chunking (U4, required): whisper-compatible endpoints cap uploads at
+ * 25MB; a 45-minute 16kHz mono WAV ≈ 86MB. We cut the audio at fixed
+ * boundaries (10 minutes default), transcribe each chunk, and stitch the
+ * segments back with the chunk offset as the segment start time.
+ * Cutting at silence would preserve sentence boundaries better but is more
+ * complex; fixed boundaries are the simpler reliable option (PROGRESS note).
+ */
+import { join } from 'path'
+import { run } from './ffmpeg'
+
+export interface ChunkSpec {
+  index: number
+  start: number
+  end: number
+}
+
+export const DEFAULT_CHUNK_SECONDS = 10 * 60
+
+/** Divide a duration into chunk specs (≥1 chunk, last one clamped). */
+export function chunkPlan(durationSeconds: number, chunkSeconds = DEFAULT_CHUNK_SECONDS): ChunkSpec[] {
+  const total = Math.max(0, durationSeconds)
+  const count = Math.max(1, Math.ceil(total / chunkSeconds))
+  const specs: ChunkSpec[] = []
+  for (let i = 0; i < count; i++) {
+    specs.push({ index: i, start: i * chunkSeconds, end: Math.min(total, (i + 1) * chunkSeconds) })
+  }
+  return specs
+}
+
+/** Cut one chunk from the source wav into its own 16k mono wav file. */
+export async function cutChunk(ffmpeg: string, source: string, outDir: string, spec: ChunkSpec): Promise<string> {
+  const target = join(outDir, `chunk-${String(spec.index).padStart(3, '0')}.wav`)
+  await run(ffmpeg, [
+    '-y',
+    '-ss', String(spec.start),
+    '-t', String(spec.end - spec.start),
+    '-i', source,
+    '-ac', '1',
+    '-ar', '16000',
+    '-f', 'wav',
+    target
+  ])
+  return target
+}

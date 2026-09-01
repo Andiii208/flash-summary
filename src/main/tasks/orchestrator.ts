@@ -3,18 +3,19 @@
  * All I/O goes through injected deps so tests can stub the network,
  * ffmpeg, and providers while the orchestration logic stays real.
  */
-import { mkdirSync, rmSync, existsSync } from 'fs'
-import { join, basename } from 'path'
+import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import type { Db } from '../db/open'
 import { attachmentsPath } from '../library/paths'
 import { extractAudio, extractKeyframes, run as runProcess } from '../media/ffmpeg'
+import { chunkPlan, cutChunk } from '../media/audio-split'
 import { dedupeKeyframes, type Grid8x8 } from '../media/phash'
 import { downloadToFile } from '../media/download'
 import type { StageExecutor, StageContext } from './queue'
 import type { Stage } from './stages'
 import type { SchoolClient } from '../school/client'
 import { parseNote, type Note } from '../notes/schema'
-import type { OpenAiCompatibleClient } from '../providers/openai-client'
+import type { OpenAiCompatibleClient, ChatPart } from '../providers/openai-client'
 
 export interface OrchestratorDeps {
   db: Db
@@ -30,6 +31,8 @@ export interface OrchestratorDeps {
   gridDecoder: (path: string) => Grid8x8
   /** Stream fetch: url → local file. Default remuxes via ffmpeg; tests stub it. */
   fetchStream?: (url: string, target: string) => Promise<void>
+  /** Per-chunk ASR progress (U4): index and total let the UI show chunk-level progress. */
+  onChunkProgress?: (ctx: StageContext, index: number, total: number) => void
   now?: () => Date
 }
 
@@ -152,10 +155,10 @@ export function makeExtractAudio(deps: OrchestratorDeps): StageExecutor {
   }
 }
 
-/** 4. transcribing — audio → provider ASR → transcript row. */
+/** 4. transcribing — audio → provider ASR, chunked to stay under the 25MB upload cap. */
 export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
-    const audio = stageOutput<{ audioPath: string }>(deps, ctx.taskId, 'extracting_audio')
+    const audio = stageOutput<{ audioPath: string; durationSeconds: number }>(deps, ctx.taskId, 'extracting_audio')
     if (audio == null) return { status: 'failed', error: '音频产物缺失，需要重新提取' }
     const binding = deps.db
       .prepare("SELECT provider_id, model FROM capability_bindings WHERE capability = 'asr'")
@@ -163,17 +166,29 @@ export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
     if (binding == null) return { status: 'failed', error: '未绑定 ASR 模型，请在设置中配置 ASR Provider' }
     try {
       const client = deps.chat('asr')
-      const { readFileSync } = await import('fs')
-      const blob = new Blob([readFileSync(audio.audioPath)])
-      const text = await client.transcribe(blob, basename(audio.audioPath), binding.model)
+      const plan = chunkPlan(audio.durationSeconds ?? 0)
+      const outDir = taskDir(deps, ctx.taskId)
+      const segments: Array<{ at: number; text: string }> = []
+      for (const spec of plan) {
+        deps.onChunkProgress?.(ctx, spec.index, plan.length)
+        const chunkPath =
+          plan.length === 1 ? audio.audioPath : await cutChunk(deps.ffmpeg, audio.audioPath, outDir, spec)
+        try {
+          const blob = new Blob([readFileSync(chunkPath)])
+          const text = await client.transcribe(blob, `chunk-${spec.index}.wav`, binding.model)
+          segments.push({ at: spec.start, text })
+        } finally {
+          if (plan.length > 1 && existsSync(chunkPath)) rmSync(chunkPath, { force: true })
+        }
+      }
       deps.db
         .prepare(
           `INSERT OR REPLACE INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES (?, ?, ?, ?, ?)`
         )
-        .run(ctx.lessonId, JSON.stringify([{ at: 0, text }]), 'openai-compatible', binding.model, nowIso(deps))
+        .run(ctx.lessonId, JSON.stringify(segments), 'openai-compatible', binding.model, nowIso(deps))
       // Audio is temporary: delete after successful transcription (spec §7).
       if (existsSync(audio.audioPath)) rmSync(audio.audioPath, { force: true })
-      recordStage(deps, ctx.taskId, ctx.stage, { chars: text.length })
+      recordStage(deps, ctx.taskId, ctx.stage, { chars: segments.reduce((n, s) => n + s.text.length, 0), chunks: plan.length })
       return { status: 'ok' }
     } catch (err) {
       return { status: 'failed', error: `转写失败: ${(err as Error).message}` }
@@ -245,7 +260,10 @@ function stripFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
 }
 
-/** 6. summarizing — transcript + evidence → multimodal model → structured note JSON. */
+/** Max images embedded in the multimodal summarize call (token guard, U4). */
+export const MAX_SUMMARIZE_IMAGES = 20
+
+/** 6. summarizing — transcript + real images (PPT/keyframes) → structured note JSON. */
 export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
     const binding = deps.db
@@ -257,25 +275,47 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
       | undefined
     if (transcriptRow == null) return { status: 'failed', error: '转写结果缺失，无法生成笔记' }
 
-    const keyframes = deps.db.prepare('SELECT id, timestamp_seconds FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds').all(ctx.lessonId) as Array<{ id: string; timestamp_seconds: number }>
-    const ppt = deps.db.prepare('SELECT page_index FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index').all(ctx.lessonId) as Array<{ page_index: number }>
+    const keyframeRows = deps.db
+      .prepare('SELECT id, file_path FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds')
+      .all(ctx.lessonId) as Array<{ id: string; file_path: string }>
+    const pptRows = deps.db
+      .prepare('SELECT page_index, file_path FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index')
+      .all(ctx.lessonId) as Array<{ page_index: number; file_path: string }>
+    // PPT pages first, then keyframes; cap the total to protect tokens (U4).
+    const images: Array<{ ref: string; path: string }> = [
+      ...pptRows.map((p) => ({ ref: `ppt:${p.page_index}`, path: p.file_path })),
+      ...keyframeRows.map((k) => ({ ref: `kf:${k.id}`, path: k.file_path }))
+    ].slice(0, MAX_SUMMARIZE_IMAGES)
+
+    const transcriptText = (JSON.parse(transcriptRow.segments_json) as Array<{ text: string }>)
+      .map((s) => s.text)
+      .join('\n')
+    const systemPrompt =
+      '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。kind 只能是 ppt/keyframe/formula/code/operation。'
 
     try {
       const client = deps.chat('multimodal')
-      const answer = await client.chat(
-        [
-          {
-            role: 'system',
-            content:
-              '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。kind 只能是 ppt/keyframe/formula/code/operation。'
-          },
-          {
-            role: 'user',
-            content: `转写内容：\n${JSON.parse(transcriptRow.segments_json).map((s: { text: string }) => s.text).join('\n')}\n\n可用证据：keyframes=${keyframes.map((k) => k.id).join(',')}；ppt=${ppt.map((p) => p.page_index).join(',')}`
-          }
-        ],
-        binding.model
-      )
+      let answer: string
+      try {
+        answer = await client.chat(
+          [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: buildUserParts(transcriptText, images) }
+          ],
+          binding.model
+        )
+      } catch (err) {
+        // Provider rejects image input → fall back to a text-only prompt (U4).
+        const kind = (err as { kind?: string }).kind
+        if (kind !== 'unsupported_visual') throw err
+        answer = await client.chat(
+          [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: buildUserParts(transcriptText, []) }
+          ],
+          binding.model
+        )
+      }
 
       let note: Note
       try {
@@ -290,12 +330,29 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
         .prepare('INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(`${ctx.lessonId}-v${version}`, ctx.lessonId, version, JSON.stringify(note), 'openai-compatible', binding.model, nowIso(deps))
 
-      recordStage(deps, ctx.taskId, ctx.stage, { version })
+      recordStage(deps, ctx.taskId, ctx.stage, { version, images: images.length })
       return { status: 'ok' }
     } catch (err) {
       return { status: 'failed', error: `笔记生成失败: ${(err as Error).message}` }
     }
   }
+}
+
+/** User message content: transcript text + embedded images as data URLs (U4). */
+function buildUserParts(transcriptText: string, images: Array<{ ref: string; path: string }>): ChatPart[] {
+  const parts: ChatPart[] = [{ type: 'text', text: `转写内容：\n${transcriptText}` }]
+  for (const image of images) {
+    try {
+      const base64 = readFileSync(image.path).toString('base64')
+      parts.push({ type: 'image_url', imageUrl: `data:image/jpeg;base64,${base64}` })
+    } catch {
+      // A missing image file must not fail the whole summarize stage.
+    }
+  }
+  if (images.length > 0) {
+    parts.push({ type: 'text', text: `\n以上是课件/关键帧图片（共 ${images.length} 张），请结合图片内容整理知识点。` })
+  }
+  return parts
 }
 
 export function createExecutors(deps: OrchestratorDeps): Record<Stage, StageExecutor> {
