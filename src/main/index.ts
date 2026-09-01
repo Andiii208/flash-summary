@@ -3,8 +3,14 @@ import { join } from 'path'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
 import { registerIpc, webContentsSender } from './ipc'
+import { DIRECT_NET_SWITCHES, directNetRequested } from './net-diagnostics'
 
 let mainWindow: BrowserWindow | null = null
+
+// Must run before app ready. See net-diagnostics.ts for the A/B rationale.
+if (directNetRequested(process.argv, process.env.SEU_DIRECT_NET)) {
+  for (const name of DIRECT_NET_SWITCHES) app.commandLine.appendSwitch(name)
+}
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
