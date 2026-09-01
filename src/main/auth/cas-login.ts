@@ -11,7 +11,9 @@
  * session's cookies until the call succeeds — then harvest the cookies and
  * close. Cookie values are never logged.
  */
-import { BrowserWindow, session } from 'electron'
+import { appendFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
+import { BrowserWindow, session, app, type Session } from 'electron'
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
 
 export interface CasLoginOptions {
@@ -59,6 +61,72 @@ async function precheck(casUrl: string): Promise<void> {
   }
 }
 
+/**
+ * Diagnostic network trace: records request paths (query KEYS only, never
+ * values/cookies/tokens) of the login flow plus post-login endpoint probes,
+ * to userData/logs/net-trace.log. Low volume (one login = a handful of
+ * lines); helps field diagnosis of platform API differences without
+ * touching secrets.
+ */
+function traceLine(line: string): void {
+  try {
+    const dir = join(app.getPath('userData'), 'logs')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(join(dir, 'net-trace.log'), `${new Date().toISOString()} ${line}\n`)
+  } catch {
+    // Diagnostics must never break the login flow.
+  }
+}
+
+function traceSession(ses: Session): void {
+  ses.webRequest.onBeforeRequest((details) => {
+    try {
+      const u = new URL(details.url)
+      if (/\.(js|css|png|jpg|jpeg|gif|woff2?|svg|ico|ttf|mp4)$/i.test(u.pathname)) return
+      traceLine(`${details.method} ${u.origin}${u.pathname}${u.search ? `?${[...u.searchParams.keys()].join('&')}` : ''}`)
+    } catch {
+      // Ignore unparsable URLs.
+    }
+  })
+}
+
+/** Post-login endpoint probes (diagnostics): which platform APIs answer with JSON. */
+async function tracePostLoginProbes(cookieHeader: string, serviceOrigin: string): Promise<void> {
+  const candidates = [
+    '/authority/me',
+    '/kiaf/menuhome',
+    '/kiaf/homepage',
+    '/kiaf/internalPage',
+    '/v1/portal/mediaConfig/resources',
+    '/v1/course/list'
+  ]
+  for (const path of candidates) {
+    for (const method of ['GET', 'POST']) {
+      try {
+        const res = await fetch(`${serviceOrigin}${path}`, {
+          method,
+          headers: { Cookie: cookieHeader, 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(6000)
+        })
+        const body = await res.text()
+        let shape = `non-json(${body.length}b)`
+        try {
+          const parsed = JSON.parse(body) as unknown
+          shape =
+            typeof parsed === 'object' && parsed != null
+              ? `json{${Object.keys(parsed as Record<string, unknown>).join(',')}}`
+              : typeof parsed
+        } catch {
+          // Keep the non-json shape.
+        }
+        traceLine(`PROBE ${method} ${path} -> ${res.status} ${shape}`)
+      } catch (err) {
+        traceLine(`PROBE ${method} ${path} -> ERR ${(err as Error).message}`)
+      }
+    }
+  }
+}
+
 /** The platform's own session: a 2xx JSON body that is not a login page. */
 function probeSaysLoggedIn(status: number, body: string): boolean {
   const trimmed = body.trim()
@@ -69,6 +137,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
   const casUrl = options.casUrl ?? options.serviceOrigin
   await precheck(casUrl)
   const ses = session.fromPartition(PARTITION)
+  traceSession(ses)
 
   const win = new BrowserWindow({
     width: 960,
@@ -108,6 +177,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
           const cookies = await ses.cookies.get({ url: options.serviceOrigin })
           const merged = mergeCookieStrings('', cookies.map((c) => `${c.name}=${c.value}`).join('; '))
           options.onSession(merged)
+          void tracePostLoginProbes(merged, options.serviceOrigin)
         }
       } finally {
         if (!win.isDestroyed()) win.close()
