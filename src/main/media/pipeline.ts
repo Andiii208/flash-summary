@@ -24,13 +24,6 @@ export interface LessonStreams {
   screenStreamUrl?: string
 }
 
-function jpegGridFromFile(_path: string): Grid8x8 {
-  // Real decoding uses jpeg-js; the grid extraction is injected by callers
-  // that need it (UI/tests). Kept as a seam to avoid shipping a decoder in
-  // the pure module. Placeholder returns a flat mid-gray grid.
-  return Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => 128))
-}
-
 /**
  * Download a stream to the cache area. Panorama (1170194-3) URLs are
  * rejected outright — the pipeline never downloads them (spec §3).
@@ -75,7 +68,9 @@ export async function runKeyframeExtraction(
   taskId: string,
   lessonId: string,
   screenVideoPath: string,
-  gridDecoder: (path: string) => Grid8x8 = jpegGridFromFile
+  /** Required: a real decoder (media/grid decodeGrid8x8). A flat placeholder
+   *  would make every keyframe hash identical and silently drop evidence. */
+  gridDecoder: (path: string) => Grid8x8
 ): Promise<number> {
   const outDir = join(cachePath(deps.libraryRoot), taskId, 'keyframes')
   mkdirSync(outDir, { recursive: true })

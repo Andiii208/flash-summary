@@ -3,7 +3,6 @@
  * libraryRoot is the effective value (default or previously migrated),
  * cacheDir overrides the default cache location, theme drives the renderer.
  */
-import { join } from 'path'
 import type { Db } from '../db/open'
 import { resolveCacheDir } from '../library/paths'
 
@@ -41,9 +40,4 @@ export function readSettings(db: Db, fallbackRoot: string): AppSettings {
 /** Effective cache directory (resolves the user override, if any). */
 export function effectiveCacheDir(settings: AppSettings): string {
   return resolveCacheDir(settings.cacheDir, settings.libraryRoot)
-}
-
-/** Human label for a directory under the library (used by the UI). */
-export function defaultCacheDir(libraryRoot: string): string {
-  return join(libraryRoot, 'cache')
 }

@@ -135,19 +135,3 @@ function cancelTask(
   onProgress?.({ taskId, state: 'failed', stage, message: '任务已取消', percent: stagePercent(stage), kind: 'cancelled' })
   return 'failed'
 }
-
-/** Resume entry point: retry a failed task from its failed stage. */
-export async function retryTask(
-  repo: TaskRepository,
-  taskId: string,
-  executors: Record<Stage, StageExecutor>,
-  onProgress?: ProgressListener,
-  signal?: AbortSignal
-): Promise<'succeeded' | 'failed'> {
-  const row = repo.get(taskId)
-  if (row == null) throw new Error(`task ${taskId} not found`)
-  if (row.state !== 'failed' || row.failed_stage == null) {
-    throw new Error(`task ${taskId} is not in a failed state (state=${row.state})`)
-  }
-  return runTask(repo, taskId, executors, row.failed_stage as Stage, onProgress, signal)
-}

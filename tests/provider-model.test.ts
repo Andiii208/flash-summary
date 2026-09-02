@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   resolveCapability,
   validateProvider,
-  EMPTY_SETTINGS,
   type ProviderSettings
 } from '../src/main/providers/model'
+
+const EMPTY_SETTINGS: ProviderSettings = { providers: [], bindings: [] }
 
 function makeSettings(): ProviderSettings {
   return {

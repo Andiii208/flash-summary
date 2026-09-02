@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
 import { createContext, type AppContext } from '../src/main/app-context'
 import { registerIpc } from '../src/main/ipc'
+import { TaskRepository } from '../src/main/tasks/queue'
 import type { Stage } from '../src/main/tasks/stages'
 import type { StageExecutor } from '../src/main/tasks/queue'
 import type { Cryptor } from '../src/main/auth/session-crypto'
@@ -59,8 +60,8 @@ describe('ipc handlers over a real context', () => {
     for (const channel of [
       'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse',
       'providers:list', 'providers:save', 'providers:delete', 'providers:bind',
-      'tasks:create', 'tasks:get', 'tasks:run', 'tasks:retry',
-      'notes:latest', 'notes:versions',
+      'tasks:create', 'tasks:run',
+      'notes:latest',
       'qa:ask', 'qa:history'
     ]) {
       expect(ipc.handlers.has(channel), channel).toBe(true)
@@ -119,7 +120,7 @@ describe('ipc handlers over a real context', () => {
     expect(res.error).toContain('capability')
   })
 
-  it('tasks:create + tasks:get round-trip a task row', async () => {
+  it('tasks:create round-trips a task row through the repository', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
@@ -129,9 +130,11 @@ describe('ipc handlers over a real context', () => {
     expect(created.ok).toBe(true)
     const id = created.value!.id
 
-    const got = (await ipc.invoke('tasks:get', id)) as { ok: boolean; value?: { state: string; lesson_id: string } }
-    expect(got.value?.state).toBe('pending')
-    expect(got.value?.lesson_id).toBe('l1')
+    // The IPC surface no longer exposes a get channel (UI reads the list);
+    // state lives durably in the tasks table.
+    const row = new TaskRepository(db).get(id)
+    expect(row?.state).toBe('pending')
+    expect(row?.lesson_id).toBe('l1')
   })
 
   it('notes:latest returns null before any note exists and parses after insert', async () => {
@@ -273,8 +276,8 @@ describe('U1: task progress events', () => {
     expect(events.map((e) => e.payload.state)).toContain('succeeded')
     expect(events[events.length - 1].payload.percent).toBe(100)
 
-    const row = (await recIpc.invoke('tasks:get', taskId)) as { ok: boolean; value?: { state: string } }
-    expect(row.value?.state).toBe('succeeded')
+    const finalRow = new TaskRepository(db).get(taskId)
+    expect(finalRow?.state).toBe('succeeded')
   })
 
   it('stage failure emits a failed progress event with the error message', async () => {
@@ -308,12 +311,12 @@ describe('U1: task progress events', () => {
     expect(failed!.payload.taskId).toBe(taskId)
     expect(failed!.payload.message).toContain('network down')
 
-    const row = (await recIpc.invoke('tasks:get', taskId)) as { ok: boolean; value?: { state: string; failed_stage: string } }
-    expect(row.value?.state).toBe('failed')
-    expect(row.value?.failed_stage).toBe('fetching_course')
+    const failedRow = new TaskRepository(db).get(taskId)
+    expect(failedRow?.state).toBe('failed')
+    expect(failedRow?.failed_stage).toBe('fetching_course')
   })
 
-  it('retry streams progress and resumes from the failed stage', async () => {
+  it('re-running a failed task via runAsync resumes from the failed stage', async () => {
     const ctx = makeCtx()
     const { ipc: recIpc, opts } = makeRecIpc()
     let failFirst = true
@@ -323,7 +326,7 @@ describe('U1: task progress events', () => {
       executorsOverride: () =>
         ({
           fetching_course: async () => {
-            // Fail only on the very first call (initial run); retries pass.
+            // Fail only on the very first call (initial run); the resume passes.
             if (failFirst) {
               failFirst = false
               return { status: 'failed' as const, error: 'boom' }
@@ -344,15 +347,17 @@ describe('U1: task progress events', () => {
     const taskId = created.value!.id
     await recIpc.invoke('tasks:runAsync', taskId)
     await new Promise((r) => setTimeout(r, 100))
+    expect(new TaskRepository(db).get(taskId)?.state).toBe('failed')
 
-    const retried = (await recIpc.invoke('tasks:retry', taskId)) as { ok: boolean; value?: { result: string } }
-    expect(retried.ok).toBe(true)
-    expect(retried.value?.result).toBe('succeeded')
+    // Same channel, same task: firstStageFor resumes from fetching_course's successor.
+    await recIpc.invoke('tasks:runAsync', taskId)
+    await new Promise((r) => setTimeout(r, 150))
 
     const events = recIpc.sent.filter((s) => s.channel === 'tasks:progress') as Array<{ payload: { state: string } }>
-    const retryEvents = events.slice(events.findIndex((e) => e.payload.state === 'failed') + 1)
-    expect(retryEvents.some((e) => e.payload.state === 'downloading_video')).toBe(true)
-    expect(retryEvents.some((e) => e.payload.state === 'succeeded')).toBe(true)
+    const afterFailure = events.slice(events.findIndex((e) => e.payload.state === 'failed') + 1)
+    expect(afterFailure.some((e) => e.payload.state === 'downloading_video')).toBe(true)
+    expect(afterFailure.some((e) => e.payload.state === 'succeeded')).toBe(true)
+    expect(new TaskRepository(db).get(taskId)?.state).toBe('succeeded')
   })
 })
 

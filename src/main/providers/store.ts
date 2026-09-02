@@ -8,7 +8,6 @@
 import type { Db } from '../db/open'
 import type { Cryptor } from '../auth/session-crypto'
 import type { ProviderConfig, CapabilityBinding, ProviderSettings, Capability } from './model'
-import { EMPTY_SETTINGS } from './model'
 
 const ENC_PREFIX = 'enc:v1:'
 
@@ -77,8 +76,4 @@ export function setBinding(db: Db, binding: CapabilityBinding): void {
     `INSERT INTO capability_bindings (capability, provider_id, model) VALUES (?, ?, ?)
      ON CONFLICT(capability) DO UPDATE SET provider_id = excluded.provider_id, model = excluded.model`
   ).run(binding.capability, binding.providerId, binding.model)
-}
-
-export function emptySettings(): ProviderSettings {
-  return EMPTY_SETTINGS
 }

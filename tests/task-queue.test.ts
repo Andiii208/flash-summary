@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
-import { TaskRepository, runTask, retryTask, type StageExecutor, type TaskProgress } from '../src/main/tasks/queue'
+import { TaskRepository, runTask, type StageExecutor, type TaskProgress } from '../src/main/tasks/queue'
 import type { StageResult } from '../src/main/tasks/stages'
 import { PIPELINE_STAGES, canTransition, stagePercent, type Stage } from '../src/main/tasks/stages'
 
@@ -85,8 +85,8 @@ describe('runTask with failure injection', () => {
   })
 })
 
-describe('retry resumes from the failed stage without redoing completed stages', () => {
-  it('first run fails at transcribing; retry re-runs only transcribing onwards', async () => {
+describe('resuming from a failed stage does not redo completed stages', () => {
+  it('first run fails at transcribing; a resume re-runs only transcribing onwards', async () => {
     const repo = new TaskRepository(db)
     repo.create('t3', 'l1')
 
@@ -95,9 +95,9 @@ describe('retry resumes from the failed stage without redoing completed stages',
     await runTask(repo, 't3', first.executors, 'fetching_course')
     expect(first.calls).toEqual(['fetching_course', 'downloading_video', 'extracting_audio', 'transcribing'])
 
-    // Retry attempt: only the failed stage and later run.
+    // Resume attempt (what a retry does): only the failed stage and later run.
     const second = executorsThatFailAt('__never__')
-    const result = await retryTask(repo, 't3', second.executors)
+    const result = await runTask(repo, 't3', second.executors, 'transcribing')
 
     expect(result).toBe('succeeded')
     expect(second.calls).toEqual(['transcribing', 'extracting_visuals', 'summarizing'])
@@ -105,28 +105,6 @@ describe('retry resumes from the failed stage without redoing completed stages',
     expect(second.calls).not.toContain('downloading_video')
     expect(second.calls).not.toContain('extracting_audio')
     expect(repo.get('t3')?.state).toBe('succeeded')
-  })
-
-  it('a retry can fail again and keeps its own failed stage', async () => {
-    const repo = new TaskRepository(db)
-    repo.create('t4', 'l1')
-    const first = executorsThatFailAt('downloading_video')
-    await runTask(repo, 't4', first.executors, 'fetching_course')
-
-    const second = executorsThatFailAt('summarizing')
-    await retryTask(repo, 't4', second.executors)
-
-    const row = repo.get('t4')!
-    expect(row.failed_stage).toBe('summarizing')
-    expect(second.calls).toEqual(['downloading_video', 'extracting_audio', 'transcribing', 'extracting_visuals', 'summarizing'])
-  })
-
-  it('refuses to retry a task that is not failed', async () => {
-    const repo = new TaskRepository(db)
-    repo.create('t5', 'l1')
-    await expect(retryTask(repo, 't5', executorsThatFailAt('pending' as Stage).executors)).rejects.toThrowError(
-      /not in a failed state/
-    )
   })
 })
 

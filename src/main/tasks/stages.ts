@@ -17,12 +17,6 @@ export const PIPELINE_STAGES = [
 export type Stage = (typeof PIPELINE_STAGES)[number]
 export type TaskState = 'pending' | Stage | 'succeeded' | 'failed'
 
-/** Stages strictly after the given one. */
-export function stagesAfter(stage: Stage): Stage[] {
-  const i = PIPELINE_STAGES.indexOf(stage)
-  return PIPELINE_STAGES.slice(i + 1)
-}
-
 /**
  * Rough completion percentage of a stage for progress display:
  * stage k of N reports round((k+1)/N * 100) — the stage is *done* when its
@@ -34,30 +28,9 @@ export function stagePercent(stage: Stage): number {
   return Math.min(100, Math.round(((i + 1) / PIPELINE_STAGES.length) * 100))
 }
 
-/** Stages at or before the given one (inclusive) — the ones a retry reuses. */
-export function stagesUpTo(stage: Stage): Stage[] {
-  const i = PIPELINE_STAGES.indexOf(stage)
-  return PIPELINE_STAGES.slice(0, i + 1)
-}
-
-export interface StageOutcome {
-  /** Mark the stage done (persist its outputs) and move to the next. */
-  ok: true
-  /** Fail the task at this stage with a message. */
-  failed: false
-}
-
 export type StageResult =
   | { status: 'ok' }
   | { status: 'failed'; error: string; kind?: 'session_expired' | 'cancelled' }
-
-export interface TaskRow {
-  id: string
-  lesson_id: string
-  state: TaskState
-  failed_stage: Stage | null
-  error_message: string | null
-}
 
 /** Validate state transitions for the task queue runner. */
 export function canTransition(from: TaskState, to: TaskState): boolean {

@@ -35,12 +35,10 @@ const api: SeuSummaryBridge = {
   },
   tasks: {
     create: (lessonId: string): Promise<ApiResult<{ id: string }>> => ipcRenderer.invoke('tasks:create', lessonId),
-    get: (taskId: string): Promise<ApiResult<TaskRowInfo | null>> => ipcRenderer.invoke('tasks:get', taskId),
     list: (lessonId?: string): Promise<ApiResult<TaskRowInfo[]>> => ipcRenderer.invoke('tasks:list', lessonId),
     run: (taskId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('tasks:run', taskId),
     runAsync: (taskId: string): Promise<ApiResult<{ id: string; state: string }>> => ipcRenderer.invoke('tasks:runAsync', taskId),
     cancel: (taskId: string): Promise<ApiResult<{ cancelled: boolean }>> => ipcRenderer.invoke('tasks:cancel', taskId),
-    retry: (taskId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('tasks:retry', taskId),
     onProgress: (cb: (p: TaskProgressInfo) => void): (() => void) => {
       const listener = (_e: unknown, p: TaskProgressInfo): void => cb(p)
       ipcRenderer.on('tasks:progress', listener)
@@ -49,7 +47,6 @@ const api: SeuSummaryBridge = {
   },
   notes: {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
-    versions: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:versions', lessonId),
     exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportMarkdown', lessonId)
   },

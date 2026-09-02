@@ -29,8 +29,6 @@ export interface ProviderSettings {
   bindings: CapabilityBinding[]
 }
 
-export const EMPTY_SETTINGS: ProviderSettings = { providers: [], bindings: [] }
-
 /** Resolve the provider+model pair for a capability, or null when unbound. */
 export function resolveCapability(
   settings: ProviderSettings,

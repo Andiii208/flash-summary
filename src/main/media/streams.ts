@@ -7,7 +7,3 @@
 export const TEACHER_STREAM_ID = '1170193-1'
 export const SCREEN_STREAM_ID = '1170195-5'
 export const PANORAMA_STREAM_ID = '1170194-3'
-
-export function isPanoramaStream(streamId: string): boolean {
-  return streamId === PANORAMA_STREAM_ID
-}

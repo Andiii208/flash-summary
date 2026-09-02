@@ -10,7 +10,7 @@ import { openDatabase, type Db } from './db/open'
 import { defaultLibraryRoot, ensureLibraryLayout, resolveCacheDir, exportsPath } from './library/paths'
 import { dpapiCryptor } from './auth/electron-cryptor'
 import type { Cryptor } from './auth/session-crypto'
-import { loadSession, saveSession, clearSession, sessionDir } from './auth/session-store'
+import { loadSession, saveSession, clearSession } from './auth/session-store'
 import { openCasLoginWindow } from './auth/cas-login'
 import { SchoolClient } from './school/client'
 import { loadProviderSettings, upsertProvider, deleteProvider, setBinding } from './providers/store'
@@ -176,9 +176,4 @@ export function createContext(overrides: Partial<{
     logger,
     logsDir: () => join(userDataDir, 'logs')
   }
-}
-
-/** Test/introspection helper: where the session blob lives. */
-export function sessionLocation(_ctx: AppContext, userDataDir: string): string {
-  return sessionDir(userDataDir)
 }

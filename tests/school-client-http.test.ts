@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from 'vitest'
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http'
-import { AddressInfo } from 'net'
+import type { AddressInfo } from 'net'
 import { SchoolClient, SchoolApiError } from '../src/main/school/client'
 
 /**
@@ -60,7 +60,7 @@ function makeClient(baseUrl: string): SchoolClient {
 
 describe('SchoolClient over real fetch (local http server)', () => {
   it('round-trips headers and parses the t-1 course list from real HTTP', async () => {
-    const base = await startServer((req, res) => {
+    const base = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(
         JSON.stringify({ code: '0', result: { records: [{ courId: 'c9', courName: '数据结构', teacher: '王老师' }] } })

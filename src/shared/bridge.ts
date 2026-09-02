@@ -80,20 +80,18 @@ export interface ProvidersBridge {
 
 export interface TasksBridge {
   create(lessonId: string): Promise<ApiResult<{ id: string }>>
-  get(taskId: string): Promise<ApiResult<TaskRowInfo | null>>
   list(lessonId?: string): Promise<ApiResult<TaskRowInfo[]>>
   /** Blocking run (kept for tests/tools); prefer runAsync in the UI. */
   run(taskId: string): Promise<ApiResult<unknown>>
-  /** Fire-and-return execution (serialized in main, U4); progress via onProgress. */
+  /** Fire-and-return execution (serialized in main, U4); progress via onProgress.
+   *  A failed task re-run through this resumes from its failed stage. */
   runAsync(taskId: string): Promise<ApiResult<{ id: string; state: string }>>
   cancel(taskId: string): Promise<ApiResult<{ cancelled: boolean }>>
-  retry(taskId: string): Promise<ApiResult<unknown>>
   onProgress(cb: (p: TaskProgressInfo) => void): () => void
 }
 
 export interface NotesBridge {
   latest(lessonId: string): Promise<ApiResult<unknown>>
-  versions(lessonId: string): Promise<ApiResult<unknown>>
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
 }
 

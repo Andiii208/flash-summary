@@ -11,7 +11,7 @@ import { ipcMain, dialog, shell, BrowserWindow, type WebContents, type OpenDialo
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AppContext } from './app-context'
-import { TaskRepository, runTask, retryTask, type TaskProgress } from './tasks/queue'
+import { TaskRepository, runTask, type TaskProgress } from './tasks/queue'
 import { SerialTaskQueue } from './tasks/serial-queue'
 import { createExecutors } from './tasks/orchestrator'
 import type { Stage } from './tasks/stages'
@@ -324,14 +324,6 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('tasks:get', (_e, taskId: unknown) => {
-    try {
-      const row = new TaskRepository(ctx.db).get(str(taskId, 'taskId'))
-      return ok(row ?? null)
-    } catch (e) {
-      return err(e)
-    }
-  })
   // tasks:list (U1): history so the UI can show past/failed tasks.
   ipc.handle('tasks:list', (_e, lessonId: unknown) => {
     try {
@@ -406,17 +398,6 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('tasks:retry', async (_e, taskId: unknown) => {
-    try {
-      const id = str(taskId, 'taskId')
-      const repo = new TaskRepository(ctx.db)
-      const executors = makeExecutors()
-      const result = await retryTask(repo, id, executors, sendProgress, abortOf(id))
-      return ok({ result, task: repo.get(id) })
-    } catch (e) {
-      return err(e)
-    }
-  })
 
   // ---- notes ----
   ipc.handle('notes:latest', (_e, lessonId: unknown) => {
@@ -427,16 +408,6 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .get(id) as { note_json: string } | undefined
       if (row == null) return ok(null)
       return ok(parseNote(row.note_json) as Note)
-    } catch (e) {
-      return err(e)
-    }
-  })
-  ipc.handle('notes:versions', (_e, lessonId: unknown) => {
-    try {
-      const rows = ctx.db
-        .prepare('SELECT version, created_at FROM notes WHERE lesson_id = ? ORDER BY version DESC')
-        .all(str(lessonId, 'lessonId')) as Array<{ version: number; created_at: string }>
-      return ok(rows)
     } catch (e) {
       return err(e)
     }

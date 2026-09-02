@@ -105,8 +105,8 @@ function readAllLogs(logsDir) {
 const EXPECTED_BRIDGE = {
   school: ['login', 'logout', 'session', 'listCourses', 'addManualCourse', 'courseTree'],
   providers: ['list', 'save', 'remove', 'bind'],
-  tasks: ['create', 'get', 'list', 'run', 'runAsync', 'cancel', 'retry', 'onProgress'],
-  notes: ['latest', 'versions', 'exportMarkdown'],
+  tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'onProgress'],
+  notes: ['latest', 'exportMarkdown'],
   qa: ['ask', 'history'],
   settings: ['get', 'setCacheDir', 'setTheme', 'chooseLibrary', 'openPath'],
   log: ['rendererError']
@@ -121,9 +121,8 @@ const PROBES = [
   ['providers:list', 's.providers.list()', (r) => r.ok === true && Array.isArray(r.value?.providers) && Array.isArray(r.value?.bindings)],
   ['settings:get', 's.settings.get()', (r) => r.ok === true && typeof r.value?.theme === 'string'],
   ['tasks:list', 's.tasks.list()', (r) => r.ok === true && Array.isArray(r.value)],
-  ['tasks:get (missing)', "s.tasks.get('smoke-none')", (r) => r.ok === true && r.value === null],
+  ['tasks:cancel (missing)', "s.tasks.cancel('smoke-none')", (r) => r.ok === true && r.value?.cancelled === true],
   ['notes:latest (missing)', "s.notes.latest('smoke-none')", (r) => r.ok === true && r.value === null],
-  ['notes:versions (missing)', "s.notes.versions('smoke-none')", (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:history (missing)', "s.qa.history('smoke-none')", (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:ask (no binding)', "s.qa.ask('smoke-none', 'probe')", (r) => r.ok === false && typeof r.error === 'string'],
   ['providers:bind (bad capability)', "s.providers.bind('bogus', 'p', 'm')", (r) => r.ok === false && typeof r.error === 'string'],
