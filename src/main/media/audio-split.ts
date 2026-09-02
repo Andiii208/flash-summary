@@ -6,9 +6,10 @@
  * better but is more complex; fixed boundaries are the simpler reliable
  * option (PROGRESS note).
  *
- * The default is 210s (field-calibrated 2026-09-02): chat-style ASR
- * platforms carry the audio as a base64 data URL with a ~10MB encoded cap —
- * 210s of 16kHz mono ≈ 6.4MB raw ≈ 8.6MB base64, safely under. This also
+ * The default is 120s (field-calibrated 2026-09-02): chat-style ASR
+ * platforms carry the audio as a base64 data URL and the gateway resets
+ * connections above ~7MB encoded despite the documented 10MB — a 120s
+ * 16kHz-mono chunk is ~3.8MB raw / ~5.1MB base64, safely under. This also
  * satisfies the classic 25MB multipart cap.
  */
 import { join } from 'path'
@@ -20,7 +21,7 @@ export interface ChunkSpec {
   end: number
 }
 
-export const DEFAULT_CHUNK_SECONDS = 210
+export const DEFAULT_CHUNK_SECONDS = 120
 
 /** Divide a duration into chunk specs (≥1 chunk, last one clamped). */
 export function chunkPlan(durationSeconds: number, chunkSeconds = DEFAULT_CHUNK_SECONDS): ChunkSpec[] {
