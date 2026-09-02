@@ -7,10 +7,12 @@ export interface CourseTreeProps {
   collapsed: ReadonlySet<string>
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
+  /** V1.3: fetch the course's lesson catalog from the platform play page. */
+  onHarvestLessons: (courseId: string) => void
 }
 
 /** Sidebar course → lesson tree with hasNote badges (U2). */
-export function CourseTree({ tree, selectedLesson, collapsed, onToggle, onSelect }: CourseTreeProps): JSX.Element {
+export function CourseTree({ tree, selectedLesson, collapsed, onToggle, onSelect, onHarvestLessons }: CourseTreeProps): JSX.Element {
   if (tree.length === 0) {
     return <p class="msg">暂无课程，请先登录 CAS 刷新</p>
   }
@@ -24,6 +26,7 @@ export function CourseTree({ tree, selectedLesson, collapsed, onToggle, onSelect
           selectedLesson={selectedLesson}
           onToggle={onToggle}
           onSelect={onSelect}
+          onHarvestLessons={onHarvestLessons}
         />
       ))}
     </div>
@@ -36,9 +39,10 @@ interface CourseRowProps {
   selectedLesson: string
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
+  onHarvestLessons: (courseId: string) => void
 }
 
-function CourseRow({ course, expanded, selectedLesson, onToggle, onSelect }: CourseRowProps): JSX.Element {
+function CourseRow({ course, expanded, selectedLesson, onToggle, onSelect, onHarvestLessons }: CourseRowProps): JSX.Element {
   return (
     <div class="item course-item">
       <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded}>
@@ -48,7 +52,12 @@ function CourseRow({ course, expanded, selectedLesson, onToggle, onSelect }: Cou
       </button>
       {expanded &&
         (course.lessons.length === 0 ? (
-          <div class="lesson-row empty">无课时（可用手动添加后备入口）</div>
+          <div class="lesson-row empty">
+            无课时
+            <button class="btn small" onClick={() => onHarvestLessons(course.id)}>
+              抓取课时目录
+            </button>
+          </div>
         ) : (
           course.lessons.map((lesson) => (
             <button

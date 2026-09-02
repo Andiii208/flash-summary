@@ -11,6 +11,7 @@ import { extractAudio, extractKeyframes, run as runProcess } from '../media/ffmp
 import { chunkPlan, cutChunk } from '../media/audio-split'
 import { dedupeKeyframes, type Grid8x8 } from '../media/phash'
 import { downloadToFile } from '../media/download'
+import { sanitizeStreamUrl } from '../school/play-harvest'
 import type { StageExecutor, StageContext } from './queue'
 import type { Stage } from './stages'
 import type { SchoolClient } from '../school/client'
@@ -31,6 +32,22 @@ export interface OrchestratorDeps {
   gridDecoder: (path: string) => Grid8x8
   /** Stream fetch: url → local file. Default remuxes via ffmpeg; tests stub it. */
   fetchStream?: (url: string, target: string, signal?: AbortSignal) => Promise<void>
+  /**
+   * V1 play-page harvest: lesson streams + catalog from the platform play
+   * page (main-window navigation). Preferred path when the course row carries
+   * teclId/teclCode; school.lessonDetail stays as the legacy fallback.
+   */
+  harvestLesson?: (input: {
+    courseId: string
+    teclId: string
+    teclCode: string
+    selectLessonRef: string | null
+    signal?: AbortSignal
+  }) => Promise<{
+    teacherStreamUrl?: string
+    screenStreamUrl?: string
+    lessons?: Array<{ index: number; title: string; ref: string }>
+  }>
   /** Per-chunk ASR progress (U4): index and total let the UI show chunk-level progress. */
   onChunkProgress?: (ctx: StageContext, index: number, total: number) => void
   now?: () => Date
@@ -60,15 +77,74 @@ function stageOutput<T>(deps: OrchestratorDeps, taskId: string, stage: Stage): T
 }
 
 /**
- * 1. fetching_course — fetch lesson detail from the school API and upsert
- * the lesson row (metadata is retained permanently per spec §7).
+ * 1. fetching_course — resolve the lesson's stream URLs and upsert the lesson
+ * row. Two paths:
+ *  - play-page harvest (V1, preferred): the course row's teclId/teclCode feed
+ *    the play-page route; the main window reads video.src for both streams.
+ *    Full signed URLs flow to downloading_video via the stage output (never
+ *    into the lessons table or logs — sanitized paths only there).
+ *  - legacy JSON API fallback (school.lessonDetail) for rows without tecl
+ *    fields (manual add) or test setups; the JSON interface is currently
+ *    unreliable (GET missing params → 500) but may be fixed upstream.
+ * Metadata is retained permanently per spec §7.
  */
 export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
     try {
-      const lessonRow = deps.db.prepare('SELECT course_id FROM lessons WHERE id = ?').get(ctx.lessonId) as
-        | { course_id: string }
+      const lessonRow = deps.db.prepare('SELECT course_id, play_ref, title FROM lessons WHERE id = ?').get(ctx.lessonId) as
+        | { course_id: string; play_ref: string | null; title: string }
         | undefined
+      const courseRow =
+        lessonRow != null
+          ? (deps.db.prepare('SELECT id, tecl_id, tecl_code FROM courses WHERE id = ?').get(lessonRow.course_id) as
+              | { id: string; tecl_id: string | null; tecl_code: string | null }
+              | undefined)
+          : undefined
+
+      if (
+        deps.harvestLesson != null &&
+        courseRow != null &&
+        courseRow.tecl_id != null &&
+        courseRow.tecl_code != null
+      ) {
+        const harvest = await deps.harvestLesson({
+          courseId: courseRow.id,
+          teclId: courseRow.tecl_id,
+          teclCode: courseRow.tecl_code,
+          selectLessonRef: lessonRow?.play_ref ?? null,
+          signal: ctx.signal
+        })
+        if (harvest.teacherStreamUrl == null || harvest.screenStreamUrl == null) {
+          return { status: 'failed', error: '播放页收割未取得完整双流地址（教师流/屏幕流缺失）' }
+        }
+        // Durable lesson metadata: sanitized paths only (auth_key red line).
+        deps.db
+          .prepare('UPDATE lessons SET stream_urls_json = ?, fetched_at = ? WHERE id = ?')
+          .run(
+            JSON.stringify({
+              teacher: sanitizeStreamUrl(harvest.teacherStreamUrl),
+              screen: sanitizeStreamUrl(harvest.screenStreamUrl)
+            }),
+            nowIso(deps),
+            ctx.lessonId
+          )
+        // Catalog refresh: converge the tree with the platform's own list.
+        const upsertEntry = deps.db.prepare(
+          `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET title = excluded.title, play_ref = excluded.play_ref, fetched_at = excluded.fetched_at`
+        )
+        for (const entry of harvest.lessons ?? []) {
+          upsertEntry.run(`${courseRow.id}-L${entry.index}`, courseRow.id, entry.title, entry.ref, nowIso(deps))
+        }
+        // Transient handoff: full signed URLs for the download stage only.
+        recordStage(deps, ctx.taskId, ctx.stage, {
+          lessonId: ctx.lessonId,
+          teacherStreamUrl: harvest.teacherStreamUrl,
+          screenStreamUrl: harvest.screenStreamUrl
+        })
+        return { status: 'ok' }
+      }
+
       const detail = await deps.school.lessonDetail(ctx.lessonId, lessonRow?.course_id ?? '')
 
       deps.db
@@ -116,10 +192,22 @@ async function fetchStreamDefault(ffmpeg: string, url: string, target: string, s
 /** 2. downloading_video — fetch teacher + screen streams into cache (panorama never). */
 export function makeDownload(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
+    // V1: the fetching stage hands over full signed URLs (auth_key time-
+    // limited). Fall back to the lessons table for the legacy JSON path and
+    // pre-V1 rows (their URLs carry no signature anyway).
+    const fetched = stageOutput<{ lessonId?: string; teacherStreamUrl?: string; screenStreamUrl?: string }>(
+      deps,
+      ctx.taskId,
+      'fetching_course'
+    )
     const row = deps.db.prepare('SELECT stream_urls_json FROM lessons WHERE id = ?').get(ctx.lessonId) as
       | { stream_urls_json: string | null }
       | undefined
-    const urls = row?.stream_urls_json != null ? (JSON.parse(row.stream_urls_json) as { teacher?: string; screen?: string }) : {}
+    const stored = row?.stream_urls_json != null ? (JSON.parse(row.stream_urls_json) as { teacher?: string; screen?: string }) : {}
+    const urls = {
+      teacher: fetched?.teacherStreamUrl ?? stored.teacher,
+      screen: fetched?.screenStreamUrl ?? stored.screen
+    }
     if (urls.teacher == null || urls.screen == null) {
       return { status: 'failed', error: '课时缺少教师流或屏幕流地址，无法下载' }
     }

@@ -92,6 +92,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       school: ctx.school,
       chat: (capability) => ctx.chatFor(capability),
       gridDecoder: ctx.gridDecoder,
+      harvestLesson: (input) =>
+        ctx.harvestCoursePage(
+          { courseId: input.courseId, teclId: input.teclId, teclCode: input.teclCode },
+          input.selectLessonRef,
+          input.signal
+        ),
       onChunkProgress: (taskCtx, index, total) => {
         const base = stagePercent('transcribing')
         const span = stagePercent('extracting_visuals') - base
@@ -141,6 +147,36 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       }
       return ok(courses)
     } catch (e) {
+      return err(e)
+    }
+  })
+
+  // V1.3: harvest the course's «第N节课» catalog from the play page DOM in
+  // the main window (navigates away and back). Fire-and-forget from the
+  // renderer — the window unloads mid-call; the fresh mount re-reads the
+  // tree and shows the harvested lessons.
+  ipc.handle('school:harvestLessons', async (_e, courseId: unknown) => {
+    try {
+      const cid = str(courseId, 'courseId')
+      const course = ctx.db.prepare('SELECT id, tecl_id, tecl_code FROM courses WHERE id = ?').get(cid) as
+        | { id: string; tecl_id: string | null; tecl_code: string | null }
+        | undefined
+      if (course?.tecl_id == null || course?.tecl_code == null) {
+        throw new Error('课程缺少录播课时标识（teclId/teclCode），请先刷新课程列表')
+      }
+      const harvest = await ctx.harvestCoursePage({ courseId: cid, teclId: course.tecl_id, teclCode: course.tecl_code })
+      const now = new Date().toISOString()
+      const upsert = ctx.db.prepare(
+        `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET title = excluded.title, play_ref = excluded.play_ref, fetched_at = excluded.fetched_at`
+      )
+      for (const entry of harvest.lessons) {
+        upsert.run(`${cid}-L${entry.index}`, cid, entry.title, entry.ref, now)
+      }
+      ctx.logger.info(`harvestLessons: course=${cid} entries=${harvest.lessons.length}`)
+      return ok({ lessons: harvest.lessons.length })
+    } catch (e) {
+      ctx.logger.error(`harvestLessons failed: ${(e as Error).message}`)
       return err(e)
     }
   })

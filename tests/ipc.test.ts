@@ -58,7 +58,7 @@ describe('ipc handlers over a real context', () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     for (const channel of [
-      'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse',
+      'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse', 'school:harvestLessons',
       'providers:list', 'providers:save', 'providers:delete', 'providers:bind',
       'tasks:create', 'tasks:run',
       'notes:latest',
@@ -118,6 +118,43 @@ describe('ipc handlers over a real context', () => {
     const res = (await ipc.invoke('providers:bind', 'voice', 'p1', 'm')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('capability')
+  })
+
+  it('school:harvestLessons upserts the harvested catalog (V1.3)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, tecl_id, tecl_code, fetched_at) VALUES ('c1', '课程', '154717', 'TC1', '2026-08-30T00:00:00Z')").run()
+
+    // Stub the window-navigation primitive: the harvest returns three entries.
+    ctx.harvestCoursePage = async () => ({
+      teacherStreamUrl: 'https://dncvsvod/t.mp4?auth_key=x',
+      screenStreamUrl: 'https://dncvsvod/s.mp4?auth_key=y',
+      lessons: [
+        { index: 0, title: '第1节课', ref: '0' },
+        { index: 1, title: '第2节课', ref: '1' },
+        { index: 2, title: '第3节课', ref: '2' }
+      ]
+    })
+
+    const res = (await ipc.invoke('school:harvestLessons', 'c1')) as { ok: boolean; value?: { lessons: number } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.lessons).toBe(3)
+
+    const rows = db.prepare("SELECT id, title, play_ref FROM lessons WHERE course_id = 'c1' ORDER BY id").all() as Array<{ id: string; title: string; play_ref: string }>
+    expect(rows).toEqual([
+      { id: 'c1-L0', title: '第1节课', play_ref: '0' },
+      { id: 'c1-L1', title: '第2节课', play_ref: '1' },
+      { id: 'c1-L2', title: '第3节课', play_ref: '2' }
+    ])
+  })
+
+  it('school:harvestLessons rejects a course without tecl refs (refresh needed)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c-manual', '手动课程', '2026-08-30T00:00:00Z')").run()
+    const res = (await ipc.invoke('school:harvestLessons', 'c-manual')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('tecl')
   })
 
   it('tasks:create round-trips a task row through the repository', async () => {

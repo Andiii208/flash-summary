@@ -47,6 +47,11 @@ function createMainWindow(): BrowserWindow {
   return win
 }
 
+/** Clear the context's window reference when the current main window closes. */
+function bindWindowLifecycle(ctx: ReturnType<typeof createContext>, win: BrowserWindow): void {
+  win.on('closed', () => ctx.setMainWindow(null))
+}
+
 // Single-instance lock (U4): a second launch focuses the existing window
 // instead of opening a second process on the same app.db (WAL cross-write).
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
@@ -63,12 +68,18 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     const ctx = createContext()
     mainWindow = createMainWindow()
+    // In-window navigation flows (play-page harvest, embedded login) drive
+    // this window from main; recreated windows replace the reference.
+    ctx.setMainWindow(mainWindow)
+    bindWindowLifecycle(ctx, mainWindow)
     // The main window reference lets IPC push task progress to the renderer.
     registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         mainWindow = createMainWindow()
+        ctx.setMainWindow(mainWindow)
+        bindWindowLifecycle(ctx, mainWindow)
         registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
       }
     })

@@ -4,7 +4,7 @@
  * Constructed with injectable overrides so tests can drive the IPC layer
  * against stubs.
  */
-import { app } from 'electron'
+import { app, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { openDatabase, type Db } from './db/open'
 import { defaultLibraryRoot, ensureLibraryLayout, resolveCacheDir, exportsPath } from './library/paths'
@@ -13,6 +13,7 @@ import type { Cryptor } from './auth/session-crypto'
 import { loadSession, saveSession, clearSession } from './auth/session-store'
 import { openCasLoginWindow } from './auth/cas-login'
 import { SchoolClient } from './school/client'
+import { harvestPlayPage, type PlayHarvestResult, type PlayPageTarget } from './school/play-harvest'
 import { loadProviderSettings, upsertProvider, deleteProvider, setBinding } from './providers/store'
 import { resolveCapability, validateProvider, type ProviderSettings, type Capability, type ProviderConfig } from './providers/model'
 import { OpenAiCompatibleClient } from './providers/openai-client'
@@ -56,6 +57,14 @@ export interface AppContext {
   logger: Logger
   /** Directory holding the log files. */
   logsDir: () => string
+  /** Track the main window for in-window navigation flows (play-page harvest, V2 login). */
+  setMainWindow: (win: BrowserWindow | null) => void
+  /**
+   * Harvest one course's play page in the main window: streams + «第N节课»
+   * catalog. Navigates the window away and restores the app UI afterwards
+   * (also on failure). One harvest at a time — the single window is shared.
+   */
+  harvestCoursePage: (target: PlayPageTarget, selectLessonRef?: string | null, signal?: AbortSignal) => Promise<PlayHarvestResult>
 }
 
 export function createContext(overrides: Partial<{
@@ -117,6 +126,45 @@ export function createContext(overrides: Partial<{
     return new OpenAiCompatibleClient(resolved.provider.baseUrl, resolved.provider.apiKey)
   }
 
+  // Main-window reference for in-window navigation flows (V1 harvest, V2
+  // login). A second renderer never loads on this machine, so everything
+  // happens inside this one window.
+  let mainWindowRef: BrowserWindow | null = null
+  let harvestInFlight: Promise<PlayHarvestResult> | null = null
+
+  const restoreMainWindow = async (): Promise<void> => {
+    const win = mainWindowRef
+    if (win == null || win.isDestroyed()) return
+    const devUrl = process.env.ELECTRON_RENDERER_URL
+    if (devUrl != null && devUrl !== '') await win.loadURL(devUrl)
+    else await win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+
+  const harvestCoursePage = (
+    target: PlayPageTarget,
+    selectLessonRef?: string | null,
+    signal?: AbortSignal
+  ): Promise<PlayHarvestResult> => {
+    if (harvestInFlight != null) {
+      return Promise.reject(new Error('已有播放页抓取在进行中，请稍候'))
+    }
+    const win = mainWindowRef
+    if (win == null || win.isDestroyed()) {
+      return Promise.reject(new Error('主窗口不可用，无法打开播放页'))
+    }
+    harvestInFlight = harvestPlayPage(win, {
+      origin: CAS_BASE_URL,
+      target,
+      selectLessonRef: selectLessonRef ?? null,
+      restoreApp: restoreMainWindow,
+      logger,
+      signal
+    }).finally(() => {
+      harvestInFlight = null
+    })
+    return harvestInFlight
+  }
+
   return {
     libraryRoot,
     db,
@@ -174,6 +222,10 @@ export function createContext(overrides: Partial<{
     cacheDir,
     exportsDir: () => exportsPath(settings().libraryRoot),
     logger,
-    logsDir: () => join(userDataDir, 'logs')
+    logsDir: () => join(userDataDir, 'logs'),
+    setMainWindow: (win) => {
+      mainWindowRef = win
+    },
+    harvestCoursePage
   }
 }

@@ -23,7 +23,9 @@ const api: SeuSummaryBridge = {
     listCourses: (): Promise<ApiResult<CourseSummaryInfo[]>> => ipcRenderer.invoke('school:listCourses'),
     addManualCourse: (courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>> =>
       ipcRenderer.invoke('school:addManualCourse', courseId, lessonId),
-    courseTree: (): Promise<ApiResult<CourseTreeInfo[]>> => ipcRenderer.invoke('school:courseTree')
+    courseTree: (): Promise<ApiResult<CourseTreeInfo[]>> => ipcRenderer.invoke('school:courseTree'),
+    harvestLessons: (courseId: string): Promise<ApiResult<{ lessons: number }>> =>
+      ipcRenderer.invoke('school:harvestLessons', courseId)
   },
   providers: {
     list: (): Promise<ApiResult<ProvidersListResult>> => ipcRenderer.invoke('providers:list'),

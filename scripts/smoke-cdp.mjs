@@ -117,7 +117,7 @@ function findFreePort(start) {
 
 /** Expected bridge surface — keep in sync with src/shared/bridge.ts. */
 const EXPECTED_BRIDGE = {
-  school: ['login', 'logout', 'session', 'listCourses', 'addManualCourse', 'courseTree'],
+  school: ['login', 'logout', 'session', 'listCourses', 'addManualCourse', 'courseTree', 'harvestLessons'],
   providers: ['list', 'save', 'remove', 'bind'],
   tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'onProgress'],
   notes: ['latest', 'exportMarkdown'],
@@ -264,7 +264,7 @@ async function main() {
       const db = new Database(dbFile, { readonly: true })
       try {
         const migrations = db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n
-        record('L4 all five migrations applied', migrations === 5, `schema_migrations rows ${migrations}`)
+        record('L4 all six migrations applied', migrations === 6, `schema_migrations rows ${migrations}`)
         const courseRows = db.prepare('SELECT COUNT(*) AS n FROM courses').get().n
         record('L4 empty library has zero courses', courseRows === 0, `courses ${courseRows}`)
       } finally {

@@ -53,6 +53,8 @@ export interface SchoolBridge {
   listCourses(): Promise<ApiResult<CourseSummaryInfo[]>>
   addManualCourse(courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>>
   courseTree(): Promise<ApiResult<CourseTreeInfo[]>>
+  /** V1.3: harvest the course's lesson catalog from the play page (main window navigates away and back). */
+  harvestLessons(courseId: string): Promise<ApiResult<{ lessons: number }>>
 }
 
 export interface ProviderListInfo {

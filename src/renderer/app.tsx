@@ -41,7 +41,14 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           {showWelcome ? (
             <WelcomeGuide onLogin={state.login} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
           ) : (
-            <CourseTree tree={state.tree} selectedLesson={state.currentLesson} collapsed={state.collapsed} onToggle={state.toggleCourse} onSelect={state.selectLesson} />
+            <CourseTree
+              tree={state.tree}
+              selectedLesson={state.currentLesson}
+              collapsed={state.collapsed}
+              onToggle={state.toggleCourse}
+              onSelect={state.selectLesson}
+              onHarvestLessons={state.harvestLessons}
+            />
           )}
           <ManualAdd onAdd={state.addManual} />
         </aside>
@@ -112,6 +119,7 @@ interface AppState {
   logout: () => void
   refreshTree: () => void
   toggleCourse: (courseId: string) => void
+  harvestLessons: (courseId: string) => void
   selectLesson: (lessonId: string) => void
   addManual: (courseId: string, lessonId: string) => void
   createAndRun: () => void
@@ -289,6 +297,20 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       return next
     })
   }, [])
+
+  // V1.3: harvest a course's «第N节课» catalog from the play page. The main
+  // window navigates away mid-call, so this is fire-and-forget: the fresh
+  // mount after the harvest re-reads the local tree and shows the lessons.
+  const harvestLessons = useCallback(
+    (courseId: string): void => {
+      toast('正在打开播放页抓取课时目录，请稍候…')
+      bridge.school
+        .harvestLessons(courseId)
+        .then(async () => applyLocalTree())
+        .catch(() => undefined)
+    },
+    [bridge, toast, applyLocalTree]
+  )
 
   const selectLesson = useCallback(
     (lessonId: string): void => {
@@ -524,6 +546,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     logout,
     refreshTree,
     toggleCourse,
+    harvestLessons,
     selectLesson,
     addManual,
     createAndRun,

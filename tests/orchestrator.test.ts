@@ -82,6 +82,97 @@ describe('orchestrator stage executors', () => {
     expect(JSON.parse(lesson.stream_urls_json).teacher).toContain('teacher')
   })
 
+  it('fetching_course uses the play-page harvest when the course has tecl refs', async () => {
+    db.prepare("UPDATE courses SET tecl_id = '154717', tecl_code = '202620271B080329101' WHERE id = 'c1'").run()
+    const harvested: Array<{ ref: string | null }> = []
+    const deps = makeDeps({
+      harvestLesson: async (input) => {
+        harvested.push({ ref: input.selectLessonRef })
+        return {
+          teacherStreamUrl: 'https://dncvsvod.seu.edu.cn/vod4/SVR-CLOUD-c1-1170193-1.mp4?auth_key=secret-t1',
+          screenStreamUrl: 'https://dncvsvod.seu.edu.cn/vod4/SVR-CLOUD-c1-1170195-5.mp4?auth_key=secret-t2',
+          lessons: [
+            { index: 0, title: '第1节课', ref: '0' },
+            { index: 1, title: '第2节课', ref: '1' }
+          ]
+        }
+      }
+    })
+    const repo = new TaskRepository(db)
+    repo.create('t-h', 'l1')
+    const executors = createExecutors(deps)
+
+    const result = await executors.fetching_course({ taskId: 't-h', lessonId: 'l1', stage: 'fetching_course' })
+    expect(result).toEqual({ status: 'ok' })
+    expect(harvested).toEqual([{ ref: null }])
+
+    // Durable row: sanitized paths only — the auth_key must never land here.
+    const lesson = db.prepare('SELECT stream_urls_json FROM lessons WHERE id = ?').get('l1') as { stream_urls_json: string }
+    const stored = JSON.parse(lesson.stream_urls_json) as { teacher: string; screen: string }
+    expect(stored.teacher).toBe('https://dncvsvod.seu.edu.cn/vod4/SVR-CLOUD-c1-1170193-1.mp4')
+    expect(stored.screen).not.toContain('auth_key')
+
+    // Stage handoff: full signed URLs for the download stage.
+    const stageRow = db
+      .prepare("SELECT output_json FROM task_stage_outputs WHERE task_id = 't-h' AND stage = 'fetching_course'")
+      .get() as { output_json: string }
+    const handoff = JSON.parse(stageRow.output_json) as { teacherStreamUrl: string }
+    expect(handoff.teacherStreamUrl).toContain('auth_key')
+
+    // Catalog refresh upserts sibling lessons with play_ref.
+    const siblings = db.prepare("SELECT id, play_ref FROM lessons WHERE course_id = 'c1' ORDER BY id").all() as Array<{ id: string; play_ref: string | null }>
+    expect(siblings.map((s) => s.id)).toEqual(['c1-L0', 'c1-L1', 'l1'])
+  })
+
+  it('fetching_course passes the lesson play_ref so the harvest selects the entry', async () => {
+    db.prepare("UPDATE courses SET tecl_id = '154717', tecl_code = '202620271B080329101' WHERE id = 'c1'").run()
+    db.prepare("UPDATE lessons SET play_ref = '3' WHERE id = 'l1'").run()
+    const refs: Array<string | null> = []
+    const deps = makeDeps({
+      harvestLesson: async (input) => {
+        refs.push(input.selectLessonRef)
+        return {
+          teacherStreamUrl: 'https://vod/t.mp4?auth_key=x',
+          screenStreamUrl: 'https://vod/s.mp4?auth_key=y',
+          lessons: []
+        }
+      }
+    })
+    const repo = new TaskRepository(db)
+    repo.create('t-ref', 'l1')
+    const executors = createExecutors(deps)
+    await executors.fetching_course({ taskId: 't-ref', lessonId: 'l1', stage: 'fetching_course' })
+    expect(refs).toEqual(['3'])
+  })
+
+  it('downloading_video prefers the fetching stage output over the stored (sanitized) urls', async () => {
+    const deps = makeDeps()
+    const repo = new TaskRepository(db)
+    repo.create('t-dl', 'l1')
+    // Simulate a V1 harvest handoff: signed URLs in the stage output only.
+    db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES ('t-dl', 'fetching_course', ?)").run(
+      JSON.stringify({
+        lessonId: 'l1',
+        teacherStreamUrl: 'https://dncvsvod/t.mp4?auth_key=live-token',
+        screenStreamUrl: 'https://dncvsvod/s.mp4?auth_key=live-token'
+      })
+    )
+    db.prepare("UPDATE lessons SET stream_urls_json = ? WHERE id = 'l1'").run(
+      JSON.stringify({ teacher: 'https://dncvsvod/t.mp4', screen: 'https://dncvsvod/s.mp4' })
+    )
+    const seen: string[] = []
+    const executors = createExecutors({
+      ...deps,
+      fetchStream: async (url) => {
+        seen.push(url)
+      }
+    })
+
+    const result = await executors.downloading_video({ taskId: 't-dl', lessonId: 'l1', stage: 'downloading_video' })
+    expect(result).toEqual({ status: 'ok' })
+    expect(seen).toEqual(['https://dncvsvod/t.mp4?auth_key=live-token', 'https://dncvsvod/s.mp4?auth_key=live-token'])
+  })
+
   it('summarizing stores a versioned note from the model JSON', async () => {
     const deps = makeDeps()
     db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场\"}]', 'x', 'm', '2026-08-30T00:00:00Z')").run()
