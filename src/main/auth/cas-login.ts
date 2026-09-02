@@ -11,8 +11,9 @@
  * session's cookies until the call succeeds — then harvest the cookies and
  * close. Cookie values are never logged.
  */
-import { appendFileSync, mkdirSync } from 'fs'
+import { appendFileSync, mkdirSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
+import { tmpdir } from 'os'
 import { BrowserWindow, session, app, type Session, type Event, type RenderProcessGoneDetails, type WebContentsDidStartNavigationEventParams } from 'electron'
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
 import { directNetRequested } from '../net-diagnostics'
@@ -207,12 +208,15 @@ export function probeSaysLoggedIn(status: number, body: string): boolean {
 export async function openCasLoginWindow(options: CasLoginOptions): Promise<void> {
   const casUrl = options.casUrl ?? options.serviceOrigin
   await precheck(casUrl)
-  // Field 2026-09-02: SEU_DIAG_URL bypasses the data: loading page to isolate
-  // whether that first data: navigation is what stalls.
-  // SEU_DIAG_DEFAULT_SESSION=1 uses the default session to isolate the
-  // persist:seu-cas partition; SEU_DIAG_SHOW=1 creates the window visible.
+  // Field 2026-09-02: data: and http(s) loadURL navigations on this machine
+  // never commit (start only, field case below) while file:// loads reliably
+  // — so the loading page is a file:// document that navigates itself to the
+  // platform from the renderer side. SEU_DIAG_URL replaces the platform
+  // target to isolate the platform jump; SEU_DIAG_DEFAULT_SESSION=1 uses the
+  // default session to isolate the persist:seu-cas partition; SEU_DIAG_SHOW=1
+  // creates the window visible.
   const diagUrl = process.env.SEU_DIAG_URL ?? ''
-  const firstUrl = diagUrl !== '' ? diagUrl : `data:text/html;charset=utf-8,${encodeURIComponent(LOADING_HTML)}`
+  const platformUrl = diagUrl !== '' ? diagUrl : casUrl
   const startVisible = process.env.SEU_DIAG_SHOW === '1'
   const ses = process.env.SEU_DIAG_DEFAULT_SESSION === '1' ? session.defaultSession : session.fromPartition(PARTITION)
   traceSession(ses)
@@ -235,12 +239,12 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
 
   // Field 2026-09-02: the first navigation sometimes never commits. These
   // pins localize the stall — start without commit points at the renderer /
-  // network-service side, gone/unresponsive at the process level.
+  // network-service side, gone/unresponsive at the process level. (NAV commit
+  // is traced by the did-navigate handler below.)
   win.webContents.on(
     'did-start-navigation',
     (_details: Event<WebContentsDidStartNavigationEventParams>, url: string) => traceLine(`NAV start ${url.slice(0, 60)}`)
   )
-  win.webContents.on('did-navigate', (_event: Event, url: string) => traceLine(`NAV commit ${url.slice(0, 60)}`))
   win.webContents.on('did-finish-load', () => traceLine('NAV finish'))
   win.webContents.on('unresponsive', () => traceLine('NAV renderer unresponsive'))
   win.webContents.on('render-process-gone', (_event: Event, details: RenderProcessGoneDetails) =>
@@ -322,8 +326,22 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
     }
 
     // Redirect away from the platform (auth.seu.edu.cn) and back = done.
+    // The FIRST arrival on the platform origin clears the first-paint budget
+    // and starts the session probe — the loading page navigates itself here.
+    let platformArrived = false
     win.webContents.on('did-navigate', (_e, url) => {
       if (settled) return
+      traceLine(`NAV commit ${url.slice(0, 60)}`)
+      if (!platformArrived && url.startsWith(options.serviceOrigin)) {
+        platformArrived = true
+        traceLine('PLATFORM page committed')
+        if (firstPaintTimer != null) {
+          clearTimeout(firstPaintTimer)
+          firstPaintTimer = undefined
+        }
+        startPolling()
+        return
+      }
       if (!url.startsWith(options.serviceOrigin)) {
         leftOrigin = true
         return
@@ -349,31 +367,28 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
       }
     })
 
-    // Show the local loading page immediately, then load the platform login
-    // page. One wall-clock budget covers window creation → loading page →
-    // platform first paint: without it a hang on any of those steps is
+    // Show the local loading page immediately, then the page itself navigates
+    // to the platform. One wall-clock budget covers window creation → loading
+    // page → platform first commit: without it a hang on any of those steps is
     // invisible (no error, no window, no timeout — field case 2026-09-01).
     // The user's typing time after the platform page loads is not limited.
     firstPaintTimer = setTimeout(() => fail(casLoadErrorMessage('timeout', '首帧')), CAS_LOAD_TIMEOUT_MS)
     win.once('ready-to-show', () => win.show())
+    // file:// loads reliably on this machine while data:/http loadURL navigations
+    // never commit (field case 2026-09-02) — the loading page jumps to the
+    // platform itself, renderer-side.
+    const loadingPath = join(tmpdir(), `seu-login-loading-${process.pid}.html`)
+    const jump = `<script>setTimeout(function(){location.replace(${JSON.stringify(platformUrl)})},250)</script>`
+    writeFileSync(loadingPath, LOADING_HTML.replace('</body>', `${jump}</body>`))
     void win
-      .loadURL(firstUrl)
+      .loadFile(loadingPath)
       .then(() => {
         if (settled) return
-        traceLine('LOADING page ready -> loading platform page')
-        void win
-          .loadURL(casUrl)
-          .then(() => {
-            if (settled) return
-            traceLine('PLATFORM page loaded')
-            startPolling()
-            if (firstPaintTimer != null) {
-              clearTimeout(firstPaintTimer)
-              firstPaintTimer = undefined
-            }
-          })
-          .catch(() => undefined) // interrupted navigation; did-fail-load owns real failures
+        traceLine('LOADING page ready -> renderer navigates to platform')
       })
       .catch((err) => fail(`登录窗口初始化失败: ${(err as Error).message}`))
+      .finally(() => {
+        rmSync(loadingPath, { force: true })
+      })
   })
 }
