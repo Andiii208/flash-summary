@@ -14,6 +14,7 @@ The MVP focuses exclusively on `cvs.seu.edu.cn` recordings. Bilibili support, cl
 - The application automatically lists the user's courses and lessons. Manual entry of a course ID or playback URL remains available as a fallback.
 - The user selects lessons to process. Processing runs as a local task queue with visible progress and retry actions.
 - When a school session expires, the application opens the in-app CAS login window. After a successful re-login, the failed task resumes from its failed stage without restarting the application.
+  - Revision (2026-09-01, commit 47a9a46): silent auto-relogin was deliberately narrowed. Mounting reads the local course tree only (no network refresh); the CAS window opens only from an explicit user action (login / refresh buttons); a session expiry mid-task surfaces as a toast plus an honest logged-out badge, and the user retries the task manually after re-logging in. Rationale: with the login-window first-paint hang, auto-raised invisible windows made the UI look unresponsive (three stacked windows, no feedback). See PROGRESS.md "关键决定记录".
 
 ## 3. Core Pipeline
 
@@ -160,6 +161,7 @@ The selected application form is an Electron desktop application:
 1. On a Windows machine without a development environment, the installed application starts by double-clicking and requires no command-line operation.
 2. The user logs in through the in-app SEU CAS window and does not need to log in again after restarting within the session validity period.
 3. When the school session expires, the app opens CAS again and resumes the failed task after re-login.
+   - Revision (2026-09-01): per §2 revision, expiry surfaces as a toast + logged-out badge; CAS reopens on explicit user action and the failed task is retried manually afterwards.
 4. The app automatically lists courses and lessons. Manual course ID or playback URL entry works as a fallback.
 5. A real lesson of at least 45 minutes completes download, audio extraction, ASR, PPT/keyframe extraction, structured note generation, and follow-up Q&A.
 6. A failed or interrupted task resumes without redownloading, retranscribing, or re-extracting already successful outputs.
