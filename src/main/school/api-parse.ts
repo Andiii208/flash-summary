@@ -81,8 +81,9 @@ function findCourseArray(payload: unknown): unknown[] {
 
 /**
  * Parse the course list payload. Field names come from the cloud-classroom
- * front-end (courId/courName with verify?courId= usage); tolerate the older
- * shapes as well, mapping unknown fields to ''.
+ * front-end; the 2026-09-02 live sample (t-1 envelope {code,data:{records}})
+ * carries subjName / teacNames[] / acyeBeginYear+acyeEndYear. Older shapes
+ * stay as candidates; unknown fields map to ''.
  */
 export function parseCourseList(payload: unknown): CourseSummary[] {
   const list = findCourseArray(payload)
@@ -90,9 +91,10 @@ export function parseCourseList(payload: unknown): CourseSummary[] {
     .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
     .map((item) => {
       const id = pickString(item, ['courId', 'courseId', 'course_id', 'id', 'courseNo', 'resId'])
-      const name = pickString(item, ['courName', 'courseName', 'course_name', 'name', 'title'])
-      const term = pickString(item, ['term', 'semester', 'termName', 'yearName'])
-      const teacher = pickString(item, ['teacher', 'teacherName', 'lecturer', 'speakerName'])
+      const name = pickString(item, ['subjName', 'courName', 'courseName', 'course_name', 'name', 'title'])
+      const term = pickString(item, ['acyeName', 'term', 'semester', 'termName', 'yearName']) || pickYearRange(item)
+      const teacher = pickString(item, ['teacher', 'teacherName', 'lecturer', 'speakerName']) ||
+        pickStringArray(item, ['teacNames', 'teacherNames'])
       return { id, name, ...(term ? { term } : {}), ...(teacher ? { teacher } : {}) }
     })
     .filter((c) => c.id !== '')
@@ -156,6 +158,26 @@ function pickString(obj: Record<string, unknown>, keys: string[]): string {
     if (typeof v === 'string' && v !== '') return v
     if (typeof v === 'number') return String(v)
   }
+  return ''
+}
+
+/** First string[] field joined with '、' (real t-1 teachers arrive as arrays). */
+function pickStringArray(obj: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const v = obj[k]
+    if (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string')) {
+      const joined = (v as string[]).join('、')
+      if (joined !== '') return joined
+    }
+  }
+  return ''
+}
+
+/** "2026-2027" from the real t-1 academic-year fields, if present. */
+function pickYearRange(obj: Record<string, unknown>): string {
+  const begin = obj.acyeBeginYear
+  const end = obj.acyeEndYear
+  if (typeof begin === 'number' && typeof end === 'number') return `${begin}-${end}`
   return ''
 }
 

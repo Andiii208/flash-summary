@@ -79,4 +79,28 @@ describe('lesson detail parsing', () => {
   it('returns null when payload has no id', () => {
     expect(parseLessonDetail({ title: 'orphan' }, 'c1')).toBeNull()
   })
+
+  it('parses the live t-1 envelope (field sample 2026-09-02)', () => {
+    const courses = parseCourseList({
+      code: null,
+      data: {
+        pageIndex: 1,
+        records: [
+          {
+            id: 1691584,
+            subjName: '网络信息编程（全英文）',
+            subjCode: 'B0803291',
+            acyeBeginYear: 2026,
+            acyeEndYear: 2027,
+            teacNames: ['汪海', '李某'],
+            orgaNames: ['自动化学院'],
+            teclId: 154717
+          }
+        ]
+      }
+    })
+    expect(courses).toEqual([
+      { id: '1691584', name: '网络信息编程（全英文）', term: '2026-2027', teacher: '汪海、李某' }
+    ])
+  })
 })
