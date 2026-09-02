@@ -205,6 +205,15 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     if (res.ok && res.value != null) setHistory(res.value)
   }, [bridge])
 
+  const loadQaHistory = useCallback(async (lessonId: string): Promise<void> => {
+    // Recorded exchanges live in the library (desc); show them oldest first.
+    const res = await bridge.qa.history(lessonId)
+    if (res.ok && res.value != null) {
+      const rows = res.value as Array<{ question: string; answer: string }>
+      setQaEntries(rows.map((r) => ({ question: r.question, answer: r.answer })).reverse())
+    }
+  }, [bridge])
+
   useEffect(() => {
     let disposed = false
     void (async () => {
@@ -266,6 +275,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     setCurrentLesson('')
     setNote(null)
     setHistory([])
+    setQaEntries([])
     toast('已退出登录', 'info')
   }, [bridge, toast])
 
@@ -282,10 +292,12 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     (lessonId: string): void => {
       setCurrentLesson(lessonId)
       lessonRef.current = lessonId
+      setQaEntries([])
       void loadNote(lessonId)
       void loadHistory(lessonId)
+      void loadQaHistory(lessonId)
     },
-    [loadNote, loadHistory]
+    [loadNote, loadHistory, loadQaHistory]
   )
 
   const addManual = useCallback(
