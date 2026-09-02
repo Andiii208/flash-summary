@@ -76,9 +76,10 @@ describe('parseLessonEntries', () => {
     ])
   })
 
-  it('collapses consecutive duplicate labels (header + list item)', () => {
-    const entries = parseLessonEntries(['第1节课', '第1节课', '第2节课'])
+  it('collapses duplicate labels across regions (playing header + list)', () => {
+    const entries = parseLessonEntries(['第1节课', '第2节课', '第1节课', '第2节课'])
     expect(entries.map((e) => e.title)).toEqual(['第1节课', '第2节课'])
+    expect(entries.map((e) => e.ref)).toEqual(['0', '1'])
   })
 
   it('drops empty candidates', () => {

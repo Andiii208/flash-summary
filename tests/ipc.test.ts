@@ -124,6 +124,8 @@ describe('ipc handlers over a real context', () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     db.prepare("INSERT INTO courses (id, name, tecl_id, tecl_code, fetched_at) VALUES ('c1', '课程', '154717', 'TC1', '2026-08-30T00:00:00Z')").run()
+    // A stale harvested row from a previous catalog (shifted indexes).
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L9', 'c1', '第10节课', '9', '2026-08-30T00:00:00Z')").run()
 
     // Stub the window-navigation primitive: the harvest returns three entries.
     ctx.harvestCoursePage = async () => ({

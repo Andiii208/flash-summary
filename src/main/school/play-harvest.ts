@@ -78,16 +78,18 @@ export function lessonNumber(title: string): number | null {
 
 /**
  * Normalize the raw candidate texts collected by LESSON_CATALOG_SCRIPT into
- * entries. DOM order is the platform order; exact duplicate texts collapse
- * (a header and its list item can render the same label).
+ * entries. DOM order is the platform order (newest first in the field).
+ * The play page renders the «第N节» label in more than one region (playing
+ * header + list), so entries dedupe by title globally — within one course
+ * page the lesson numbering is unique.
  */
 export function parseLessonEntries(texts: string[]): HarvestedLessonEntry[] {
+  const seen = new Set<string>()
   const entries: HarvestedLessonEntry[] = []
-  let previous = ''
   for (const raw of texts) {
     const title = raw.trim()
-    if (title === '' || title === previous) continue
-    previous = title
+    if (title === '' || seen.has(title)) continue
+    seen.add(title)
     entries.push({ index: entries.length, title, ref: String(entries.length) })
   }
   return entries
@@ -191,7 +193,15 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 function assertStillOnPlatform(win: BrowserWindowLike, origin: string): void {
   const url = win.webContents.getURL()
   if (!url.startsWith(origin) && isCasLoginRedirect(url)) {
-    throw new SchoolApiError('session_expired', '播放页跳转到登录页，请先重新登录')
+    // Host+path only in the message: the query may carry OAuth params.
+    let where = '未知页面'
+    try {
+      const landing = new URL(url)
+      where = `${landing.host}${landing.pathname}`
+    } catch {
+      // Keep the generic fallback.
+    }
+    throw new SchoolApiError('session_expired', `播放页跳转到登录页（${where}），请先重新登录`)
   }
 }
 

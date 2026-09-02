@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OpenAiCompatibleClient, ProviderError, type ChatPart } from '../src/main/providers/openai-client'
+import { OpenAiCompatibleClient, ProviderError, chatOnlyAsrBaseUrls, type ChatPart } from '../src/main/providers/openai-client'
 
 interface RecordedCall {
   url: string
@@ -134,6 +134,7 @@ describe('ASR transcriptions (mock HTTP via FormData-free shim)', () => {
   })
 
   it('falls back to chat-style input_audio ASR when the multipart endpoint 404s (MiMo case)', async () => {
+    chatOnlyAsrBaseUrls.delete('https://api.xiaomimimo.com/v1')
     const original = globalThis.fetch
     const calls: Array<{ url: string; body: string }> = []
     globalThis.fetch = (async (url: string, init: { body?: BodyInit }) => {
@@ -156,27 +157,68 @@ describe('ASR transcriptions (mock HTTP via FormData-free shim)', () => {
       expect(calls[1].body).toContain('"type":"input_audio"')
       expect(calls[1].body).toContain('"model":"mimo-v2.5-asr"')
       expect(calls[1].body).toContain('data:audio/wav;base64,')
+
+      // Once marked, later chunks skip the multipart probe entirely (the
+      // gateway resets repeated large uploads to the missing endpoint).
+      calls.length = 0
+      await client.transcribe(new Blob(['fake-wav']), 'chunk-1.wav', 'mimo-v2.5-asr')
+      expect(calls).toHaveLength(1)
+      expect(calls[0].url).toBe('https://api.xiaomimimo.com/v1/chat/completions')
     } finally {
       globalThis.fetch = original
+      chatOnlyAsrBaseUrls.delete('https://api.xiaomimimo.com/v1')
     }
   })
 
-  it('does not fall back when the multipart failure is not a 404', async () => {
+  it('marks the platform and falls back when the multipart leg transport-fails', async () => {
+    chatOnlyAsrBaseUrls.delete('https://flaky.example/v1')
     const original = globalThis.fetch
-    let chatCalls = 0
+    const attempts: string[] = []
     globalThis.fetch = (async (url: string) => {
+      attempts.push(String(url))
       if (String(url).endsWith('/audio/transcriptions')) {
-        return { ok: false, status: 500, text: async () => 'boom' } as unknown as Response
+        throw Object.assign(new Error('fetch failed'), { cause: new Error('write ECONNRESET') })
       }
-      chatCalls++
-      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '语音内容' } }] }) } as unknown as Response
     }) as unknown as typeof fetch
     try {
-      const client = new OpenAiCompatibleClient('https://api.x.com/v1', 'sk-1')
-      await expect(client.transcribe(new Blob(['x']), 'a.wav', 'm')).rejects.toMatchObject({ status: 500 })
-      expect(chatCalls).toBe(0)
+      const client = new OpenAiCompatibleClient('https://flaky.example/v1', 'sk-1')
+      const text = await client.transcribe(new Blob(['x']), 'a.wav', 'm')
+      expect(text).toBe('语音内容')
+      expect(attempts.some((u) => u.endsWith('/chat/completions'))).toBe(true)
     } finally {
       globalThis.fetch = original
+      chatOnlyAsrBaseUrls.delete('https://flaky.example/v1')
+    }
+  })
+
+  it('treats auth failures on the multipart leg as fatal (no chat fallback)', async () => {
+    chatOnlyAsrBaseUrls.delete('https://authfail.example/v1')
+    const original = globalThis.fetch
+    globalThis.fetch = (async () =>
+      ({ ok: false, status: 401, text: async () => 'denied' }) as unknown as Response) as unknown as typeof fetch
+    try {
+      const client = new OpenAiCompatibleClient('https://authfail.example/v1', 'bad')
+      await expect(client.transcribe(new Blob(['x']), 'a.wav', 'm')).rejects.toMatchObject({ kind: 'auth' })
+    } finally {
+      globalThis.fetch = original
+      chatOnlyAsrBaseUrls.delete('https://authfail.example/v1')
+    }
+  })
+
+  it('returns empty string (not an error) when the ASR transcript is empty', async () => {
+    chatOnlyAsrBaseUrls.delete('https://silent.example/v1')
+    const original = globalThis.fetch
+    globalThis.fetch = (async () =>
+      ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '' } }] }) }) as unknown as Response) as unknown as typeof fetch
+    try {
+      const client = new OpenAiCompatibleClient('https://silent.example/v1', 'sk-1')
+      chatOnlyAsrBaseUrls.add('https://silent.example/v1')
+      const text = await client.transcribe(new Blob(['x']), 'a.wav', 'm')
+      expect(text).toBe('')
+    } finally {
+      globalThis.fetch = original
+      chatOnlyAsrBaseUrls.delete('https://silent.example/v1')
     }
   })
 })

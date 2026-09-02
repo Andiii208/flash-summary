@@ -166,13 +166,26 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       }
       const harvest = await ctx.harvestCoursePage({ courseId: cid, teclId: course.tecl_id, teclCode: course.tecl_code })
       const now = new Date().toISOString()
-      const upsert = ctx.db.prepare(
-        `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET title = excluded.title, play_ref = excluded.play_ref, fetched_at = excluded.fetched_at`
-      )
-      for (const entry of harvest.lessons) {
-        upsert.run(`${cid}-L${entry.index}`, cid, entry.title, entry.ref, now)
-      }
+      const keepIds = harvest.lessons.map((entry) => `${cid}-L${entry.index}`)
+      ctx.db.transaction(() => {
+        const upsert = ctx.db.prepare(
+          `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET title = excluded.title, play_ref = excluded.play_ref, fetched_at = excluded.fetched_at`
+        )
+        for (const entry of harvest.lessons) {
+          upsert.run(`${cid}-L${entry.index}`, cid, entry.title, entry.ref, now)
+        }
+        // The platform list shifts as lessons are added: drop previously
+        // harvested rows that this harvest no longer covers (an empty
+        // harvest keeps everything — likely a page-change anomaly).
+        if (keepIds.length > 0) {
+          ctx.db
+            .prepare(
+              `DELETE FROM lessons WHERE course_id = ? AND id LIKE ? AND id NOT IN (${keepIds.map(() => '?').join(',')})`
+            )
+            .run(cid, `${cid}-L%`, ...keepIds)
+        }
+      })()
       ctx.logger.info(`harvestLessons: course=${cid} entries=${harvest.lessons.length}`)
       return ok({ lessons: harvest.lessons.length })
     } catch (e) {
