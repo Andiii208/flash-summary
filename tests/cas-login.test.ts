@@ -5,6 +5,7 @@ import {
   CAS_PRECHECK_TIMEOUT_MS,
   describeJsonShape,
   PLATFORM_API_BASE_PATH,
+  probeSaysLoggedIn,
   SESSION_PROBE_PATH
 } from '../src/main/auth/cas-login'
 
@@ -43,6 +44,25 @@ describe('session probe targets the calibrated API (field 2026-09-01)', () => {
 
   it('API base has no -ui suffix (that is the static assets prefix)', () => {
     expect(PLATFORM_API_BASE_PATH).toBe('/jy-application-resourcemanage')
+  })
+})
+
+describe('probeSaysLoggedIn requires the platform business envelope', () => {
+  it('accepts the platform envelope shapes (code/result/data)', () => {
+    expect(probeSaysLoggedIn(200, '{"code":"0","result":{"records":[]}}')).toBe(true)
+    expect(probeSaysLoggedIn(200, '{"data":{"id":"l1"}}')).toBe(true)
+    expect(probeSaysLoggedIn(200, '[{"courId":"c1"}]')).toBe(true)
+  })
+
+  it('rejects a bare 2xx JSON without any envelope key (interception layer)', () => {
+    expect(probeSaysLoggedIn(200, '{"message":"blocked"}')).toBe(false)
+    expect(probeSaysLoggedIn(200, '"ok"')).toBe(false)
+  })
+
+  it('rejects non-2xx, non-JSON, and login-page bodies', () => {
+    expect(probeSaysLoggedIn(302, '{"code":"0"}')).toBe(false)
+    expect(probeSaysLoggedIn(200, '<html>authserver login</html>')).toBe(false)
+    expect(probeSaysLoggedIn(200, '{"code":"0"} trailing')).toBe(false)
   })
 })
 

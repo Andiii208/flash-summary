@@ -183,10 +183,25 @@ async function readWindowJwt(win: BrowserWindow): Promise<string> {
   }
 }
 
-/** The platform's own session: a 2xx JSON body that is not a login page. */
-function probeSaysLoggedIn(status: number, body: string): boolean {
+/**
+ * The platform's own session: a 2xx JSON body carrying the platform's
+ * business envelope (code/result/data — the shapes findCourseArray tolerates)
+ * and no login-page markers. A bare 2xx JSON injected by an interception
+ * layer must not read as logged in.
+ */
+export function probeSaysLoggedIn(status: number, body: string): boolean {
   const trimmed = body.trim()
-  return status >= 200 && status < 300 && (trimmed.startsWith('{') || trimmed.startsWith('[')) && !isCasLoginRedirect(trimmed)
+  if (status < 200 || status >= 300) return false
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false
+  if (isCasLoginRedirect(trimmed)) return false
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+    if (parsed == null || typeof parsed !== 'object') return false
+    if (Array.isArray(parsed)) return true
+    return ['code', 'result', 'data'].some((key) => key in (parsed as Record<string, unknown>))
+  } catch {
+    return false
+  }
 }
 
 export async function openCasLoginWindow(options: CasLoginOptions): Promise<void> {
