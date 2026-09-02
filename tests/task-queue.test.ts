@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
-import { TaskRepository, runTask, retryTask, type StageExecutor, type StageOutputStore, type TaskProgress } from '../src/main/tasks/queue'
+import { TaskRepository, runTask, retryTask, type StageExecutor, type TaskProgress } from '../src/main/tasks/queue'
 import type { StageResult } from '../src/main/tasks/stages'
 import { PIPELINE_STAGES, canTransition, stagePercent, type Stage } from '../src/main/tasks/stages'
 
@@ -21,15 +21,6 @@ afterEach(() => {
   db.close()
   rmSync(dir, { recursive: true, force: true })
 })
-
-function makeOutputs(): StageOutputStore & { recorded: string[] } {
-  const recorded: string[] = []
-  return {
-    recorded,
-    record: (ctx) => recorded.push(`${ctx.taskId}:${ctx.stage}`),
-    has: () => false
-  }
-}
 
 function executorsThatFailAt(failAt: Stage | '__never__'): { executors: Record<Stage, StageExecutor>; calls: Stage[] } {
   const calls: Stage[] = []
@@ -72,9 +63,8 @@ describe('runTask with failure injection', () => {
     const repo = new TaskRepository(db)
     repo.create('t1', 'l1')
     const { executors, calls } = executorsThatFailAt('__never__')
-    const outputs = makeOutputs()
 
-    const result = await runTask(repo, 't1', executors, outputs, 'fetching_course')
+    const result = await runTask(repo, 't1', executors, 'fetching_course')
     expect(result).toBe('succeeded')
     expect(calls).toEqual([...PIPELINE_STAGES])
     expect(repo.get('t1')?.state).toBe('succeeded')
@@ -84,9 +74,8 @@ describe('runTask with failure injection', () => {
     const repo = new TaskRepository(db)
     repo.create('t2', 'l1')
     const { executors, calls } = executorsThatFailAt('transcribing')
-    const outputs = makeOutputs()
 
-    const result = await runTask(repo, 't2', executors, outputs, 'fetching_course')
+    const result = await runTask(repo, 't2', executors, 'fetching_course')
     expect(result).toBe('failed')
     expect(calls).toEqual(['fetching_course', 'downloading_video', 'extracting_audio', 'transcribing'])
     const row = repo.get('t2')!
@@ -103,15 +92,12 @@ describe('retry resumes from the failed stage without redoing completed stages',
 
     // First attempt: fail at transcribing.
     const first = executorsThatFailAt('transcribing')
-    const outputs1 = makeOutputs()
-    await runTask(repo, 't3', first.executors, outputs1, 'fetching_course')
+    await runTask(repo, 't3', first.executors, 'fetching_course')
     expect(first.calls).toEqual(['fetching_course', 'downloading_video', 'extracting_audio', 'transcribing'])
-    expect(outputs1.recorded).toEqual(['t3:fetching_course', 't3:downloading_video', 't3:extracting_audio'])
 
-    // Retry attempt: only the failed stage and later run; earlier outputs are reused.
+    // Retry attempt: only the failed stage and later run.
     const second = executorsThatFailAt('__never__')
-    const outputs2 = makeOutputs()
-    const result = await retryTask(repo, 't3', second.executors, outputs2)
+    const result = await retryTask(repo, 't3', second.executors)
 
     expect(result).toBe('succeeded')
     expect(second.calls).toEqual(['transcribing', 'extracting_visuals', 'summarizing'])
@@ -125,10 +111,10 @@ describe('retry resumes from the failed stage without redoing completed stages',
     const repo = new TaskRepository(db)
     repo.create('t4', 'l1')
     const first = executorsThatFailAt('downloading_video')
-    await runTask(repo, 't4', first.executors, makeOutputs(), 'fetching_course')
+    await runTask(repo, 't4', first.executors, 'fetching_course')
 
     const second = executorsThatFailAt('summarizing')
-    await retryTask(repo, 't4', second.executors, makeOutputs())
+    await retryTask(repo, 't4', second.executors)
 
     const row = repo.get('t4')!
     expect(row.failed_stage).toBe('summarizing')
@@ -138,7 +124,7 @@ describe('retry resumes from the failed stage without redoing completed stages',
   it('refuses to retry a task that is not failed', async () => {
     const repo = new TaskRepository(db)
     repo.create('t5', 'l1')
-    await expect(retryTask(repo, 't5', executorsThatFailAt('pending' as Stage).executors, makeOutputs())).rejects.toThrowError(
+    await expect(retryTask(repo, 't5', executorsThatFailAt('pending' as Stage).executors)).rejects.toThrowError(
       /not in a failed state/
     )
   })
@@ -159,7 +145,7 @@ describe('U1: progress events and stage percent', () => {
     repo.create('p1', 'l1')
     const { executors } = executorsThatFailAt('__never__')
     const events: TaskProgress[] = []
-    const result = await runTask(repo, 'p1', executors, makeOutputs(), 'fetching_course', (p) => events.push(p))
+    const result = await runTask(repo, 'p1', executors, 'fetching_course', (p) => events.push(p))
     expect(result).toBe('succeeded')
     // one event per stage + final succeeded
     expect(events).toHaveLength(PIPELINE_STAGES.length + 1)
@@ -186,7 +172,7 @@ describe('U1: progress events and stage percent', () => {
       ])
     ) as unknown as Record<Stage, StageExecutor>
 
-    const result = await runTask(repo, 'p2', executors, makeOutputs(), 'fetching_course', (p) => events.push(p))
+    const result = await runTask(repo, 'p2', executors, 'fetching_course', (p) => events.push(p))
     expect(result).toBe('failed')
     const failed = events.find((e) => e.state === 'failed')
     expect(failed?.kind).toBe('session_expired')
@@ -198,7 +184,7 @@ describe('U1: progress events and stage percent', () => {
     const repo = new TaskRepository(db)
     repo.create('p3', 'l1')
     const { executors } = executorsThatFailAt('__never__')
-    const result = await runTask(repo, 'p3', executors, makeOutputs(), 'fetching_course')
+    const result = await runTask(repo, 'p3', executors, 'fetching_course')
     expect(result).toBe('succeeded')
   })
 })

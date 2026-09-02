@@ -20,7 +20,6 @@ import { ffmpegPath, ffprobePath } from './media/binaries'
 import { decodeGrid8x8 } from './media/grid'
 import type { Grid8x8 } from './media/phash'
 import { cleanStaleCache } from './tasks/cache-clean'
-import type { StageOutputStore } from './tasks/queue'
 import { getSetting, setSetting, readSettings, type AppSettings } from './settings/store'
 import { Logger } from './logger'
 
@@ -44,8 +43,6 @@ export interface AppContext {
   ffprobePath: () => string
   /** 8x8 luminance grid decoder for keyframe dedupe. */
   gridDecoder: (path: string) => Grid8x8
-  /** Stage output store shared by the task queue. */
-  stageOutputs: StageOutputStore
   /** Resolve which capability should answer lesson Q&A (text if bound, else multimodal). */
   qaCapability: () => Capability
   /** User settings (U3): libraryRoot/cacheDir/theme. */
@@ -168,10 +165,6 @@ export function createContext(overrides: Partial<{
     ffmpegPath,
     ffprobePath,
     gridDecoder: decodeGrid8x8,
-    stageOutputs: {
-      record: () => undefined,
-      has: () => false
-    },
     qaCapability: () => {
       const s = providers()
       return s.bindings.some((b) => b.capability === 'text') ? 'text' : 'multimodal'

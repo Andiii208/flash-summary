@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, utimesSync, mkdirSync, writeFileSync }
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
-import { TaskRepository, runTask, type StageExecutor, type StageOutputStore } from '../src/main/tasks/queue'
+import { TaskRepository, runTask, type StageExecutor } from '../src/main/tasks/queue'
 import { SerialTaskQueue } from '../src/main/tasks/serial-queue'
 import { cleanStaleCache } from '../src/main/tasks/cache-clean'
 import { PIPELINE_STAGES, type Stage } from '../src/main/tasks/stages'
@@ -31,10 +31,6 @@ afterEach(() => {
   db.close()
   rmSync(dir, { recursive: true, force: true })
 })
-
-function makeOutputs(): StageOutputStore {
-  return { record: () => undefined, has: () => false }
-}
 
 function allOkExecutors(): Record<Stage, StageExecutor> {
   const map = {} as Record<Stage, StageExecutor>
@@ -82,7 +78,7 @@ describe('task cancellation (U4)', () => {
     const controller = new AbortController()
     const events: string[] = []
     controller.abort()
-    const result = await runTask(repo, 't1', allOkExecutors(), makeOutputs(), 'fetching_course', (p) => events.push(p.kind ?? p.state), controller.signal)
+    const result = await runTask(repo, 't1', allOkExecutors(), 'fetching_course', (p) => events.push(p.kind ?? p.state), controller.signal)
     expect(result).toBe('failed')
     const row = repo.get('t1')
     expect(row?.state).toBe('failed')
@@ -99,7 +95,7 @@ describe('task cancellation (U4)', () => {
       executors[stage] = () =>
         stage === 'downloading_video' ? ({ status: 'failed', error: 'boom', kind: 'session_expired' } as const) : ({ status: 'ok' } as const)
     }
-    const result = await runTask(repo, 't1', executors, makeOutputs(), 'fetching_course')
+    const result = await runTask(repo, 't1', executors, 'fetching_course')
     expect(result).toBe('failed')
     const row = repo.get('t1')
     expect(row?.error_kind).toBe('session_expired')

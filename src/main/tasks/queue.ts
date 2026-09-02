@@ -14,13 +14,6 @@ export interface StageExecutor {
   (ctx: StageContext): Promise<StageResult> | StageResult
 }
 
-export interface StageOutputStore {
-  /** Persist the artifact of a completed stage, e.g. path or transcript json. */
-  record: (ctx: StageContext, output: unknown) => void
-  /** Whether the stage already has persisted output (reuse on retry). */
-  has: (ctx: StageContext) => boolean
-}
-
 /**
  * Serialize task row updates. States are CHECK-constrained in SQL; this
  * repository adds the transition guard rails.
@@ -81,8 +74,8 @@ export type ProgressListener = (p: TaskProgress) => void
  * Run (or resume) a task through the pipeline.
  *
  * `firstStage` is where execution starts: on retry it is the failed stage.
- * Completed stages before it are never re-executed — their outputs are
- * reused (checked via StageOutputStore.has and asserted in tests).
+ * Stage artifacts for resume come from the task_stage_outputs table, read
+ * directly by the orchestrator's stage executors.
  *
  * `onProgress` (optional) is invoked after every stage transition and on
  * completion/failure so the renderer can show live state.
@@ -95,7 +88,6 @@ export async function runTask(
   repo: TaskRepository,
   taskId: string,
   executors: Record<Stage, StageExecutor>,
-  outputs: StageOutputStore,
   firstStage: Stage,
   onProgress?: ProgressListener,
   signal?: AbortSignal
@@ -107,10 +99,6 @@ export async function runTask(
     }
     const stage = PIPELINE_STAGES[i]
     const ctx: StageContext = { taskId, lessonId: repo.get(taskId)!.lesson_id, stage, signal }
-
-    // Reuse fast-path: a stage with persisted output that lies before the
-    // resume point is skipped (test: failure injection + retry).
-    if (i < startIdx && outputs.has(ctx)) continue
 
     repo.markStage(taskId, stage)
     onProgress?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: stagePercent(stage) })
@@ -130,7 +118,6 @@ export async function runTask(
       })
       return 'failed'
     }
-    outputs.record(ctx, { stage, at: new Date().toISOString() })
   }
   repo.markSucceeded(taskId)
   onProgress?.({ taskId, state: 'succeeded', stage: null, message: '任务完成', percent: 100 })
@@ -154,7 +141,6 @@ export async function retryTask(
   repo: TaskRepository,
   taskId: string,
   executors: Record<Stage, StageExecutor>,
-  outputs: StageOutputStore,
   onProgress?: ProgressListener,
   signal?: AbortSignal
 ): Promise<'succeeded' | 'failed'> {
@@ -163,5 +149,5 @@ export async function retryTask(
   if (row.state !== 'failed' || row.failed_stage == null) {
     throw new Error(`task ${taskId} is not in a failed state (state=${row.state})`)
   }
-  return runTask(repo, taskId, executors, outputs, row.failed_stage as Stage, onProgress, signal)
+  return runTask(repo, taskId, executors, row.failed_stage as Stage, onProgress, signal)
 }

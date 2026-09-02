@@ -176,7 +176,6 @@ describe('six-stage pipeline end to end (real http + ffmpeg + provider wire form
         repo,
         'task-e2e',
         executors,
-        { record: () => undefined, has: () => false },
         'fetching_course',
         (p) => events.push(p)
       )

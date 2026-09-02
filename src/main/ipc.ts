@@ -48,8 +48,8 @@ function assertWritable(dir: string): void {
 
 /** Compute the resume point for a task: pending stages start from the top,
  *  failed tasks resume from their failed stage. */
-function firstStageFor(state: string, failedStage: string | null): Parameters<typeof runTask>[4] {
-  if (state === 'failed' && failedStage != null) return failedStage as Parameters<typeof runTask>[4]
+function firstStageFor(state: string, failedStage: string | null): Parameters<typeof runTask>[3] {
+  if (state === 'failed' && failedStage != null) return failedStage as Parameters<typeof runTask>[3]
   return 'fetching_course'
 }
 
@@ -356,7 +356,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const row = repo.get(id)
       if (row == null) throw new Error(`task ${id} not found`)
       const executors = makeExecutors()
-      const result = await runTask(repo, id, executors, ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress, abortOf(id))
+      const result = await runTask(repo, id, executors, firstStageFor(row.state, row.failed_stage), sendProgress, abortOf(id))
       return ok({ result, task: repo.get(id) })
     } catch (e) {
       return err(e)
@@ -374,7 +374,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const controller = new AbortController()
       abortControllers.set(id, controller)
       void queue.enqueue(id, () =>
-        runTask(repo, id, makeExecutors(), ctx.stageOutputs, firstStageFor(row.state, row.failed_stage), sendProgress, controller.signal)
+        runTask(repo, id, makeExecutors(), firstStageFor(row.state, row.failed_stage), sendProgress, controller.signal)
           .catch((e) => {
             sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
           })
@@ -411,7 +411,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const id = str(taskId, 'taskId')
       const repo = new TaskRepository(ctx.db)
       const executors = makeExecutors()
-      const result = await retryTask(repo, id, executors, ctx.stageOutputs, sendProgress, abortOf(id))
+      const result = await retryTask(repo, id, executors, sendProgress, abortOf(id))
       return ok({ result, task: repo.get(id) })
     } catch (e) {
       return err(e)
