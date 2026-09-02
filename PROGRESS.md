@@ -5,7 +5,7 @@
 ## 当前状态
 
 - **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；**v0.2.0 已发布**（tag + GitHub Release 资产在线）
-- **进行中**：用户实测暴露两问题——①登录链路已修复并实测成功（cvs→auth.seu.edu.cn OAuth2 静默授权→跳回 cvs→收割会话）；②课程 API 已校准（真实 base 无 -ui + jwt-token 头 + t-1 端点）。**头号堵点：Chromium 窗口加载 cvs.seu.edu.cn 间歇挂起**（node fetch/curl 秒通 200/40ms，Chromium 无请求无错误），导致重新登录拿不到新 JWT → listCourses 401 → 课程树空
+- **进行中**：登录链路与课程 API 校准已修复并实测成功（①cvs→auth.seu.edu.cn OAuth2 静默授权→跳回 cvs→收割会话；②真实 base 无 -ui + jwt-token 头 + t-1 端点）。**当前唯一活堵点：Chromium 窗口加载 cvs.seu.edu.cn 间歇挂起**（node fetch/curl 秒通 200/40ms，Chromium 无请求无错误），导致重新登录拿不到新 JWT → listCourses 401 → 课程树空
 - **下一步**：①用户完全退出 Clash Mi（托盘退出，非仅关开关）后重试登录；仍挂起则用 `--seu-direct-net`（或环境变量 SEU_DIRECT_NET=1）做 A/B 定位；②用户 F12 提供 t-1 响应样本 → parser 字段精修；③播放页请求（getList/m3u8）→ 校准课时与视频流发现；④四门禁 → 发 v0.2.1
 
 ## 环境实测（2026-08-30）
