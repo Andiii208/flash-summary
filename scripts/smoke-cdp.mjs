@@ -19,6 +19,7 @@
  * school API) and school:login (opens the CAS window).
  */
 import { spawn, execFileSync } from 'child_process'
+import { createServer } from 'http'
 import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -101,6 +102,19 @@ function readAllLogs(logsDir) {
     .join('\n')
 }
 
+/** First port at or after `start` that nothing is listening on. */
+function findFreePort(start) {
+  return new Promise((resolve) => {
+    const probe = (port) => {
+      const s = createServer()
+      s.once('error', () => probe(port + 1))
+      s.once('listening', () => s.close(() => resolve(port)))
+      s.listen(port, '127.0.0.1')
+    }
+    probe(start)
+  })
+}
+
 /** Expected bridge surface — keep in sync with src/shared/bridge.ts. */
 const EXPECTED_BRIDGE = {
   school: ['login', 'logout', 'session', 'listCourses', 'addManualCourse', 'courseTree'],
@@ -135,7 +149,7 @@ async function main() {
 
   const tmpDocs = mkdtempSync(join(tmpdir(), 'seu-smoke-docs-'))
   const tmpUserData = mkdtempSync(join(tmpdir(), 'seu-smoke-udata-'))
-  const port = 9300 + Math.floor(Math.random() * 200)
+  const port = await findFreePort(9300 + Math.floor(Math.random() * 200))
   let electron = null
 
   try {

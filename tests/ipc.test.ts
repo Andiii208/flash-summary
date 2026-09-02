@@ -349,7 +349,7 @@ describe('U1: task progress events', () => {
     await new Promise((r) => setTimeout(r, 100))
     expect(new TaskRepository(db).get(taskId)?.state).toBe('failed')
 
-    // Same channel, same task: firstStageFor resumes from fetching_course's successor.
+    // Same channel, same task: firstStageFor restarts it at the failed stage.
     await recIpc.invoke('tasks:runAsync', taskId)
     await new Promise((r) => setTimeout(r, 150))
 

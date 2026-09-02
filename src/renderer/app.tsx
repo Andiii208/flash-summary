@@ -195,20 +195,22 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     if (res.ok && res.value != null) setSettings(res.value)
   }, [bridge])
 
+  // All three lesson-scoped loaders guard on lessonRef: a slow response for
+  // a previously selected lesson must not overwrite the current one's panel.
   const loadNote = useCallback(async (lessonId: string): Promise<void> => {
     const res = (await bridge.notes.latest(lessonId)) as ApiResult<Note | null>
-    if (res.ok && res.value != null) setNote(res.value)
+    if (res.ok && res.value != null && lessonRef.current === lessonId) setNote(res.value)
   }, [bridge])
 
   const loadHistory = useCallback(async (lessonId: string): Promise<void> => {
     const res = await bridge.tasks.list(lessonId)
-    if (res.ok && res.value != null) setHistory(res.value)
+    if (res.ok && res.value != null && lessonRef.current === lessonId) setHistory(res.value)
   }, [bridge])
 
   const loadQaHistory = useCallback(async (lessonId: string): Promise<void> => {
     // Recorded exchanges live in the library (desc); show them oldest first.
     const res = await bridge.qa.history(lessonId)
-    if (res.ok && res.value != null) {
+    if (res.ok && res.value != null && lessonRef.current === lessonId) {
       const rows = res.value as Array<{ question: string; answer: string }>
       setQaEntries(rows.map((r) => ({ question: r.question, answer: r.answer })).reverse())
     }
