@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
+import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
 import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
@@ -30,21 +31,43 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
 
   return (
     <div class="app-shell">
-      <TopBar session={state.session} busy={state.sessionBusy} onLogin={state.login} onLogout={state.logout} />
+      <TopBar session={state.session} busy={state.sessionBusy} running={state.running} onLogin={state.login} onLogout={state.logout} />
       <ToastArea toasts={state.toasts} />
       <div class="app-main">
         <aside class="sidebar">
-          <h2>课程</h2>
-          <button class="btn small" onClick={state.refreshTree}>
-            刷新课程
-          </button>
+          <div class="sidebar-head">
+            <h2>课程</h2>
+            <button class="btn small ghost" onClick={state.refreshTree} disabled={state.session === 'logged_out'}>
+              刷新课程
+            </button>
+          </div>
+          {state.tree.length > 0 && (
+            <>
+              <input
+                class="search-input"
+                type="search"
+                placeholder="搜索课程 / 教师 / 学期…"
+                value={state.query}
+                onInput={(e) => state.setQuery((e.target as HTMLInputElement).value)}
+              />
+              <div class="tree-tools">
+                <button class="btn small ghost" onClick={state.expandAll}>
+                  全部展开
+                </button>
+                <button class="btn small ghost" onClick={state.collapseAll}>
+                  全部收起
+                </button>
+              </div>
+            </>
+          )}
           {showWelcome ? (
             <WelcomeGuide onLogin={state.login} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
           ) : (
             <CourseTree
-              tree={state.tree}
+              tree={state.filteredTree}
               selectedLesson={state.currentLesson}
-              collapsed={state.collapsed}
+              expanded={state.expanded}
+              searching={state.query.trim() !== ''}
               onToggle={state.toggleCourse}
               onSelect={state.selectLesson}
               onHarvestLessons={state.harvestLessons}
@@ -67,12 +90,15 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               busy={state.submitBusy}
               progress={state.progress}
               history={state.history}
+              globalHistory={state.globalHistory}
               onCreateRun={state.createAndRun}
               onRetry={state.retryTask}
               onCancel={state.cancelTask}
             />
           )}
-          {tab === 'notes' && <NoteViewer note={state.note} onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined} />}
+          {tab === 'notes' && (
+            <NoteViewer note={state.note} onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined} onCopy={state.copyNote} />
+          )}
           {tab === 'qa' && <QaPanel entries={state.qaEntries} busy={state.qaBusy} onAsk={state.ask} />}
           {tab === 'settings' && (
             <SettingsPanel
@@ -101,11 +127,17 @@ interface AppState {
   session: SessionState
   sessionBusy: boolean
   tree: CourseTreeInfo[]
+  /** Courses filtered by the sidebar search query. */
+  filteredTree: CourseTreeInfo[]
   treeLoaded: boolean
-  collapsed: ReadonlySet<string>
+  /** Courses the user explicitly expanded (default: all collapsed). */
+  expanded: ReadonlySet<string>
+  query: string
   currentLesson: string
   note: Note | null
   history: TaskRowInfo[]
+  /** Recent tasks across all lessons (serial queue visibility). */
+  globalHistory: TaskRowInfo[]
   progress: TaskProgressInfo | null
   running: boolean
   submitBusy: boolean
@@ -119,6 +151,9 @@ interface AppState {
   logout: () => void
   refreshTree: () => void
   toggleCourse: (courseId: string) => void
+  expandAll: () => void
+  collapseAll: () => void
+  setQuery: (q: string) => void
   harvestLessons: (courseId: string) => void
   selectLesson: (lessonId: string) => void
   addManual: (courseId: string, lessonId: string) => void
@@ -129,10 +164,27 @@ interface AppState {
   saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
   removeProvider: (id: string) => void
   exportNote: (lessonId: string) => void
+  copyNote: () => void
   setCacheDir: (dir: string) => void
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   chooseLibrary: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
+}
+
+/** Rough percent per stage for restored in-flight tasks (UI hint only). */
+const RESTORE_PERCENT: Record<string, number> = {
+  pending: 2,
+  fetching_course: 10,
+  downloading_video: 35,
+  extracting_audio: 55,
+  transcribing: 70,
+  extracting_visuals: 88,
+  summarizing: 94
+}
+
+/** True while the task still belongs to the serial queue. */
+function isActiveState(state: string): boolean {
+  return state !== 'succeeded' && state !== 'failed'
 }
 
 function useAppState(bridge: SeuSummaryBridge): AppState {
@@ -140,10 +192,12 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   const [sessionBusy, setSessionBusy] = useState(false)
   const [tree, setTree] = useState<CourseTreeInfo[]>([])
   const [treeLoaded, setTreeLoaded] = useState(false)
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const [query, setQuery] = useState('')
   const [currentLesson, setCurrentLesson] = useState('')
   const [note, setNote] = useState<Note | null>(null)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
+  const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
   const [running, setRunning] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
@@ -224,6 +278,11 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     }
   }, [bridge])
 
+  const loadGlobalHistory = useCallback(async (): Promise<void> => {
+    const res = await bridge.tasks.list()
+    if (res.ok && res.value != null) setGlobalHistory(res.value)
+  }, [bridge])
+
   useEffect(() => {
     let disposed = false
     void (async () => {
@@ -237,8 +296,28 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     void applyLocalTree()
     void refreshProviders()
     void refreshSettings()
+    void loadGlobalHistory()
+    // The renderer unloads during in-window navigations (harvest/未来登录) —
+    // an in-flight task keeps running in main; restore its live state here.
+    void (async () => {
+      const res = await bridge.tasks.list()
+      if (disposed || !res.ok || res.value == null) return
+      setGlobalHistory(res.value)
+      const active = res.value.find((t) => isActiveState(t.state))
+      if (active != null) {
+        setRunning(true)
+        setProgress({
+          taskId: active.id,
+          state: active.state,
+          stage: active.failed_stage,
+          message: '任务进行中（界面重载后恢复显示）',
+          percent: RESTORE_PERCENT[active.state] ?? 5
+        })
+      }
+    })()
     const off = bridge.tasks.onProgress((p) => {
       setProgress(p)
+      if (p.state === 'succeeded' || p.state === 'failed') void loadGlobalHistory()
       const lid = lessonRef.current
       if (p.state === 'succeeded') {
         setRunning(false)
@@ -257,7 +336,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory])
 
   const login = useCallback((): void => {
     if (sessionBusy) return // one login window at a time (stacked windows field case 2026-09-01)
@@ -290,13 +369,35 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   }, [bridge, toast])
 
   const toggleCourse = useCallback((courseId: string): void => {
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(courseId)) next.delete(courseId)
       else next.add(courseId)
       return next
     })
   }, [])
+
+  const expandAll = useCallback((): void => {
+    setExpanded(new Set(tree.map((c) => c.id)))
+  }, [tree])
+
+  const collapseAll = useCallback((): void => {
+    setExpanded(new Set())
+  }, [])
+
+  const filteredTree = useMemo<CourseTreeInfo[]>(() => {
+    const q = query.trim().toLowerCase()
+    if (q === '') return tree
+    return tree
+      .filter((c) => {
+        const haystack = `${c.name} ${c.teacher ?? ''} ${c.term ?? ''} ${c.id}`.toLowerCase()
+        return haystack.includes(q) || c.lessons.some((l) => l.title.toLowerCase().includes(q))
+      })
+      .map((c) => {
+        const lessons = c.lessons.filter((l) => l.title.toLowerCase().includes(q))
+        return lessons.length > 0 && lessons.length < c.lessons.length ? { ...c, lessons } : c
+      })
+  }, [tree, query])
 
   // V1.3: harvest a course's «第N节课» catalog from the play page. The main
   // window navigates away mid-call, so this is fire-and-forget: the fresh
@@ -460,6 +561,14 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     [bridge, toast]
   )
 
+  const copyNote = useCallback((): void => {
+    if (note == null) return
+    void navigator.clipboard
+      .writeText(noteToMarkdown(note, '课程笔记'))
+      .then(() => toast('已复制 Markdown 到剪贴板', 'success'))
+      .catch(() => toast('复制失败', 'error'))
+  }, [note, tree, currentLesson, toast])
+
   const setCacheDir = useCallback(
     (dir: string): void => {
       void (async () => {
@@ -528,11 +637,14 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     session,
     sessionBusy,
     tree,
+    filteredTree,
     treeLoaded,
-    collapsed,
+    expanded,
+    query,
     currentLesson,
     note,
     history,
+    globalHistory,
     progress,
     running,
     submitBusy,
@@ -546,6 +658,9 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     logout,
     refreshTree,
     toggleCourse,
+    expandAll,
+    collapseAll,
+    setQuery,
     harvestLessons,
     selectLesson,
     addManual,
@@ -556,6 +671,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     saveProvider,
     removeProvider,
     exportNote,
+    copyNote,
     setCacheDir,
     setTheme,
     chooseLibrary,

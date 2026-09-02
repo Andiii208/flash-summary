@@ -71,7 +71,7 @@ describe('WelcomeGuide', () => {
 describe('TopBar', () => {
   it('shows login when logged out and fires onLogin', () => {
     const onLogin = vi.fn()
-    const host = mount(<TopBar session="logged_out" busy={false} onLogin={onLogin} onLogout={() => undefined} />)
+    const host = mount(<TopBar session="logged_out" busy={false} running={false} onLogin={onLogin} onLogout={() => undefined} />)
     expect(host.textContent).toContain('登录 CAS')
     click(host.querySelector('button'))
     expect(onLogin).toHaveBeenCalledOnce()
@@ -79,7 +79,7 @@ describe('TopBar', () => {
 
   it('shows logout when logged in with a session badge', () => {
     const onLogout = vi.fn()
-    const host = mount(<TopBar session="logged_in" busy={false} onLogin={() => undefined} onLogout={onLogout} />)
+    const host = mount(<TopBar session="logged_in" busy={false} running={false} onLogin={() => undefined} onLogout={onLogout} />)
     expect(host.textContent).toContain('已登录')
     expect(host.querySelector('.session-badge.logged_in')).not.toBeNull()
     click(host.querySelector('button'))

@@ -7,10 +7,12 @@ import { VIEW_LABELS } from '../labels'
 export interface NoteViewerProps {
   note: Note | null
   onExport?: () => void
+  /** Copy the markdown rendering to the clipboard (best-effort). */
+  onCopy?: () => void
 }
 
 /** Four-view note reader (spec §5): one note JSON, four projections. */
-export function NoteViewer({ note, onExport }: NoteViewerProps): JSX.Element {
+export function NoteViewer({ note, onExport, onCopy }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
   return (
     <div class="note-viewer">
@@ -22,11 +24,18 @@ export function NoteViewer({ note, onExport }: NoteViewerProps): JSX.Element {
             </button>
           ))}
         </nav>
-        {onExport != null && (
-          <button class="btn small" onClick={onExport}>
-            导出 Markdown
-          </button>
-        )}
+        <div class="note-actions">
+          {onCopy != null && note != null && (
+            <button class="btn small" onClick={onCopy}>
+              复制 Markdown
+            </button>
+          )}
+          {onExport != null && (
+            <button class="btn small" onClick={onExport}>
+              导出 Markdown
+            </button>
+          )}
+        </div>
       </div>
       <div class="note-body">
         {note == null ? (

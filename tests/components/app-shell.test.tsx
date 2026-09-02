@@ -90,6 +90,8 @@ async function waitForGone(selector: string): Promise<void> {
 }
 
 async function selectFirstLesson(bridge: SeuSummaryBridge): Promise<void> {
+  await waitForSelector('.course-head')
+  if (document.querySelector('.lesson-row') == null) click(document.querySelector('.course-head'))
   await waitForSelector('.lesson-row')
   click(document.querySelector('.lesson-row'))
   await vi.waitFor(() => {
@@ -113,7 +115,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   it('starts with an honest logged_out badge, four tabs, and the loaded tree', async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
-    await waitForSelector('.lesson-row')
+    await waitForSelector('.course-head')
     expect(host.querySelector('[data-testid="session-badge"]')?.className).toContain('logged_out')
     expect(host.querySelectorAll('.tabs button')).toHaveLength(4)
     expect(bridge.school.session).toHaveBeenCalled()
@@ -160,6 +162,8 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     const bridge = makeBridge()
     qaHistoryRows = [{ question: '问', answer: '答' }]
     const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.course-head')
+    click(document.querySelector('.course-head'))
     await waitForSelector('.lesson-row')
 
     // logged_out topbar shows the login button first.

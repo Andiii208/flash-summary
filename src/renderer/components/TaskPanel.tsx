@@ -10,6 +10,8 @@ export interface TaskPanelProps {
   busy: boolean
   progress: TaskProgressInfo | null
   history: TaskRowInfo[]
+  /** Recent tasks across all lessons (shown while no lesson is selected). */
+  globalHistory: TaskRowInfo[]
   onCreateRun: () => void
   onRetry: (taskId: string) => void
   onCancel: () => void
@@ -21,6 +23,7 @@ export function TaskPanel({
   busy,
   progress,
   history,
+  globalHistory,
   onCreateRun,
   onRetry,
   onCancel
@@ -30,7 +33,11 @@ export function TaskPanel({
     <section class="task-panel">
       <h2>任务</h2>
       {noLesson ? (
-        <EmptyState title="先选择课时" hint="从左侧课程树点击一个课时，即可创建并运行任务。" />
+        <>
+          <EmptyState title="先选择课时" hint="从左侧课程树点击一个课时，即可创建并运行任务。" />
+          <h3 class="subheading">全部任务（最近 50 条）</h3>
+          <HistoryList history={globalHistory} onRetry={onRetry} disabled={running} />
+        </>
       ) : (
         <>
           <p class="msg">已选课时：{currentLesson}</p>
@@ -81,7 +88,10 @@ function HistoryList({ history, onRetry, disabled }: HistoryListProps): JSX.Elem
     <div class="history-list">
       {history.map((row) => (
         <div key={row.id} class="item history-row">
-          <span class="history-state">{stageLabel(row.state, row.failed_stage)}</span>
+          <span class={`history-state state-${row.state}`}>{stageLabel(row.state, row.failed_stage)}</span>
+          <span class="history-lesson" title={row.lesson_id}>
+            {row.lesson_id}
+          </span>
           {row.error_message != null && <span class="history-error">{row.error_message}</span>}
           {row.state === 'failed' && (
             <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled}>

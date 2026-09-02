@@ -4,17 +4,19 @@ import type { CourseTreeInfo } from '../../shared/bridge'
 export interface CourseTreeProps {
   tree: CourseTreeInfo[]
   selectedLesson: string
-  collapsed: ReadonlySet<string>
+  /** Courses the user explicitly expanded; empty by default (all collapsed). */
+  expanded: ReadonlySet<string>
+  /** Non-empty while the user searches: matches render expanded regardless. */
+  searching: boolean
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
-  /** V1.3: fetch the course's lesson catalog from the platform play page. */
   onHarvestLessons: (courseId: string) => void
 }
 
-/** Sidebar course → lesson tree with hasNote badges (U2). */
-export function CourseTree({ tree, selectedLesson, collapsed, onToggle, onSelect, onHarvestLessons }: CourseTreeProps): JSX.Element {
+/** Sidebar course → lesson tree with search, count chips, and note badges. */
+export function CourseTree({ tree, selectedLesson, expanded, searching, onToggle, onSelect, onHarvestLessons }: CourseTreeProps): JSX.Element {
   if (tree.length === 0) {
-    return <p class="msg">暂无课程，请先登录 CAS 刷新</p>
+    return <p class="msg">{searching ? '没有匹配的课程' : '暂无课程，请先登录 CAS 刷新'}</p>
   }
   return (
     <div class="course-tree">
@@ -22,7 +24,7 @@ export function CourseTree({ tree, selectedLesson, collapsed, onToggle, onSelect
         <CourseRow
           key={course.id}
           course={course}
-          expanded={!collapsed.has(course.id)}
+          expanded={searching || expanded.has(course.id)}
           selectedLesson={selectedLesson}
           onToggle={onToggle}
           onSelect={onSelect}
@@ -47,13 +49,14 @@ function CourseRow({ course, expanded, selectedLesson, onToggle, onSelect, onHar
     <div class="item course-item">
       <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded}>
         <span class="caret">{expanded ? '▾' : '▸'}</span>
-        {course.name}
-        <span class="course-meta">（{course.term ?? course.teacher ?? course.id}）</span>
+        <span class="course-name">{course.name}</span>
+        {course.lessons.length > 0 && <span class="course-count">{course.lessons.length}</span>}
+        <span class="course-meta">{course.term ?? course.teacher ?? ''}</span>
       </button>
       {expanded &&
         (course.lessons.length === 0 ? (
           <div class="lesson-row empty">
-            无课时
+            还没有课时目录
             <button class="btn small" onClick={() => onHarvestLessons(course.id)}>
               抓取课时目录
             </button>

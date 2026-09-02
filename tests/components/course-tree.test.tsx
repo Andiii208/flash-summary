@@ -10,7 +10,7 @@ const TREE: CourseTreeInfo[] = [
 
 describe('CourseTree', () => {
   it('renders courses and lessons with hasNote badges', () => {
-    const host = mount(<CourseTree tree={TREE} selectedLesson="" collapsed={new Set()} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
+    const host = mount(<CourseTree tree={TREE} selectedLesson="" searching={false} expanded={new Set(['c1', 'c2'])} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
     const heads = host.querySelectorAll('.course-head')
     expect(heads).toHaveLength(2)
     expect(heads[0]!.textContent).toContain('数据结构')
@@ -22,33 +22,33 @@ describe('CourseTree', () => {
 
   it('fires onToggle when a collapsed course header is clicked', () => {
     const onToggle = vi.fn()
-    const host = mount(<CourseTree tree={TREE} selectedLesson="" collapsed={new Set(['c1'])} onToggle={onToggle} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
+    const host = mount(<CourseTree tree={TREE} selectedLesson="" searching={false} expanded={new Set(['c2'])} onToggle={onToggle} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
     expect(host.querySelectorAll('.lesson-row:not(.empty)')).toHaveLength(0)
     click(host.querySelector('.course-head'))
     expect(onToggle).toHaveBeenCalledWith('c1')
   })
 
   it('highlights the selected lesson row', () => {
-    const host = mount(<CourseTree tree={TREE} selectedLesson="l2" collapsed={new Set()} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
+    const host = mount(<CourseTree tree={TREE} selectedLesson="l2" searching={false} expanded={new Set(['c1', 'c2'])} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
     const selected = host.querySelector('.lesson-row.selected')
     expect(selected?.textContent).toContain('第2讲 线性表')
   })
 
   it('fires onSelect with the lesson id', () => {
     const onSelect = vi.fn()
-    const host = mount(<CourseTree tree={TREE} selectedLesson="" collapsed={new Set()} onToggle={() => undefined} onSelect={onSelect} onHarvestLessons={() => undefined} />)
+    const host = mount(<CourseTree tree={TREE} selectedLesson="" searching={false} expanded={new Set(['c1', 'c2'])} onToggle={() => undefined} onSelect={onSelect} onHarvestLessons={() => undefined} />)
     click(host.querySelector('.lesson-row'))
     expect(onSelect).toHaveBeenCalledWith('l1')
   })
 
   it('shows an empty hint when there are no courses', () => {
-    const host = mount(<CourseTree tree={[]} selectedLesson="" collapsed={new Set()} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
+    const host = mount(<CourseTree tree={[]} selectedLesson="" searching={false} expanded={new Set(['c1', 'c2'])} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={() => undefined} />)
     expect(host.textContent).toContain('暂无课程')
   })
 
   it('offers the harvest action on a course without lessons (V1.3)', () => {
     const onHarvestLessons = vi.fn()
-    const host = mount(<CourseTree tree={TREE} selectedLesson="" collapsed={new Set()} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={onHarvestLessons} />)
+    const host = mount(<CourseTree tree={TREE} selectedLesson="" searching={false} expanded={new Set(['c1', 'c2'])} onToggle={() => undefined} onSelect={() => undefined} onHarvestLessons={onHarvestLessons} />)
     const harvestButton = host.querySelector('.lesson-row.empty button')
     expect(harvestButton?.textContent).toContain('抓取课时目录')
     click(harvestButton)
