@@ -165,11 +165,11 @@ describe('makeSummarize multimodal (U4)', () => {
   it('embeds real image parts as data URLs, capped at MAX_SUMMARIZE_IMAGES', async () => {
     seedEvidence(25)
     let captured: Array<{ role: string; content: unknown }> = []
-    const chat = vi.fn(async (messages: unknown[]) => {
+    const chatJson = vi.fn(async (messages: unknown[]) => {
       captured = messages as Array<{ role: string; content: unknown }>
       return JSON.stringify(validNote)
     })
-    const deps = makeDeps({ chat: (() => ({ chat, transcribe: async () => '' })) as unknown as OrchestratorDeps['chat'] })
+    const deps = makeDeps({ chat: (() => ({ chatJson, transcribe: async () => '' })) as unknown as OrchestratorDeps['chat'] })
     const result = await makeSummarize(deps)(makeCtx())
     expect(result.status).toBe('ok')
     const userContent = captured.find((m) => m.role === 'user')?.content as Array<{ type: string; imageUrl?: string }>
@@ -180,25 +180,25 @@ describe('makeSummarize multimodal (U4)', () => {
 
   it('falls back to a text-only prompt when the provider rejects image input', async () => {
     seedEvidence(2)
-    const chat = vi
+    const chatJson = vi
       .fn()
       .mockRejectedValueOnce(new ProviderError('unsupported_visual', 'model does not accept image input'))
       .mockResolvedValueOnce(JSON.stringify(validNote))
-    const deps = makeDeps({ chat: (() => ({ chat, transcribe: async () => '' })) as unknown as OrchestratorDeps['chat'] })
+    const deps = makeDeps({ chat: (() => ({ chatJson, transcribe: async () => '' })) as unknown as OrchestratorDeps['chat'] })
     const result = await makeSummarize(deps)(makeCtx())
     expect(result.status).toBe('ok')
-    expect(chat).toHaveBeenCalledTimes(2)
-    const secondUser = chat.mock.calls[1]?.[0]?.find((m: { role: string }) => m.role === 'user') as { content: unknown }
+    expect(chatJson).toHaveBeenCalledTimes(2)
+    const secondUser = chatJson.mock.calls[1]?.[0]?.find((m: { role: string }) => m.role === 'user') as { content: unknown }
     const parts = secondUser.content as Array<{ type: string }>
     expect(parts.every((p) => p.type === 'text')).toBe(true)
   })
 
   it('surfaces a generic provider failure as a failed stage', async () => {
     seedEvidence(0)
-    const chat = vi.fn(async () => {
+    const chatJson = vi.fn(async () => {
       throw new ProviderError('rate_limit', 'provider rate limit reached')
     })
-    const deps = makeDeps({ chat: (() => ({ chat, transcribe: async () => '' })) as unknown as OrchestratorDeps['chat'] })
+    const deps = makeDeps({ chat: (() => ({ chatJson, transcribe: async () => '' })) as unknown as OrchestratorDeps['chat'] })
     const result = await makeSummarize(deps)(makeCtx())
     expect(result.status).toBe('failed')
   })

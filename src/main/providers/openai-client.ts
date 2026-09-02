@@ -50,7 +50,11 @@ const defaultFetch: ProviderFetch = async (url, init) => {
       body: init.body as BodyInit
     })
   } catch (err) {
-    throw new ProviderError('network', `network error: ${(err as Error).message}`)
+    // Surface the cause chain (ECONNRESET, ENOTFOUND, cert errors…) — a bare
+    // "fetch failed" hides the actual transport failure.
+    const cause = (err as { cause?: unknown }).cause
+    const detail = cause != null ? ` (${String(cause).slice(0, 140)})` : ''
+    throw new ProviderError('network', `network error: ${(err as Error).message}${detail}`)
   }
 }
 
@@ -70,6 +74,16 @@ export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string | ChatPart[]
 }
+
+/**
+ * Base URLs whose multipart ASR endpoint is known absent (field-calibrated:
+ * Xiaomi MiMo returns 404 for /audio/transcriptions and its openresty gateway
+ * resets the connection on repeated large uploads to that path). Once a
+ * platform is marked here, ASR goes straight to the chat-completions path —
+ * the per-chunk multipart tax (and its flaky resets) is paid at most once
+ * per session.
+ */
+export const chatOnlyAsrBaseUrls = new Set<string>()
 
 export class OpenAiCompatibleClient {
   constructor(
@@ -114,19 +128,23 @@ export class OpenAiCompatibleClient {
 
   /**
    * ASR with transport fallback: OpenAI-standard multipart first; when the
-   * platform does not expose /audio/transcriptions (404 — field case: Xiaomi
-   * MiMo routes ASR through chat completions), retry with the chat-style
-   * input_audio path.
+   * platform does not expose /audio/transcriptions (404 or transport resets —
+   * field case: Xiaomi MiMo routes ASR through chat completions), retry with
+   * the chat-style input_audio path and remember the platform.
    */
   async transcribe(audio: Blob, fileName: string, model: string, language?: string): Promise<string> {
-    try {
-      return await this.transcribeMultipart(audio, fileName, model, language)
-    } catch (err) {
-      if (err instanceof ProviderError && err.kind === 'bad_response' && err.status === 404) {
-        return await this.transcribeChatAudio(audio, model, language)
+    if (!chatOnlyAsrBaseUrls.has(this.baseUrl)) {
+      try {
+        return await this.transcribeMultipart(audio, fileName, model, language)
+      } catch (err) {
+        const kind = err instanceof ProviderError ? err.kind : null
+        // Fatal user-facing errors stay; anything suggesting a missing
+        // endpoint (404, resets, other bad responses) falls back to chat.
+        if (kind === 'auth' || kind === 'rate_limit') throw err
+        chatOnlyAsrBaseUrls.add(this.baseUrl)
       }
-      throw err
     }
+    return await this.transcribeChatAudio(audio, model, language)
   }
 
   /** POST /audio/transcriptions with a file + model. */
@@ -144,7 +162,9 @@ export class OpenAiCompatibleClient {
         body: form
       })
     } catch (err) {
-      throw new ProviderError('network', `network error: ${(err as Error).message}`)
+      const cause = (err as { cause?: unknown }).cause
+      const detail = cause != null ? ` (${String(cause).slice(0, 140)})` : ''
+      throw new ProviderError('network', `network error: ${(err as Error).message}${detail}`)
     }
 
     if (!res.ok) {
@@ -184,25 +204,41 @@ export class OpenAiCompatibleClient {
       ...(language != null && language !== 'auto' ? { asr_options: { language } } : {})
     })
     const content = (payload as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content
-    if (typeof content === 'string' && content.trim() !== '') return content
+    // An empty transcript is a valid answer (silent audio) — the caller
+    // decides whether that is fatal; only a malformed shape throws here.
+    if (typeof content === 'string') return content
     if (Array.isArray(content)) {
       // Part-array responses: concatenate the text parts in order.
       const text = content
         .map((p) => (p != null && typeof p === 'object' && (p as Record<string, unknown>)['text'] != null ? String((p as Record<string, unknown>)['text']) : ''))
         .join('')
-      if (text.trim() !== '') return text
+      return text
     }
     throw new ProviderError('bad_response', 'ASR chat response missing transcript content')
   }
 
   /** Chat completions with optional multimodal parts. */
   async chat(messages: ChatMessage[], model: string, maxTokens?: number): Promise<string> {
-    const payload = await this.request('/chat/completions', {
+    return await this.complete('/chat/completions', { model, messages, ...(maxTokens != null ? { max_tokens: maxTokens } : {}) })
+  }
+
+  /**
+   * Chat completions with the JSON response mode (platform-supported on
+   * mimo-v2.5, field-checked 2026-09-02). Use for structured outputs; the
+   * caller still parses defensively.
+   */
+  async chatJson(messages: ChatMessage[], model: string, maxTokens?: number): Promise<string> {
+    return await this.complete('/chat/completions', {
       model,
       messages,
-      ...(maxTokens != null ? { max_tokens: maxTokens } : {})
+      ...(maxTokens != null ? { max_tokens: maxTokens } : {}),
+      response_format: { type: 'json_object' }
     })
-    const content = (payload as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]?.message?.content
+  }
+
+  private async complete(path: string, payload: Record<string, unknown>): Promise<string> {
+    const response = (await this.request(path, payload)) as { choices?: Array<{ message?: { content?: string } }> }
+    const content = response.choices?.[0]?.message?.content
     if (typeof content !== 'string') {
       throw new ProviderError('bad_response', 'chat response missing content')
     }

@@ -44,7 +44,7 @@ function makeDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
     listPpt: async () => []
   } as unknown as SchoolClient
 
-  const chat = (() => ({ chat: async () => JSON.stringify(validNote), transcribe: async () => '转写文本' })) as unknown as (
+  const chat = (() => ({ chat: async () => JSON.stringify(validNote), chatJson: async () => JSON.stringify(validNote), transcribe: async () => '转写文本' })) as unknown as (
     capability: 'asr' | 'multimodal' | 'text'
   ) => OpenAiCompatibleClient
 
@@ -196,7 +196,7 @@ describe('orchestrator stage executors', () => {
   })
 
   it('summarizing strips markdown fences before parsing', async () => {
-    const chatClient = { chat: async () => '```json\n' + JSON.stringify(validNote) + '\n```' } as unknown as OpenAiCompatibleClient
+    const chatClient = { chatJson: async () => '```json\n' + JSON.stringify(validNote) + '\n```' } as unknown as OpenAiCompatibleClient
     const deps = makeDeps({ chat: () => chatClient })
     db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场\"}]', 'x', 'm', '2026-08-30T00:00:00Z')").run()
     db.prepare("INSERT INTO providers (id, name, base_url, api_key, created_at) VALUES ('p1', 'P', 'https://x/v1', 'enc', '2026-08-30T00:00:00Z')").run()

@@ -76,6 +76,28 @@ function stageOutput<T>(deps: OrchestratorDeps, taskId: string, stage: Stage): T
   return row != null ? (JSON.parse(row.output_json) as T) : null
 }
 
+/** Network errors and rate limits are transient — retry the upload. */
+const TRANSCRIBE_RETRY_ATTEMPTS = 3
+
+async function transcribeChunk(
+  client: OpenAiCompatibleClient,
+  audio: Blob,
+  fileName: string,
+  model: string,
+  signal?: AbortSignal
+): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return (await client.transcribe(audio, fileName, model)).trim()
+    } catch (err) {
+      const kind = (err as { kind?: string }).kind
+      if (attempt >= TRANSCRIBE_RETRY_ATTEMPTS || (kind !== 'network' && kind !== 'rate_limit')) throw err
+      await new Promise((r) => setTimeout(r, 5000 * attempt))
+      if (signal?.aborted) throw new Error('任务已取消')
+    }
+  }
+}
+
 /**
  * 1. fetching_course — resolve the lesson's stream URLs and upsert the lesson
  * row. Two paths:
@@ -270,7 +292,7 @@ export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
           plan.length === 1 ? audio.audioPath : await cutChunk(deps.ffmpeg, audio.audioPath, outDir, spec)
         try {
           const blob = new Blob([readFileSync(chunkPath)])
-          const text = (await client.transcribe(blob, `chunk-${spec.index}.wav`, binding.model)).trim()
+          const text = await transcribeChunk(client, blob, `chunk-${spec.index}.wav`, binding.model, ctx.signal)
           // Silent gaps are normal at fixed boundaries — an empty chunk is
           // not an error; only a fully silent lesson is (handled below).
           if (text !== '') segments.push({ at: spec.start, text })
@@ -391,13 +413,13 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
       .map((s) => s.text)
       .join('\n')
     const systemPrompt =
-      '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。kind 只能是 ppt/keyframe/formula/code/operation。'
+      '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。注意：所有 at 字段必须是距课时开始的整数秒（例如 750，不要 mm:ss、不要文字）；evidence 的 kind 只能是 ppt 或 keyframe（formula/code/operation 只用于 formulasAndSteps）。'
 
     try {
       const client = deps.chat('multimodal')
       let answer: string
       try {
-        answer = await client.chat(
+        answer = await client.chatJson(
           [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: buildUserParts(transcriptText, images) }
@@ -408,7 +430,7 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
         // Provider rejects image input → fall back to a text-only prompt (U4).
         const kind = (err as { kind?: string }).kind
         if (kind !== 'unsupported_visual') throw err
-        answer = await client.chat(
+        answer = await client.chatJson(
           [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: buildUserParts(transcriptText, []) }
