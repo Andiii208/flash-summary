@@ -13,7 +13,7 @@
  */
 import { appendFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { BrowserWindow, session, app, type Session } from 'electron'
+import { BrowserWindow, session, app, type Session, type Event, type RenderProcessGoneDetails, type WebContentsDidStartNavigationEventParams } from 'electron'
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
 import { directNetRequested } from '../net-diagnostics'
 
@@ -192,7 +192,14 @@ function probeSaysLoggedIn(status: number, body: string): boolean {
 export async function openCasLoginWindow(options: CasLoginOptions): Promise<void> {
   const casUrl = options.casUrl ?? options.serviceOrigin
   await precheck(casUrl)
-  const ses = session.fromPartition(PARTITION)
+  // Field 2026-09-02: SEU_DIAG_URL bypasses the data: loading page to isolate
+  // whether that first data: navigation is what stalls.
+  // SEU_DIAG_DEFAULT_SESSION=1 uses the default session to isolate the
+  // persist:seu-cas partition; SEU_DIAG_SHOW=1 creates the window visible.
+  const diagUrl = process.env.SEU_DIAG_URL ?? ''
+  const firstUrl = diagUrl !== '' ? diagUrl : `data:text/html;charset=utf-8,${encodeURIComponent(LOADING_HTML)}`
+  const startVisible = process.env.SEU_DIAG_SHOW === '1'
+  const ses = process.env.SEU_DIAG_DEFAULT_SESSION === '1' ? session.defaultSession : session.fromPartition(PARTITION)
   traceSession(ses)
   traceLine(
     `LOGIN window open (net=${directNetRequested(process.argv, process.env.SEU_DIRECT_NET) ? 'direct' : 'default'})`
@@ -202,7 +209,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
     width: 960,
     height: 720,
     title: 'SEU 平台登录',
-    show: false,
+    show: startVisible,
     webPreferences: {
       session: ses,
       sandbox: true,
@@ -210,6 +217,20 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
       nodeIntegration: false
     }
   })
+
+  // Field 2026-09-02: the first navigation sometimes never commits. These
+  // pins localize the stall — start without commit points at the renderer /
+  // network-service side, gone/unresponsive at the process level.
+  win.webContents.on(
+    'did-start-navigation',
+    (_details: Event<WebContentsDidStartNavigationEventParams>, url: string) => traceLine(`NAV start ${url.slice(0, 60)}`)
+  )
+  win.webContents.on('did-navigate', (_event: Event, url: string) => traceLine(`NAV commit ${url.slice(0, 60)}`))
+  win.webContents.on('did-finish-load', () => traceLine('NAV finish'))
+  win.webContents.on('unresponsive', () => traceLine('NAV renderer unresponsive'))
+  win.webContents.on('render-process-gone', (_event: Event, details: RenderProcessGoneDetails) =>
+    traceLine(`NAV renderer gone ${details.reason}`)
+  )
 
   return await new Promise((resolve, reject) => {
     let settled = false
@@ -321,7 +342,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
     firstPaintTimer = setTimeout(() => fail(casLoadErrorMessage('timeout', '首帧')), CAS_LOAD_TIMEOUT_MS)
     win.once('ready-to-show', () => win.show())
     void win
-      .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(LOADING_HTML)}`)
+      .loadURL(firstUrl)
       .then(() => {
         if (settled) return
         traceLine('LOADING page ready -> loading platform page')
