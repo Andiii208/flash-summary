@@ -7,15 +7,15 @@
 
 | 层 | 验证物 | 结果 | 位置 |
 |---|---|---|---|
-| L1 三进程桥 | 真实 Electron 进程 CDP 探针 | **20/20 绿** | `scripts/smoke-cdp.mjs`（`npm run smoke`） |
+| L1 三进程桥 | 真实 Electron 进程 CDP 探针 | **19/19 绿** | `scripts/smoke-cdp.mjs`（`npm run smoke`） |
 | L2 HTTP 真实栈 | SchoolClient × 真实 fetch × 本地 http 服务器 | **6/6 绿** | `tests/school-client-http.test.ts` |
 | L3 六阶段管线 | 全链端到端（真实 ffmpeg + 三合一 mock 服务器） | **1/1 绿** | `tests/pipeline-e2e.test.ts` |
-| L0 单元 | 既有套件 | **214/214 绿** | `npm test` |
+| L0 单元 | 既有套件 | **221/221 绿** | `npm test` |
 
 ## L1 烟测断言清单（`npm run smoke`，~15s，发布前必跑）
 
-- 桥面完整性：`window.seuSummary` 7 组 29 方法与 `src/shared/bridge.ts` 逐一比对。
-- IPC 全通道探活：12 个无副作用通道真实 invoke 往返 ApiResult 信封（含 `qa:ask` 未绑定、
+- 桥面完整性：`window.seuSummary` 7 组 26 方法与 `src/shared/bridge.ts` 逐一比对。
+- IPC 全通道探活：11 个无副作用通道真实 invoke 往返 ApiResult 信封（含 `qa:ask` 未绑定、
   `providers:bind` 非法能力、`tasks:create` 外键违规三条错误路径）。
 - 启动组装：隔离 userData + 隔离资料库下 app.db 建立且 5 个迁移全应用、空库 0 课程。
 - 文件日志：`log:rendererError` 经主进程落进脱敏日志文件。
@@ -44,7 +44,7 @@ notes/transcripts/keyframes/task_stage_outputs 落库、转写后音频删除、
 2. 端到端首跑暴露：mock 视频短于关键帧采样间隔（fps=1/10）时产出 0 帧属**正确行为**——
    体检样例改为 21s（非产品缺陷，记录避免误判）。
 
-## 仍未验证（需真实环境，见 PROGRESS 甲类清单）
+## 仍未验证（需真实环境，见 PROGRESS.md「下一步」）
 
 - CAS 登录窗口真实登录（当前头号堵点：间歇挂起，诊断手册见
   `docs/diagnostics/login-hang-ab-playbook.md`）。

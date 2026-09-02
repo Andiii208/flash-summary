@@ -80,7 +80,7 @@ SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（214 个用例，37 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（221 个用例，38 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -90,7 +90,7 @@ src/
   preload/    类型化桥接（contextBridge）
   renderer/   Preact UI（课程树/任务/笔记/追问/设置，CSS 变量设计系统）
   shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
-tests/        37 个测试文件（含真实 HTTP 集成与六阶段端到端）
+tests/        38 个测试文件（含真实 HTTP 集成与六阶段端到端）
 scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）
 docs/
   plans/ROADMAP.md         阶段计划（8 阶段 + 验收命令）
@@ -111,7 +111,7 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 ## ✅ 当前状态
 
 - **8 个基础阶段 + v0.2.0 可用性升级（U1-U5）全部完成**：主流程修复 → Preact UI → 设置与下载位置 → 管线质量（ASR 分片/多模态发图/队列/取消）→ 基建与发布。
-- **214 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **221 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - 已发布 v0.2.0 安装包；当前在 v0.2.1 稳定化：唯一活堵点是 CAS 登录窗口间歇挂起（诊断手册见 `docs/diagnostics/`）。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端、会话过期重登恢复（真实 CAS 登录与课程拉取已实测，字段精修待真实样本）。
 
@@ -122,9 +122,9 @@ npm install
 npm run dev          # 开发模式（热重载）
 npm run lint         # ESLint
 npm run typecheck    # TypeScript strict（node + web 双工程）
-npm test             # vitest（214 用例）
+npm test             # vitest（221 用例）
 npm run build        # electron-vite 构建到 out/
-npm run smoke        # 构建并运行 CDP 进程级烟测（20 项组合断言）
+npm run smoke        # 构建并运行 CDP 进程级烟测（19 项组合断言）
 npm run dist         # 构建 NSIS 安装包到 release/
 npm run verify:asar  # 抽验安装包 asar 与 out/ 一致（发布门禁）
 ```
