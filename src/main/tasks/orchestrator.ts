@@ -270,11 +270,16 @@ export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
           plan.length === 1 ? audio.audioPath : await cutChunk(deps.ffmpeg, audio.audioPath, outDir, spec)
         try {
           const blob = new Blob([readFileSync(chunkPath)])
-          const text = await client.transcribe(blob, `chunk-${spec.index}.wav`, binding.model)
-          segments.push({ at: spec.start, text })
+          const text = (await client.transcribe(blob, `chunk-${spec.index}.wav`, binding.model)).trim()
+          // Silent gaps are normal at fixed boundaries — an empty chunk is
+          // not an error; only a fully silent lesson is (handled below).
+          if (text !== '') segments.push({ at: spec.start, text })
         } finally {
           if (plan.length > 1 && existsSync(chunkPath)) rmSync(chunkPath, { force: true })
         }
+      }
+      if (segments.length === 0) {
+        return { status: 'failed', error: '该课时音频中没有可识别的语音（音量过低或静音），无法转写' }
       }
       deps.db
         .prepare(

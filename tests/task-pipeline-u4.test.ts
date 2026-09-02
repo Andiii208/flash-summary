@@ -119,6 +119,33 @@ describe('makeTranscribe chunking (U4)', () => {
     expect(result.status).toBe('ok')
     expect(transcribe).toHaveBeenCalledTimes(1)
   })
+
+  it('skips silent chunks and fails with a clear message when the whole lesson is silent', async () => {
+    const audioPath = join(dir, 'audio-skip.wav')
+    makeWav(2, audioPath)
+    // 300s → 3 chunks (120s window): speech, silence, speech.
+    stageOutputRow('t1-skip', 'extracting_audio', { audioPath, durationSeconds: 300 })
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('asr', 'p1', 'whisper-1')").run()
+    const answers = ['第一段语音', '', '第三段语音']
+    const transcribe = vi.fn(async () => answers.shift() ?? '')
+    const deps = makeDeps({ chat: (() => ({ transcribe, chat: async () => 'x' })) as unknown as OrchestratorDeps['chat'] })
+    let result = await makeTranscribe(deps)(makeCtx('t1-skip'))
+    expect(result.status).toBe('ok')
+    const row = db.prepare("SELECT segments_json FROM transcripts WHERE lesson_id = 'l1'").get() as { segments_json: string }
+    const segments = JSON.parse(row.segments_json) as Array<{ at: number; text: string }>
+    expect(segments.map((s) => s.at)).toEqual([0, 240])
+    expect(segments.every((s) => s.text !== '')).toBe(true)
+
+    // All chunks empty: no speech at all in the lesson audio.
+    const audio2 = join(dir, 'audio-silent.wav')
+    makeWav(2, audio2)
+    stageOutputRow('t1-silent', 'extracting_audio', { audioPath: audio2, durationSeconds: 300 })
+    const silent = vi.fn(async () => '   ')
+    const silentDeps = makeDeps({ chat: (() => ({ transcribe: silent, chat: async () => 'x' })) as unknown as OrchestratorDeps['chat'] })
+    result = await makeTranscribe(silentDeps)({ taskId: 't1-silent', lessonId: 'l1', stage: 'transcribing' })
+    expect(result.status).toBe('failed')
+    expect((result as { error: string }).error).toContain('没有可识别的语音')
+  })
 })
 
 describe('makeSummarize multimodal (U4)', () => {
