@@ -94,13 +94,21 @@ describe('lesson detail parsing', () => {
             acyeEndYear: 2027,
             teacNames: ['汪海', '李某'],
             orgaNames: ['自动化学院'],
-            teclId: 154717
+            teclId: 154717,
+            teclCode: '202620271B080329101'
           }
         ]
       }
     })
     expect(courses).toEqual([
-      { id: '1691584', name: '网络信息编程（全英文）', term: '2026-2027', teacher: '汪海、李某' }
+      {
+        id: '1691584',
+        name: '网络信息编程（全英文）',
+        term: '2026-2027',
+        teacher: '汪海、李某',
+        teclId: '154717',
+        teclCode: '202620271B080329101'
+      }
     ])
   })
 })

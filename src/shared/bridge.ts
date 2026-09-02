@@ -10,6 +10,9 @@ export interface CourseSummaryInfo {
   name: string
   term?: string
   teacher?: string
+  /** Recording-class identifiers (main-side only; used for play-page routes). */
+  teclId?: string
+  teclCode?: string
 }
 
 export interface LessonTreeInfo {

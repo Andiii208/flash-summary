@@ -130,13 +130,14 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const courses = await ctx.school.listCourses()
       const now = new Date().toISOString()
       const upsert = ctx.db.prepare(
-        `INSERT INTO courses (id, name, term, teacher, fetched_at) VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO courses (id, name, term, teacher, tecl_id, tecl_code, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET name = excluded.name, term = excluded.term,
-           teacher = excluded.teacher, fetched_at = excluded.fetched_at`
+           teacher = excluded.teacher, tecl_id = excluded.tecl_id, tecl_code = excluded.tecl_code,
+           fetched_at = excluded.fetched_at`
       )
       for (const c of courses) {
         if (c.id === '') continue
-        upsert.run(c.id, c.name, c.term ?? null, c.teacher ?? null, now)
+        upsert.run(c.id, c.name, c.term ?? null, c.teacher ?? null, c.teclId ?? null, c.teclCode ?? null, now)
       }
       return ok(courses)
     } catch (e) {

@@ -15,6 +15,10 @@ export interface CourseSummary {
   name: string
   term?: string
   teacher?: string
+  /** Recording-class id for the play-page route (live t-1 field, 2026-09). */
+  teclId?: string
+  /** Recording-class code for the play-page route (live t-1 field, 2026-09). */
+  teclCode?: string
 }
 
 export interface LessonDetail {
@@ -95,7 +99,16 @@ export function parseCourseList(payload: unknown): CourseSummary[] {
       const term = pickString(item, ['acyeName', 'term', 'semester', 'termName', 'yearName']) || pickYearRange(item)
       const teacher = pickString(item, ['teacher', 'teacherName', 'lecturer', 'speakerName']) ||
         pickStringArray(item, ['teacNames', 'teacherNames'])
-      return { id, name, ...(term ? { term } : {}), ...(teacher ? { teacher } : {}) }
+      const teclId = pickString(item, ['teclId', 'tecl_id'])
+      const teclCode = pickString(item, ['teclCode', 'tecl_code'])
+      return {
+        id,
+        name,
+        ...(term ? { term } : {}),
+        ...(teacher ? { teacher } : {}),
+        ...(teclId !== '' ? { teclId } : {}),
+        ...(teclCode !== '' ? { teclCode } : {})
+      }
     })
     .filter((c) => c.id !== '')
 }

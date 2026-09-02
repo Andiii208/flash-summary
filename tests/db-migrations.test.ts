@@ -20,14 +20,14 @@ afterEach(() => {
 
 describe('migrations', () => {
   it('applies all migrations on a fresh database', () => {
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6])
   })
 
   it('is idempotent when reopened', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6])
   })
 
   it('applies only pending migrations on an upgraded database', () => {
@@ -35,7 +35,16 @@ describe('migrations', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  it('adds play-page reference columns (006)', () => {
+    db.prepare("INSERT INTO courses (id, name, tecl_id, tecl_code, fetched_at) VALUES ('c1', '课程', '154717', '202620271B080329101', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('l1', 'c1', '第1节', '0', '2026-08-30T00:00:00Z')").run()
+    const course = db.prepare('SELECT tecl_id, tecl_code FROM courses WHERE id = ?').get('c1') as { tecl_id: string; tecl_code: string }
+    expect(course).toEqual({ tecl_id: '154717', tecl_code: '202620271B080329101' })
+    const lesson = db.prepare('SELECT play_ref FROM lessons WHERE id = ?').get('l1') as { play_ref: string }
+    expect(lesson.play_ref).toBe('0')
   })
 })
 
