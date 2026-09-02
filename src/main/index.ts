@@ -12,11 +12,20 @@ if (directNetRequested(process.argv, process.env.SEU_DIRECT_NET)) {
   for (const name of DIRECT_NET_SWITCHES) app.commandLine.appendSwitch(name)
 }
 
+// Smoke-test seam (scripts/smoke-cdp.mjs): an isolated userData keeps the
+// probe off the real session blob, logs, and single-instance lock (the lock
+// is per-userData). Library isolation additionally uses SEU_SUMMARY_DOCS_OVERRIDE.
+if (process.env.SEU_SMOKE === '1' && process.env.SEU_SMOKE_USER_DATA != null) {
+  app.setPath('userData', process.env.SEU_SMOKE_USER_DATA)
+}
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     title: APP_TITLE,
+    // The smoke probe drives the window over CDP; keep it invisible there.
+    show: process.env.SEU_SMOKE !== '1',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,

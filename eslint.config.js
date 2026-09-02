@@ -9,13 +9,17 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Node release scripts need node globals; js.configs.recommended would
-    // otherwise flag process/console as no-undef.
+    // otherwise flag process/console as no-undef. fetch/WebSocket/setTimeout
+    // are Node >= 22 runtime globals (smoke-cdp.mjs requires them).
     files: ['scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         console: 'readonly',
         process: 'readonly',
-        Buffer: 'readonly'
+        Buffer: 'readonly',
+        fetch: 'readonly',
+        WebSocket: 'readonly',
+        setTimeout: 'readonly'
       }
     }
   },

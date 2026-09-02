@@ -58,6 +58,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke": "npm run build && node scripts/smoke-cdp.mjs",
     "verify:asar": "node scripts/verify-asar.mjs"
   },
   "devDependencies": {
