@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { execFileSync } from 'child_process'
-import { extractAudio, extractKeyframes, probeMedia, fileSizeOrNull } from '../src/main/media/ffmpeg'
+import { extractAudio, extractKeyframes, probeMedia, fileSizeOrNull, pickAudioSource } from '../src/main/media/ffmpeg'
 import { ffmpegPath, ffprobePath } from '../src/main/media/binaries'
 
 let dir: string
@@ -54,6 +54,23 @@ describe('extractAudio (real ffmpeg)', () => {
     const info = await probeMedia(out.audioPath, ffprobePath())
     expect(info.width).toBe(0) // audio-only: no video stream
     expect(statSync(out.audioPath).size).toBeGreaterThan(10_000)
+  })
+})
+
+describe('pickAudioSource (real ffprobe, field case 2026-09-02)', () => {
+  it('prefers the teacher stream when it carries audio', async () => {
+    await expect(pickAudioSource(teacherVideo, screenVideo, ffprobePath())).resolves.toBe(teacherVideo)
+  })
+
+  it('falls back to the screen stream when the teacher stream is video-only', async () => {
+    // Real platform case: camera stream has no audio track, the screen
+    // stream carries the classroom AAC. Fixtures map: screenVideo is the
+    // video-only teacher stand-in, teacherVideo the audio-carrying screen.
+    await expect(pickAudioSource(screenVideo, teacherVideo, ffprobePath())).resolves.toBe(teacherVideo)
+  })
+
+  it('rejects when neither stream carries audio', async () => {
+    await expect(pickAudioSource(screenVideo, screenVideo, ffprobePath())).rejects.toThrow(/不含音频/)
   })
 })
 

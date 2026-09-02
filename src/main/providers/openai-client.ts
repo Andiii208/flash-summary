@@ -79,6 +79,7 @@ export class OpenAiCompatibleClient {
   ) {}
 
   private async request(path: string, body: unknown): Promise<unknown> {
+    const serialized = JSON.stringify(body)
     let res
     try {
       res = await this.fetchImpl(`${this.baseUrl}${path}`, {
@@ -87,7 +88,7 @@ export class OpenAiCompatibleClient {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
         },
-        body
+        body: serialized
       })
     } catch (err) {
       if (err instanceof ProviderError) throw err
@@ -111,8 +112,25 @@ export class OpenAiCompatibleClient {
     throw new ProviderError('bad_response', `provider returned ${res.status}: ${text.slice(0, 200)}`, res.status)
   }
 
-  /** POST /audio/transcriptions with a file + model. */
+  /**
+   * ASR with transport fallback: OpenAI-standard multipart first; when the
+   * platform does not expose /audio/transcriptions (404 — field case: Xiaomi
+   * MiMo routes ASR through chat completions), retry with the chat-style
+   * input_audio path.
+   */
   async transcribe(audio: Blob, fileName: string, model: string, language?: string): Promise<string> {
+    try {
+      return await this.transcribeMultipart(audio, fileName, model, language)
+    } catch (err) {
+      if (err instanceof ProviderError && err.kind === 'bad_response' && err.status === 404) {
+        return await this.transcribeChatAudio(audio, model, language)
+      }
+      throw err
+    }
+  }
+
+  /** POST /audio/transcriptions with a file + model. */
+  private async transcribeMultipart(audio: Blob, fileName: string, model: string, language?: string): Promise<string> {
     const form = new FormData()
     form.append('file', audio, fileName)
     form.append('model', model)
@@ -144,6 +162,37 @@ export class OpenAiCompatibleClient {
       throw new ProviderError('bad_response', 'ASR response missing text field')
     }
     return payload.text
+  }
+
+  /**
+   * Chat-completions ASR (MiMo field case 2026-09-02): the audio travels as
+   * a base64 input_audio part; the transcript comes back as the message
+   * content. The caller must keep the chunk small enough for the platform's
+   * base64 size cap (~10 MB encoded).
+   */
+  private async transcribeChatAudio(audio: Blob, model: string, language?: string): Promise<string> {
+    const bytes = Buffer.from(await audio.arrayBuffer())
+    const dataUrl = `data:audio/wav;base64,${bytes.toString('base64')}`
+    const payload = await this.request('/chat/completions', {
+      model,
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'input_audio', input_audio: { data: dataUrl } }]
+        }
+      ],
+      ...(language != null && language !== 'auto' ? { asr_options: { language } } : {})
+    })
+    const content = (payload as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content
+    if (typeof content === 'string' && content.trim() !== '') return content
+    if (Array.isArray(content)) {
+      // Part-array responses: concatenate the text parts in order.
+      const text = content
+        .map((p) => (p != null && typeof p === 'object' && (p as Record<string, unknown>)['text'] != null ? String((p as Record<string, unknown>)['text']) : ''))
+        .join('')
+      if (text.trim() !== '') return text
+    }
+    throw new ProviderError('bad_response', 'ASR chat response missing transcript content')
   }
 
   /** Chat completions with optional multimodal parts. */

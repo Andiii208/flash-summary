@@ -9,6 +9,7 @@ import type { StageContext } from '../src/main/tasks/queue'
 import type { SchoolClient } from '../src/main/school/client'
 import type { Grid8x8 } from '../src/main/media/phash'
 import { ffmpegPath } from '../src/main/media/binaries'
+import { DEFAULT_CHUNK_SECONDS } from '../src/main/media/audio-split'
 import { ProviderError } from '../src/main/providers/openai-client'
 
 const validNote = {
@@ -82,7 +83,7 @@ function makeCtx(taskId = 't1'): StageContext {
 }
 
 describe('makeTranscribe chunking (U4)', () => {
-  it('transcribes each 10-minute chunk with segment offsets and per-chunk progress', async () => {
+  it('transcribes each default chunk with segment offsets and per-chunk progress', async () => {
     const audioPath = join(dir, 'audio.wav')
     makeWav(2, audioPath)
     stageOutputRow('t1', 'extracting_audio', { audioPath, durationSeconds: 1500 })
@@ -96,12 +97,14 @@ describe('makeTranscribe chunking (U4)', () => {
     })
     const result = await makeTranscribe(deps)(makeCtx())
     expect(result.status).toBe('ok')
-    expect(transcribe).toHaveBeenCalledTimes(3)
+    const expectedCount = Math.ceil(1500 / DEFAULT_CHUNK_SECONDS)
+    const expectedStarts = Array.from({ length: expectedCount }, (_, i) => i * DEFAULT_CHUNK_SECONDS)
+    expect(transcribe).toHaveBeenCalledTimes(expectedCount)
     const row = db.prepare('SELECT segments_json FROM transcripts WHERE lesson_id = ?').get('l1') as { segments_json: string }
     const segments = JSON.parse(row.segments_json) as Array<{ at: number; text: string }>
-    expect(segments.map((s) => s.at)).toEqual([0, 600, 1200])
+    expect(segments.map((s) => s.at)).toEqual(expectedStarts)
     expect(segments.every((s) => s.text === '分片文本')).toBe(true)
-    expect(chunks).toEqual([3, 3, 3])
+    expect(chunks).toEqual(Array.from({ length: expectedCount }, () => expectedCount))
     expect(existsSync(audioPath)).toBe(false)
   })
 

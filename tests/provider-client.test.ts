@@ -45,7 +45,10 @@ describe('OpenAiCompatibleClient.chat (mock HTTP)', () => {
     const out = await client.chat([{ role: 'user', content: '总结' }], 'gpt-4o', 500)
     expect(out).toBe('你好')
     expect(calls[0].headers.Authorization).toBe('Bearer sk-secret')
-    expect(calls[0].body).toMatchObject({ model: 'gpt-4o', max_tokens: 500 })
+    // Field case 2026-09-02: the body must be a JSON string — undici sends a
+    // plain object as the literal "[object Object]".
+    expect(typeof calls[0].body).toBe('string')
+    expect(JSON.parse(calls[0].body as string)).toMatchObject({ model: 'gpt-4o', max_tokens: 500 })
   })
 
   it('sends multimodal image parts', async () => {
@@ -61,7 +64,7 @@ describe('OpenAiCompatibleClient.chat (mock HTTP)', () => {
       { type: 'image_url', imageUrl: 'data:image/jpeg;base64,BBBB' }
     ]
     await client.chat([{ role: 'user', content: parts }], 'gpt-4o')
-    const body = calls[0].body as { messages: Array<{ content: ChatPart[] }> }
+    const body = JSON.parse(calls[0].body as string) as { messages: Array<{ content: ChatPart[] }> }
     expect(body.messages[0].content).toHaveLength(3)
   })
 
@@ -125,6 +128,53 @@ describe('ASR transcriptions (mock HTTP via FormData-free shim)', () => {
     try {
       const client = new OpenAiCompatibleClient('https://api.x.com/v1', 'bad')
       await expect(client.transcribe(new Blob(['x']), 'a.wav', 'whisper-1')).rejects.toMatchObject({ kind: 'auth' })
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('falls back to chat-style input_audio ASR when the multipart endpoint 404s (MiMo case)', async () => {
+    const original = globalThis.fetch
+    const calls: Array<{ url: string; body: string }> = []
+    globalThis.fetch = (async (url: string, init: { body?: BodyInit }) => {
+      calls.push({ url, body: typeof init.body === 'string' ? init.body : '' })
+      if (String(url).endsWith('/audio/transcriptions')) {
+        return { ok: false, status: 404, text: async () => '<html>404 Not Found</html>' } as unknown as Response
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: '回退路径的转写文本' } }] })
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    try {
+      const client = new OpenAiCompatibleClient('https://api.xiaomimimo.com/v1', 'sk-1')
+      const text = await client.transcribe(new Blob(['fake-wav']), 'chunk-0.wav', 'mimo-v2.5-asr')
+      expect(text).toBe('回退路径的转写文本')
+      expect(calls).toHaveLength(2)
+      expect(calls[1].url).toBe('https://api.xiaomimimo.com/v1/chat/completions')
+      expect(calls[1].body).toContain('"type":"input_audio"')
+      expect(calls[1].body).toContain('"model":"mimo-v2.5-asr"')
+      expect(calls[1].body).toContain('data:audio/wav;base64,')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('does not fall back when the multipart failure is not a 404', async () => {
+    const original = globalThis.fetch
+    let chatCalls = 0
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).endsWith('/audio/transcriptions')) {
+        return { ok: false, status: 500, text: async () => 'boom' } as unknown as Response
+      }
+      chatCalls++
+      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response
+    }) as unknown as typeof fetch
+    try {
+      const client = new OpenAiCompatibleClient('https://api.x.com/v1', 'sk-1')
+      await expect(client.transcribe(new Blob(['x']), 'a.wav', 'm')).rejects.toMatchObject({ status: 500 })
+      expect(chatCalls).toBe(0)
     } finally {
       globalThis.fetch = original
     }

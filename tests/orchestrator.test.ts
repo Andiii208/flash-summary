@@ -55,7 +55,7 @@ function makeDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
     libraryRoot: dir,
     cacheDir: () => join(dir, 'cache'),
     ffmpeg: realFfmpeg(),
-    ffprobe: 'ffprobe',
+    ffprobe: realFfprobe(),
     school,
     chat,
     gridDecoder: () => grid,
@@ -66,6 +66,11 @@ function makeDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
 function realFfmpeg(): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('ffmpeg-static') as string
+}
+
+function realFfprobe(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require('ffprobe-static') as { path: string }).path
 }
 
 describe('orchestrator stage executors', () => {

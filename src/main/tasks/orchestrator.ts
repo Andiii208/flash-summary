@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import type { Db } from '../db/open'
 import { attachmentsPath } from '../library/paths'
-import { extractAudio, extractKeyframes, run as runProcess } from '../media/ffmpeg'
+import { extractAudio, extractKeyframes, run as runProcess, pickAudioSource } from '../media/ffmpeg'
 import { chunkPlan, cutChunk } from '../media/audio-split'
 import { dedupeKeyframes, type Grid8x8 } from '../media/phash'
 import { downloadToFile } from '../media/download'
@@ -230,14 +230,17 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
   }
 }
 
-/** 3. extracting_audio — teacher video → 16k mono wav; teacher video deleted after success. */
+/** 3. extracting_audio — the stream that carries audio → 16k mono wav; teacher video deleted after success. */
 export function makeExtractAudio(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
     const dl = stageOutput<{ teacherPath: string; screenPath: string }>(deps, ctx.taskId, 'downloading_video')
     if (dl == null) return { status: 'failed', error: '下载阶段产物缺失，需要重新下载' }
     try {
       const dir = taskDir(deps, ctx.taskId)
-      const { audioPath, durationSeconds } = await extractAudio(dl.teacherPath, dir, deps.ffmpeg)
+      // Field reality (2026-09-02): the teacher stream may have no audio
+      // track — the screen stream carries the classroom AAC. Probe both.
+      const audioSource = await pickAudioSource(dl.teacherPath, dl.screenPath, deps.ffprobe)
+      const { audioPath, durationSeconds } = await extractAudio(audioSource, dir, deps.ffmpeg)
       if (existsSync(dl.teacherPath)) rmSync(dl.teacherPath, { force: true })
       recordStage(deps, ctx.taskId, ctx.stage, { audioPath, durationSeconds })
       return { status: 'ok' }

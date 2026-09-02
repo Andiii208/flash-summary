@@ -183,6 +183,34 @@ async function probeDuration(file: string): Promise<number> {
   return info.durationSeconds
 }
 
+/** True when the file contains at least one audio stream (ffprobe). */
+export async function hasAudioStream(file: string, ffprobe?: string): Promise<boolean> {
+  const { stdout } = await run(ffprobe ?? requireBin('ffprobe'), [
+    '-v', 'error',
+    '-select_streams', 'a',
+    '-show_entries', 'stream=index',
+    '-of', 'csv=p=0',
+    file
+  ])
+  return stdout.trim() !== ''
+}
+
+/**
+ * Pick the stream file that actually carries audio for the audio-extraction
+ * stage. Platform field reality (2026-09-02): the teacher (camera) stream
+ * often has NO audio track — the screen stream carries the classroom AAC —
+ * so prefer the teacher stream per spec and fall back to the screen one.
+ */
+export async function pickAudioSource(
+  teacherPath: string,
+  screenPath: string,
+  ffprobe?: string
+): Promise<string> {
+  if (await hasAudioStream(teacherPath, ffprobe)) return teacherPath
+  if (await hasAudioStream(screenPath, ffprobe)) return screenPath
+  throw new Error('教师流与屏幕流均不含音频轨，无法提取音频')
+}
+
 /** Lazy resolution of bundled binaries (avoids import-time coupling). */
 function requireBin(which: 'ffmpeg' | 'ffprobe'): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

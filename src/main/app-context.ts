@@ -132,6 +132,63 @@ export function createContext(overrides: Partial<{
   let mainWindowRef: BrowserWindow | null = null
   let harvestInFlight: Promise<PlayHarvestResult> | null = null
 
+  /**
+   * Push the stored session cookies into the main window's cookie jar.
+   * In-window platform navigations (play page) authenticate through the
+   * browser cookie jar, which is empty on a fresh instance — session.bin's
+   * cookie string is what the API client sends as a header, and injecting
+   * the same values into the jar passed SSO silently in the field
+   * (2026-09-02). Values stay in memory and the local jar; never logged.
+   */
+  const injectSessionCookies = async (win: BrowserWindow): Promise<void> => {
+    let cookieString = ''
+    try {
+      cookieString = loadSession(userDataDir, cryptor)?.cookies ?? ''
+    } catch {
+      cookieString = ''
+    }
+    if (cookieString === '') return
+    const jar = win.webContents.session.cookies
+    for (const pair of cookieString.split(';')) {
+      const trimmed = pair.trim()
+      const eq = trimmed.indexOf('=')
+      if (eq <= 0) continue
+      try {
+        // Domain .seu.edu.cn so the SSO host (auth.seu.edu.cn) sees the
+        // ticket cookies during the play-page redirect chain.
+        await jar.set({ url: CAS_BASE_URL, domain: '.seu.edu.cn', name: trimmed.slice(0, eq), value: trimmed.slice(eq + 1), secure: true, path: '/' })
+      } catch {
+        // A single rejected cookie must not block the harvest.
+      }
+    }
+  }
+
+  /**
+   * Seed the platform SPA's sessionStorage with the stored JWT before
+   * navigating to a play-page route. The SPA authenticates its API calls
+   * with a jwt-token header read from sessionStorage (key prefix = the SPA
+   * path segment); a fresh renderer session has none and the page actively
+   * logs out and bounces to the SSO login (field-traced 2026-09-02 22:52).
+   * A same-origin non-SPA page provides the tab context; sessionStorage
+   * survives the subsequent hash-route navigation within the tab. The JWT
+   * value stays in memory and the tab's storage; never logged.
+   */
+  const seedSessionStorage = async (win: BrowserWindow): Promise<void> => {
+    let jwt = ''
+    try {
+      jwt = loadSession(userDataDir, cryptor)?.jwt ?? ''
+    } catch {
+      jwt = ''
+    }
+    if (jwt === '') return
+    const seedPage = `${CAS_BASE_URL}/jy-application-resourcemanage/v1/app/info`
+    await win.webContents.loadURL(seedPage)
+    await win.webContents.executeJavaScript(
+      `sessionStorage.setItem('jy-application-resourcemanage-ui_STORAGE_KEY_JWT_TOKEN', ${JSON.stringify(jwt)}); true`,
+      true
+    )
+  }
+
   const restoreMainWindow = async (): Promise<void> => {
     const win = mainWindowRef
     if (win == null || win.isDestroyed()) return
@@ -140,18 +197,20 @@ export function createContext(overrides: Partial<{
     else await win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  const harvestCoursePage = (
+  const harvestCoursePage = async (
     target: PlayPageTarget,
     selectLessonRef?: string | null,
     signal?: AbortSignal
   ): Promise<PlayHarvestResult> => {
     if (harvestInFlight != null) {
-      return Promise.reject(new Error('已有播放页抓取在进行中，请稍候'))
+      throw new Error('已有播放页抓取在进行中，请稍候')
     }
     const win = mainWindowRef
     if (win == null || win.isDestroyed()) {
-      return Promise.reject(new Error('主窗口不可用，无法打开播放页'))
+      throw new Error('主窗口不可用，无法打开播放页')
     }
+    await injectSessionCookies(win)
+    await seedSessionStorage(win)
     harvestInFlight = harvestPlayPage(win, {
       origin: CAS_BASE_URL,
       target,

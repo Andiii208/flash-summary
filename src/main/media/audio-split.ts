@@ -1,10 +1,15 @@
 /**
- * ASR chunking (U4, required): whisper-compatible endpoints cap uploads at
- * 25MB; a 45-minute 16kHz mono WAV ≈ 86MB. We cut the audio at fixed
- * boundaries (10 minutes default), transcribe each chunk, and stitch the
- * segments back with the chunk offset as the segment start time.
- * Cutting at silence would preserve sentence boundaries better but is more
- * complex; fixed boundaries are the simpler reliable option (PROGRESS note).
+ * ASR chunking (U4, required): upload caps bound the chunk size. A 45-minute
+ * 16kHz mono WAV ≈ 86MB. We cut the audio at fixed boundaries, transcribe
+ * each chunk, and stitch the segments back with the chunk offset as the
+ * segment start time. Cutting at silence would preserve sentence boundaries
+ * better but is more complex; fixed boundaries are the simpler reliable
+ * option (PROGRESS note).
+ *
+ * The default is 210s (field-calibrated 2026-09-02): chat-style ASR
+ * platforms carry the audio as a base64 data URL with a ~10MB encoded cap —
+ * 210s of 16kHz mono ≈ 6.4MB raw ≈ 8.6MB base64, safely under. This also
+ * satisfies the classic 25MB multipart cap.
  */
 import { join } from 'path'
 import { run } from './ffmpeg'
@@ -15,7 +20,7 @@ export interface ChunkSpec {
   end: number
 }
 
-export const DEFAULT_CHUNK_SECONDS = 10 * 60
+export const DEFAULT_CHUNK_SECONDS = 210
 
 /** Divide a duration into chunk specs (≥1 chunk, last one clamped). */
 export function chunkPlan(durationSeconds: number, chunkSeconds = DEFAULT_CHUNK_SECONDS): ChunkSpec[] {
