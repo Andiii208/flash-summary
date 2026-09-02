@@ -16,3 +16,9 @@ release/
 # source dirs like src/main/library/ are NOT ignored
 /Library/
 data/
+
+# runtime scratch leftovers (empty files created by chunked-download probes)
+tmp-chunk-*
+
+# local agent-tool state
+.zcode/
