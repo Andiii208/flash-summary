@@ -96,7 +96,7 @@ export function createContext(overrides: Partial<{
         return ''
       }
     },
-    globalThis.fetch as never,
+    (url, init) => globalThis.fetch(url, init as RequestInit),
     jwtOf
   )
 

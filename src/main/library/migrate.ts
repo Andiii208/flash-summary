@@ -1,14 +1,15 @@
 /**
  * Library migration (U3): move the library to a new directory.
- * Strategy: validate the target (non-empty rejects), back up the current
- * db (SQLite backup API for a consistent snapshot), copy db + attachments,
- * and on any failure roll back by removing what was written to the target.
- * The settings.libraryRoot switch happens after a successful copy.
+ * Strategy: validate the target (non-empty rejects), copy db + attachments
+ * via the SQLite backup API (WAL-consistent), and on any failure roll back
+ * by removing what was written to the target. The source directory is never
+ * written to, so it remains the intact fallback; the settings.libraryRoot
+ * switch happens after a successful copy.
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import type { Db } from '../db/open'
-import { attachmentsPath, dbPath } from './paths'
+import { attachmentsPath } from './paths'
 
 export type MigrationResult = { ok: true; dest: string } | { ok: false; error: string }
 
@@ -21,10 +22,6 @@ export async function migrateLibrary(db: Db, srcRoot: string, dest: string): Pro
       return { ok: false, error: '目标目录非空，请选择空目录' }
     }
     mkdirSync(destTrimmed, { recursive: true })
-
-    // Backup the current db before switching (keep one snapshot).
-    const backupPath = `${dbPath(srcRoot)}.bak-${Date.now()}`
-    await db.backup(backupPath)
 
     // Copy the live db via the SQLite backup API (WAL-consistent).
     await db.backup(join(destTrimmed, 'app.db'))

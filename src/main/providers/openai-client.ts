@@ -47,7 +47,7 @@ const defaultFetch: ProviderFetch = async (url, init) => {
     return await fetch(url, {
       method: init.method,
       headers: init.headers,
-      body: init.body as never
+      body: init.body as BodyInit
     })
   } catch (err) {
     throw new ProviderError('network', `network error: ${(err as Error).message}`)

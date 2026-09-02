@@ -23,15 +23,17 @@ afterEach(() => {
 })
 
 describe('migrateLibrary (U3)', () => {
-  it('copies db + attachments to the target and keeps a backup', async () => {
+  it('copies db + attachments to the target and leaves the source untouched', async () => {
     const dest = join(src, '..', 'dest')
     const result = await migrateLibrary(db, src, dest)
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(existsSync(join(dest, 'app.db'))).toBe(true)
     expect(existsSync(join(dest, 'attachments', 'asset.bin'))).toBe(true)
+    // The source is never written to — it IS the fallback, no snapshot needed.
     const backups = readdirSync(src).filter((f) => f.startsWith('app.db.bak-'))
-    expect(backups).toHaveLength(1)
+    expect(backups).toHaveLength(0)
+    expect(existsSync(join(src, 'app.db'))).toBe(true)
   })
 
   it('rejects a non-empty target directory', async () => {
