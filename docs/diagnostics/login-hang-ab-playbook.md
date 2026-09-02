@@ -1,81 +1,49 @@
-# 登录窗口挂起 A/B 诊断手册（2026-09-02）
+# 登录窗口挂起诊断手册（2026-09-02 晚更新：已定性为环境级故障）
 
-> 症状：node fetch / curl 直连 cvs.seu.edu.cn 秒通（200/40ms），但 Electron 登录窗口
-> loadURL 间歇性无请求、无错误、无首帧。导致重新登录拿不到 JWT → 课程 401 → 课程树空。
+> **09-02 晚定论（与用户实时联测）**：本机 Electron 的**第二个渲染器永远不加载**——
+> 登录窗口无论 data:/http(s)/file:// 都只 NAV start 不 commit；`window.open` 能拿到
+> window 对象但窗口 title 永空；CDP `Target.createTarget` 调用本身挂死；主窗口
+> （第一个渲染器）的 file:// 加载完美。已排除代理/分区/沙箱/scheme/GPU/遮挡计算。
+> 应用侧已做防御（001e6c4）：loading 页走 file:// + renderer 侧跳转，25s 必有报错。
+> **剩余根因三嫌疑**：①安全组件注入（Defender 实时防护；试加排除目录）
+> ②Windows build 26200（Insider 级）× Electron 44 兼容 ③虚拟显示驱动/输入法 hook。
 
-## 0. 基线取证（2026-09-02 13:35，体检时实测）
+> 历史症状：node fetch / curl 直连 cvs.seu.edu.cn 秒通（200/40ms），但 Electron 登录窗
+> loadURL 间歇性无请求、无错误、无首帧。**另注意：安装版 v0.2.0（09-01 09:53 构建）
+> 不含当天下午之后的全部登录修复——现场测试一律用项目根 `npx.cmd electron .` 跑新构建。**
 
-| 项 | 实测值 | 含义 |
-|---|---|---|
-| clashmi.exe / clashmiService.exe | **均在运行**（PID 14984 / 25620） | 代理进程存活 |
-| ProxyEnable（HKCU Internet Settings） | **0x1（开启）** | ⚠️ **推翻 09-01 的"已排除系统代理（=0）"记录**：Clash 界面关开关后已重新接管 |
-| ProxyServer | 127.0.0.1:7890 | Chromium 默认走此代理；node fetch **不走**——与"fetch 秒通、Chromium 挂"完全吻合 |
-| 7890 端口 | LISTENING + 多条 ESTABLISHED | 流量正在进本地代理 |
-| tailscaled / tailscale-ipn | 运行中 | exit node 此前实测 false，维持观察 |
+## 0. 环境取证时间线
 
-**结论：代理吞流量重回第一嫌疑。** Chromium 的流量进 127.0.0.1:7890 后若被规则分流到
-不可用节点（校园域名被误分流最常见），表现正是"无请求发出、无错误、挂死"。
+| 时间 | 取证 |
+|---|---|
+| 09-01 | 用户退出 Clash 后登录链路实测成功；当晚 22:49 起复现挂起 |
+| 09-02 体检 | ProxyEnable=1 + clashmi 存活（代理翻案，主张 A/B） |
+| 09-02 晚 | 用户退干净 Clash（进程无、ProxyEnable=0）→ **仍挂** → 代理排除 |
+| 09-02 晚 | partition/sandbox/scheme/GPU/遮挡全排除；**window.open + createTarget 复现 → 第二渲染器环境级故障定论** |
+| 09-02 晚 | better-sqlite3 曾从 node_modules 无声消失（重装恢复）——同环境安全组件嫌疑佐证 |
 
-## 1. A/B 步骤（按序执行，每步记录 net-trace.log 变化）
+## 1. 用户修复步骤（按序，每步后用 `npx.cmd electron .` 重测）
 
-**每步之后**：启动应用 → 点「登录 CAS」→ 等待结果（成功 / 报错 / 挂起 30s+）→
-把 `%APPDATA%\seu-summary\logs\net-trace.log` 尾部复制留存，然后删除该文件以便下一步干净判读。
+1. **重启电脑** → 点登录（清全部 hook 态的零成本分界实验；better-sqlite3 消失与第二渲染器挂死都可能是一次性系统态损坏）。
+2. 无效 → **Windows 安全中心 → 病毒和威胁防护设置 → 排除项**添加 `E:\SEU summary`（及 `%LOCALAPPDATA%\Programs\SEU Summary`）→ 重启应用再试。
+3. 无效 → **临时退出百度输入法**（切英文键盘）再试；仍无效则退出远程控制工具（向日葵/ToDesk 类）再试。
+4. 全部无效 → 用 `--enable-logging=stderr --v=2` 抓 chromium stderr（重点看渲染进程/utility 进程启动行），连同本文件判读表反馈到新会话。
 
-### 步骤 1（首选）：完全退出 Clash Mi 后复测
-托盘右键 Clash Mi → 退出（不是关窗口）。确认进程已消失：
-```powershell
-tasklist | findstr /i "clashmi"
-```
-（无输出才算退干净；若 clashmiService.exe 仍在，任务管理器结束它。）
-然后正常启动应用复测登录。
-- **好了** → 根因=代理分流。在 Clash Mi 规则里给 `*.seu.edu.cn` 加 DIRECT 直连后即可常驻。
-- **仍挂** → 步骤 2。
-
-### 步骤 2：`SEU_DIRECT_NET=1` 绕过 Chromium 代理/QUIC/DoH 三层
-PowerShell（在项目根）：
-```powershell
-cd "E:\SEU summary"
-$env:SEU_DIRECT_NET='1'; npx electron .
-```
-此模式 Chromium 完全不走系统代理。好了 → 坐实代理；仍挂 → 步骤 3。
-
-### 步骤 3：`SEU_DIAG_URL` 跳过本地 loading 首跳
-```powershell
-$env:SEU_DIAG_URL='https://cvs.seu.edu.cn/'; npx electron .
-```
-首个导航直接打平台页，隔离 data: 页是否为挂点。
-
-### 步骤 4：`SEU_DIAG_DEFAULT_SESSION=1` 隔离 persist:seu-cas 分区
-```powershell
-$env:SEU_DIAG_DEFAULT_SESSION='1'; npx electron .
-```
-（仅诊断用：登录成功会把 cookie 落进默认会话，诊断后需正常启动一次重新登录。）
-
-### 步骤 5：`SEU_DIAG_SHOW=1` 肉眼观察
-```powershell
-$env:SEU_DIAG_SHOW='1'; npx electron .
-```
-窗口直接可见：看到的是白屏、加载中、还是报错页，记录下来。
-
-（多个变量可叠加；每步只改一个变量最利于归因。）
-
-## 2. net-trace.log 钉子判读表
+## 2. net-trace.log 钉子判读表（现行版）
 
 | 日志形态 | 结论 |
 |---|---|
-| 有 `NAV start` 无 `NAV commit` | 首跳从未 commit → renderer/网络服务进程侧（代理黑洞最典型） |
-| 有 `NAV commit` 无 `NAV finish` | 页面开始加载但资源挂起 → 网络/代理 |
-| `NAV renderer gone <reason>` / `NAV renderer unresponsive` | 进程级问题（崩溃/卡死） |
-| 只有 `LOGIN window open`，连 `NAV start` 都没有 | loadURL 前就挂 → 查窗口创建与首帧预算 |
-| `PLATFORM page loaded` + `FAIL <原因>` | 链路走到了明确失败，按原因分类处理 |
+| `NAV start` 后无 `NAV commit` | 导航永不提交 = 第二渲染器故障的本体特征（任何 scheme 皆然） |
+| `LOADING page ready -> renderer navigates to platform` | file:// loading 页已加载（好迹象，001e6c4 新钉子） |
+| `PLATFORM page committed` | 平台页首帧到达（预算解除、探针启动） |
+| `NAV renderer gone <reason>` / `unresponsive` | 渲染进程崩溃/卡死（进程级） |
+| `FAIL …（25 秒，阶段：首帧）` | 预算兜底触发——新版必有此报错，不再无声白屏 |
 
-## 3. t-1 课程字段抓样（并行任务，与挂起无关）
+## 3. t-1 课程字段抓样
 
-登录平台网页版（浏览器直接访问 cvs.seu.edu.cn 云课堂）→ F12 → Network → 勾选 Fetch/XHR →
-刷新课程列表页 → 找 `group_subject_vod_list/t-1` 请求：
-1. 复制完整 Response JSON（课程名/学期字段非敏感，可整段贴出）；
-2. 复制该请求的 Request URL 全串与 Request Headers 里的 `jwt-token` **头名**（值可打码）。
-拿到样本即可精修 `parseCourseList` 字段候选与课时/视频流接口（getList / lastPlayInfoById / m3u8）。
+**优先路径（无需 Chromium/无需 F12）**：会话有效时应用内 SchoolClient 走 node fetch 可直连。
+若需手动：登录平台网页版 → F12 → Network → 刷新课程列表 → 找 `group_subject_vod_list/t-1`
+→ 复制 Response JSON 整段（课程名非敏感）+ Request Headers 里 `jwt-token` 头名（值打码）。
 
 ## 4. MVP 人工验收清单
 

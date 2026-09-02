@@ -5,8 +5,8 @@
 ## 当前状态
 
 - **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；**v0.2.0 已发布**（tag + GitHub Release 资产在线）
-- **进行中**：登录链路与课程 API 校准已修复并实测成功（①cvs→auth.seu.edu.cn OAuth2 静默授权→跳回 cvs→收割会话；②真实 base 无 -ui + jwt-token 头 + t-1 端点）。**当前唯一活堵点：Chromium 窗口加载 cvs.seu.edu.cn 间歇挂起**，导致重新登录拿不到新 JWT → listCourses 401 → 课程树空。**2026-09-02 体检修正：系统代理现已实测为开启（ProxyEnable=1 → 127.0.0.1:7890，clashmi 双进程存活、7890 有活跃连接），推翻此前 ProxyEnable=0 的排除结论——代理吞流量重回第一嫌疑**（Chromium 走系统代理而 node fetch 不走，与症状完全吻合）
-- **下一步**：按 `docs/diagnostics/login-hang-ab-playbook.md` 执行——①托盘完全退出 Clash Mi → 复测登录；②仍挂则 `SEU_DIRECT_NET=1` → `SEU_DIAG_URL` → `SEU_DIAG_DEFAULT_SESSION` → `SEU_DIAG_SHOW` 逐项 A/B，回传 net-trace.log；③并行：用户 F12 抓 t-1 响应样本（手册 §3）→ parser 字段精修；④MVP 人工三项（干净机器/45min 端到端/过期恢复）；⑤四门禁 + `npm run smoke` → 发 v0.2.1
+- **进行中**：登录链路与课程 API 校准已修复并实测成功（①cvs→auth.seu.edu.cn OAuth2 静默授权→跳回 cvs→收割会话；②真实 base 无 -ui + jwt-token 头 + t-1 端点）。**当前唯一活堵点：本机 Electron 第二渲染器环境级故障（09-02 晚与用户联测定论）**——登录窗口任何 scheme 的导航都永不 commit（详见「失败与卡点」），导致重新登录拿不到新 JWT → listCourses 401 → 课程树空。另发现安装版 v0.2.0 不含 09-01 下午之后的全部登录修复，用户此前实测的一直是旧包
+- **下一步（用户操作，按序）**：①重启电脑后跑最新构建（`npx.cmd electron .`）点登录重试——清 hook 态的零成本分界实验；②无效则 Windows 安全中心→排除项加 `E:\SEU summary` 与安装目录再试；③再无效则临时退出百度输入法/远程控制工具逐个排查；④环境修复前如需拿课程数据，可用手动添加（后备入口）+ node 侧直连（node fetch 不走 Chromium，t-1 样本抓取见 playbook §3）
 
 ## 环境实测（2026-08-30）
 
@@ -49,7 +49,7 @@
 
 ## 失败与卡点
 
-- **Chromium 窗口加载 cvs.seu.edu.cn 间歇挂起（未解，2026-09-01 记录 / 2026-09-02 修正）**：node fetch / curl 直连秒通（200/40ms），但 Electron 窗口 loadURL 常无响应（无请求发出、无错误、25s 超时偶不触发）。~~已排除系统代理开关（用户已在 Clash 界面关闭）~~ **09-02 实测翻案：ProxyEnable=1、ProxyServer=127.0.0.1:7890、clashmi/clashmiService 双进程存活、7890 有多条 ESTABLISHED——Clash 界面关开关后已重新接管，代理吞流量重回第一嫌疑**。仍未排除：DoH、QUIC/UDP、IPv6 优先、Tailscale exit node 复测。诊断手册（含基线取证、五步 A/B、net-trace 判读表）：`docs/diagnostics/login-hang-ab-playbook.md`。环境坑：独立 `electron tmp-script.cjs` 探针进程窗口加载必挂（ERR_FAILED，连 data: URL 都挂）——只有正式应用进程网络正常，调试要挂在正式应用上（烟测脚本 smoke-cdp.mjs 即此手法）。
+- **Chromium 第二渲染器环境级故障（2026-09-02 晚定论，与代理无关）**：与用户实时联测定论——**本机 Electron 的第二个渲染器永远不加载**：登录窗无论 data:/http(s)/file:// 的 loadURL 都只 NAV start 不 commit；`window.open` 返回窗口对象但 target title 永空；CDP `Target.createTarget` 调用本身挂死；而主窗口（第一个渲染器）的 file:// 加载完美（烟测 19/19 全绿即单窗口验证）。已排除：代理（用户退出 Clash Mi 且 ProxyEnable=0）、session 分区（defaultSession 同挂）、沙箱（--no-sandbox 同挂）、scheme（file:// 同挂）、GPU/遮挡计算（--disable-gpu + CalculateNativeWinOcclusion 关闭同挂）。同期环境异常：better-sqlite3 从 node_modules 无声消失（疑似安全组件隔离，重装恢复）。**应用侧已做防御**（001e6c4）：loading 页改 file:// 临时文档 + renderer 侧跳平台、首帧预算/探针移入 did-navigate——环境修好后登录链路即用最可靠路径。**根因三嫌疑**（按可能性）：①安全组件注入（Windows Defender 实时防护开着；试加排除目录）；②Windows build 26200（Insider 级超新 build）× Electron 44/Chromium 152 兼容 bug；③虚拟显示驱动/输入法 hook（百度输入法在跑、用户用远程工具）。**下一步（用户操作）**：①重启电脑后直接点登录重试（清 hook 态，零成本分界实验）；②无效则 Windows 安全中心→病毒和威胁防护→排除项加 `E:\SEU summary` 与安装目录，再试；③再无效则临时退出百度输入法/远程工具逐个排查；④修复版体验：loading 页有 spinner + 25s 必有超时报错（不再无声白屏）
 
 - **v0.1.0 发布事故（已修复，2026-08-31）**：tag 打在最新提交但发布资产是 Phase 7 时点的旧构建（asar 含脚手架页，无 UI/Provider 代码），且无应用图标、oneClick 静默安装无桌面快捷方式。根因：打包（7d220af）之后又提交了 UI 组装/Provider 等功能但从未重新 `npm run dist`，而发布时未校验资产与 tag 一致。教训已记入 CHANGELOG 0.1.1：**发布资产必须在打 tag 的同一提交上构建，发布前用 @electron/asar 抽验包内产物**。
 
