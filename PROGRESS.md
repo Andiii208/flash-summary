@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；**v0.2.0 已发布**（tag + GitHub Release 资产在线）
-- **进行中**：登录窗口因本机第二渲染器环境故障不可用（见失败与卡点），**但已用「主窗口登录 + 会话收割注入」完整绕过（2026-09-02 晚实测全链打通）**：用户在主窗口内完成 SSO 登录 → CDP 收割 cookie+JWT → safeStorage 重封写入 session.bin → 应用 logged_in → 刷新课程拉回 500 门真实课程 → parser 字段精修（c80d82f：subjName/teacNames/acye*，此前 name 候选全未命中致课程名空白）→ 课程树正确渲染课程名+学期。**当前应用可用**（会话有效期内）；过期后需重走主窗口登录流程（尚未产品化，见下一步②）
-- **下一步**：**执行 `docs/plans/2026-09-02-v021-stabilization.md`（v0.2.1 稳定化与发布计划）**——V1 课时详情换源（video.src 直链方案，侦察已完毕）→ V2 登录流程产品化（主窗口内嵌）→ V3 环境故障根因（用户配合：重启/Defender 排除/退输入法）→ V4 MVP 验收与发布。按计划内任务清单逐项勾销，每阶段更新本台账
+- **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；v0.2.0 已发布；**v0.2.1 计划的 V1（课时详情换源，下载管线全通）已完成（2026-09-03 凌晨）**
+- **进行中**：**v0.2.1 计划下一步 = V2 登录流程产品化（主窗口内嵌）**——V1 验证期间的实测结论：sessionStorage 里的 JWT 才是播放页 SPA 的鉴权凭据（cookie 罐不行，SPA 会先 logout 再跳登录页），app-context 里已有 `seedSessionStorage`（收割前把 session.bin 的 JWT 种进同源 sessionStorage）可复用；会话过期场景仍需用户在主窗口手动登录一次（V2.1 将产品化）
+- **下一步**：按 `docs/plans/2026-09-02-v021-stabilization.md` 执行 V2（V2.1 loginViaMainWindow → V2.2 withSessionRetry 接线 → V2.4 SEU_LOGIN_WINDOW 回退开关 → V2.5 过期恢复验证）→ V4 发布收口。执行前先读本台账「阶段记录」最后三行
 
 ## 环境实测（2026-08-30）
 
@@ -40,6 +40,7 @@
 | 课程接口校准 | ✅ 主体完成 | 已落地（提交 8dec927）：①SchoolClient 换真实 API base `https://cvs.seu.edu.cn/jy-application-resourcemanage`（API 前缀无 -ui，UI 静态资源才有）；②请求带 `jwt-token` 头（getJwt 注入）；③登录窗口收割 JWT（sessionStorage 键 `jy-application-resourcemanage-ui_STORAGE_KEY_JWT_TOKEN`，appName=pathname 首段），SessionRecord 加 jwt 字段加密落盘；④listCourses 切真实端点 `/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500`；⑤parser 容错 {code,result:{records|list|rows|data}} 包装 + courId/courName 字段候选。**待真实样本精修：t-1 课程字段名（用户 F12 提供）与课时/视频流接口（播放页 getList/lastPlayInfoById/m3u8）**。接口全景（自前端 bundle 逆向）记于上一次会话台账：/v1/course/verify?courId、/v1/vod/addVodWatchRecord、/v1/list/recentWatchRecord、/v1/config/vodNmediaConfigInfo、/v1/app/info、/resource/resources_tree_me(RBAC 菜单树) | 提交 8dec927 |
 | 登录挂起诊断与探测修复 | ⏳ 进行中 | 提交 64a6fce/6f1b3eb/79cca90/e0f2d2a/47a9a46：①登录后探测器探真实端点并带 jwt-token，字段结构记录升级为深度受限递归；②`--seu-trace-keep-window` 保留登录窗；③`--seu-direct-net`（no-proxy-server+disable-quic+disable-async-dns，SEU_DIRECT_NET=1 后备）A/B 开关；④会话探测旧 404 端点 → 真实 t-1 + jwt-token 头；⑤**首帧兜底**：22:49 现场复现三次登录全隐形挂死——本地 data: loading 页未完成、ready-to-show 未触发、25s 平台页预算从未建立（它在 loading 页 resolve 后才启动）、零错误零日志；预算改为建窗即启动覆盖 loading→平台首帧全程，net-trace 增 LOADING page ready/PLATFORM page loaded/FAIL 钉子；⑥渲染层：挂载只读本地树（原来挂载时 listCourses 过期会经 withSessionRetry 自动弹登录窗，用户视角=点了没反应，还叠出 3 个隐形窗）、session_expired 翻徽标为未登录、login() 防重入 + WelcomeGuide busy 禁用。四门禁绿 207/207 | 提交 64a6fce、6f1b3eb、79cca90、e0f2d2a、47a9a46 |
 | 组合层体检与质量清理（2026-09-02） | ✅ 完成 | 用户判据「测试全绿 ≠ 组装可用」驱动的全面体检：**L1 CDP 进程级烟测 19/19**（`npm run smoke`：桥面完整性对齐 bridge.ts、IPC 无副作用通道全探活含 3 条错误路径、隔离 userData/资料库下启动组装、首渲染、日志落盘；seam=SEU_SMOKE_USER_DATA+SEU_SUMMARY_DOCS_OVERRIDE）；**L2 SchoolClient 真实 fetch 集成 6/6**（本地 http 服务器全错误分类；证伪 opaqueredirect 疑虑——undici manual 返回可读 302）；**L3 六阶段端到端 1/1**（真实 ffmpeg 合成媒体 + 三合一 mock 服务器，进度序列/产物落库/音频清理/全景零请求全断言）；**发现即修**：probeSaysLoggedIn 收紧到平台信封字段、死 StageOutputStore 层删除（恒假 fast-path + no-op 桩）、死桥 3 通道与死导出 9 处清理、qa.history 接线（追问历史跨会话回显）、gridDecoder 提取补测、@types/mocha 与 vitest 弃用告警清除、migrate 冗余备份删除；**现场取证**：系统代理翻案（见当前状态）。文档对齐 README/MVP/spec。测试 207→221（38 文件） | 提交 408ad93…20df514；报告 docs/health/2026-09-02-combined-audit.md |
+| V1 课时详情换源——下载管线全通（2026-09-03 凌晨） | ✅ 完成 | 计划 V1.1-V1.5 全勾销，测试 221→257（40 文件），smoke 19/19。**落地**：V1.0 迁移 006（courses.tecl_id/tecl_code + lessons.play_ref，t-1 字段采集）；V1.1 `play-harvest.ts`（URL 构造/双流判别/直链脱敏/课时条目解析纯函数 + 主窗口导航→轮询 video.src→点选课时→抓目录→恢复 UI）；V1.2 fetching_course 换源（收割直链走阶段交接，lessons 表只存脱敏路径）；V1.3 `school:harvestLessons` 通道 + 课程树「抓取课时目录」按钮（展开空课程触发，幂等 upsert+陈旧行清理）；V1.4 **真实单课全管线 succeeded**（1690625-L0：双流 810MB 下载→音频→24 片真实 MiMo ASR→11 段 4108 字真实转写→17 关键帧→mimo-v2.5 笔记 3812B 落库→缓存清理）；V1.5 红线审计 0 违规（日志 0 命中 auth_key/直链/JWT；lessons 表直链 0 带 query）。**现场发现并修复 8 个真实缺陷**（详见关键决定记录 2026-09-03 批注）：①窗口 cookie 罐空→session.bin 注入 ②SPA 鉴权靠 sessionStorage JWT→seedSessionStorage 种入 ③teacher 流无音频→pickAudioSource ffprobe 回退 screen 流 ④chat() body 是 plain object 被 undici 发成 "[object Object]"→JSON 序列化（潜伏 bug！）⑤MiMo ASR 走 chat/completions+input_audio→multipart 404 自动回退+按 baseUrl 记忆（网关对反复大 body 404 会 RST）⑥base64 实测上限 ~7MB（文档写 10MB）→分片 120s ⑦静音分片不应杀任务→跳过，全静音课明确报错 ⑧模型输出偏差→parseNote 归一 mm:ss/数字串时间戳、按 ref 前缀修 evidence.kind、JSON 修复层、response_format json_object。分片转写加重试（网络/限流 3 次）；network 错误带 cause 链 | 提交 c9fc81f、9075b20、e39cedf、3772c58、25ca3e4、7c8f562、af47aa9、f55d099 |
 
 ## 遗留（诚实清单）
 
@@ -55,6 +56,7 @@
 
 ## 关键决定记录
 
+- **V1 管线（2026-09-03）**：①fetching 收割的完整签名直链只在 task_stage_outputs 里做阶段交接（随缓存清理），lessons 表只存去 query 的路径段（红线 V1.5）；②auth_key TTL 未实测——下载失败重试若因签名过期，需重跑任务从 fetching 重新收割（V4.1 45 分钟端到端前实测）；③窗口内导航（收割/后续登录）会让渲染器卸载重载：renderer 侧 fire-and-forget，回来后 mount 重读本地树；导航期间 tasks:progress 事件丢失，任务实际不中断；④课程树默认全展开 + 每目录抓取需开一次播放页——500 门课不做全量抓取，用户对哪门课感兴趣点哪门。
 - **U1 重试统一走 runAsync（2026-08-31）**：后端 `tasks:runAsync` 的 `firstStageFor(state, failed_stage)` 对 failed 任务自动从失败阶段恢复，语义等同 retryTask；前端「重试」不再调阻塞式 `tasks:retry`，统一非阻塞路径，避免 UI 冻结。更简单方案，符合计划「选更简单方案」约定。
 - **U2 组件测试环境分治（2026-08-31）**：vitest 默认环境保留 `node`（main 层测试用真实 fetch/better-sqlite3），仅 `tests/components/**` 用 `happy-dom`——否则 happy-dom 的 CORS fetch 会弄挂 downloadToFile 测试。交互用 `preact/test-utils` 的 act 包裹以 flush 异步批处理。
 - **U2 Provider 管理暂留「设置」页签（2026-08-31）**：计划 U2 主区页签为 任务/笔记/追问，但 Provider 表单必须保留且 U3 才做完整设置页，故先以第四个页签「设置」承载 ProviderPanel，U3 增量扩展资料库/缓存/主题。
