@@ -116,6 +116,13 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
 
+## 🧯 常见问题（troubleshooting）
+
+- **课时收割失败 / 播放提示「播放资源获取失败」**：若你在使用 Clash 等代理的 **TUN 模式**（虚拟网卡接管全局流量），学校视频服务器 `dncvsvod.seu.edu.cn` 通常不在常见分流库里，会被送去代理出口而连不上。解决：代理规则加一条 `DOMAIN-SUFFIX,seu.edu.cn,DIRECT`，或临时关闭 TUN 模式。
+- **登录跳转白屏 / 平台页超时**：多为代理拦截了 `cvs.seu.edu.cn`。同样建议放行 `*.seu.edu.cn` 直连；也可用 `SEU_DIRECT_NET=1` 启动应用（Chromium 层绕过系统代理，与代理上外网互不影响）。
+- **会话频繁过期**：学校平台会话本身有时效，过期后点「登录 CAS」重新授权即可（已保存的资料库与笔记不受影响）。
+- **`npm` 报 "cannot execute"**（Windows + git-bash/cygwin 环境）：请使用 `npm.cmd`。
+
 ## 🛠️ 开发
 
 ```bash
