@@ -2,6 +2,27 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 笔记系统质变（Note Revolution，2026-09-04，用户批准）
+
+方案：五批次计划（生成侧对齐 → 数据通道 → 五视图渲染 → PDF 讲义 → SKILL 沉淀）。工艺规范沉淀于 [docs/skills/note-craft/SKILL.md](docs/skills/note-craft/SKILL.md)。
+
+### 新增
+
+- **思维导图视图**（第五阅读视图）：knowledgeTree 交互式 SVG 导图（纯函数布局：左根、父居中、贝塞尔连线），节点点击折叠并显示隐藏后代数徽标；PDF 讲义复用同一布局函数静态整页输出。
+- **时间线图文卡片**：详细笔记的时间线从纯文本行升级为卡片流——时间戳胶囊 + 标题 + 详情 + 转写引文 + **自动绑定的课堂关键帧缩略图**（点击放大）。图片绑定三层对齐：笔记 evidence 引用精确匹配 → 时间就近关键帧（≤90s）兜底 → 无图纯文字；旧笔记无需重跑即可获得配图。
+- **证据 ID 标注发送**：多模态总结请求中每张图片前插入 `[图片 N/M] 类型 | 证据ID | 时间` 标注并要求模型原样引用——修复模型编造散文式证据引用（如「超参数调整演示幻灯片」）导致图片对齐链路断裂的问题；格式不符的引用在归一层直接过滤。
+- **PDF 整册讲义导出**：主窗口 printToPDF（零新依赖、矢量文本、规避本机第二渲染器故障）——封面（课程/课时/教师/生成时间 + 概览摘要）→ 整页知识导图 → 时间线配图卡片 → 概念双栏 → 公式/代码分块（代码围栏）→ 方法论 → 考点/缺口卡 → 三列课堂画面图集；A4、页码页脚、卡片防跨页断裂；`SEU_PDF_PATH` 环境变量为 e2e 测试缝。
+- **笔记重新生成**：`notes:regenerate` 复用已存转写/关键帧仅重跑总结阶段（不重下载视频）；输入校验前置（缺转写报真实原因）、任务排队/运行中拒绝。
+- **附件数据通道**：`notes:attachments` 把关键帧/PPT 页读为 CSP 安全的 base64 data URL（8MB/张上限、坏文件跳过）。
+- **md-lite 受限 Markdown 渲染**：自研零依赖解析器（##/-/1./>/**粗体**/`行内码`）产出 token 树，渲染层只输出 Preact JSX——零 innerHTML、零 XSS 面。
+- **概览/方法论的 Markdown 结构化**：system prompt 要求 LLM 以 ## 小节 + 列表组织 overview/methodology。
+
+### 变更
+
+- 阅读视图 4 → 5（+思维导图）；投影升级为**块模型**（paragraph/markdown/tree/timeline/concepts/formulas/callout/steps 八类 ViewBlock），空 section 省略不渲染。
+- Markdown 导出升级：粗体时间戳、转写引文（> 引用）、证据标注、代码围栏、考点/缺口章节。
+- 测试 323 → 373（+50：证据对齐纯函数、两个 IPC 通道、PDF IPC、块投影、md-lite、导图布局、五视图组件、PrintHandout）；smoke 桥面清单同步 4 个新方法。
+
 ## [0.3.0] - 2026-09-04
 
 UX 深审整改（方案 [docs/plans/2026-09-03-ux-overhaul.md](docs/plans/2026-09-03-ux-overhaul.md)，用户批准「全按推荐」）：让用户的学习浮上来、任务随时可停、界面站上成熟设计体系。

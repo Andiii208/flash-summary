@@ -86,6 +86,12 @@ The note schema contains:
 
 Markdown export is a secondary exchange format. PDF export is not included in MVP.
 
+> **修订批注（2026-09-04，Note Revolution，用户批准）**：
+> ① 阅读视图由四个扩为**五个**：+ 思维导图（knowledgeTree 的交互 SVG 投影，同源 JSON）。
+> ② 四个阅读视图升级为**块模型投影**（`projectNoteBlocks`：时间线图文卡片/概念卡/公式分块/考点缺口卡/编号步骤），证据引用在渲染层与真实关键帧图片绑定（三层对齐：ref 精确匹配 → 就近关键帧 → 纯文字）。
+> ③ 笔记支持「重新生成」（复用已存转写/关键帧，仅重跑总结阶段，不重下载）。
+> ④ **PDF 导出转正**：主窗口 printToPDF 输出整册讲义（封面/整页导图/时间线配图/图集），vector 文本。工艺规范见 `docs/skills/note-craft/SKILL.md`。
+
 ## 6. Follow-Up Questions
 
 MVP supports questions about the current lesson only. The context is:
