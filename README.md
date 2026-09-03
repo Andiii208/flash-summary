@@ -80,7 +80,7 @@ SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（272 个用例，41 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（273 个用例，41 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -112,7 +112,7 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 ## ✅ 当前状态
 
 - **v0.2.1**：真实课时下载管线全通（播放页收割直链+课时目录；真实单课 810MB 双流→ASR→笔记已跑通）、主窗口内嵌登录与**会话过期恢复活体验证通过**（登录→自动返回→课程自动刷新 636 门）、课程树搜索/徽标、任务状态恢复与全局历史、复制 Markdown、«quiet academia» 界面重做。
-- **272 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **273 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
 

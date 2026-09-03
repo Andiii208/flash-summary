@@ -4,7 +4,7 @@
 **诚实原则**：只标记已在实际环境中验证的内容；需真机/真实账号人工验证的条目如实标注，不夸大。
 
 验收环境：Windows（本机），node v24.15.0，Electron v44.0.0。
-自动化验证：`npm run lint && npm run typecheck && npm test && npm run build`（272 个测试 / 41 文件，2026-09-03 全绿）；CI（GitHub Actions windows-latest）对每个 push 运行同样门禁。组合层验证（2026-09-02）：CDP 进程级烟测 19/19（`npm run smoke`：桥面完整性、IPC 全通道探活、启动组装、首渲染）+ 真实 HTTP 集成 6/6 + 六阶段管线端到端，见 docs/health/2026-09-02-combined-audit.md。
+自动化验证：`npm run lint && npm run typecheck && npm test && npm run build`（273 个测试 / 41 文件，2026-09-03 全绿）；CI（GitHub Actions windows-latest）对每个 push 运行同样门禁。组合层验证（2026-09-02）：CDP 进程级烟测 19/19（`npm run smoke`：桥面完整性、IPC 全通道探活、启动组装、首渲染）+ 真实 HTTP 集成 6/6 + 六阶段管线端到端，见 docs/health/2026-09-02-combined-audit.md。
 
 ## 逐条验收
 
@@ -26,7 +26,7 @@
 ```bash
 npm run lint        # 0 错误
 npm run typecheck   # 0 错误（node + web 双工程）
-npm test            # 272 passed (41 files)
+npm test            # 273 passed (41 files)
 npm run build       # electron-vite 产物 out/
 npm run smoke       # CDP 进程级烟测 19/19（组合层）
 npm run dist        # NSIS 安装包 release/
