@@ -21,6 +21,8 @@ import type { Stage } from './tasks/stages'
 import { stagePercent } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
+import { listAttachments } from './notes/attachments'
+import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
@@ -682,6 +684,38 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (canceled || filePath == null) return ok({ canceled: true })
       writeFileSync(filePath, md, 'utf8')
       return ok({ canceled: false, path: filePath })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 2026-09-04: attachments (keyframes + PPT pages) as data URLs for the note views.
+  ipc.handle('notes:attachments', (_e, lessonId: unknown) => {
+    try {
+      return ok(listAttachments(ctx.db, str(lessonId, 'lessonId')))
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 2026-09-04: regenerate the note from stored transcripts/keyframes — no
+  // re-download. Guarded: refuses while a task for this lesson is queued/running.
+  ipc.handle('notes:regenerate', async (_e, lessonId: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      // Input checks first: a missing transcript should not masquerade as a
+      // provider-binding problem (chatFor throws when unbound).
+      const inputs = loadSummarizeInputs(ctx.db, id)
+      if ('error' in inputs) return err(new Error(inputs.error))
+      if (queue.current() != null) return err(new Error('任务运行中，请等待完成后再重新生成笔记'))
+      const runningForLesson = ctx.db
+        .prepare("SELECT COUNT(*) AS n FROM tasks WHERE lesson_id = ? AND state IN ('pending','summarizing','transcribing','extracting_visuals','extracting_audio','downloading_video','fetching_course')")
+        .get(id) as { n: number }
+      if (runningForLesson.n > 0) return err(new Error('该课时存在排队/运行中的任务，请等待完成后再重新生成笔记'))
+      const client = ctx.chatFor('multimodal')
+      const result = await summarizeLesson(ctx.db, client, id)
+      if ('error' in result) return err(new Error(result.error))
+      return ok(result)
     } catch (e) {
       return err(e)
     }

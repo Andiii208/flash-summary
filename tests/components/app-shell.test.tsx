@@ -56,7 +56,9 @@ function makeBridge(): SeuSummaryBridge {
     },
     notes: {
       latest: vi.fn(async () => ok(null)),
-      exportMarkdown: vi.fn(async () => ok({ canceled: true }))
+      exportMarkdown: vi.fn(async () => ok({ canceled: true })),
+      attachments: vi.fn(async () => ok([])),
+      regenerate: vi.fn(async () => ok({ version: 1, images: 0 }))
     },
     qa: {
       ask: vi.fn(async () => ok({ id: 'q1', answer: '回答' })),

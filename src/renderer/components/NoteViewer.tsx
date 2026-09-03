@@ -3,16 +3,23 @@ import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
 import { projectNote, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
+import type { NoteAttachmentInfo } from '../../shared/bridge'
 
 export interface NoteViewerProps {
   note: Note | null
+  /** 2026-09-04: lesson keyframes/PPT images (data URLs). */
+  attachments?: NoteAttachmentInfo[]
+  /** Regenerate in flight (button busy state). */
+  regenBusy?: boolean
+  /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
+  onRegenerate?: () => void
   onExport?: () => void
   /** Copy the markdown rendering to the clipboard (best-effort). */
   onCopy?: () => void
 }
 
 /** Four-view note reader (spec §5): one note JSON, four projections. */
-export function NoteViewer({ note, onExport, onCopy }: NoteViewerProps): JSX.Element {
+export function NoteViewer({ note, onRegenerate, regenBusy = false, onExport, onCopy }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
   return (
     <div class="note-viewer">
@@ -47,6 +54,11 @@ export function NoteViewer({ note, onExport, onCopy }: NoteViewerProps): JSX.Ele
           ))}
         </nav>
         <div class="note-actions">
+          {onRegenerate != null && note != null && (
+            <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
+              {regenBusy ? '生成中…' : '重新生成'}
+            </button>
+          )}
           {onCopy != null && note != null && (
             <button class="btn small" onClick={onCopy}>
               复制 Markdown

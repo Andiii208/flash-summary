@@ -6,7 +6,8 @@ import type {
   ProvidersListResult,
   TaskRowInfo,
   TaskProgressInfo,
-  AppSettingsInfo
+  AppSettingsInfo,
+  NoteAttachmentInfo
 } from '../shared/bridge'
 import type { SessionStateValue } from '../shared/types'
 
@@ -72,7 +73,11 @@ const api: SeuSummaryBridge = {
   notes: {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
     exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
-      ipcRenderer.invoke('notes:exportMarkdown', lessonId)
+      ipcRenderer.invoke('notes:exportMarkdown', lessonId),
+    attachments: (lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>> =>
+      ipcRenderer.invoke('notes:attachments', lessonId),
+    regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number }>> =>
+      ipcRenderer.invoke('notes:regenerate', lessonId)
   },
   qa: {
     ask: (lessonId: string, question: string): Promise<ApiResult<{ id: string; answer: string }>> =>

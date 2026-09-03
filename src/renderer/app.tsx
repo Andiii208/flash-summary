@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
@@ -186,7 +186,14 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             />
           )}
           {tab === 'notes' && (
-            <NoteViewer note={state.note} onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined} onCopy={state.copyNote} />
+            <NoteViewer
+              note={state.note}
+              attachments={state.attachments}
+              regenBusy={state.noteRegenBusy}
+              onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
+              onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined}
+              onCopy={state.copyNote}
+            />
           )}
           {tab === 'qa' && <QaPanel entries={state.qaEntries} busy={state.qaBusy} hasLesson={state.currentLesson !== ''} onAsk={state.ask} />}
           {tab === 'settings' && (
@@ -281,6 +288,10 @@ interface AppState {
   providerTest: { ok: boolean; text: string } | null
   exportNote: (lessonId: string) => void
   copyNote: () => void
+  /** 2026-09-04: regenerate + attachments for the note views. */
+  attachments: NoteAttachmentInfo[]
+  noteRegenBusy: boolean
+  regenerateNote: (lessonId: string) => void
   setCacheDir: (dir: string) => void
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   chooseLibrary: () => void
@@ -336,6 +347,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const [allCoursesOpen, setAllCoursesOpen] = useState(false)
   const [currentLesson, setCurrentLesson] = useState('')
   const [note, setNote] = useState<Note | null>(null)
+  /** 2026-09-04: lesson attachments (keyframes/PPT) for the note views. */
+  const [attachments, setAttachments] = useState<NoteAttachmentInfo[]>([])
+  const [noteRegenBusy, setNoteRegenBusy] = useState(false)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
   const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
@@ -436,6 +450,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const loadNote = useCallback(async (lessonId: string): Promise<void> => {
     const res = (await bridge.notes.latest(lessonId)) as ApiResult<Note | null>
     if (res.ok && res.value != null && lessonRef.current === lessonId) setNote(res.value)
+  }, [bridge])
+
+  /** 2026-09-04: attachments ride along with the note (guarded on lessonRef too). */
+  const loadAttachments = useCallback(async (lessonId: string): Promise<void> => {
+    const res = await bridge.notes.attachments(lessonId)
+    if (res.ok && res.value != null && lessonRef.current === lessonId) setAttachments(res.value)
   }, [bridge])
 
   const loadHistory = useCallback(async (lessonId: string): Promise<void> => {
@@ -581,6 +601,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     setTree([])
     setCurrentLesson('')
     setNote(null)
+    setAttachments([])
     setHistory([])
     setQaEntries([])
     toast('已退出登录', 'info')
@@ -666,11 +687,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
       setCurrentLesson(lessonId)
       lessonRef.current = lessonId
       setQaEntries([])
+      setAttachments([])
       void loadNote(lessonId)
+      void loadAttachments(lessonId)
       void loadHistory(lessonId)
       void loadQaHistory(lessonId)
     },
-    [loadNote, loadHistory, loadQaHistory]
+    [loadNote, loadAttachments, loadHistory, loadQaHistory]
   )
 
   // C2: pin/unpin «my course»; re-read the local tree so the ordering applies.
@@ -873,6 +896,27 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     [bridge, toast]
   )
 
+  /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
+  const regenerateNote = useCallback(
+    (lessonId: string): void => {
+      void (async () => {
+        setNoteRegenBusy(true)
+        try {
+          const res = await bridge.notes.regenerate(lessonId)
+          if (!res.ok) {
+            toast(res.error ?? '重新生成失败', 'error')
+            return
+          }
+          toast(`已生成第 ${res.value?.version ?? '?'} 版笔记`, 'success')
+          await loadNote(lessonId)
+        } finally {
+          setNoteRegenBusy(false)
+        }
+      })()
+    },
+    [bridge, toast, loadNote]
+  )
+
   const copyNote = useCallback((): void => {
     if (note == null) return
     void navigator.clipboard
@@ -1002,6 +1046,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     providerTest,
     exportNote,
     copyNote,
+    attachments,
+    noteRegenBusy,
+    regenerateNote,
     setCacheDir,
     setTheme,
     chooseLibrary,

@@ -12,6 +12,8 @@ export const TranscriptRefSchema = z.object({
   text: z.string()
 })
 
+export type TranscriptRef = z.infer<typeof TranscriptRefSchema>
+
 export const EvidenceRefSchema = z.object({
   kind: z.enum(['ppt', 'keyframe']),
   /** ppt page index or keyframe id. */

@@ -139,9 +139,23 @@ export interface TasksBridge {
   onProgress(cb: (p: TaskProgressInfo) => void): () => void
 }
 
+/** 2026-09-04: one keyframe/PPT image for note views (data URL, CSP-safe). */
+export interface NoteAttachmentInfo {
+  /** Evidence id: `ppt:<page>` or `kf:<id>`. */
+  ref: string
+  kind: 'ppt' | 'keyframe'
+  /** Seconds from lesson start; null for PPT pages (platform gives no timing). */
+  at: number | null
+  dataUrl: string
+}
+
 export interface NotesBridge {
   latest(lessonId: string): Promise<ApiResult<unknown>>
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
+  /** 2026-09-04: keyframe/PPT attachments for note views. */
+  attachments(lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>>
+  /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */
+  regenerate(lessonId: string): Promise<ApiResult<{ version: number; images: number }>>
 }
 
 export interface AppSettingsInfo {
