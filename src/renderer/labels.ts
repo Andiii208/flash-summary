@@ -13,6 +13,16 @@ export const STAGE_LABELS: Record<string, string> = {
   failed: '失败'
 }
 
+/** Pipeline order for the stage rail (spec §3 six stages). */
+export const PIPELINE_STAGES = [
+  'fetching_course',
+  'downloading_video',
+  'extracting_audio',
+  'transcribing',
+  'extracting_visuals',
+  'summarizing'
+] as const
+
 export function stageLabel(state: string, stage: string | null): string {
   if (state === 'succeeded') return '已完成'
   if (state === 'failed') return `失败（${STAGE_LABELS[stage ?? ''] ?? stage ?? '未知阶段'}）`

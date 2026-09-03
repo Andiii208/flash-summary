@@ -1,6 +1,6 @@
 import type { JSX } from 'preact'
 import type { TaskProgressInfo, TaskRowInfo } from '../../shared/bridge'
-import { stageLabel } from '../labels'
+import { PIPELINE_STAGES, STAGE_LABELS, stageLabel } from '../labels'
 import { ProgressBar } from './ProgressBar'
 import { EmptyState } from './EmptyState'
 
@@ -64,13 +64,29 @@ interface TaskStatusCardProps {
 
 function TaskStatusCard({ progress }: TaskStatusCardProps): JSX.Element {
   const failed = progress.state === 'failed'
+  const succeeded = progress.state === 'succeeded'
+  // Position of the furthest reached stage on the rail.
+  const reached = succeeded
+    ? PIPELINE_STAGES.length
+    : Math.max(0, PIPELINE_STAGES.indexOf((progress.stage ?? progress.state) as (typeof PIPELINE_STAGES)[number]))
   return (
     <div class={`task-status${failed ? ' failed' : ''}`} data-testid="task-status">
       <div class="task-status-line">
         <span class="task-id">任务 {progress.taskId}</span>
-        <span class="task-stage">{stageLabel(progress.state, progress.stage)}</span>
+        <span class={`task-stage${succeeded ? ' done' : ''}`}>{stageLabel(progress.state, progress.stage)}</span>
       </div>
-      <ProgressBar percent={progress.percent} active={progress.state !== 'succeeded' && progress.state !== 'failed'} />
+      <div class="stage-rail">
+        {PIPELINE_STAGES.map((stage, i) => {
+          const cls = i < reached ? 'done' : i === reached ? (failed ? 'error' : 'active') : 'todo'
+          return (
+            <div key={stage} class={`stage-step ${cls}`} title={STAGE_LABELS[stage]}>
+              <span class="stage-dot" />
+              <span class="stage-name">{STAGE_LABELS[stage]}</span>
+            </div>
+          )
+        })}
+      </div>
+      <ProgressBar percent={progress.percent} active={!succeeded && !failed} />
       {failed && <p class="task-error">{progress.message}</p>}
     </div>
   )
