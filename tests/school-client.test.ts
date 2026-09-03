@@ -165,6 +165,61 @@ describe('SchoolClient (fixture replay, field-calibrated endpoints)', () => {
   })
 })
 
+describe('SchoolClient.listCoursesPaged (B1: capped pagination)', () => {
+  function pageEnvelope(pageIndex: number, pageCount: number, ids: string[]): unknown {
+    return {
+      code: null,
+      data: { records: ids.map((id) => ({ id, subjName: `课${id}` })), pageIndex, pageCount }
+    }
+  }
+
+  it('walks pages up to the cap and reports progress + platform totals', async () => {
+    const progress: Array<{ page: number; pageCount: number }> = []
+    const client = new SchoolClient(
+      API_BASE,
+      async () => 'C=1',
+      makeFetch({
+        [`${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500`]: jsonResponse(pageEnvelope(1, 648, ['a'])),
+        [`${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=2&page.pageSize=500`]: jsonResponse(pageEnvelope(2, 648, ['b'])),
+        [`${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=3&page.pageSize=500`]: jsonResponse(pageEnvelope(3, 648, ['c']))
+      })
+    )
+    const result = await client.listCoursesPaged({ maxPages: 2, onProgress: (p) => progress.push(p) })
+    expect(result.courses.map((c) => c.id)).toEqual(['a', 'b'])
+    expect(result.fetchedPages).toBe(2)
+    expect(result.platformPages).toBe(648)
+    expect(result.platformTotal).toBe(648 * 500)
+    expect(progress).toEqual([
+      { page: 1, pageCount: 2 },
+      { page: 2, pageCount: 2 }
+    ])
+  })
+
+  it('stops at the platform page count when it is below the cap', async () => {
+    const client = new SchoolClient(
+      API_BASE,
+      async () => '',
+      makeFetch({
+        [`${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500`]: jsonResponse(pageEnvelope(1, 1, ['only']))
+      })
+    )
+    const result = await client.listCoursesPaged({ maxPages: 4 })
+    expect(result.courses.map((c) => c.id)).toEqual(['only'])
+    expect(result.fetchedPages).toBe(1)
+  })
+
+  it('listCourses keeps the single-page shape for probe/tests', async () => {
+    const client = new SchoolClient(
+      API_BASE,
+      async () => '',
+      makeFetch({
+        [`${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500`]: jsonResponse(pageEnvelope(1, 648, ['a']))
+      })
+    )
+    expect(await client.listCourses()).toEqual([{ id: 'a', name: '课a' }])
+  })
+})
+
 describe('SchoolApiError kinds drive user-facing messages', () => {
   it('exposes machine-readable kinds', () => {
     expect(new SchoolApiError('session_expired', 'x').kind).toBe('session_expired')

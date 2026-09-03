@@ -17,6 +17,9 @@ import { SettingsPanel } from './components/SettingsPanel'
 
 type MainTab = 'tasks' | 'notes' | 'qa' | 'settings'
 
+/** school:listCourses envelope value (paged refresh, B1). */
+type CourseListResult = { loaded: number; platformTotal: number; platformPages: number }
+
 const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
   { id: 'tasks', label: '任务' },
   { id: 'notes', label: '笔记' },
@@ -37,10 +40,23 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         <aside class="sidebar">
           <div class="sidebar-head">
             <h2>课程</h2>
-            <button class="btn small ghost" onClick={state.refreshTree} disabled={state.session === 'logged_out' || state.refreshBusy}>
-              {state.refreshBusy ? '刷新中…' : '刷新课程'}
+            <button
+              class="btn small ghost"
+              onClick={state.refreshTree}
+              disabled={state.session === 'logged_out' || state.refreshBusy}
+            >
+              {state.refreshBusy
+                ? state.refreshProgress != null
+                  ? `刷新中 ${state.refreshProgress.page}/${state.refreshProgress.pageCount} 页…`
+                  : '刷新中…'
+                : '刷新课程'}
             </button>
           </div>
+          {state.tree.length > 0 && state.refreshMeta != null && (
+            <p class="tree-meta">
+              已加载 {state.refreshMeta.loaded} 门 / 全校约 {state.refreshMeta.platformTotal} 门（搜索仅覆盖已加载课程）
+            </p>
+          )}
           {state.tree.length > 0 && (
             <>
               <input
@@ -130,6 +146,10 @@ interface AppState {
   sessionBusy: boolean
   /** A course-list refresh is in flight (network + possible login round-trip). */
   refreshBusy: boolean
+  /** Loaded/total boundary after the last paged refresh (B2). */
+  refreshMeta: { loaded: number; platformTotal: number } | null
+  /** Live page progress while a paged refresh runs (B2). */
+  refreshProgress: { page: number; pageCount: number } | null
   tree: CourseTreeInfo[]
   /** Courses filtered by the sidebar search query. */
   filteredTree: CourseTreeInfo[]
@@ -199,6 +219,10 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   })
   const [sessionBusy, setSessionBusy] = useState(false)
   const [refreshBusy, setRefreshBusy] = useState(false)
+  /** Loaded/total boundary after the last refresh (B2). */
+  const [refreshMeta, setRefreshMeta] = useState<{ loaded: number; platformTotal: number } | null>(null)
+  /** Live page progress while a paged refresh runs (B2). */
+  const [refreshProgress, setRefreshProgress] = useState<{ page: number; pageCount: number } | null>(null)
   const [tree, setTree] = useState<CourseTreeInfo[]>([])
   const [treeLoaded, setTreeLoaded] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -266,10 +290,13 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
         // User-triggered refresh (spec §2): on session expiry the renderer logs
         // in once via the main window and retries the course list.
         const list = (await withSessionRetry(
-          () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
+          () => bridge.school.listCourses() as Promise<ApiResult<CourseListResult>>,
           () => bridge.school.login()
-        )) as ApiResult<CourseTreeInfo[]>
-        if (!list.ok && list.kind === 'session_expired') {
+        )) as ApiResult<CourseListResult>
+        if (list.ok && list.value != null) {
+          setRefreshMeta({ loaded: list.value.loaded, platformTotal: list.value.platformTotal })
+          toast(`已加载 ${list.value.loaded} 门课程（全校约 ${list.value.platformTotal} 门）`, 'success')
+        } else if (!list.ok && list.kind === 'session_expired') {
           setSession('logged_out')
           toast('会话已过期，请重新登录', 'error')
         } else if (!list.ok) {
@@ -279,6 +306,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       }
       await applyLocalTree()
     } finally {
+      setRefreshProgress(null)
       setRefreshBusy(false)
     }
   }, [bridge, toast, applyLocalTree, refreshBusy, ensureCampusNet])
@@ -318,6 +346,9 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     const res = await bridge.tasks.list()
     if (res.ok && res.value != null) setGlobalHistory(res.value)
   }, [bridge])
+
+  // Live refresh progress (B2): stable subscription — the bridge is the only dep.
+  useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
 
   useEffect(() => {
     let disposed = false
@@ -703,6 +734,8 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     sessionInfo,
     sessionBusy,
     refreshBusy,
+    refreshMeta,
+    refreshProgress,
     tree,
     filteredTree,
     treeLoaded,

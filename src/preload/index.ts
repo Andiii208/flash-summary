@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiResult } from '../shared/api-result'
 import type {
   SeuSummaryBridge,
-  CourseSummaryInfo,
   CourseTreeInfo,
   ProvidersListResult,
   TaskRowInfo,
@@ -29,7 +28,13 @@ const api: SeuSummaryBridge = {
         expiresAt?: number | null
       }>
     > => ipcRenderer.invoke('school:session'),
-    listCourses: (): Promise<ApiResult<CourseSummaryInfo[]>> => ipcRenderer.invoke('school:listCourses'),
+    listCourses: (): Promise<ApiResult<{ loaded: number; platformTotal: number; platformPages: number }>> =>
+      ipcRenderer.invoke('school:listCourses'),
+    onRefreshProgress: (cb: (p: { page: number; pageCount: number }) => void): (() => void) => {
+      const listener = (_e: unknown, p: { page: number; pageCount: number }): void => cb(p)
+      ipcRenderer.on('school:refreshProgress', listener)
+      return () => ipcRenderer.removeListener('school:refreshProgress', listener)
+    },
     addManualCourse: (courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>> =>
       ipcRenderer.invoke('school:addManualCourse', courseId, lessonId),
     courseTree: (): Promise<ApiResult<CourseTreeInfo[]>> => ipcRenderer.invoke('school:courseTree'),

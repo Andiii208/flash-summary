@@ -84,6 +84,27 @@ function findCourseArray(payload: unknown): unknown[] {
 }
 
 /**
+ * Total pages the platform reports for the course list. The live t-1
+ * envelope carries {data:{records,pageIndex,pageCount}}; tolerate the
+ * result wrapper and numeric strings. 1 when nothing readable is found
+ * (single page).
+ */
+export function parseCoursePageCount(payload: unknown): number {
+  if (payload == null || typeof payload !== 'object') return 1
+  const obj = payload as Record<string, unknown>
+  for (const level of [obj.data, obj.result, obj]) {
+    if (level == null || typeof level !== 'object') continue
+    const inner = level as Record<string, unknown>
+    for (const key of ['pageCount', 'totalPages', 'totalPage']) {
+      const v = inner[key]
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 1) return v
+      if (typeof v === 'string' && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 1) return Number(v)
+    }
+  }
+  return 1
+}
+
+/**
  * Parse the course list payload. Field names come from the cloud-classroom
  * front-end; the 2026-09-02 live sample (t-1 envelope {code,data:{records}})
  * carries subjName / teacNames[] / acyeBeginYear+acyeEndYear. Older shapes

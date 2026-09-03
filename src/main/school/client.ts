@@ -1,10 +1,41 @@
 import {
   isCasLoginRedirect,
   parseCourseList,
+  parseCoursePageCount,
   parseLessonDetail,
   type CourseSummary,
   type LessonDetail
 } from './api-parse'
+
+/** Page size of the platform course list (field-calibrated: 500/page). */
+const PAGE_SIZE = 500
+/**
+ * Default page cap for a refresh. t-1 is the whole-school catalog (hundreds
+ * of pages) — fetching everything is infeasible and the «我的课程» work
+ * targets the user's own slice; the cap is user-tunable via the
+ * `courseListMaxPages` setting.
+ */
+const DEFAULT_MAX_PAGES = 4
+
+function courseListPath(pageIndex: number): string {
+  return `/v1/group_subject_vod_list/t-1?page.pageIndex=${pageIndex}&page.pageSize=${PAGE_SIZE}`
+}
+
+/** Progress of a paged course refresh (x of the pages we will fetch). */
+export interface CourseListProgress {
+  page: number
+  pageCount: number
+}
+
+export interface CoursePageResult {
+  courses: CourseSummary[]
+  /** Pages the platform reports (pageCount). */
+  platformPages: number
+  /** Pages actually fetched (capped by maxPages). */
+  fetchedPages: number
+  /** Approximate total course count the platform reports. */
+  platformTotal: number
+}
 
 /**
  * School API client over an injectable fetch. Every request carries the
@@ -82,9 +113,29 @@ export class SchoolClient {
 
   async listCourses(): Promise<CourseSummary[]> {
     // Field-calibrated endpoint (2026-09): cloud-classroom VOD list, tenant
-    // group t-1, paged. The page size covers a full semester in one call.
-    const payload = await this.request('/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500')
-    return parseCourseList(payload)
+    // group t-1, paged. Single page — kept for the probe path and tests.
+    return (await this.listCoursesPaged({ maxPages: 1 })).courses
+  }
+
+  /**
+   * Paged refresh (B1): walk the platform's course pages up to maxPages,
+   * reporting progress per page. platformTotal comes from the platform's
+   * own pageCount so the UI can state the loaded/total boundary honestly.
+   */
+  async listCoursesPaged(
+    options: { maxPages?: number; onProgress?: (p: CourseListProgress) => void } = {}
+  ): Promise<CoursePageResult> {
+    const maxPages = Math.max(1, Math.floor(options.maxPages ?? DEFAULT_MAX_PAGES))
+    const first = await this.request(courseListPath(1))
+    const courses = parseCourseList(first)
+    const platformPages = Math.max(1, parseCoursePageCount(first))
+    const targetPages = Math.min(platformPages, maxPages)
+    options.onProgress?.({ page: 1, pageCount: targetPages })
+    for (let pageIndex = 2; pageIndex <= targetPages; pageIndex++) {
+      courses.push(...parseCourseList(await this.request(courseListPath(pageIndex))))
+      options.onProgress?.({ page: pageIndex, pageCount: targetPages })
+    }
+    return { courses, platformPages, fetchedPages: targetPages, platformTotal: platformPages * PAGE_SIZE }
   }
 
   async lessonDetail(lessonId: string, courseId: string): Promise<LessonDetail> {

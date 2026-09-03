@@ -12,6 +12,7 @@ import { lookup as dnsLookup } from 'dns/promises'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AppContext } from './app-context'
+import type { Db } from './db/open'
 import { isFakeIpResolution } from './net-diagnostics'
 import { TaskRepository, runTask, type TaskProgress } from './tasks/queue'
 import { SerialTaskQueue } from './tasks/serial-queue'
@@ -26,6 +27,13 @@ import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import type { Note } from '../shared/notes/schema'
 import { resolveCacheDir } from './library/paths'
 import { migrateLibrary } from './library/migrate'
+import { getSetting } from './settings/store'
+
+/** User-tunable page cap (settings key courseListMaxPages); undefined → client default. */
+function maxPagesFrom(db: Db): number | undefined {
+  const parsed = Number(getSetting(db, 'courseListMaxPages', ''))
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : undefined
+}
 
 function ok<T>(value: T): ApiResult<T> {
   return okResult(value)
@@ -55,9 +63,11 @@ function firstStageFor(state: string, failedStage: string | null): Parameters<ty
   return 'fetching_course'
 }
 
-/** Progress-channel interface so tests can substitute a fake sender. */
+/** Progress-channel interface so tests can substitute a fake sender.
+ *  Payload is widened to object: the channel carries task progress and
+ *  refresh progress (school:refreshProgress) alike. */
 export interface ProgressSender {
-  send: (channel: string, payload: TaskProgress) => void
+  send: (channel: string, payload: object) => void
 }
 
 export interface IpcOptions {
@@ -167,9 +177,14 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // ---- courses / lessons ----
   // The school list is the source; rows are upserted into the library so the
   // course tree (school:courseTree) has durable data even offline.
+  // B1: paged refresh — progress events stream via 'school:refreshProgress'
+  // and the envelope carries the loaded/total boundary for the UI.
   ipc.handle('school:listCourses', async () => {
     try {
-      const courses = await ctx.school.listCourses()
+      const page = await ctx.school.listCoursesPaged({
+        maxPages: maxPagesFrom(ctx.db),
+        onProgress: (p) => options.sender?.send('school:refreshProgress', p)
+      })
       const now = new Date().toISOString()
       const upsert = ctx.db.prepare(
         `INSERT INTO courses (id, name, term, teacher, tecl_id, tecl_code, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -177,11 +192,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
            teacher = excluded.teacher, tecl_id = excluded.tecl_id, tecl_code = excluded.tecl_code,
            fetched_at = excluded.fetched_at`
       )
-      for (const c of courses) {
+      for (const c of page.courses) {
         if (c.id === '') continue
         upsert.run(c.id, c.name, c.term ?? null, c.teacher ?? null, c.teclId ?? null, c.teclCode ?? null, now)
       }
-      return ok(courses)
+      return ok({ loaded: page.courses.length, platformTotal: page.platformTotal, platformPages: page.platformPages })
     } catch (e) {
       return err(e)
     }

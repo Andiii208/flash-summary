@@ -4,6 +4,7 @@ import {
   cookieStringFromSetCookies,
   mergeCookieStrings,
   parseCourseList,
+  parseCoursePageCount,
   parseLessonDetail
 } from '../src/main/school/api-parse'
 
@@ -110,5 +111,22 @@ describe('lesson detail parsing', () => {
         teclCode: '202620271B080329101'
       }
     ])
+  })
+})
+
+describe('parseCoursePageCount (t-1 pagination, B1)', () => {
+  it('reads pageCount from the live data envelope', () => {
+    expect(parseCoursePageCount({ code: null, data: { records: [], pageIndex: 1, pageCount: 648 } })).toBe(648)
+  })
+
+  it('tolerates the result wrapper and numeric strings', () => {
+    expect(parseCoursePageCount({ result: { records: [], totalPages: '3' } })).toBe(3)
+    expect(parseCoursePageCount({ pageCount: 2 })).toBe(2)
+  })
+
+  it('falls back to a single page when nothing readable is found', () => {
+    expect(parseCoursePageCount({ code: '0', result: [] })).toBe(1)
+    expect(parseCoursePageCount(null)).toBe(1)
+    expect(parseCoursePageCount({ data: { pageCount: 0 } })).toBe(1)
   })
 })

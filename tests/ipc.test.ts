@@ -519,4 +519,44 @@ describe('U1: course tree and task list', () => {
     expect(tree.value?.[0].id).toBe('C9')
     expect(tree.value?.[0].lessons.map((l) => l.id)).toEqual(['L9'])
   })
+
+  it('school:listCourses streams page progress and reports the platform boundary (B1/B2)', async () => {
+    const ctx = makeCtx()
+    const sent: Array<{ channel: string; payload: unknown }> = []
+    ;(ctx as { school: unknown }).school = {
+      listCoursesPaged: async (opts: { onProgress?: (p: { page: number; pageCount: number }) => void }) => {
+        opts.onProgress?.({ page: 1, pageCount: 2 })
+        opts.onProgress?.({ page: 2, pageCount: 2 })
+        return {
+          courses: [
+            { id: 'c1', name: '课一', teacher: '甲', teclId: '1', teclCode: 'T1' },
+            { id: 'c2', name: '课二' }
+          ],
+          platformPages: 648,
+          fetchedPages: 2,
+          platformTotal: 324000
+        }
+      }
+    }
+    registerIpc(ctx, ipc as never, {
+      sender: { send: (channel, payload) => sent.push({ channel, payload }) }
+    })
+
+    const res = (await ipc.invoke('school:listCourses')) as {
+      ok: boolean
+      value?: { loaded: number; platformTotal: number; platformPages: number }
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value).toEqual({ loaded: 2, platformTotal: 324000, platformPages: 648 })
+
+    const rows = db.prepare('SELECT id, tecl_id, tecl_code FROM courses ORDER BY id').all() as Array<{ id: string; tecl_id: string | null }>
+    expect(rows.map((r) => r.id)).toEqual(['c1', 'c2'])
+    expect(rows[0].tecl_id).toBe('1')
+
+    const progressEvents = sent.filter((s) => s.channel === 'school:refreshProgress')
+    expect(progressEvents.map((s) => s.payload)).toEqual([
+      { page: 1, pageCount: 2 },
+      { page: 2, pageCount: 2 }
+    ])
+  })
 })
