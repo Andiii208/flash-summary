@@ -135,6 +135,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     return ok({
       state: ctx.sessionState(),
       justLoggedIn: ctx.consumeLoginJustCompleted(),
+      loginOutcome: ctx.consumeLoginOutcome(),
       savedAt: meta.savedAt,
       expiresAt: meta.expiresAt
     })

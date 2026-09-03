@@ -116,6 +116,24 @@ describe('ipc handlers over a real context', () => {
     expect(valid.value?.state).toBe('logged_in')
   })
 
+  it('surfaces a failed embedded login through the one-shot loginOutcome channel', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+
+    // Embedded login with no main window wired fails fast; the initiating
+    // renderer dies mid-call in production, so the outcome must survive it.
+    const login = (await ipc.invoke('school:login')) as { ok: boolean; error?: string }
+    expect(login.ok).toBe(false)
+
+    const first = (await ipc.invoke('school:session')) as { value?: { loginOutcome: { ok: boolean; message: string } | null } }
+    expect(first.value?.loginOutcome?.ok).toBe(false)
+    expect(first.value?.loginOutcome?.message).toContain('主窗口不可用')
+
+    // One-shot: the second read reports nothing.
+    const second = (await ipc.invoke('school:session')) as { value?: { loginOutcome: unknown } }
+    expect(second.value?.loginOutcome).toBeNull()
+  })
+
   it('providers:save persists an encrypted key, providers:list hides plaintext', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)

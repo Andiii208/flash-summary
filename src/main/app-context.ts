@@ -50,6 +50,14 @@ export interface AppContext {
    * just finished» (auto-refresh the course tree).
    */
   consumeLoginJustCompleted: () => boolean
+  /**
+   * One-shot outcome of the last embedded (main-window) login flow. The
+   * initiating renderer is unloaded by the navigation, so its promise
+   * handlers die with it — without this channel a failed login is fully
+   * silent (field case 2026-09-03: «点了登录没反应»). Consumed on mount
+   * via school:session. Null when no embedded login ran since last read.
+   */
+  consumeLoginOutcome: () => { ok: boolean; message: string } | null
   /** Bundled ffmpeg/ffprobe paths (packaged resources or node_modules). */
   ffmpegPath: () => string
   ffprobePath: () => string
@@ -144,6 +152,8 @@ export function createContext(overrides: Partial<{
   let harvestInFlight: Promise<PlayHarvestResult> | null = null
   // One-shot «login just completed» marker (see consumeLoginJustCompleted).
   let loginJustCompletedAt: number | null = null
+  // One-shot outcome of the last embedded login (see consumeLoginOutcome).
+  let lastLoginOutcome: { ok: boolean; message: string } | null = null
 
   /**
    * Push the stored session cookies into the main window's cookie jar.
@@ -289,8 +299,19 @@ export function createContext(overrides: Partial<{
     chatFor,
     login: async () => {
       try {
-        if (loginWindowFallbackRequested()) await loginViaLegacyWindow()
-        else await loginViaEmbeddedWindow()
+        if (loginWindowFallbackRequested()) {
+          // Legacy window: the renderer survives, its own promise handler
+          // reports the result — no outcome channel needed.
+          await loginViaLegacyWindow()
+        } else {
+          try {
+            await loginViaEmbeddedWindow()
+            lastLoginOutcome = { ok: true, message: '' }
+          } catch (err) {
+            lastLoginOutcome = { ok: false, message: (err as Error).message }
+            throw err
+          }
+        }
         loginJustCompletedAt = Date.now()
         logger.info('login succeeded (session encrypted at rest)')
       } catch (err) {
@@ -322,6 +343,11 @@ export function createContext(overrides: Partial<{
       if (loginJustCompletedAt == null) return false
       loginJustCompletedAt = null
       return true
+    },
+    consumeLoginOutcome: () => {
+      const outcome = lastLoginOutcome
+      lastLoginOutcome = null
+      return outcome
     },
     ffmpegPath,
     ffprobePath,

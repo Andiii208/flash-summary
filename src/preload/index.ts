@@ -20,8 +20,15 @@ const api: SeuSummaryBridge = {
   school: {
     login: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:login'),
     logout: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:logout'),
-    session: (): Promise<ApiResult<{ state: SessionStateValue; justLoggedIn?: boolean; savedAt?: string | null; expiresAt?: number | null }>> =>
-      ipcRenderer.invoke('school:session'),
+    session: (): Promise<
+      ApiResult<{
+        state: SessionStateValue
+        justLoggedIn?: boolean
+        loginOutcome?: { ok: boolean; message: string } | null
+        savedAt?: string | null
+        expiresAt?: number | null
+      }>
+    > => ipcRenderer.invoke('school:session'),
     listCourses: (): Promise<ApiResult<CourseSummaryInfo[]>> => ipcRenderer.invoke('school:listCourses'),
     addManualCourse: (courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>> =>
       ipcRenderer.invoke('school:addManualCourse', courseId, lessonId),

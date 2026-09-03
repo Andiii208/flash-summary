@@ -316,10 +316,16 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       setSessionInfo({ savedAt: s.value.savedAt ?? null, expiresAt: s.value.expiresAt ?? null })
       // V2: the login flow navigates the main window away, so «login just
       // finished» can only be seen by this fresh mount — finish what the
-      // user's original action (e.g. 刷新课程) started.
+      // user's original action (e.g. 刷新课程) started. A failed embedded
+      // login has no surviving renderer: the one-shot outcome channel is
+      // the only way the user ever hears about it.
       if (s.value.justLoggedIn === true) {
         toast('登录成功', 'success')
         void refreshTree()
+      } else if (s.value.loginOutcome != null) {
+        const outcome = s.value.loginOutcome
+        if (outcome.ok) toast('登录成功', 'success')
+        else toast(`登录失败：${outcome.message.slice(0, 160)}`, 'error')
       }
     })()
     // Mount reads the local tree only: a mount-time listCourses on an expired
