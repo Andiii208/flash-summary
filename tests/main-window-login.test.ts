@@ -10,6 +10,7 @@ import {
 } from '../src/main/auth/main-window-login'
 
 const ORIGIN = 'https://cvs.seu.edu.cn'
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 interface StubOptions {
   jwt?: string
@@ -67,23 +68,23 @@ afterEach(() => {
   delete process.env.SEU_LOGIN_WINDOW
 })
 
-describe('advanceLoginNav — did-navigate completion signal', () => {
-  it('completes only after leaving the origin and coming back', () => {
+describe('advanceLoginNav — did-navigate signal', () => {
+  it('marks the SSO away-and-back as back-on-origin (probe poked, not final)', () => {
     let state = advanceLoginNav(false, `${ORIGIN}/`, ORIGIN)
-    expect(state).toEqual({ leftOrigin: false, done: false })
+    expect(state).toEqual({ leftOrigin: false, backOnOrigin: false })
     state = advanceLoginNav(state.leftOrigin, 'https://auth.seu.edu.cn/oauth/login', ORIGIN)
-    expect(state).toEqual({ leftOrigin: true, done: false })
+    expect(state).toEqual({ leftOrigin: true, backOnOrigin: false })
     state = advanceLoginNav(state.leftOrigin, `${ORIGIN}/jy-application-resourcemanage-ui/`, ORIGIN)
-    expect(state).toEqual({ leftOrigin: true, done: true })
+    expect(state).toEqual({ leftOrigin: true, backOnOrigin: true })
   })
 
   it('keeps waiting while the return still carries login-page markers', () => {
     const state = advanceLoginNav(true, `${ORIGIN}/?redirect=authserver`, ORIGIN)
-    expect(state.done).toBe(false)
+    expect(state.backOnOrigin).toBe(false)
   })
 
-  it('in-window platform navigation alone never completes', () => {
-    expect(advanceLoginNav(false, `${ORIGIN}/#/play-video`, ORIGIN).done).toBe(false)
+  it('in-window platform navigation alone never pokes', () => {
+    expect(advanceLoginNav(false, `${ORIGIN}/#/play-video`, ORIGIN).backOnOrigin).toBe(false)
   })
 })
 
@@ -98,8 +99,17 @@ describe('loginWindowFallbackRequested — V2.4 switch', () => {
   })
 })
 
-describe('loginViaMainWindow — completion signals', () => {
-  it('completes on the SSO away-and-back navigation, harvests, restores the UI', async () => {
+describe('loginViaMainWindow — the probe is the authoritative completion signal', () => {
+  /** A platform envelope answer for the probe (200 {code:...}). */
+  function stubProbeFetch(): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ code: '0', data: { records: [] } }), { status: 200 }))
+    )
+  }
+
+  it('completes after the SSO away-and-back poke confirms via probe, harvests, restores', async () => {
+    stubProbeFetch()
     const win = stubWindow({ jwt: 'jwt-abc', cookies: [{ name: 'plat', value: 'v1' }] })
     const restored = vi.fn()
     const harvested: HarvestedLoginSession[] = []
@@ -119,7 +129,31 @@ describe('loginViaMainWindow — completion signals', () => {
     expect(restored).toHaveBeenCalledTimes(1)
   }, 15_000)
 
-  it('completes on the sessionStorage JWT poll without any SSO round-trip', async () => {
+  it('does NOT complete on navigation alone when the probe still fails (401 case)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('unauthorized', { status: 401 }))
+    )
+    const win = stubWindow({ jwt: '', cookies: [] })
+    const harvested: HarvestedLoginSession[] = []
+    const flow = loginViaMainWindow(win, {
+      serviceOrigin: ORIGIN,
+      restoreApp: vi.fn(),
+      onSession: (session) => harvested.push(session),
+      pollIntervalMs: 40
+    })
+    win.nav(`${ORIGIN}/`)
+    win.nav('https://auth.seu.edu.cn/oauth/login')
+    win.nav(`${ORIGIN}/`)
+    await sleep(300) // several poll ticks + the poked probe all fail
+    expect(harvested).toHaveLength(0)
+    // The flow keeps waiting (user typing time is not limited).
+    void flow.catch(() => undefined)
+    await expect(Promise.race([flow, sleep(50).then(() => 'still-waiting')])).resolves.toBe('still-waiting')
+  }, 15_000)
+
+  it('completes on the poll when the probe answers the envelope (silent SSO path)', async () => {
+    stubProbeFetch()
     const win = stubWindow({ jwt: 'jwt-xyz', cookies: [] })
     const harvested: HarvestedLoginSession[] = []
     await loginViaMainWindow(win, {
@@ -131,23 +165,6 @@ describe('loginViaMainWindow — completion signals', () => {
     win.nav(`${ORIGIN}/`)
     expect(harvested).toHaveLength(1)
     expect(harvested[0]?.jwt).toBe('jwt-xyz')
-  }, 15_000)
-
-  it('completes on the platform envelope probe when the SPA writes no JWT', async () => {
-    const win = stubWindow({ jwt: '', cookies: [{ name: 'c', value: '1' }] })
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ code: '0', data: { records: [] } }), { status: 200 }))
-    )
-    const harvested: HarvestedLoginSession[] = []
-    await loginViaMainWindow(win, {
-      serviceOrigin: ORIGIN,
-      restoreApp: vi.fn(),
-      onSession: (session) => harvested.push(session),
-      pollIntervalMs: 20
-    })
-    win.nav(`${ORIGIN}/`)
-    expect(harvested).toHaveLength(1)
   }, 15_000)
 })
 

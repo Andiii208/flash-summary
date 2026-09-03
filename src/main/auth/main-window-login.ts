@@ -3,15 +3,17 @@
  *
  * The second renderer never loads on this machine (see PROGRESS), so the
  * login window is retired: the MAIN window itself navigates to the platform
- * (cvs.seu.edu.cn), the user signs in there, and the flow completes on any of
- * three independent signals — the SSO round-trip (did-navigate away from the
- * origin and back), the SPA writing its JWT to sessionStorage, or the session
- * probe answering with the platform business envelope. The session is then
- * harvested with the app's own abilities (session cookies + sessionStorage
- * JWT), handed to onSession (which persists it encrypted), and the app UI is
- * restored — also on failure.
- *
- * Cookie and JWT values are never logged.
+ * (cvs.seu.edu.cn), the user signs in there, and the login completes when the
+ * session probe — the course-list API answered with the platform business
+ * envelope — succeeds. That is the single authoritative signal: the probe
+ * endpoint IS what listCourses calls, so harvest time is guaranteed to
+ * produce a working session (field case 2026-09-03: harvesting on the SSO
+ * return navigation alone produced a 401 session, because the OAuth2
+ * callback chain was still settling). The away-and-back navigation and the
+ * SPA writing its JWT to sessionStorage only POKE an immediate probe; cookie
+ * and JWT values are then harvested with the app's own abilities, handed to
+ * onSession (which persists them encrypted), and the app UI is restored —
+ * also on failure. Cookie and JWT values are never logged.
  */
 import { isCasLoginRedirect, mergeCookieStrings } from '../school/api-parse'
 import { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH, probeSaysLoggedIn } from './cas-login'
@@ -71,19 +73,22 @@ export interface LoginWindowLike {
 export interface LoginNavState {
   /** The tab has navigated away from the platform origin (SSO round-trip). */
   leftOrigin: boolean
-  /** Away-and-back transition completed = logged in. */
-  done: boolean
+  /** The SSO redirected back onto the origin — time to probe (not final). */
+  backOnOrigin: boolean
 }
 
 /**
- * did-navigate completion signal: the SSO redirects off the origin and back;
- * a return that still carries login-page markers is not the landing yet (the
- * chain may bounce more than once).
+ * did-navigate signal: the SSO redirects off the origin and back. The return
+ * is NOT the finish line — the OAuth2 callback chain may still be settling
+ * the server-side session (field case 2026-09-03: harvesting on the first
+ * return produced a 401 session). The back transition only pokes the probe,
+ * which stays the single authoritative completion signal (the probe endpoint
+ * IS the course-list endpoint, so probe success ⇒ listCourses works).
  */
 export function advanceLoginNav(leftOrigin: boolean, url: string, origin: string): LoginNavState {
-  if (!url.startsWith(origin)) return { leftOrigin: true, done: false }
-  if (leftOrigin && isCasLoginRedirect(url)) return { leftOrigin: true, done: false }
-  return { leftOrigin, done: leftOrigin }
+  if (!url.startsWith(origin)) return { leftOrigin: true, backOnOrigin: false }
+  if (leftOrigin && isCasLoginRedirect(url)) return { leftOrigin: true, backOnOrigin: false }
+  return { leftOrigin, backOnOrigin: leftOrigin }
 }
 
 /** V2.4: SEU_LOGIN_WINDOW=1 keeps the legacy login-window path available. */
@@ -138,14 +143,15 @@ async function probeTabSession(win: LoginWindowLike, serviceOrigin: string, jwt:
 
 /**
  * did-navigate/did-fail-load wiring: first arrival on the origin raises
- * onArrival (first-paint budget cleared, polling starts); the away-and-back
- * transition raises onDone; a hard load failure raises onFail (ERR_ABORTED
- * is a navigation interrupted by another one — not a failure).
+ * onArrival (first-paint budget cleared, polling starts); the SSO
+ * away-and-back transition raises onBackOnOrigin (probe poked — not final);
+ * a hard load failure raises onFail (ERR_ABORTED is a navigation
+ * interrupted by another one — not a failure).
  */
 function attachNavListeners(
   win: LoginWindowLike,
   origin: string,
-  handlers: { onArrival: () => void; onDone: () => void; onFail: (message: string) => void }
+  handlers: { onArrival: () => void; onBackOnOrigin: () => void; onFail: (message: string) => void }
 ): () => void {
   let arrived = false
   let leftOrigin = false
@@ -156,7 +162,7 @@ function attachNavListeners(
     }
     const next = advanceLoginNav(leftOrigin, url, origin)
     leftOrigin = next.leftOrigin
-    if (next.done) handlers.onDone()
+    if (next.backOnOrigin) handlers.onBackOnOrigin()
   }
   const onLoadFail = (_event: unknown, code: number, desc: string): void => {
     if (code === -3) return
@@ -170,23 +176,35 @@ function attachNavListeners(
   }
 }
 
-/** Poll the tab for the JWT, then the probe; either hit completes the login. */
+/**
+ * Session polling: the probe (platform business envelope on the course-list
+ * endpoint) is the single authoritative completion signal; the sessionStorage
+ * JWT only feeds the probe's jwt-token header. `poke` runs an immediate tick
+ * for navigation signals (SSO back, JWT appearing) without waiting for the
+ * next interval.
+ */
 function startSessionPolling(
   win: LoginWindowLike,
   opts: MainWindowLoginOptions,
   isSettled: () => boolean,
   onComplete: () => void
-): () => void {
-  const tick = (): void => {
-    if (isSettled()) return
-    void (async () => {
+): { stop: () => void; poke: () => void } {
+  let probing = false
+  const tick = async (): Promise<void> => {
+    if (isSettled() || probing) return
+    probing = true
+    try {
       const jwt = await readTabJwt(win)
-      if (isSettled()) return
-      if (jwt !== '' || (await probeTabSession(win, opts.serviceOrigin, jwt))) onComplete()
-    })()
+      if (!isSettled() && (await probeTabSession(win, opts.serviceOrigin, jwt))) onComplete()
+    } finally {
+      probing = false
+    }
   }
-  const timer = setInterval(tick, opts.pollIntervalMs ?? LOGIN_POLL_INTERVAL_MS)
-  return () => clearInterval(timer)
+  const timer = setInterval(() => void tick(), opts.pollIntervalMs ?? LOGIN_POLL_INTERVAL_MS)
+  return {
+    stop: () => clearInterval(timer),
+    poke: () => void tick()
+  }
 }
 
 /**
@@ -200,6 +218,7 @@ async function runLoginFlow(win: LoginWindowLike, opts: MainWindowLoginOptions):
     let settled = false
     let loadTimer: NodeJS.Timeout | undefined
     let stopPolling: () => void = () => undefined
+    let pokePolling: () => void = () => undefined
 
     const teardown = (): void => {
       removeNavListeners()
@@ -235,9 +254,11 @@ async function runLoginFlow(win: LoginWindowLike, opts: MainWindowLoginOptions):
           clearTimeout(loadTimer)
           loadTimer = undefined
         }
-        stopPolling = startSessionPolling(win, opts, () => settled, complete)
+        const polling = startSessionPolling(win, opts, () => settled, complete)
+        stopPolling = polling.stop
+        pokePolling = polling.poke
       },
-      onDone: complete,
+      onBackOnOrigin: () => pokePolling(),
       onFail: fail
     })
 
