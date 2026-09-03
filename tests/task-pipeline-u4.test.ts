@@ -202,4 +202,37 @@ describe('makeSummarize multimodal (U4)', () => {
     const result = await makeSummarize(deps)(makeCtx())
     expect(result.status).toBe('failed')
   })
+
+  it('captions every image with its evidence id and demands verbatim refs (对齐修复 2026-09-04)', async () => {
+    seedEvidence(1)
+    const keyframePath = join(dir, 'keyframe-1.jpg')
+    writeFileSync(keyframePath, Buffer.from([0xff, 0xd8, 0xff, 0xe0]))
+    db.prepare(
+      'INSERT INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run('kf-1', 'l1', 45, keyframePath, 'hash-1', '2026-09-01T00:00:00Z')
+    let captured: Array<{ role: string; content: unknown }> = []
+    const chatJson = vi.fn(async (messages: unknown[]) => {
+      captured = messages as Array<{ role: string; content: unknown }>
+      return JSON.stringify(validNote)
+    })
+    const deps = makeDeps({ chat: (() => ({ chatJson, transcribe: async () => '' })) as unknown as OrchestratorDeps['chat'] })
+    const result = await makeSummarize(deps)(makeCtx())
+    expect(result.status).toBe('ok')
+
+    const system = captured.find((m) => m.role === 'system')?.content as string
+    expect(system).toContain('原样选用')
+    expect(system).toContain('Markdown')
+
+    const userContent = captured.find((m) => m.role === 'user')?.content as Array<{ type: string; text?: string }>
+    const captions = userContent.filter((p) => p.type === 'text' && p.text?.startsWith('[图片'))
+    expect(captions).toHaveLength(2)
+    expect(captions[0]?.text).toContain('证据ID：ppt:0')
+    expect(captions[0]?.text).toContain('[图片 1/2]')
+    expect(captions[1]?.text).toContain('证据ID：kf:')
+    expect(captions[1]?.text).toContain('时间：')
+
+    const closing = userContent.at(-1)
+    expect(closing?.type).toBe('text')
+    expect(closing?.text).toContain('禁止编造其他文字引用')
+  })
 })

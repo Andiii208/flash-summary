@@ -60,6 +60,30 @@ describe('parseNote evidence-kind normalization', () => {
     ])
     expect(note.evidence).toEqual([{ kind: 'keyframe', ref: 'kf:k2' }])
   })
+
+  it('drops fabricated prose refs instead of failing the whole note (对齐修复 2026-09-04)', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        timeline: [
+          { at: 0, title: 't', detail: 'd', evidence: [{ kind: 'keyframe', ref: '超参数调整演示幻灯片' }, { kind: 'keyframe', ref: 'kf:1690625-L0-kf-12' }] }
+        ],
+        evidence: [
+          { kind: 'ppt', ref: '第3页' },
+          { kind: 'ppt', ref: 'ppt:0' }
+        ]
+      })
+    )
+    expect(note.timeline[0].evidence).toEqual([{ kind: 'keyframe', ref: 'kf:1690625-L0-kf-12' }])
+    expect(note.evidence).toEqual([{ kind: 'ppt', ref: 'ppt:0' }])
+  })
+
+  it('still drops non-object evidence entries instead of throwing', () => {
+    const note = parseNote(
+      JSON.stringify({ ...base, evidence: ['garbage', { kind: 'ppt', ref: 'ppt:1' }] })
+    )
+    expect(note.evidence).toEqual([{ kind: 'ppt', ref: 'ppt:1' }])
+  })
 })
 
 describe('parseNote repair pass', () => {

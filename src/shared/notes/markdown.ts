@@ -1,20 +1,60 @@
 import type { Note } from './schema'
+import type { EvidenceRef, TreeNode } from './schema'
 
-/** Markdown export (secondary exchange format per spec §5). */
-export function noteToMarkdown(note: Note, title: string): string {
-  const lines: string[] = [`# ${title}`, '', note.overview, '', '## 知识结构', '']
-  const walk = (node: { title: string; children: Array<{ title: string; children: unknown[] }> }, depth: number): void => {
-    lines.push(`${'  '.repeat(depth)}- ${node.title}`)
-    for (const child of node.children) walk(child as typeof node, depth + 1)
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function treeLines(node: TreeNode, depth: number, out: string[]): void {
+  out.push(`${'  '.repeat(depth)}- ${node.title}`)
+  for (const child of node.children) treeLines(child, depth + 1, out)
+}
+
+function timelineSection(note: Note): string[] {
+  const lines = ['## 时间线', '']
+  for (const entry of note.timeline) {
+    lines.push(`- **${formatTime(entry.at)} · ${entry.title}**：${entry.detail}`)
+    for (const ref of entry.refs) lines.push(`  > ${ref.text}（${formatTime(ref.at)}）`)
+    for (const ev of entry.evidence) lines.push(`  - 证据：${evidenceLabel(ev)}`)
   }
-  walk(note.knowledgeTree as { title: string; children: Array<{ title: string; children: unknown[] }> }, 0)
+  return lines
+}
 
-  lines.push('', '## 时间线', '')
-  for (const t of note.timeline) lines.push(`- ${t.title}（${Math.floor(t.at / 60)}分）：${t.detail}`)
+function evidenceLabel(evidence: EvidenceRef): string {
+  return evidence.kind === 'ppt' ? `PPT 第 ${evidence.ref.slice(4)} 页` : `关键帧 ${evidence.ref.slice(3)}`
+}
 
-  lines.push('', '## 概念', '')
-  for (const c of note.concepts) lines.push(`- **${c.term}**：${c.definition}`)
+function formulaSection(note: Note): string[] {
+  const lines: string[] = []
+  const labelOf = (kind: 'formula' | 'code' | 'operation'): string => (kind === 'formula' ? '公式' : kind === 'code' ? '代码' : '操作')
+  for (const item of note.formulasAndSteps) {
+    const suffix = item.explanation ? ` — ${item.explanation}` : ''
+    if (item.kind === 'code') {
+      lines.push(`**${labelOf(item.kind)}**${suffix}`, '', '```', item.content, '```', '')
+    } else {
+      lines.push(`- **${labelOf(item.kind)}**：${item.content}${suffix}`)
+    }
+  }
+  return lines
+}
 
-  lines.push('', '## 方法论', '', note.methodology)
+function listSection(heading: string, items: string[]): string[] {
+  return items.length === 0 ? [] : ['', `## ${heading}`, '', ...items.map((item) => `- ${item}`)]
+}
+
+/** Markdown export (secondary exchange format; structured per 笔记工艺 2026-09-04). */
+export function noteToMarkdown(note: Note, title: string): string {
+  const tree: string[] = []
+  treeLines(note.knowledgeTree, 0, tree)
+  const lines: string[] = [`# ${title}`, '', note.overview.trim(), '', '## 知识结构', '', ...tree]
+  lines.push('', ...timelineSection(note))
+  lines.push('', '## 概念', '', ...note.concepts.map((c) => `- **${c.term}**：${c.definition}`))
+  const formulas = formulaSection(note)
+  if (formulas.length > 0) lines.push('', '## 公式、代码与操作步骤', '', ...formulas)
+  lines.push(...listSection('考试与作业提示', note.examCues))
+  lines.push(...listSection('疑问与缺口', note.questionsAndGaps))
+  lines.push('', '## 方法论', '', note.methodology.trim())
   return lines.join('\n')
 }

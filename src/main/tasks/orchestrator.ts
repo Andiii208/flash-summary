@@ -454,22 +454,22 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
     if (transcriptRow == null) return { status: 'failed', error: '转写结果缺失，无法生成笔记' }
 
     const keyframeRows = deps.db
-      .prepare('SELECT id, file_path FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds')
-      .all(ctx.lessonId) as Array<{ id: string; file_path: string }>
+      .prepare('SELECT id, file_path, timestamp_seconds FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds')
+      .all(ctx.lessonId) as Array<{ id: string; file_path: string; timestamp_seconds: number }>
     const pptRows = deps.db
       .prepare('SELECT page_index, file_path FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index')
       .all(ctx.lessonId) as Array<{ page_index: number; file_path: string }>
     // PPT pages first, then keyframes; cap the total to protect tokens (U4).
-    const images: Array<{ ref: string; path: string }> = [
-      ...pptRows.map((p) => ({ ref: `ppt:${p.page_index}`, path: p.file_path })),
-      ...keyframeRows.map((k) => ({ ref: `kf:${k.id}`, path: k.file_path }))
+    const images: SummarizeImage[] = [
+      ...pptRows.map((p) => ({ ref: `ppt:${p.page_index}`, path: p.file_path, at: null })),
+      ...keyframeRows.map((k) => ({ ref: `kf:${k.id}`, path: k.file_path, at: Math.round(k.timestamp_seconds) }))
     ].slice(0, MAX_SUMMARIZE_IMAGES)
 
     const transcriptText = (JSON.parse(transcriptRow.segments_json) as Array<{ text: string }>)
       .map((s) => s.text)
       .join('\n')
     const systemPrompt =
-      '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。注意：所有 at 字段必须是距课时开始的整数秒（例如 750，不要 mm:ss、不要文字）；evidence 的 kind 只能是 ppt 或 keyframe（formula/code/operation 只用于 formulasAndSteps）。'
+      '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。要求：1) 所有 at 字段必须是距课时开始的整数秒（例如 750，不要 mm:ss、不要文字）。2) evidence 的 ref 必须原样选用用户消息里给出的「证据ID」（形如 ppt:0 或 kf:xxx），禁止编造其他文字引用；kind 只能是 ppt 或 keyframe；timeline 每条尽量搭配与其画面内容对应的关键帧证据。3) overview 与 methodology 的值用 Markdown 组织：先一句总起，再用 ## 小节标题与 - 列表分层（overview 建议「本讲主线」「前置知识」等小节；methodology 建议「解题思路」「通用套路」「易错点」等小节），不要输出代码围栏。4) formula/code/operation 只用于 formulasAndSteps。'
 
     try {
       const client = deps.chat('multimodal')
@@ -516,20 +516,45 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
   }
 }
 
-/** User message content: transcript text + embedded images as data URLs (U4). */
-function buildUserParts(transcriptText: string, images: Array<{ ref: string; path: string }>): ChatPart[] {
+/** One candidate visual for the summarize call: platform PPT page or keyframe. */
+interface SummarizeImage {
+  /** Machine-resolvable evidence id: `ppt:<page>` or `kf:<keyframe id>`. */
+  ref: string
+  path: string
+  /** Seconds from lesson start (keyframes only; ppt pages have no timing). */
+  at: number | null
+}
+
+/** Post-image instruction: refs must quote the captioned evidence ids verbatim. */
+function evidenceInstruction(total: number): string {
+  return (
+    `\n以上是课件/关键帧图片（共 ${total} 张）。每张图片前的「证据ID」是它唯一的合法引用标识：` +
+    'timeline 与顶层 evidence 里的 ref 必须原样选用这些证据ID，禁止编造其他文字引用。' +
+    '请为 timeline 条目搭配与其画面内容对应的关键帧证据。'
+  )
+}
+
+/** Caption before each image so the model can cite the exact evidence id. */
+function imageCaption(image: SummarizeImage, position: number, total: number): string {
+  const kind = image.ref.startsWith('ppt:') ? 'PPT 课件页' : '课堂关键帧'
+  const time = image.at == null ? '' : ` | 时间：${image.at}秒`
+  return `[图片 ${position}/${total}] 类型：${kind} | 证据ID：${image.ref}${time}`
+}
+
+/** User message content: transcript text + captioned embedded images (U4 + 对齐修复 2026-09-04). */
+function buildUserParts(transcriptText: string, images: SummarizeImage[]): ChatPart[] {
   const parts: ChatPart[] = [{ type: 'text', text: `转写内容：\n${transcriptText}` }]
-  for (const image of images) {
+  const total = images.length
+  images.forEach((image, index) => {
     try {
       const base64 = readFileSync(image.path).toString('base64')
+      parts.push({ type: 'text', text: imageCaption(image, index + 1, total) })
       parts.push({ type: 'image_url', imageUrl: `data:image/jpeg;base64,${base64}` })
     } catch {
       // A missing image file must not fail the whole summarize stage.
     }
-  }
-  if (images.length > 0) {
-    parts.push({ type: 'text', text: `\n以上是课件/关键帧图片（共 ${images.length} 张），请结合图片内容整理知识点。` })
-  }
+  })
+  if (total > 0) parts.push({ type: 'text', text: evidenceInstruction(total) })
   return parts
 }
 

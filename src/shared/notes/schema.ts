@@ -18,6 +18,8 @@ export const EvidenceRefSchema = z.object({
   ref: z.string()
 })
 
+export type EvidenceRef = z.infer<typeof EvidenceRefSchema>
+
 export const TimelineEntrySchema = z.object({
   at: z.coerce.number().nonnegative(),
   title: z.string(),
@@ -92,16 +94,24 @@ function coerceAt(value: unknown): unknown {
  * Evidence kind must be ppt|keyframe; models leak the formulaAndSteps kinds
  * (formula/code/operation) into it (field case 2026-09-02). The ref value
  * itself is authoritative: ppt refs are `ppt:<page>`, keyframes `kf:<id>`.
+ * Refs must be machine-resolvable — models also emit fabricated prose refs
+ * (「超参数调整演示幻灯片」, field case 2026-09-04), which are dropped here so
+ * the UI never renders a dead evidence link.
  */
+const EVIDENCE_REF_PATTERN = /^(ppt:\d+|kf:[\w.-]+)$/
+
 function normalizeEvidence(raw: unknown): unknown {
   if (!Array.isArray(raw)) return raw
-  return raw.map((entry) => {
-    if (entry == null || typeof entry !== 'object') return entry
+  const entries: unknown[] = []
+  for (const entry of raw) {
+    if (entry == null || typeof entry !== 'object') continue
     const e = entry as Record<string, unknown>
-    if (e.kind === 'ppt' || e.kind === 'keyframe') return e
     const ref = typeof e.ref === 'string' ? e.ref : ''
-    return { ...e, kind: ref.startsWith('ppt') ? 'ppt' : 'keyframe' }
-  })
+    if (!EVIDENCE_REF_PATTERN.test(ref)) continue
+    const kind = e.kind === 'ppt' || e.kind === 'keyframe' ? e.kind : ref.startsWith('ppt') ? 'ppt' : 'keyframe'
+    entries.push({ ...e, kind, ref })
+  }
+  return entries
 }
 
 function withNormalizedTimestamps(raw: unknown): unknown {
