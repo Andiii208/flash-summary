@@ -12,6 +12,15 @@ if (directNetRequested(process.argv, process.env.SEU_DIRECT_NET)) {
   for (const name of DIRECT_NET_SWITCHES) app.commandLine.appendSwitch(name)
 }
 
+// Dev runs must never share state with the installed app: app.getName()
+// reads the top-level package.json name for BOTH (productName lives inside
+// the build config, not at the top level), so both resolved to
+// %APPDATA%\seu-summary and the installed app picked up the dev session
+// (field case 2026-09-03). The smoke override below still wins.
+if (!app.isPackaged) {
+  app.setPath('userData', `${app.getPath('userData')}-dev`)
+}
+
 // Smoke-test seam (scripts/smoke-cdp.mjs): an isolated userData keeps the
 // probe off the real session blob, logs, and single-instance lock (the lock
 // is per-userData). Library isolation additionally uses SEU_SUMMARY_DOCS_OVERRIDE.
