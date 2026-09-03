@@ -1,0 +1,213 @@
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import {
+  JWT_STORAGE_KEY,
+  LOGIN_LOAD_TIMEOUT_MS,
+  advanceLoginNav,
+  loginViaMainWindow,
+  loginWindowFallbackRequested,
+  type HarvestedLoginSession,
+  type LoginWindowLike
+} from '../src/main/auth/main-window-login'
+
+const ORIGIN = 'https://cvs.seu.edu.cn'
+
+interface StubOptions {
+  jwt?: string
+  cookies?: Array<{ name: string; value: string }>
+  loadUrlError?: Error
+  hangLoad?: boolean
+}
+
+/** A window stub whose navigations are driven manually by the test. */
+function stubWindow(stub: StubOptions = {}): LoginWindowLike & {
+  nav(url: string): void
+  failLoad(code: number, desc: string): void
+} {
+  type NavListener = (event: unknown, url: string) => void
+  type FailListener = (event: unknown, code: number, desc: string) => void
+  type AnyListener = NavListener | FailListener
+  const navListeners: AnyListener[] = []
+  const failListeners: AnyListener[] = []
+  return {
+    isDestroyed: () => false,
+    nav: (url) => navListeners.forEach((l) => (l as NavListener)(null, url)),
+    failLoad: (code, desc) => failListeners.forEach((l) => (l as FailListener)(null, code, desc)),
+    webContents: {
+      isDestroyed: () => false,
+      getURL: () => ORIGIN,
+      loadURL: (url: string) => {
+        if (stub.hangLoad === true) return new Promise<void>(() => undefined)
+        if (stub.loadUrlError != null) return Promise.reject(stub.loadUrlError)
+        navListeners.forEach((l) => (l as NavListener)(null, url))
+        return Promise.resolve()
+      },
+      executeJavaScript: () => Promise.resolve(stub.jwt ?? ''),
+      session: {
+        cookies: {
+          get: () => Promise.resolve(stub.cookies ?? [])
+        }
+      },
+      on: (event: 'did-navigate' | 'did-fail-load', listener: AnyListener) => {
+        if (event === 'did-navigate') navListeners.push(listener)
+        else failListeners.push(listener)
+        return undefined
+      },
+      removeListener: (event: 'did-navigate' | 'did-fail-load', listener: AnyListener) => {
+        const list = event === 'did-navigate' ? navListeners : failListeners
+        const index = list.indexOf(listener)
+        if (index >= 0) list.splice(index, 1)
+        return undefined
+      }
+    }
+  }
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  delete process.env.SEU_LOGIN_WINDOW
+})
+
+describe('advanceLoginNav — did-navigate completion signal', () => {
+  it('completes only after leaving the origin and coming back', () => {
+    let state = advanceLoginNav(false, `${ORIGIN}/`, ORIGIN)
+    expect(state).toEqual({ leftOrigin: false, done: false })
+    state = advanceLoginNav(state.leftOrigin, 'https://auth.seu.edu.cn/oauth/login', ORIGIN)
+    expect(state).toEqual({ leftOrigin: true, done: false })
+    state = advanceLoginNav(state.leftOrigin, `${ORIGIN}/jy-application-resourcemanage-ui/`, ORIGIN)
+    expect(state).toEqual({ leftOrigin: true, done: true })
+  })
+
+  it('keeps waiting while the return still carries login-page markers', () => {
+    const state = advanceLoginNav(true, `${ORIGIN}/?redirect=authserver`, ORIGIN)
+    expect(state.done).toBe(false)
+  })
+
+  it('in-window platform navigation alone never completes', () => {
+    expect(advanceLoginNav(false, `${ORIGIN}/#/play-video`, ORIGIN).done).toBe(false)
+  })
+})
+
+describe('loginWindowFallbackRequested — V2.4 switch', () => {
+  it('routes to the legacy window only when SEU_LOGIN_WINDOW=1', () => {
+    expect(loginWindowFallbackRequested({})).toBe(false)
+    expect(loginWindowFallbackRequested({ SEU_LOGIN_WINDOW: '1' })).toBe(true)
+  })
+
+  it('keeps the first-paint budget tight (dead network fails fast)', () => {
+    expect(LOGIN_LOAD_TIMEOUT_MS).toBeLessThanOrEqual(30_000)
+  })
+})
+
+describe('loginViaMainWindow — completion signals', () => {
+  it('completes on the SSO away-and-back navigation, harvests, restores the UI', async () => {
+    const win = stubWindow({ jwt: 'jwt-abc', cookies: [{ name: 'plat', value: 'v1' }] })
+    const restored = vi.fn()
+    const harvested: HarvestedLoginSession[] = []
+    const flow = loginViaMainWindow(win, {
+      serviceOrigin: ORIGIN,
+      restoreApp: restored,
+      onSession: (session) => harvested.push(session),
+      pollIntervalMs: 10_000
+    })
+    win.nav(`${ORIGIN}/`)
+    win.nav('https://auth.seu.edu.cn/oauth/authorize')
+    win.nav(`${ORIGIN}/jy-application-resourcemanage-ui/`)
+    await flow
+    expect(harvested).toHaveLength(1)
+    expect(harvested[0]?.cookieString).toContain('plat=v1')
+    expect(harvested[0]?.jwt).toBe('jwt-abc')
+    expect(restored).toHaveBeenCalledTimes(1)
+  }, 15_000)
+
+  it('completes on the sessionStorage JWT poll without any SSO round-trip', async () => {
+    const win = stubWindow({ jwt: 'jwt-xyz', cookies: [] })
+    const harvested: HarvestedLoginSession[] = []
+    await loginViaMainWindow(win, {
+      serviceOrigin: ORIGIN,
+      restoreApp: vi.fn(),
+      onSession: (session) => harvested.push(session),
+      pollIntervalMs: 20
+    })
+    win.nav(`${ORIGIN}/`)
+    expect(harvested).toHaveLength(1)
+    expect(harvested[0]?.jwt).toBe('jwt-xyz')
+  }, 15_000)
+
+  it('completes on the platform envelope probe when the SPA writes no JWT', async () => {
+    const win = stubWindow({ jwt: '', cookies: [{ name: 'c', value: '1' }] })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ code: '0', data: { records: [] } }), { status: 200 }))
+    )
+    const harvested: HarvestedLoginSession[] = []
+    await loginViaMainWindow(win, {
+      serviceOrigin: ORIGIN,
+      restoreApp: vi.fn(),
+      onSession: (session) => harvested.push(session),
+      pollIntervalMs: 20
+    })
+    win.nav(`${ORIGIN}/`)
+    expect(harvested).toHaveLength(1)
+  }, 15_000)
+})
+
+describe('loginViaMainWindow — failure paths always restore the UI', () => {
+  it('rejects on a hard load failure and still restores', async () => {
+    const win = stubWindow()
+    const restored = vi.fn()
+    const flow = loginViaMainWindow(win, {
+      serviceOrigin: ORIGIN,
+      restoreApp: restored,
+      onSession: () => undefined
+    })
+    win.failLoad(502, 'ERR_BAD_GATEWAY')
+    await expect(flow).rejects.toThrow('ERR_BAD_GATEWAY')
+    expect(restored).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects on the first-paint budget when the navigation never commits', async () => {
+    const win = stubWindow({ hangLoad: true })
+    const restored = vi.fn()
+    await expect(
+      loginViaMainWindow(win, {
+        serviceOrigin: ORIGIN,
+        restoreApp: restored,
+        onSession: () => undefined,
+        loadTimeoutMs: 50
+      })
+    ).rejects.toThrow('超时')
+    expect(restored).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats an interrupted navigation (ERR_ABORTED) as not-a-failure', async () => {
+    const win = stubWindow({ loadUrlError: new Error('Error: ERR_ABORTED (-3) loading') })
+    const restored = vi.fn()
+    // The abort is swallowed, so the first-paint budget is what rejects —
+    // proving the abort itself never surfaced as a load failure.
+    await expect(
+      loginViaMainWindow(win, {
+        serviceOrigin: ORIGIN,
+        restoreApp: restored,
+        onSession: () => undefined,
+        loadTimeoutMs: 80
+      })
+    ).rejects.toThrow('超时')
+    expect(restored).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a destroyed window without restoring', async () => {
+    const win = stubWindow()
+    Object.defineProperty(win, 'isDestroyed', { value: () => true })
+    const restored = vi.fn()
+    await expect(
+      loginViaMainWindow(win, { serviceOrigin: ORIGIN, restoreApp: restored, onSession: () => undefined })
+    ).rejects.toThrow('主窗口不可用')
+    expect(restored).not.toHaveBeenCalled()
+  })
+})
+
+describe('JWT harvesting script', () => {
+  it('reads exactly the platform SPA storage key', () => {
+    expect(JWT_STORAGE_KEY).toBe('jy-application-resourcemanage-ui_STORAGE_KEY_JWT_TOKEN')
+  })
+})

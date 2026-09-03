@@ -234,8 +234,8 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   }, [bridge])
 
   const refreshTree = useCallback(async (): Promise<void> => {
-    // User-triggered refresh (spec §2): on session expiry the renderer opens
-    // the CAS login once and retries the course list.
+    // User-triggered refresh (spec §2): on session expiry the renderer logs
+    // in once via the main window and retries the course list.
     const list = (await withSessionRetry(
       () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
       () => bridge.school.login()
@@ -287,7 +287,15 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     let disposed = false
     void (async () => {
       const s = await bridge.school.session()
-      if (!disposed && s.ok && s.value != null && s.value.state === 'logged_in') setSession('logged_in')
+      if (disposed || !s.ok || s.value == null || s.value.state !== 'logged_in') return
+      setSession('logged_in')
+      // V2: the login flow navigates the main window away, so «login just
+      // finished» can only be seen by this fresh mount — finish what the
+      // user's original action (e.g. 刷新课程) started.
+      if (s.value.justLoggedIn === true) {
+        toast('登录成功', 'success')
+        void refreshTree()
+      }
     })()
     // Mount reads the local tree only: a mount-time listCourses on an expired
     // session auto-opened the CAS login window via withSessionRetry, which
@@ -336,25 +344,30 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory, refreshTree])
 
   const login = useCallback((): void => {
-    if (sessionBusy) return // one login window at a time (stacked windows field case 2026-09-01)
-    void (async () => {
-      setSessionBusy(true)
-      try {
-        const res = await bridge.school.login()
+    if (sessionBusy) return // one login at a time (stacked windows field case 2026-09-01)
+    // V2: the main window navigates to the platform for the login, which
+    // unloads this renderer mid-call — completion is handled by the fresh
+    // mount (it re-reads the session and auto-refreshes via justLoggedIn).
+    // The promise below is only resolved on the legacy SEU_LOGIN_WINDOW=1
+    // path, where the app UI stays alive.
+    setSessionBusy(true)
+    toast('正在跳转到平台登录页，完成后自动返回…')
+    void bridge.school
+      .login()
+      .then((res) => {
         if (!res.ok) {
           toast(res.error ?? '登录失败', 'error')
           return
         }
         setSession('logged_in')
         toast('登录成功', 'success')
-        await refreshTree()
-      } finally {
-        setSessionBusy(false)
-      }
-    })()
+        void refreshTree()
+      })
+      .catch(() => undefined)
+      .finally(() => setSessionBusy(false))
   }, [bridge, toast, refreshTree, sessionBusy])
 
   const logout = useCallback((): void => {

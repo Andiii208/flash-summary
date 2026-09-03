@@ -49,7 +49,8 @@ export interface TaskRowInfo {
 export interface SchoolBridge {
   login(): Promise<ApiResult<{ state: string }>>
   logout(): Promise<ApiResult<{ state: string }>>
-  session(): Promise<ApiResult<{ state: string }>>
+  /** justLoggedIn: one-shot — true on the first read after a login flow completed. */
+  session(): Promise<ApiResult<{ state: string; justLoggedIn?: boolean }>>
   listCourses(): Promise<ApiResult<CourseSummaryInfo[]>>
   addManualCourse(courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>>
   courseTree(): Promise<ApiResult<CourseTreeInfo[]>>

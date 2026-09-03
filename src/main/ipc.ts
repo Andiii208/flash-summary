@@ -126,7 +126,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     ctx.logout()
     return ok({ state: ctx.sessionState() })
   })
-  ipc.handle('school:session', () => ok({ state: ctx.sessionState() }))
+  // justLoggedIn is the one-shot «a login flow just completed» marker: the
+  // renderer's fresh mount (after the in-window login navigation) uses it to
+  // auto-refresh the course tree.
+  ipc.handle('school:session', () =>
+    ok({ state: ctx.sessionState(), justLoggedIn: ctx.consumeLoginJustCompleted() })
+  )
 
   // ---- courses / lessons ----
   // The school list is the source; rows are upserted into the library so the

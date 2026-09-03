@@ -12,6 +12,7 @@ import { dpapiCryptor } from './auth/electron-cryptor'
 import type { Cryptor } from './auth/session-crypto'
 import { loadSession, saveSession, clearSession } from './auth/session-store'
 import { openCasLoginWindow } from './auth/cas-login'
+import { loginViaMainWindow, loginWindowFallbackRequested } from './auth/main-window-login'
 import { SchoolClient } from './school/client'
 import { harvestPlayPage, type PlayHarvestResult, type PlayPageTarget } from './school/play-harvest'
 import { loadProviderSettings, upsertProvider, deleteProvider, setBinding } from './providers/store'
@@ -39,6 +40,13 @@ export interface AppContext {
   login: () => Promise<void>
   logout: () => void
   sessionState: () => 'logged_in' | 'logged_out'
+  /**
+   * One-shot flag: true exactly once after a login flow completed. The
+   * renderer queries it on mount — the main window navigates away during
+   * login, so the fresh mount is the only place that can react to «login
+   * just finished» (auto-refresh the course tree).
+   */
+  consumeLoginJustCompleted: () => boolean
   /** Bundled ffmpeg/ffprobe paths (packaged resources or node_modules). */
   ffmpegPath: () => string
   ffprobePath: () => string
@@ -131,6 +139,8 @@ export function createContext(overrides: Partial<{
   // happens inside this one window.
   let mainWindowRef: BrowserWindow | null = null
   let harvestInFlight: Promise<PlayHarvestResult> | null = null
+  // One-shot «login just completed» marker (see consumeLoginJustCompleted).
+  let loginJustCompletedAt: number | null = null
 
   /**
    * Push the stored session cookies into the main window's cookie jar.
@@ -197,6 +207,37 @@ export function createContext(overrides: Partial<{
     else await win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  const persistSession = (harvested: { cookieString: string; jwt: string }): void => {
+    saveSession(
+      userDataDir,
+      { cookies: harvested.cookieString, baseUrl: CAS_BASE_URL, savedAt: new Date().toISOString(), jwt: harvested.jwt },
+      cryptor
+    )
+  }
+
+  const loginViaLegacyWindow = async (): Promise<void> => {
+    await openCasLoginWindow({ serviceOrigin: CAS_BASE_URL, onSession: persistSession })
+  }
+
+  /**
+   * V2.1: the login happens inside the main window (the second renderer
+   * never loads). Stored cookies are injected first so an existing platform
+   * session can pass SSO silently; the harvest persists cookies + JWT, and
+   * the next play-page navigation re-seeds the SPA storage from session.bin
+   * (seedSessionStorage), so no separate seeding is needed here.
+   */
+  const loginViaEmbeddedWindow = async (): Promise<void> => {
+    const win = mainWindowRef
+    if (win == null || win.isDestroyed()) throw new Error('主窗口不可用，无法开始登录')
+    await injectSessionCookies(win)
+    await loginViaMainWindow(win, {
+      serviceOrigin: CAS_BASE_URL,
+      restoreApp: restoreMainWindow,
+      onSession: persistSession,
+      logger
+    })
+  }
+
   const harvestCoursePage = async (
     target: PlayPageTarget,
     selectLessonRef?: string | null,
@@ -245,17 +286,10 @@ export function createContext(overrides: Partial<{
     chatFor,
     login: async () => {
       try {
-        await openCasLoginWindow({
-          serviceOrigin: CAS_BASE_URL,
-          onSession: ({ cookieString, jwt }) => {
-            saveSession(
-              userDataDir,
-              { cookies: cookieString, baseUrl: CAS_BASE_URL, savedAt: new Date().toISOString(), jwt },
-              cryptor
-            )
-          }
-        })
-        logger.info('cas login succeeded (session encrypted at rest)')
+        if (loginWindowFallbackRequested()) await loginViaLegacyWindow()
+        else await loginViaEmbeddedWindow()
+        loginJustCompletedAt = Date.now()
+        logger.info('login succeeded (session encrypted at rest)')
       } catch (err) {
         logger.error(`cas login failed: ${(err as Error).message}`)
         throw err
@@ -268,6 +302,11 @@ export function createContext(overrides: Partial<{
       } catch {
         return 'logged_out'
       }
+    },
+    consumeLoginJustCompleted: () => {
+      if (loginJustCompletedAt == null) return false
+      loginJustCompletedAt = null
+      return true
     },
     ffmpegPath,
     ffprobePath,
