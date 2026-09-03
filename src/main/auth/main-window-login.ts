@@ -2,18 +2,21 @@
  * Main-window embedded login (v0.2.1 V2).
  *
  * The second renderer never loads on this machine (see PROGRESS), so the
- * login window is retired: the MAIN window itself navigates to the platform
- * (cvs.seu.edu.cn), the user signs in there, and the login completes when the
- * session probe — the course-list API answered with the platform business
- * envelope — succeeds. That is the single authoritative signal: the probe
- * endpoint IS what listCourses calls, so harvest time is guaranteed to
- * produce a working session (field case 2026-09-03: harvesting on the SSO
- * return navigation alone produced a 401 session, because the OAuth2
- * callback chain was still settling). The away-and-back navigation and the
- * SPA writing its JWT to sessionStorage only POKE an immediate probe; cookie
- * and JWT values are then harvested with the app's own abilities, handed to
- * onSession (which persists them encrypted), and the app UI is restored —
- * also on failure. Cookie and JWT values are never logged.
+ * login window is retired: the MAIN window itself navigates to the
+ * resourcemanage-ui SPA (see UI_LOGIN_PATH for why the portal root is the
+ * wrong entry), the user signs in through its OAuth round-trip, and the
+ * login completes when the session probe — the course-list API answered
+ * with the platform business envelope — succeeds. That is the single
+ * authoritative signal: the probe endpoint IS what listCourses calls, so
+ * harvest time is guaranteed to produce a working session (field case
+ * 2026-09-03: harvesting on the SSO return navigation alone produced a 401
+ * session, because the OAuth2 callback chain was still settling and the
+ * portal-root landing never wrote the SPA JWT). The away-and-back
+ * navigation and a freshly appearing sessionStorage JWT only POKE an
+ * immediate probe. Cookie and JWT values are then harvested with the app's
+ * own abilities, handed to onSession (which persists them encrypted), and
+ * the app UI is restored — also on failure. Cookie and JWT values are
+ * never logged.
  */
 import { isCasLoginRedirect, mergeCookieStrings } from '../school/api-parse'
 import { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH, probeSaysLoggedIn } from './cas-login'
@@ -28,6 +31,14 @@ export const JWT_STORAGE_KEY = 'jy-application-resourcemanage-ui_STORAGE_KEY_JWT
 const HARVEST_GRACE_MS = 1_500
 /** Probe budget per poll tick. */
 const PROBE_TIMEOUT_MS = 6_000
+/**
+ * Login entry = the resourcemanage-ui SPA itself, NOT the portal root: the
+ * portal never writes the SPA's JWT (field 2026-09-03), while this SPA runs
+ * the RBAC/OAuth round-trip on its own — it bounces an unauthenticated user
+ * to the sign-in page and writes the JWT to sessionStorage on return, which
+ * is exactly what the probe (and every later API call) needs.
+ */
+export const UI_LOGIN_PATH = '/jy-application-resourcemanage-ui/'
 
 export const READ_JWT_SCRIPT = `(function () {
   return sessionStorage.getItem(${JSON.stringify(JWT_STORAGE_KEY)}) || '';
@@ -263,7 +274,7 @@ async function runLoginFlow(win: LoginWindowLike, opts: MainWindowLoginOptions):
     })
 
     loadTimer = setTimeout(() => fail(`平台页加载超时（${Math.round(loadTimeoutMs / 1000)} 秒）`), loadTimeoutMs)
-    win.webContents.loadURL(opts.serviceOrigin).catch((err: Error) => {
+    win.webContents.loadURL(opts.serviceOrigin + UI_LOGIN_PATH).catch((err: Error) => {
       if (err.message.includes('ERR_ABORTED')) return
       fail(`平台页导航失败: ${err.message}`)
     })

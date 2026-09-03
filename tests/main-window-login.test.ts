@@ -23,20 +23,24 @@ interface StubOptions {
 function stubWindow(stub: StubOptions = {}): LoginWindowLike & {
   nav(url: string): void
   failLoad(code: number, desc: string): void
+  loadedUrls: string[]
 } {
   type NavListener = (event: unknown, url: string) => void
   type FailListener = (event: unknown, code: number, desc: string) => void
   type AnyListener = NavListener | FailListener
   const navListeners: AnyListener[] = []
   const failListeners: AnyListener[] = []
+  const loadedUrls: string[] = []
   return {
     isDestroyed: () => false,
     nav: (url) => navListeners.forEach((l) => (l as NavListener)(null, url)),
     failLoad: (code, desc) => failListeners.forEach((l) => (l as FailListener)(null, code, desc)),
+    loadedUrls,
     webContents: {
       isDestroyed: () => false,
       getURL: () => ORIGIN,
       loadURL: (url: string) => {
+        loadedUrls.push(url)
         if (stub.hangLoad === true) return new Promise<void>(() => undefined)
         if (stub.loadUrlError != null) return Promise.reject(stub.loadUrlError)
         navListeners.forEach((l) => (l as NavListener)(null, url))
@@ -127,6 +131,20 @@ describe('loginViaMainWindow — the probe is the authoritative completion signa
     expect(harvested[0]?.cookieString).toContain('plat=v1')
     expect(harvested[0]?.jwt).toBe('jwt-abc')
     expect(restored).toHaveBeenCalledTimes(1)
+  }, 15_000)
+
+  it('navigates to the resourcemanage-ui SPA — the portal root never writes the JWT', async () => {
+    stubProbeFetch()
+    const win = stubWindow({ jwt: 'jwt-entry', cookies: [] })
+    const flow = loginViaMainWindow(win, {
+      serviceOrigin: ORIGIN,
+      restoreApp: vi.fn(),
+      onSession: () => undefined,
+      pollIntervalMs: 10_000
+    })
+    win.nav(`${ORIGIN}/jy-application-resourcemanage-ui/`)
+    await flow
+    expect(win.loadedUrls).toEqual([`${ORIGIN}/jy-application-resourcemanage-ui/`])
   }, 15_000)
 
   it('does NOT complete on navigation alone when the probe still fails (401 case)', async () => {
