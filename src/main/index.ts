@@ -1,9 +1,9 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import { join } from 'path'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
 import { registerIpc, webContentsSender } from './ipc'
-import { DIRECT_NET_SWITCHES, directNetRequested } from './net-diagnostics'
+import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -74,7 +74,10 @@ if (!gotSingleInstanceLock) {
     }
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    // Campus domains go direct even when a system proxy is configured (A5):
+    // the proxy bypass applies before any window/platform navigation exists.
+    await session.defaultSession.setProxy({ mode: 'system', proxyBypassRules: PROXY_BYPASS_RULES })
     const ctx = createContext()
     mainWindow = createMainWindow()
     // In-window navigation flows (play-page harvest, embedded login) drive

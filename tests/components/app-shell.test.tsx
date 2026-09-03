@@ -34,7 +34,8 @@ function makeBridge(): SeuSummaryBridge {
       session: vi.fn(async () => ok({ state: 'logged_out' })),
       listCourses: vi.fn(async () => ok([])),
       addManualCourse: vi.fn(async () => ok({ courseId: 'c', lessonId: 'l' })),
-      courseTree: vi.fn(async () => ok(courseTreeRows))
+      courseTree: vi.fn(async () => ok(courseTreeRows)),
+      netCheck: vi.fn(async () => ok({ intercepted: false, resolved: [] }))
     },
     providers: {
       list: vi.fn(async (): Promise<ApiResult<ProvidersListResult>> => ok({ providers: [], bindings: [] })),

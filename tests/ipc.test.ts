@@ -58,7 +58,7 @@ describe('ipc handlers over a real context', () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     for (const channel of [
-      'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse', 'school:harvestLessons',
+      'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse', 'school:harvestLessons', 'school:netCheck',
       'providers:list', 'providers:save', 'providers:delete', 'providers:bind',
       'tasks:create', 'tasks:run',
       'notes:latest',
@@ -132,6 +132,25 @@ describe('ipc handlers over a real context', () => {
     // One-shot: the second read reports nothing.
     const second = (await ipc.invoke('school:session')) as { value?: { loginOutcome: unknown } }
     expect(second.value?.loginOutcome).toBeNull()
+  })
+
+  it('school:netCheck classifies a fake-ip DNS takeover from injected lookups', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never, {
+      netLookupOverride: async (host: string) => [{ address: host.startsWith('dncvsvod') ? '172.19.0.38' : '172.19.0.7' }]
+    })
+    const intercepted = (await ipc.invoke('school:netCheck')) as { value?: { intercepted: boolean; resolved: unknown[] } }
+    expect(intercepted.value?.intercepted).toBe(true)
+    expect(intercepted.value?.resolved).toHaveLength(2)
+  })
+
+  it('school:netCheck passes healthy public resolution through', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never, {
+      netLookupOverride: async () => [{ address: '58.192.114.3' }]
+    })
+    const healthy = (await ipc.invoke('school:netCheck')) as { value?: { intercepted: boolean } }
+    expect(healthy.value?.intercepted).toBe(false)
   })
 
   it('providers:save persists an encrypted key, providers:list hides plaintext', async () => {

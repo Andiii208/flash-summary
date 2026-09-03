@@ -8,9 +8,11 @@
  * 'tasks:progress' channel so the renderer never blocks.
  */
 import { ipcMain, dialog, shell, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
+import { lookup as dnsLookup } from 'dns/promises'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AppContext } from './app-context'
+import { isFakeIpResolution } from './net-diagnostics'
 import { TaskRepository, runTask, type TaskProgress } from './tasks/queue'
 import { SerialTaskQueue } from './tasks/serial-queue'
 import { createExecutors } from './tasks/orchestrator'
@@ -65,6 +67,8 @@ export interface IpcOptions {
   newTaskId?: () => string
   /** Test hook: replace the pipeline executors (progress tests stub stages). */
   executorsOverride?: () => Record<Stage, StageExecutor>
+  /** Test hook: fake-IP preflight lookup so tests never touch real DNS. */
+  netLookupOverride?: (host: string) => Promise<Array<{ address: string }>>
 }
 
 export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions = {}): void {
@@ -139,6 +143,25 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       savedAt: meta.savedAt,
       expiresAt: meta.expiresAt
     })
+  })
+
+  // A5 preflight: a Clash-style TUN resolver answers campus lookups with a
+  // Fake-IP and the proxy then RSTs all school traffic. Detecting it before
+  // a refresh/login turns «app does nothing» into an actionable message.
+  ipc.handle('school:netCheck', async () => {
+    try {
+      const hosts = ['cvs.seu.edu.cn', 'dncvsvod.seu.edu.cn']
+      const lookup = options.netLookupOverride ?? ((host: string) => dnsLookup(host, { all: true }))
+      const resolved: Array<{ host: string; ip: string }> = []
+      for (const host of hosts) {
+        for (const entry of await lookup(host)) {
+          resolved.push({ host, ip: entry.address })
+        }
+      }
+      return ok({ intercepted: isFakeIpResolution(resolved.map((r) => r.ip)), resolved })
+    } catch (e) {
+      return err(e)
+    }
   })
 
   // ---- courses / lessons ----

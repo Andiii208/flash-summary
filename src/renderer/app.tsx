@@ -246,28 +246,42 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     }
   }, [bridge])
 
+  /** A5 preflight: turn a proxy Fake-IP takeover into an actionable message
+   *  instead of a dead refresh/login. Inconclusive (DNS itself failing) does
+   *  not block — the real action will surface its own error. */
+  const ensureCampusNet = useCallback(async (): Promise<boolean> => {
+    const res = await bridge.school.netCheck()
+    if (res.ok && res.value?.intercepted === true) {
+      toast('检测到代理接管了校园域名解析（Fake-IP），校园请求会被断连。请在 Clash 配置规则顶部加 DOMAIN-SUFFIX,seu.edu.cn,DIRECT（订阅更新会把它冲掉），或退出 TUN 模式后重试。', 'error')
+      return false
+    }
+    return true
+  }, [bridge, toast])
+
   const refreshTree = useCallback(async (): Promise<void> => {
     if (refreshBusy) return
     setRefreshBusy(true)
     try {
-      // User-triggered refresh (spec §2): on session expiry the renderer logs
-      // in once via the main window and retries the course list.
-      const list = (await withSessionRetry(
-        () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
-        () => bridge.school.login()
-      )) as ApiResult<CourseTreeInfo[]>
-      if (!list.ok && list.kind === 'session_expired') {
-        setSession('logged_out')
-        toast('会话已过期，请重新登录', 'error')
-      } else if (!list.ok) {
-        // Silent failures here read as «the app did nothing» (field case 2026-09-01).
-        toast(list.error ?? '刷新失败', 'error')
+      if (await ensureCampusNet()) {
+        // User-triggered refresh (spec §2): on session expiry the renderer logs
+        // in once via the main window and retries the course list.
+        const list = (await withSessionRetry(
+          () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
+          () => bridge.school.login()
+        )) as ApiResult<CourseTreeInfo[]>
+        if (!list.ok && list.kind === 'session_expired') {
+          setSession('logged_out')
+          toast('会话已过期，请重新登录', 'error')
+        } else if (!list.ok) {
+          // Silent failures here read as «the app did nothing» (field case 2026-09-01).
+          toast(list.error ?? '刷新失败', 'error')
+        }
       }
       await applyLocalTree()
     } finally {
       setRefreshBusy(false)
     }
-  }, [bridge, toast, applyLocalTree, refreshBusy])
+  }, [bridge, toast, applyLocalTree, refreshBusy, ensureCampusNet])
 
   const refreshProviders = useCallback(async (): Promise<void> => {
     const res = await bridge.providers.list()
@@ -379,16 +393,19 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
 
   const login = useCallback((): void => {
     if (sessionBusy) return // one login at a time (stacked windows field case 2026-09-01)
-    // V2: the main window navigates to the platform for the login, which
-    // unloads this renderer mid-call — completion is handled by the fresh
-    // mount (it re-reads the session and auto-refreshes via justLoggedIn).
-    // The promise below is only resolved on the legacy SEU_LOGIN_WINDOW=1
-    // path, where the app UI stays alive.
-    setSessionBusy(true)
-    toast('正在跳转到平台登录页，完成后自动返回…')
-    void bridge.school
-      .login()
-      .then((res) => {
+    void (async () => {
+      // A5 preflight: a Fake-IP takeover fails the platform page before it
+      // loads — explain the fix instead of leaving a dead window.
+      if (!(await ensureCampusNet())) return
+      setSessionBusy(true)
+      try {
+        // V2: the main window navigates to the platform for the login, which
+        // unloads this renderer mid-call — completion is handled by the fresh
+        // mount (it re-reads the session and auto-refreshes via justLoggedIn).
+        // The promise below is only resolved on the legacy SEU_LOGIN_WINDOW=1
+        // path, where the app UI stays alive.
+        toast('正在跳转到平台登录页，完成后自动返回…')
+        const res = await bridge.school.login()
         if (!res.ok) {
           toast(res.error ?? '登录失败', 'error')
           return
@@ -396,10 +413,14 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
         setSession('logged_in')
         toast('登录成功', 'success')
         void refreshTree()
-      })
-      .catch(() => undefined)
-      .finally(() => setSessionBusy(false))
-  }, [bridge, toast, refreshTree, sessionBusy])
+      } catch {
+        // Invoke-layer failures already reach the file log; the fresh mount
+        // reports the outcome through the one-shot loginOutcome channel.
+      } finally {
+        setSessionBusy(false)
+      }
+    })()
+  }, [bridge, toast, refreshTree, sessionBusy, ensureCampusNet])
 
   const logout = useCallback((): void => {
     void bridge.school.logout()
