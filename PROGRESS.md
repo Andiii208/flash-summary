@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；v0.2.0 已发布；v0.2.1 计划的 V1 已完成；**人性化功能包 + UI 彻底升级已完成（2026-09-03 上午）**
-- **进行中**：无——应用处于「可用软件」状态：会话/课程/搜索/课时收割/全管线笔记生成/笔记四视图+导出+复制/全局任务历史/明暗主题全部实测可用（CDP 截图双主题验证）
-- **下一步**：按 `docs/plans/2026-09-02-v021-stabilization.md` 执行 V2（登录流程产品化：V2.1 loginViaMainWindow——关键机制 seedSessionStorage 已在 V1 落地可复用）→ V3 环境故障排查（用户配合）→ V4 发布收口（README/CHANGELOG 对齐新 UI 与新交互、版本号 0.2.1、dist、verify:asar、tag+Release）
+- **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；v0.2.0 已发布；v0.2.1 计划的 V1、**V2（登录流程产品化，2026-09-03）**已完成
+- **进行中**：无——应用处于「可用软件」状态：会话（主窗口内嵌登录+过期自动恢复已活体验证）/课程/搜索/课时收割/全管线笔记生成/笔记四视图+导出+复制/全局任务历史/明暗主题全部实测可用
+- **下一步**：V4 发布收口——V4.1 auth_key TTL 实测 + ≥45 分钟真实课端到端 → V4.2 干净机器安装（需用户配合）→ V4.4 README/CHANGELOG/MVP 对齐、版本号 0.2.1、dist、verify:asar、tag+Release。V3 环境故障（第二渲染器）不阻塞发布，穿插排查
 
 ## 环境实测（2026-08-30）
 
@@ -42,12 +42,13 @@
 | 组合层体检与质量清理（2026-09-02） | ✅ 完成 | 用户判据「测试全绿 ≠ 组装可用」驱动的全面体检：**L1 CDP 进程级烟测 19/19**（`npm run smoke`：桥面完整性对齐 bridge.ts、IPC 无副作用通道全探活含 3 条错误路径、隔离 userData/资料库下启动组装、首渲染、日志落盘；seam=SEU_SMOKE_USER_DATA+SEU_SUMMARY_DOCS_OVERRIDE）；**L2 SchoolClient 真实 fetch 集成 6/6**（本地 http 服务器全错误分类；证伪 opaqueredirect 疑虑——undici manual 返回可读 302）；**L3 六阶段端到端 1/1**（真实 ffmpeg 合成媒体 + 三合一 mock 服务器，进度序列/产物落库/音频清理/全景零请求全断言）；**发现即修**：probeSaysLoggedIn 收紧到平台信封字段、死 StageOutputStore 层删除（恒假 fast-path + no-op 桩）、死桥 3 通道与死导出 9 处清理、qa.history 接线（追问历史跨会话回显）、gridDecoder 提取补测、@types/mocha 与 vitest 弃用告警清除、migrate 冗余备份删除；**现场取证**：系统代理翻案（见当前状态）。文档对齐 README/MVP/spec。测试 207→221（38 文件） | 提交 408ad93…20df514；报告 docs/health/2026-09-02-combined-audit.md |
 | V1 课时详情换源——下载管线全通（2026-09-03 凌晨） | ✅ 完成 | 计划 V1.1-V1.5 全勾销，测试 221→257（40 文件），smoke 19/19。**落地**：V1.0 迁移 006（courses.tecl_id/tecl_code + lessons.play_ref，t-1 字段采集）；V1.1 `play-harvest.ts`（URL 构造/双流判别/直链脱敏/课时条目解析纯函数 + 主窗口导航→轮询 video.src→点选课时→抓目录→恢复 UI）；V1.2 fetching_course 换源（收割直链走阶段交接，lessons 表只存脱敏路径）；V1.3 `school:harvestLessons` 通道 + 课程树「抓取课时目录」按钮（展开空课程触发，幂等 upsert+陈旧行清理）；V1.4 **真实单课全管线 succeeded**（1690625-L0：双流 810MB 下载→音频→24 片真实 MiMo ASR→11 段 4108 字真实转写→17 关键帧→mimo-v2.5 笔记 3812B 落库→缓存清理）；V1.5 红线审计 0 违规（日志 0 命中 auth_key/直链/JWT；lessons 表直链 0 带 query）。**现场发现并修复 8 个真实缺陷**（详见关键决定记录 2026-09-03 批注）：①窗口 cookie 罐空→session.bin 注入 ②SPA 鉴权靠 sessionStorage JWT→seedSessionStorage 种入 ③teacher 流无音频→pickAudioSource ffprobe 回退 screen 流 ④chat() body 是 plain object 被 undici 发成 "[object Object]"→JSON 序列化（潜伏 bug！）⑤MiMo ASR 走 chat/completions+input_audio→multipart 404 自动回退+按 baseUrl 记忆（网关对反复大 body 404 会 RST）⑥base64 实测上限 ~7MB（文档写 10MB）→分片 120s ⑦静音分片不应杀任务→跳过，全静音课明确报错 ⑧模型输出偏差→parseNote 归一 mm:ss/数字串时间戳、按 ref 前缀修 evidence.kind、JSON 修复层、response_format json_object。分片转写加重试（网络/限流 3 次）；network 错误带 cause 链 | 提交 c9fc81f、9075b20、e39cedf、3772c58、25ca3e4、7c8f562、af47aa9、f55d099 |
 | 人性化功能包 + UI 彻底升级（2026-09-03 上午） | ✅ 完成 | **功能**：侧栏课程搜索（课程/教师/学期/课时名即时过滤，命中自动展开）；课程树默认收起+课时数徽标+全部展开/收起；渲染器重载后从全局任务表恢复运行中任务的实时状态（窗口导航不再丢任务视图）；TopBar 任务运行指示灯（脉冲点）；任务页新增「全部任务」视图（跨课时最近 50 条，状态徽章着色）；笔记新增「复制 Markdown」到剪贴板。**UI 彻底重做**（style.css 全量重写 + 任务卡阶段轨道）：«quiet academia» 设计语言——分层中性表面+靛蓝→紫渐变强调色、渐变品牌标、会话/运行胶囊指示器、分段式页签、课程卡片悬浮抬升、任务卡六步管线阶段轨道+进度流光动画、历史状态徽章按状态着色、问答气泡、卡片式 toast 滑入动画、纤细滚动条、focus-visible 焦点环、reduced-motion 支持；暗色主题同套令牌调校。**验证**：四门禁 257/257+smoke 19/19；真实资料库（500 门课+已生成笔记）双主题 CDP 截图逐视图自检（任务/笔记/暗色），期间发现并修复「旧 bundle 假象」与 aria-expanded 全 true 的初始状态误判（重启后确认收起默认正确） | 提交 cbaf418、be83f1d |
+| V2 登录流程产品化（2026-09-03） | ✅ 完成 | 计划 V2.1-V2.5 全勾销，测试 257→272（41 文件），smoke 19/19。**落地**：V2.1 `main-window-login.ts`——loginViaMainWindow 主窗口内嵌登录（第二渲染器彻底退役），三信号监听+probe 权威收割；V2.2 login() 分流接线（withSessionRetry 语义不变，仅用户主动动作触发重登）；V2.3 renderer fire-and-forget + `school:session` 新增一次性 justLoggedIn 标志（fresh mount 消费→自动刷新课程）；V2.4 `SEU_LOGIN_WINDOW=1` 回退旧登录窗（cas-login.ts 保留不删）；V2.5 **活体全链路通过**：logout（session.bin 清除）→点「登录 CAS」→主窗口导航→RBAC 授权→probe 确认→收割→自动回 UI→自动刷新 636 门课落库（fetched_at 铁证）。**活体揪出并修复 3 个真实缺陷**（详见关键决定记录 2026-09-03 批注）：①SSO 回跳立即收割 → 401 会话（OAuth 回调链未 settle）→ probe（t-1 业务信封）改为唯一权威完成信号；②HTTP 401 被分类 bad_response → withSessionRetry 永不触发重登 → 401 归类 session_expired（jwt-token 时代平台裸 401，不再 302 跳 CAS）；③门户根不写 SPA JWT（jwtPresent:false 活体取证）→ 登录入口改为 resourcemanage-ui SPA 本身（其自带 RBAC/OAuth 往返，回跳即签发 JWT）。**现场环境结论**：主窗口白屏=系统代理（规则模式）代理了教育网域名致静态资源加载失败；`SEU_DIRECT_NET=1`（no-proxy-server）绕过，与代理上 GitHub 互不影响 | 提交 6ef1168 之后的 4 个（V2 主体、probe 权威、401 分类、-ui 入口） |
 
 ## 遗留（诚实清单）
 
 - **UI 主界面组装 ✅ 已完成**（提交 72be62f/7837368，2026-08-30）：AppContext（资料库+会话+Provider+媒体路径组装）、IPC API surface（school/providers/tasks/notes/qa 共 16 通道）、preload 桥接（SeuSummaryBridge 类型化）、renderer 三栏主界面（课程列表/任务面板/四视图笔记+追问）。真实 Electron 启动烟测通过：7 秒运行日志干净、资料库三目录+app.db 正常建立、renderer 标题正确。112/112 测试绿。
-- **需人工验证的 5 项**：见 docs/acceptance/MVP.md（干净机器安装、真实 CAS 登录、真实课程拉取、45 分钟端到端、过期重登恢复）。
-- **待确认删除项**：无（构建产物 release/ 已 ignore，未入库）。
+- **需人工验证的 5 项**：见 docs/acceptance/MVP.md（干净机器安装、真实 CAS 登录、真实课程拉取、45 分钟端到端、过期重登恢复）——其中「过期重登恢复」已于 2026-09-03 活体验证通过（V2.5，见阶段记录），待 V4.4 收口时在 MVP.md 归档为 ✅。
+- **待确认删除项**：①构建产物 release/ 已 ignore，未入库；②**系统 TEMP 有 567 个历次会话遗留的 seu-* 调试文件**（含 seu-cookie.b64 疑似 cookie 残留、若干 .mjs/.cjs 探针与日志缓存目录）——不入 Git 但有敏感残留风险，建议清理（待用户确认后执行）。
 
 ## 失败与卡点
 
@@ -57,6 +58,7 @@
 
 ## 关键决定记录
 
+- **V2 登录（2026-09-03）**：①**probe 是唯一权威完成信号**——t-1 课程列表端点 + 业务信封判定；did-navigate 的 SSO 回跳与 sessionStorage JWT 出现只触发一次立即探测。理由：SSO 回跳瞬间 OAuth 回调链尚未 settle、门户页不写 JWT，立即收割产出 401 会话（活体实测）；probe 成功 ⟺ listCourses 可用，收割时点必然有效。②**登录入口 = resourcemanage-ui SPA 而非门户根**——JWT 只有该 SPA 的 RBAC/OAuth 往返才签发（写入 `jy-application-resourcemanage-ui_STORAGE_KEY_JWT_TOKEN`），门户根永远写不出（活体取证 jwtPresent:false）。③**HTTP 401 → session_expired**——jwt-token 时代平台对无会话请求裸 401 JSON，不再 302 跳 CAS；CAS 重定向三通道保留。④**justLoggedIn 一次性标志**挂在 school:session 上——主窗口导航会卸载 renderer，登录完成只能由 fresh mount 感知；mount 平台仍不做网络刷新（防未登录时自动拉起登录页），仅消费该标志时自动刷新（此时会话刚建立必有效）。⑤登录期间主窗口被平台页占用、无「取消」按钮，用户中止=关应用（登录输入不限时，与旧登录窗语义一致）；窗口导航期间 renderer 卸载，login invoke 挂起无副作用。⑥主窗口导航到平台时 preload 桥仍注入平台页面（V1 收割已有先例，可信学校平台、通道均只读，风险可接受）。
 - **V1 管线（2026-09-03）**：①fetching 收割的完整签名直链只在 task_stage_outputs 里做阶段交接（随缓存清理），lessons 表只存去 query 的路径段（红线 V1.5）；②auth_key TTL 未实测——下载失败重试若因签名过期，需重跑任务从 fetching 重新收割（V4.1 45 分钟端到端前实测）；③窗口内导航（收割/后续登录）会让渲染器卸载重载：renderer 侧 fire-and-forget，回来后 mount 重读本地树；导航期间 tasks:progress 事件丢失，任务实际不中断；④课程树默认全展开 + 每目录抓取需开一次播放页——500 门课不做全量抓取，用户对哪门课感兴趣点哪门。
 - **U1 重试统一走 runAsync（2026-08-31）**：后端 `tasks:runAsync` 的 `firstStageFor(state, failed_stage)` 对 failed 任务自动从失败阶段恢复，语义等同 retryTask；前端「重试」不再调阻塞式 `tasks:retry`，统一非阻塞路径，避免 UI 冻结。更简单方案，符合计划「选更简单方案」约定。
 - **U2 组件测试环境分治（2026-08-31）**：vitest 默认环境保留 `node`（main 层测试用真实 fetch/better-sqlite3），仅 `tests/components/**` 用 `happy-dom`——否则 happy-dom 的 CORS fetch 会弄挂 downloadToFile 测试。交互用 `preact/test-utils` 的 act 包裹以 flush 异步批处理。
