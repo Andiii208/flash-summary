@@ -6,7 +6,7 @@
 
 - **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；v0.2.0 已发布；v0.2.1 计划的 V1、**V2（登录流程产品化，2026-09-03）**已完成
 - **进行中**：无——应用处于「可用软件」状态：会话（主窗口内嵌登录+过期自动恢复已活体验证）/课程/搜索/课时收割/全管线笔记生成/笔记四视图+导出+复制/全局任务历史/明暗主题全部实测可用
-- **下一步**：V4 发布收口——V4.1 auth_key TTL 实测 + ≥45 分钟真实课端到端 → V4.2 干净机器安装（需用户配合）→ V4.4 README/CHANGELOG/MVP 对齐、版本号 0.2.1、dist、verify:asar、tag+Release。V3 环境故障（第二渲染器）不阻塞发布，穿插排查
+- **下一步**：V4 发布收口——V4.1 暂缓（见失败与卡点：dncvsvod 环境不可达，管线本体 V1.4 已真实验证）→ V4.2 干净机器安装（需用户配合）→ V4.4 README/CHANGELOG/MVP 对齐、版本号 0.2.1、dist、verify:asar；**tag+Release 等 V4.2 通过后再打**。V3 环境故障（第二渲染器）不阻塞发布，穿插排查
 
 ## 环境实测（2026-08-30）
 
@@ -52,7 +52,9 @@
 
 ## 失败与卡点
 
-- **Chromium 第二渲染器环境级故障（2026-09-02 晚定论，与代理无关）**：与用户实时联测定论——**本机 Electron 的第二个渲染器永远不加载**：登录窗无论 data:/http(s)/file:// 的 loadURL 都只 NAV start 不 commit；`window.open` 返回窗口对象但 target title 永空；CDP `Target.createTarget` 调用本身挂死；而主窗口（第一个渲染器）的 file:// 加载完美（烟测 19/19 全绿即单窗口验证）。已排除：代理（用户退出 Clash Mi 且 ProxyEnable=0）、session 分区（defaultSession 同挂）、沙箱（--no-sandbox 同挂）、scheme（file:// 同挂）、GPU/遮挡计算（--disable-gpu + CalculateNativeWinOcclusion 关闭同挂）。同期环境异常：better-sqlite3 从 node_modules 无声消失（疑似安全组件隔离，重装恢复）。**应用侧已做防御**（001e6c4）：loading 页改 file:// 临时文档 + renderer 侧跳平台、首帧预算/探针移入 did-navigate——环境修好后登录链路即用最可靠路径。**根因三嫌疑**（按可能性）：①安全组件注入（Windows Defender 实时防护开着；试加排除目录）；②Windows build 26200（Insider 级超新 build）× Electron 44/Chromium 152 兼容 bug；③虚拟显示驱动/输入法 hook（百度输入法在跑、用户用远程工具）。**下一步（用户操作）**：①重启电脑后直接点登录重试（清 hook 态，零成本分界实验）；②无效则 Windows 安全中心→病毒和威胁防护→排除项加 `E:\SEU summary` 与安装目录，再试；③再无效则临时退出百度输入法/远程工具逐个排查；④修复版体验：loading 页有 spinner + 25s 必有超时报错（不再无声白屏）
+- **dncvsvod 视频服务器网络层不可达（2026-09-03 上午起，V4.1 暂缓的原因）**：`dncvsvod.seu.edu.cn`（视频直链域名）在纯直连路径下 TCP/TLS 即被 RST（node fetch 无代理 ECONNRESET），同路径对照 cvs=200、auth=404、公网=200 全正常；浏览器内表现为 SPA 播放器 `GET_MEDIA_SOURCE_ERR 播放资源获取失败` + Media 请求 ERR_CONNECTION_CLOSED，`<video>` 元素不创建 → V1 的播放页收割（读 video.src）取不到流 → 任务 fetching 失败。**两嫌疑**：①用户代理（Clash）TUN 分流把 dncvsvod 送去代理出口（教育网 IP 不在常见 GEOIP 库）——待用户退代理复测定性；②平台侧收紧直链/风控（昨晚同域名下载 810MB 畅通；今天平台出现 cvs 中转流路径 `cvs.seu.edu.cn/<uuid>` 可 206、dncvsvod 直链被关）。**若定性为平台永久弃直链**：V1 收割机制需改读 `course_vod_urls_new` 端点响应或 cvs 中转地址，下载源随换（v0.2.2 跟进）。管线本体不受影响（V1.4 凌晨已真实跑通全链）。auth_key TTL 实测同样被此阻塞。
+
+- **Chromium 第二渲染器环境级故障（2026-09-02 晚定论，与代理无关）**：与用户实时联测定论——**本机 Electron 的第二个渲染器永远不加载**：登录窗无论 data:/http(s)/file:// 的 loadURL 都只 NAV start 不 commit；`window.open` 返回窗口对象但 target title 永空；CDP `Target.createTarget` 调用本身挂死；而主窗口（第一个渲染器）的 file:// 加载完美（烟测 19/19 全绿即单窗口验证）。已排除：代理（用户退出 Clash Mi 且 ProxyEnable=0）、session 分区（defaultSession 同挂）、沙箱（--no-sandbox 同挂）、scheme（file:// 同挂）、GPU/遮挡计算（--disable-gpu + CalculateNativeWinOcclusion 关闭同挂）。同期环境异常：better-sqlite3 从 node_modules 无声消失（疑似安全组件隔离，重装恢复）。**应用侧已做防御**（001e6c4）：loading 页改 file:// 临时文档 + renderer 侧跳平台、首帧预算/探针移入 did-navigate——环境修好后登录链路即用最可靠路径。**根因三嫌疑**（按可能性）：①安全组件注入（Windows Defender 实时防护开着；试加排除目录）；②Windows build 26200（Insider 级超新 build）× Electron 44/Chromium 152 兼容 bug；③虚拟显示驱动/输入法 hook（百度输入法在跑、用户用远程工具）。**V2 之后独立登录窗已退役**（SEU_LOGIN_WINDOW=1 才启用），此项不再阻塞任何功能；排查仍有价值（定位本机环境问题），穿插进行。
 
 - **v0.1.0 发布事故（已修复，2026-08-31）**：tag 打在最新提交但发布资产是 Phase 7 时点的旧构建（asar 含脚手架页，无 UI/Provider 代码），且无应用图标、oneClick 静默安装无桌面快捷方式。根因：打包（7d220af）之后又提交了 UI 组装/Provider 等功能但从未重新 `npm run dist`，而发布时未校验资产与 tag 一致。教训已记入 CHANGELOG 0.1.1：**发布资产必须在打 tag 的同一提交上构建，发布前用 @electron/asar 抽验包内产物**。
 
