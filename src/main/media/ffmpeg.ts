@@ -99,7 +99,8 @@ export async function extractAudio(
   videoPath: string,
   outDir: string,
   ffmpeg?: string,
-  basename = 'teacher-audio'
+  basename = 'teacher-audio',
+  signal?: AbortSignal
 ): Promise<AudioExtractionResult> {
   const audioPath = join(outDir, `${basename}.wav`)
   await run(ffmpeg ?? requireBin('ffmpeg'), [
@@ -110,7 +111,7 @@ export async function extractAudio(
     '-ar', '16000',
     '-f', 'wav',
     audioPath
-  ])
+  ], { signal })
   const duration = await probeDuration(audioPath)
   return { audioPath, durationSeconds: duration }
 }
@@ -129,7 +130,8 @@ export async function extractKeyframes(
   videoPath: string,
   outDir: string,
   everySeconds: number,
-  ffmpeg?: string
+  ffmpeg?: string,
+  signal?: AbortSignal
 ): Promise<KeyframeResult[]> {
   const { mkdirSync, readdirSync } = await import('fs')
   mkdirSync(outDir, { recursive: true })
@@ -140,7 +142,7 @@ export async function extractKeyframes(
     '-vf', `fps=1/${everySeconds}`,
     '-q:v', '2',
     pattern
-  ])
+  ], { signal })
   const files = readdirSync(outDir)
     .filter((f) => /^frame-\d{4}\.jpg$/.test(f))
     .sort()

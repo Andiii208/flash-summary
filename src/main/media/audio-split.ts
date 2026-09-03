@@ -35,7 +35,13 @@ export function chunkPlan(durationSeconds: number, chunkSeconds = DEFAULT_CHUNK_
 }
 
 /** Cut one chunk from the source wav into its own 16k mono wav file. */
-export async function cutChunk(ffmpeg: string, source: string, outDir: string, spec: ChunkSpec): Promise<string> {
+export async function cutChunk(
+  ffmpeg: string,
+  source: string,
+  outDir: string,
+  spec: ChunkSpec,
+  signal?: AbortSignal
+): Promise<string> {
   const target = join(outDir, `chunk-${String(spec.index).padStart(3, '0')}.wav`)
   await run(ffmpeg, [
     '-y',
@@ -46,6 +52,6 @@ export async function cutChunk(ffmpeg: string, source: string, outDir: string, s
     '-ar', '16000',
     '-f', 'wav',
     target
-  ])
+  ], { signal })
   return target
 }

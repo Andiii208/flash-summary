@@ -16,10 +16,13 @@ export interface DownloadStats {
   attempts: number
 }
 
-async function attempt(url: string, target: string, signalTimeoutMs: number): Promise<number> {
+async function attempt(url: string, target: string, signalTimeoutMs: number, signal?: AbortSignal): Promise<number> {
   const existing = existsSync(target) ? statSync(target).size : 0
   const headers: Record<string, string> | undefined = existing > 0 ? { Range: `bytes=${existing}-` } : undefined
-  const res = await fetch(url, { signal: AbortSignal.timeout(signalTimeoutMs), headers })
+  // Combine the per-attempt timeout with the caller's cancellation signal
+  // (task cancel must interrupt an in-flight download immediately).
+  const combined = signal != null ? AbortSignal.any([AbortSignal.timeout(signalTimeoutMs), signal]) : AbortSignal.timeout(signalTimeoutMs)
+  const res = await fetch(url, { signal: combined, headers })
   if (!res.ok || res.body == null) throw new Error(`download HTTP ${res.status}`)
 
   const append = res.status === 206
@@ -44,13 +47,15 @@ async function attempt(url: string, target: string, signalTimeoutMs: number): Pr
   return bytes
 }
 
-export async function downloadToFile(url: string, target: string, attempts = MAX_ATTEMPTS): Promise<DownloadStats> {
+export async function downloadToFile(url: string, target: string, attempts = MAX_ATTEMPTS, signal?: AbortSignal): Promise<DownloadStats> {
   let lastError: Error | null = null
   for (let i = 1; i <= attempts; i++) {
+    if (signal?.aborted) throw new Error('任务已取消')
     try {
-      const bytes = await attempt(url, target, 10 * 60 * 1000)
+      const bytes = await attempt(url, target, 10 * 60 * 1000, signal)
       return { bytes, attempts: i }
     } catch (err) {
+      if (signal?.aborted) throw new Error('任务已取消')
       lastError = err as Error
       // Keep the partial file for a Range resume on the next attempt.
       if (i < attempts) {

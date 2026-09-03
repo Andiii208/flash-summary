@@ -306,3 +306,75 @@ describe('transcript write helper', () => {
     expect(existsSync(p)).toBe(true)
   })
 })
+
+describe('cancellation semantics (M1-1: cancel must say cancelled)', () => {
+  it('a download aborted mid-stage reports cancelled, not a masked failure', async () => {
+    const deps = makeDeps({
+      fetchStream: (_url: string, _target: string, signal?: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }))
+          )
+        })
+    })
+    const repo = new TaskRepository(db)
+    repo.create('tc1', 'l1')
+    const controller = new AbortController()
+    const progress: Array<{ kind?: string; message: string }> = []
+    const executors = createExecutors(deps)
+    const done = runTask(repo, 'tc1', executors, 'fetching_course', (p) => progress.push(p), controller.signal)
+    await new Promise((r) => setTimeout(r, 80))
+    controller.abort()
+    await done
+    const row = repo.get('tc1')
+    expect(row?.state).toBe('failed')
+    expect(row?.error_kind).toBe('cancelled')
+    expect(row?.error_message).toBe('任务已取消')
+    expect(progress.at(-1)?.kind).toBe('cancelled')
+  })
+
+  it('the transcribe loop honours cancellation between chunks', async () => {
+    // Small real wav as the audio artifact (plan claims 240s → 2 chunks).
+    const { execFileSync } = await import('child_process')
+    const taskDir = join(dir, 'cache', 'tc2')
+    const { mkdirSync } = await import('fs')
+    mkdirSync(taskDir, { recursive: true })
+    const audioPath = join(taskDir, 'teacher-audio.wav')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    execFileSync(require('ffmpeg-static') as string, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', audioPath], { stdio: 'pipe' })
+    const repo = new TaskRepository(db)
+    repo.create('tc2', 'l1')
+    db.prepare(
+      'INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, ?, ?)'
+    ).run('tc2', 'extracting_audio', JSON.stringify({ audioPath, durationSeconds: 240 }))
+    db.prepare("INSERT OR IGNORE INTO providers (id, name, base_url, api_key, created_at) VALUES ('p1', '测试', 'https://api.test/v1', 'enc', '2026-08-30T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('asr', 'p1', 'asr-model')"
+    ).run()
+
+    let transcribeCalls = 0
+    const deps = makeDeps({
+      chat: (() => ({
+        transcribe: async (): Promise<string> => {
+          transcribeCalls++
+          return '片段'
+        },
+        chatJson: async () => JSON.stringify(validNote),
+        chat: async () => JSON.stringify(validNote)
+      })) as unknown as OrchestratorDeps['chat']
+    })
+    const controller = new AbortController()
+    const executors = createExecutors({
+      ...deps,
+      onChunkProgress: (_ctx, index) => {
+        if (index === 1) controller.abort()
+      }
+    })
+    await runTask(repo, 'tc2', executors, 'transcribing', undefined, controller.signal)
+    const row = repo.get('tc2')
+    expect(row?.state).toBe('failed')
+    expect(row?.error_kind).toBe('cancelled')
+    expect(transcribeCalls).toBe(1)
+  })
+})

@@ -57,6 +57,17 @@ function nowIso(deps: OrchestratorDeps): string {
   return (deps.now ?? (() => new Date()))().toISOString()
 }
 
+/** True when the task was cancelled: the signal fired, or the error IS the abort. */
+function isCancelled(ctx: StageContext, err?: unknown): boolean {
+  if (ctx.signal?.aborted === true) return true
+  return (err as Error | undefined)?.name === 'AbortError'
+}
+
+/** Uniform cancelled stage result so the DB/progress events say «已取消», not a masked failure. */
+function cancelResult(): { status: 'failed'; error: string; kind: 'cancelled' } {
+  return { status: 'failed', error: '任务已取消', kind: 'cancelled' }
+}
+
 function taskDir(deps: OrchestratorDeps, taskId: string): string {
   const dir = join(deps.cacheDir(), taskId)
   mkdirSync(dir, { recursive: true })
@@ -190,6 +201,7 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
       recordStage(deps, ctx.taskId, ctx.stage, { lessonId: detail.id })
       return { status: 'ok' }
     } catch (err) {
+      if (isCancelled(ctx, err)) return cancelResult()
       // Spec §2/§11.3: a session expiry mid-task is recognizable so the UI
       // can offer re-login instead of a generic failure.
       const kind = (err as { kind?: string }).kind
@@ -247,6 +259,7 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
       recordStage(deps, ctx.taskId, ctx.stage, { teacherPath, screenPath })
       return { status: 'ok' }
     } catch (err) {
+      if (isCancelled(ctx, err)) return cancelResult()
       return { status: 'failed', error: `下载视频失败: ${(err as Error).message}` }
     }
   }
@@ -262,11 +275,12 @@ export function makeExtractAudio(deps: OrchestratorDeps): StageExecutor {
       // Field reality (2026-09-02): the teacher stream may have no audio
       // track — the screen stream carries the classroom AAC. Probe both.
       const audioSource = await pickAudioSource(dl.teacherPath, dl.screenPath, deps.ffprobe)
-      const { audioPath, durationSeconds } = await extractAudio(audioSource, dir, deps.ffmpeg)
+      const { audioPath, durationSeconds } = await extractAudio(audioSource, dir, deps.ffmpeg, 'teacher-audio', ctx.signal)
       if (existsSync(dl.teacherPath)) rmSync(dl.teacherPath, { force: true })
       recordStage(deps, ctx.taskId, ctx.stage, { audioPath, durationSeconds })
       return { status: 'ok' }
     } catch (err) {
+      if (isCancelled(ctx, err)) return cancelResult()
       return { status: 'failed', error: `音频提取失败: ${(err as Error).message}` }
     }
   }
@@ -287,9 +301,10 @@ export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
       const outDir = taskDir(deps, ctx.taskId)
       const segments: Array<{ at: number; text: string }> = []
       for (const spec of plan) {
+        if (ctx.signal?.aborted) return cancelResult()
         deps.onChunkProgress?.(ctx, spec.index, plan.length)
         const chunkPath =
-          plan.length === 1 ? audio.audioPath : await cutChunk(deps.ffmpeg, audio.audioPath, outDir, spec)
+          plan.length === 1 ? audio.audioPath : await cutChunk(deps.ffmpeg, audio.audioPath, outDir, spec, ctx.signal)
         try {
           const blob = new Blob([readFileSync(chunkPath)])
           const text = await transcribeChunk(client, blob, `chunk-${spec.index}.wav`, binding.model, ctx.signal)
@@ -313,6 +328,7 @@ export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
       recordStage(deps, ctx.taskId, ctx.stage, { chars: segments.reduce((n, s) => n + s.text.length, 0), chunks: plan.length })
       return { status: 'ok' }
     } catch (err) {
+      if (isCancelled(ctx, err)) return cancelResult()
       return { status: 'failed', error: `转写失败: ${(err as Error).message}` }
     }
   }
@@ -326,7 +342,7 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
     try {
       const outDir = join(taskDir(deps, ctx.taskId), 'keyframes')
       mkdirSync(outDir, { recursive: true })
-      const candidates = await extractKeyframes(dl.screenPath, outDir, 10, deps.ffmpeg)
+      const candidates = await extractKeyframes(dl.screenPath, outDir, 10, deps.ffmpeg, ctx.signal)
       const kept = dedupeKeyframes(
         candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })),
         5
@@ -361,7 +377,7 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
           )
           for (const [i, url] of urls.entries()) {
             const file = join(pptDir, `page-${String(i).padStart(3, '0')}.png`)
-            await downloadToFile(url, file, 3)
+            await downloadToFile(url, file, 3, ctx.signal)
             insertPpt.run(`${ctx.lessonId}-ppt-${i}`, ctx.lessonId, i, file, nowIso(deps))
             pptCount++
           }
@@ -373,6 +389,7 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
       recordStage(deps, ctx.taskId, ctx.stage, { keyframes: kept.length, ppt: pptCount })
       return { status: 'ok' }
     } catch (err) {
+      if (isCancelled(ctx, err)) return cancelResult()
       return { status: 'failed', error: `关键帧/PPT 提取失败: ${(err as Error).message}` }
     }
   }
