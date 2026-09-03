@@ -24,6 +24,7 @@ import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
+import { formatBytes, formatSpeed } from '../shared/format'
 import type { Note } from '../shared/notes/schema'
 import { resolveCacheDir } from './library/paths'
 import { migrateLibrary } from './library/migrate'
@@ -81,7 +82,14 @@ export interface IpcOptions {
   netLookupOverride?: (host: string) => Promise<Array<{ address: string }>>
 }
 
-export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions = {}): void {
+export interface IpcHandle {
+  /** True while a task occupies the serial queue (close-window confirm). */
+  isTaskRunning: () => boolean
+  /** Abort the running task (close-window «取消任务并退出»). */
+  cancelRunning: () => void
+}
+
+export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions = {}): IpcHandle {
   // Serial task executor + cancellation registry (U4): one task at a time,
   // cancellable via AbortController keyed by task id.
   const queue = new SerialTaskQueue()
@@ -121,6 +129,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
           stage: 'transcribing',
           message: `转写分片 ${index + 1}/${total}`,
           percent: Math.min(100, Math.round(base + ((index + 1) / total) * span))
+        })
+      },
+      // M1-3: remux download byte/speed polling → progress detail line.
+      onDownloadProgress: (taskCtx, bytes, bytesPerSecond) => {
+        sendProgress({
+          taskId: taskCtx.taskId,
+          state: 'downloading_video',
+          stage: 'downloading_video',
+          message: '正在下载视频',
+          percent: stagePercent('downloading_video'),
+          detail: `已下载 ${formatBytes(bytes)}${formatSpeed(bytesPerSecond) === '' ? '' : ` · ${formatSpeed(bytesPerSecond)}`}`
         })
       }
     })
@@ -568,21 +587,23 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
   // tasks:cancel (U4): abort the running/queued task; it flips to failed(cancelled).
+  const cancelById = (id: string): void => {
+    const controller = abortControllers.get(id)
+    if (controller != null) {
+      controller.abort()
+      return
+    }
+    // Not currently running: mark failed(cancelled) directly so the UI state is consistent.
+    const repo = new TaskRepository(ctx.db)
+    const row = repo.get(id)
+    if (row != null && row.state !== 'succeeded' && row.state !== 'failed') {
+      repo.markFailed(id, (row.state as Stage) ?? 'pending', '任务已取消', 'cancelled')
+      sendProgress({ taskId: id, state: 'failed', stage: row.state as Stage, message: '任务已取消', percent: 0, kind: 'cancelled' })
+    }
+  }
   ipc.handle('tasks:cancel', (_e, taskId: unknown) => {
     try {
-      const id = str(taskId, 'taskId')
-      const controller = abortControllers.get(id)
-      if (controller != null) {
-        controller.abort()
-        return ok({ cancelled: true })
-      }
-      // Not currently running: mark failed(cancelled) directly so the UI state is consistent.
-      const repo = new TaskRepository(ctx.db)
-      const row = repo.get(id)
-      if (row != null && row.state !== 'succeeded' && row.state !== 'failed') {
-        repo.markFailed(id, (row.state as Stage) ?? 'pending', '任务已取消', 'cancelled')
-        sendProgress({ taskId: id, state: 'failed', stage: row.state as Stage, message: '任务已取消', percent: 0, kind: 'cancelled' })
-      }
+      cancelById(str(taskId, 'taskId'))
       return ok({ cancelled: true })
     } catch (e) {
       return err(e)
@@ -660,6 +681,15 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+
+  // M1-3: window-close confirm needs the queue state from main.
+  return {
+    isTaskRunning: () => queue.current() != null,
+    cancelRunning: () => {
+      const id = queue.current()
+      if (id != null) cancelById(id)
+    }
+  }
 }
 
 /** Convenience: a ProgressSender backed by real WebContents (auto no-op when the window is gone). */

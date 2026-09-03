@@ -112,3 +112,21 @@ describe('ManualAdd', () => {
     expect(fields[1]!.value).toBe('')
   })
 })
+
+describe('ToastArea inline action (M1-3)', () => {
+  it('renders the action button and fires onAction', () => {
+    const onAction = vi.fn()
+    const host = mount(
+      <ToastArea toasts={[{ id: 1, message: '会话已恢复，2 个失败任务可重试', kind: 'success', actionLabel: '去任务页', onAction }]} />
+    )
+    const action = host.querySelector<HTMLButtonElement>('.toast-action')
+    expect(action?.textContent).toBe('去任务页')
+    click(action)
+    expect(onAction).toHaveBeenCalledOnce()
+  })
+
+  it('renders no action button when none is provided', () => {
+    const host = mount(<ToastArea toasts={[{ id: 1, message: '普通提示', kind: 'info' }]} />)
+    expect(host.querySelector('.toast-action')).toBeNull()
+  })
+})

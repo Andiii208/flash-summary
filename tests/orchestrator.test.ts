@@ -378,3 +378,43 @@ describe('cancellation semantics (M1-1: cancel must say cancelled)', () => {
     expect(transcribeCalls).toBe(1)
   })
 })
+
+describe('download progress polling (M1-3)', () => {
+  it('reports downloaded bytes while the streams grow on disk', async () => {
+    const { copyFile } = await import('fs/promises')
+    const taskDir = join(dir, 'cache', 'tp1')
+    const { mkdirSync } = await import('fs')
+    mkdirSync(taskDir, { recursive: true })
+    // Real teacher/screen sources exist from the fixture flow; write the
+    // teacher file up front so the poller sees bytes, then hold the screen
+    // download long enough for one poll tick.
+    const teacherSrc = join(taskDir, 'src-teacher.mp4')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { execFileSync } = await import('child_process')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    execFileSync(require('ffmpeg-static') as string, ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=64x64:rate=2', '-c:v', 'libx264', teacherSrc], { stdio: 'pipe' })
+    const repo = new TaskRepository(db)
+    repo.create('tp1', 'l1')
+    db.prepare(
+      'INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, ?, ?)'
+    ).run('tp1', 'fetching_course', JSON.stringify({ lessonId: 'l1', teacherStreamUrl: 'http://x/teacher', screenStreamUrl: 'http://x/screen' }))
+
+    const progress: Array<{ bytes: number; speed: number }> = []
+    const deps = makeDeps({
+      fetchStream: async (url: string, target: string) => {
+        if (url.includes('teacher')) {
+          await copyFile(teacherSrc, target)
+          return
+        }
+        // Hold the second stream so the poller ticks against a live download.
+        await new Promise((r) => setTimeout(r, 1600))
+        await copyFile(teacherSrc, target)
+      },
+      onDownloadProgress: (_ctx, bytes, speed) => progress.push({ bytes, speed })
+    })
+    const executors = createExecutors(deps)
+    await executors.downloading_video({ taskId: 'tp1', lessonId: 'l1', stage: 'downloading_video' })
+    expect(progress.length).toBeGreaterThanOrEqual(1)
+    expect(progress[0]!.bytes).toBeGreaterThan(0)
+  })
+})

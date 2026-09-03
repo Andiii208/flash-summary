@@ -66,6 +66,8 @@ export interface TaskProgress {
   percent: number
   /** Failure taxonomy: session expiry (UI offers re-login) or user cancellation. */
   kind?: 'session_expired' | 'cancelled'
+  /** M1-3: sub-progress text (e.g. «已下载 412.3 MB · 2.1 MB/s»). */
+  detail?: string
 }
 
 export type ProgressListener = (p: TaskProgress) => void
@@ -102,7 +104,21 @@ export async function runTask(
 
     repo.markStage(taskId, stage)
     onProgress?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: stagePercent(stage) })
-    const result = await executors[stage](ctx)
+    let result: StageResult
+    try {
+      result = await executors[stage](ctx)
+    } catch (err) {
+      // An executor throwing (crash, unexpected abort) must never leave the
+      // row stuck in a running state — map it to failed/cancelled like a
+      // returned failure would be.
+      if (signal?.aborted || (err as Error)?.name === 'AbortError') {
+        return cancelTask(repo, taskId, stage, onProgress)
+      }
+      const message = `执行异常: ${(err as Error).message}`
+      repo.markFailed(taskId, stage, message)
+      onProgress?.({ taskId, state: 'failed', stage, message, percent: stagePercent(stage) })
+      return 'failed'
+    }
     if (signal?.aborted) {
       return cancelTask(repo, taskId, stage, onProgress)
     }

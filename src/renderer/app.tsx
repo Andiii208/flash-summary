@@ -29,8 +29,9 @@ const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
 ]
 
 export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
-  const state = useAppState(bridge)
   const [tab, setTab] = useState<MainTab>('tasks')
+  const goTasks = useCallback(() => setTab('tasks'), [])
+  const state = useAppState(bridge, goTasks)
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   return (
@@ -221,7 +222,7 @@ function isActiveState(state: string): boolean {
   return state !== 'succeeded' && state !== 'failed'
 }
 
-function useAppState(bridge: SeuSummaryBridge): AppState {
+function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const [session, setSession] = useState<SessionState>('logged_out')
   const [sessionInfo, setSessionInfo] = useState<{ savedAt: string | null; expiresAt: number | null }>({
     savedAt: null,
@@ -265,12 +266,15 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     else root.dataset.theme = settings.theme
   }, [settings])
 
-  const toast = useCallback((message: string, kind: ToastKind = 'info'): void => {
-    const id = ++toastId.current
-    setToasts((ts) => [...ts, { id, message, kind }])
-    const ms = kind === 'error' ? 6500 : 3500
-    window.setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), ms)
-  }, [])
+  const toast = useCallback(
+    (message: string, kind: ToastKind = 'info', action?: { actionLabel: string; onAction: () => void }): void => {
+      const id = ++toastId.current
+      setToasts((ts) => [...ts, { id, message, kind, ...(action ?? {}) }])
+      const ms = action != null ? 8000 : kind === 'error' ? 6500 : 3500
+      window.setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), ms)
+    },
+    []
+  )
 
   const applyLocalTree = useCallback(async (): Promise<void> => {
     const res = await bridge.school.courseTree()
@@ -377,6 +381,18 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       if (s.value.justLoggedIn === true) {
         toast('登录成功', 'success')
         void refreshTree()
+        // M1-3 (B7): after a re-login, surface the retryable failures left
+        // by the expired session instead of making the user hunt for them.
+        const rows = await bridge.tasks.list()
+        if (rows.ok && rows.value != null) {
+          const retryable = rows.value.filter((t) => t.state === 'failed' && t.error_kind === 'session_expired')
+          if (retryable.length > 0) {
+            toast(`会话已恢复，${retryable.length} 个失败任务可重试`, 'success', {
+              actionLabel: '去任务页',
+              onAction: goTasks
+            })
+          }
+        }
       } else if (s.value.loginOutcome != null) {
         const outcome = s.value.loginOutcome
         if (outcome.ok) toast('登录成功', 'success')
@@ -430,7 +446,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory, refreshTree])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory, refreshTree, goTasks])
 
   const login = useCallback((): void => {
     if (sessionBusy) return // one login at a time (stacked windows field case 2026-09-01)

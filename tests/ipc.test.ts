@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -642,5 +642,41 @@ describe('U1: course tree and task list', () => {
     await ipc.invoke('school:setMine', 'c1', false)
     const after = (await ipc.invoke('school:courseTree')) as { value?: Array<{ isMine?: boolean }> }
     expect(after.value?.[0].isMine).toBe(false)
+  })
+})
+
+describe('registerIpc handle API (M1-3: close-window confirm)', () => {
+  it('exposes queue-busy state and can cancel the running task', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
+    let releaseFetch: (() => void) | null = null
+    const handle = registerIpc(ctx, ipc as never, {
+      executorsOverride: () => ({
+        fetching_course: (stageCtx) =>
+          new Promise((resolve, reject) => {
+            releaseFetch = () => resolve({ status: 'ok' })
+            stageCtx.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+          }),
+        downloading_video: () => ({ status: 'ok' }),
+        extracting_audio: () => ({ status: 'ok' }),
+        transcribing: () => ({ status: 'ok' }),
+        extracting_visuals: () => ({ status: 'ok' }),
+        summarizing: () => ({ status: 'ok' })
+      })
+    })
+    expect(handle.isTaskRunning()).toBe(false)
+
+    const created = (await ipc.invoke('tasks:create', 'l1')) as { value?: { id: string } }
+    await ipc.invoke('tasks:runAsync', created.value!.id)
+    await vi.waitFor(() => expect(handle.isTaskRunning()).toBe(true))
+
+    handle.cancelRunning()
+    await vi.waitFor(() => {
+      const row = db.prepare('SELECT state, error_kind FROM tasks WHERE id = ?').get(created.value!.id) as { state: string; error_kind: string | null }
+      expect(row.state).toBe('failed')
+      expect(row.error_kind).toBe('cancelled')
+    })
+    await vi.waitFor(() => expect(handle.isTaskRunning()).toBe(false))
   })
 })

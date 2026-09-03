@@ -41,6 +41,8 @@ export interface TaskProgressInfo {
   percent: number
   /** Set when the failure is a school session expiry (UI offers re-login). */
   kind?: 'session_expired'
+  /** M1-3: sub-progress text (e.g. «已下载 412.3 MB · 2.1 MB/s»). */
+  detail?: string
 }
 
 export interface TaskRowInfo {

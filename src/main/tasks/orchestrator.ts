@@ -3,7 +3,7 @@
  * All I/O goes through injected deps so tests can stub the network,
  * ffmpeg, and providers while the orchestration logic stays real.
  */
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import type { Db } from '../db/open'
 import { attachmentsPath } from '../library/paths'
@@ -50,6 +50,8 @@ export interface OrchestratorDeps {
   }>
   /** Per-chunk ASR progress (U4): index and total let the UI show chunk-level progress. */
   onChunkProgress?: (ctx: StageContext, index: number, total: number) => void
+  /** M1-3: download byte/speed polling so the UI shows «已下载 x · y/s». */
+  onDownloadProgress?: (ctx: StageContext, downloadedBytes: number, bytesPerSecond: number) => void
   now?: () => Date
 }
 
@@ -223,6 +225,40 @@ async function fetchStreamDefault(ffmpeg: string, url: string, target: string, s
   })
 }
 
+/**
+ * M1-3: poll the target files' sizes once a second while the streams
+ * download and report byte totals + speed. The remux writes grow on disk,
+ * which is the only reliable signal ffmpeg gives us.
+ */
+function startDownloadPoll(
+  deps: OrchestratorDeps,
+  ctx: StageContext,
+  files: string[]
+): { stop: () => void } {
+  if (deps.onDownloadProgress == null) return { stop: () => undefined }
+  let lastBytes = 0
+  let lastAt = Date.now()
+  const timer = setInterval(() => {
+    let total = 0
+    for (const file of files) {
+      try {
+        total += statSync(file).size
+      } catch {
+        // A stream file not created yet contributes 0.
+      }
+    }
+    const now = Date.now()
+    const seconds = Math.max(0.2, (now - lastAt) / 1000)
+    const speed = Math.max(0, (total - lastBytes) / seconds)
+    lastBytes = total
+    lastAt = now
+    if (total > 0) deps.onDownloadProgress?.(ctx, total, speed)
+  }, 1000)
+  return {
+    stop: () => clearInterval(timer)
+  }
+}
+
 /** 2. downloading_video — fetch teacher + screen streams into cache (panorama never). */
 export function makeDownload(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
@@ -246,6 +282,7 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
       return { status: 'failed', error: '课时缺少教师流或屏幕流地址，无法下载' }
     }
     const dir = taskDir(deps, ctx.taskId)
+    const poll = startDownloadPoll(deps, ctx, [join(dir, 'teacher.ts'), join(dir, 'screen.ts')])
     try {
       const teacherPath = join(dir, 'teacher.ts')
       const screenPath = join(dir, 'screen.ts')
@@ -261,6 +298,8 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
     } catch (err) {
       if (isCancelled(ctx, err)) return cancelResult()
       return { status: 'failed', error: `下载视频失败: ${(err as Error).message}` }
+    } finally {
+      poll.stop()
     }
   }
 }

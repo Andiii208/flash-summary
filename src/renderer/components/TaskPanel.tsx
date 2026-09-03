@@ -116,6 +116,7 @@ function TaskStatusCard({ progress }: TaskStatusCardProps): JSX.Element {
         })}
       </div>
       <ProgressBar percent={progress.percent} active={!succeeded && !failed} />
+      {progress.detail != null && <p class="task-detail">{progress.detail}</p>}
       {failed && <p class="task-error">{progress.message}</p>}
     </div>
   )

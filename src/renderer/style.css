@@ -455,6 +455,22 @@ body {
 .chip:hover { border-color: var(--border-strong); color: var(--text-secondary); }
 .chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
+/* M1-3: download sub-progress line + toast inline action */
+.task-detail { margin: 6px 0 0; color: var(--text-muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.toast { display: flex; align-items: center; gap: 10px; }
+.toast-action {
+  flex-shrink: 0;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  padding: 2px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.toast-action:hover { border-color: var(--accent); }
+
 .lesson-row {
   display: flex;
   align-items: center;

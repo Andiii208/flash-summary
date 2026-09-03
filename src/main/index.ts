@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session } from 'electron'
 import { join } from 'path'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
@@ -85,7 +85,35 @@ if (!gotSingleInstanceLock) {
     ctx.setMainWindow(mainWindow)
     bindWindowLifecycle(ctx, mainWindow)
     // The main window reference lets IPC push task progress to the renderer.
-    registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+    const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+
+    // M1-3: closing with a task running must be an informed choice — the
+    // serial task keeps executing in main either way; the user picks
+    // «后台继续» (silent) or «取消任务并退出». destroy() bypasses this
+    // handler so the choice is one-shot.
+    mainWindow.on('close', (event) => {
+      if (!ipcHandle.isTaskRunning()) return
+      const win = mainWindow
+      if (win == null || win.isDestroyed()) return
+      event.preventDefault()
+      void dialog
+        .showMessageBox(win, {
+          type: 'question',
+          buttons: ['后台继续运行', '取消任务并退出', '返回应用'],
+          defaultId: 0,
+          cancelId: 2,
+          title: '任务正在运行',
+          message: '有任务正在执行，关闭窗口后任务会怎样？',
+          detail: '「后台继续运行」：窗口关闭，任务继续，下次打开自动恢复进度视图。'
+        })
+        .then(({ response }) => {
+          if (response === 0) win.destroy()
+          else if (response === 1) {
+            ipcHandle.cancelRunning()
+            win.destroy()
+          }
+        })
+    })
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
