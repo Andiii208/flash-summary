@@ -7,6 +7,7 @@ import { withSessionRetry } from '../shared/session-retry'
 import { orderMyCoursesFirst } from '../shared/course-order'
 import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
+import { MyStudyPanel } from './components/MyStudyPanel'
 import { TaskPanel } from './components/TaskPanel'
 import { NoteViewer } from './components/NoteViewer'
 import { QaPanel, type QaEntry } from './components/QaPanel'
@@ -54,44 +55,83 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 : '刷新课程'}
             </button>
           </div>
+          {state.tree.length > 0 && (
+            <input
+              class="search-input"
+              type="search"
+              placeholder="搜索课程 / 教师 / 学期…"
+              value={state.query}
+              onInput={(e) => state.setQuery((e.target as HTMLInputElement).value)}
+            />
+          )}
           {state.tree.length > 0 && state.refreshMeta != null && (
             <p class="tree-meta">
               已加载 {state.refreshMeta.loaded} 门 / 全校约 {state.refreshMeta.platformTotal} 门（搜索仅覆盖已加载课程）
             </p>
           )}
-          {state.tree.length > 0 && (
-            <>
-              <input
-                class="search-input"
-                type="search"
-                placeholder="搜索课程 / 教师 / 学期…"
-                value={state.query}
-                onInput={(e) => state.setQuery((e.target as HTMLInputElement).value)}
-              />
-              <div class="tree-tools">
-                <button class="btn small ghost" onClick={state.expandAll}>
-                  全部展开
-                </button>
-                <button class="btn small ghost" onClick={state.collapseAll}>
-                  全部收起
-                </button>
-              </div>
-            </>
-          )}
           {showWelcome ? (
             <WelcomeGuide onLogin={state.login} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
-          ) : (
+          ) : state.searchMode ? (
             <CourseTree
               tree={state.filteredTree}
               selectedLesson={state.currentLesson}
               expanded={state.expanded}
-              searching={state.query.trim() !== ''}
+              searching
               sameCourseIds={state.sameCourseIds}
               onToggle={state.toggleCourse}
               onSelect={state.selectLesson}
               onHarvestLessons={state.harvestLessons}
               onToggleMine={state.toggleMine}
             />
+          ) : (
+            <>
+              <MyStudyPanel
+                mine={state.mineCourses}
+                extracted={state.extractedCourses}
+                sameCourses={state.sameCourses}
+                selectedLesson={state.currentLesson}
+                expanded={state.expanded}
+                onToggle={state.toggleCourse}
+                onSelect={state.selectLesson}
+                onHarvestLessons={state.harvestLessons}
+                onToggleMine={state.toggleMine}
+              />
+              <section class="all-courses">
+                <button
+                  class="all-courses-head"
+                  data-testid="all-courses-toggle"
+                  aria-expanded={state.allCoursesOpen}
+                  onClick={state.toggleAllCourses}
+                >
+                  <span class="caret">{state.allCoursesOpen ? '▾' : '▸'}</span>
+                  <span>全部课程</span>
+                  <span class="all-courses-count">{state.tree.length}</span>
+                </button>
+                {state.allCoursesOpen && (
+                  <>
+                    <div class="tree-tools">
+                      <button class="btn small ghost" onClick={state.expandAll}>
+                        全部展开
+                      </button>
+                      <button class="btn small ghost" onClick={state.collapseAll}>
+                        全部收起
+                      </button>
+                    </div>
+                    <CourseTree
+                      tree={state.filteredTree}
+                      selectedLesson={state.currentLesson}
+                      expanded={state.expanded}
+                      searching={false}
+                      sameCourseIds={state.sameCourseIds}
+                      onToggle={state.toggleCourse}
+                      onSelect={state.selectLesson}
+                      onHarvestLessons={state.harvestLessons}
+                      onToggleMine={state.toggleMine}
+                    />
+                  </>
+                )}
+              </section>
+            </>
           )}
           <ManualAdd onAdd={state.addManual} />
         </aside>
@@ -163,9 +203,17 @@ interface AppState {
   /** Courses the user explicitly expanded (default: all collapsed). */
   expanded: ReadonlySet<string>
   query: string
+  /** 防抖后的搜索态：true 时侧栏切到纯搜索结果列表（M2 批 A）。 */
+  searchMode: boolean
   currentLesson: string
   /** Same-subject sections of pinned courses, for the «同课» badge (C4). */
   sameCourseIds: ReadonlySet<string>
+  /** 「我的学习」三组（M2 批 A）。 */
+  mineCourses: CourseTreeInfo[]
+  extractedCourses: CourseTreeInfo[]
+  sameCourses: CourseTreeInfo[]
+  allCoursesOpen: boolean
+  toggleAllCourses: () => void
   note: Note | null
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (serial queue visibility). */
@@ -222,6 +270,16 @@ function isActiveState(state: string): boolean {
   return state !== 'succeeded' && state !== 'failed'
 }
 
+/** Debounce fast-changing input values (sidebar search, M2 批 A). */
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [value, delayMs])
+  return debounced
+}
+
 function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const [session, setSession] = useState<SessionState>('logged_out')
   const [sessionInfo, setSessionInfo] = useState<{ savedAt: string | null; expiresAt: number | null }>({
@@ -238,6 +296,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const [treeLoaded, setTreeLoaded] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
+  /** M2 批 A: 300ms 防抖后的搜索词（636+ 门课每键全量过滤太浪费）。 */
+  const debouncedQuery = useDebounced(query, 300)
+  const searchMode = debouncedQuery.trim() !== ''
+  /** 全部课程分组默认折叠——「我的学习」是主语，目录是字典。 */
+  const [allCoursesOpen, setAllCoursesOpen] = useState(false)
   const [currentLesson, setCurrentLesson] = useState('')
   const [note, setNote] = useState<Note | null>(null)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
@@ -512,7 +575,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const orderedTree = useMemo(() => orderMyCoursesFirst(tree), [tree])
 
   const filteredTree = useMemo<CourseTreeInfo[]>(() => {
-    const q = query.trim().toLowerCase()
+    const q = debouncedQuery.trim().toLowerCase()
     if (q === '') return orderedTree.tree
     return orderedTree.tree
       .filter((c) => {
@@ -523,7 +586,26 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
         const lessons = c.lessons.filter((l) => l.title.toLowerCase().includes(q))
         return lessons.length > 0 && lessons.length < c.lessons.length ? { ...c, lessons } : c
       })
-  }, [orderedTree, query])
+  }, [orderedTree, debouncedQuery])
+
+  // M2 批 A: 「我的学习」三组派生（已提取按最近任务时间倒序）。
+  const mineCourses = useMemo(() => tree.filter((c) => c.isMine === true), [tree])
+  const extractedCourses = useMemo(
+    () =>
+      tree
+        .filter((c) => c.hasExtracted === true && c.isMine !== true)
+        .sort((a, b) => (b.lastTaskAt ?? '').localeCompare(a.lastTaskAt ?? '')),
+    [tree]
+  )
+  const sameCourses = useMemo(
+    () =>
+      orderedTree.tree.filter(
+        (c) => orderedTree.sameCourseIds.has(c.id) && c.isMine !== true && c.hasExtracted !== true
+      ),
+    [orderedTree]
+  )
+
+  const toggleAllCourses = useCallback((): void => setAllCoursesOpen((open) => !open), [])
 
   // V1.3: harvest a course's «第N节课» catalog from the play page. The main
   // window navigates away mid-call, so this is fire-and-forget: the fresh
@@ -818,8 +900,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     treeLoaded,
     expanded,
     query,
+    searchMode,
     currentLesson,
     sameCourseIds: orderedTree.sameCourseIds,
+    mineCourses,
+    extractedCourses,
+    sameCourses,
+    allCoursesOpen,
+    toggleAllCourses,
     note,
     history,
     globalHistory,

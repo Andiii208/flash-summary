@@ -471,6 +471,32 @@ body {
 }
 .toast-action:hover { border-color: var(--accent); }
 
+/* M2 批 A: 全部课程折叠组 */
+.all-courses { display: flex; flex-direction: column; gap: 8px; }
+.all-courses-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.all-courses-head:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.all-courses-count {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .lesson-row {
   display: flex;
   align-items: center;

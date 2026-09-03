@@ -92,8 +92,15 @@ async function waitForGone(selector: string): Promise<void> {
   )
 }
 
-async function selectFirstLesson(bridge: SeuSummaryBridge): Promise<void> {
+/** M2 批 A: 全部课程默认折叠——先展开组，课程行才存在于 DOM。 */
+async function expandAllCourses(): Promise<void> {
+  const toggle = document.querySelector('[data-testid="all-courses-toggle"]')
+  if (toggle != null) click(toggle)
   await waitForSelector('.course-head')
+}
+
+async function selectFirstLesson(bridge: SeuSummaryBridge): Promise<void> {
+  await expandAllCourses()
   if (document.querySelector('.lesson-row') == null) click(document.querySelector('.course-head'))
   await waitForSelector('.lesson-row')
   click(document.querySelector('.lesson-row'))
@@ -118,11 +125,15 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   it('starts with an honest logged_out badge, four tabs, and the loaded tree', async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
     await waitForSelector('.course-head')
     expect(host.querySelector('[data-testid="session-badge"]')?.className).toContain('logged_out')
     expect(host.querySelectorAll('.tabs button')).toHaveLength(4)
     expect(bridge.school.session).toHaveBeenCalled()
     expect(bridge.school.courseTree).toHaveBeenCalled()
+    // M2 批 A: 全部课程默认折叠，我的学习聚合区常驻。
+    expect(host.querySelector('[data-testid="all-courses-toggle"]')?.getAttribute('aria-expanded')).toBe('true')
+    expect(host.textContent).toContain('我的学习')
   })
 
   it('shows the welcome guide when the local tree is empty', async () => {
@@ -165,7 +176,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     const bridge = makeBridge()
     qaHistoryRows = [{ question: '问', answer: '答' }]
     const host = mount(<App bridge={bridge} />)
-    await waitForSelector('.course-head')
+    await expandAllCourses()
     click(document.querySelector('.course-head'))
     await waitForSelector('.lesson-row')
 
