@@ -37,8 +37,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         <aside class="sidebar">
           <div class="sidebar-head">
             <h2>课程</h2>
-            <button class="btn small ghost" onClick={state.refreshTree} disabled={state.session === 'logged_out'}>
-              刷新课程
+            <button class="btn small ghost" onClick={state.refreshTree} disabled={state.session === 'logged_out' || state.refreshBusy}>
+              {state.refreshBusy ? '刷新中…' : '刷新课程'}
             </button>
           </div>
           {state.tree.length > 0 && (
@@ -99,7 +99,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           {tab === 'notes' && (
             <NoteViewer note={state.note} onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined} onCopy={state.copyNote} />
           )}
-          {tab === 'qa' && <QaPanel entries={state.qaEntries} busy={state.qaBusy} onAsk={state.ask} />}
+          {tab === 'qa' && <QaPanel entries={state.qaEntries} busy={state.qaBusy} hasLesson={state.currentLesson !== ''} onAsk={state.ask} />}
           {tab === 'settings' && (
             <SettingsPanel
               settings={state.settings}
@@ -126,6 +126,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
 interface AppState {
   session: SessionState
   sessionBusy: boolean
+  /** A course-list refresh is in flight (network + possible login round-trip). */
+  refreshBusy: boolean
   tree: CourseTreeInfo[]
   /** Courses filtered by the sidebar search query. */
   filteredTree: CourseTreeInfo[]
@@ -190,6 +192,7 @@ function isActiveState(state: string): boolean {
 function useAppState(bridge: SeuSummaryBridge): AppState {
   const [session, setSession] = useState<SessionState>('logged_out')
   const [sessionBusy, setSessionBusy] = useState(false)
+  const [refreshBusy, setRefreshBusy] = useState(false)
   const [tree, setTree] = useState<CourseTreeInfo[]>([])
   const [treeLoaded, setTreeLoaded] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -234,18 +237,27 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   }, [bridge])
 
   const refreshTree = useCallback(async (): Promise<void> => {
-    // User-triggered refresh (spec §2): on session expiry the renderer logs
-    // in once via the main window and retries the course list.
-    const list = (await withSessionRetry(
-      () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
-      () => bridge.school.login()
-    )) as ApiResult<CourseTreeInfo[]>
-    if (!list.ok && list.kind === 'session_expired') {
-      setSession('logged_out')
-      toast('会话已过期，请重新登录', 'error')
+    if (refreshBusy) return
+    setRefreshBusy(true)
+    try {
+      // User-triggered refresh (spec §2): on session expiry the renderer logs
+      // in once via the main window and retries the course list.
+      const list = (await withSessionRetry(
+        () => bridge.school.listCourses() as Promise<ApiResult<CourseTreeInfo[]>>,
+        () => bridge.school.login()
+      )) as ApiResult<CourseTreeInfo[]>
+      if (!list.ok && list.kind === 'session_expired') {
+        setSession('logged_out')
+        toast('会话已过期，请重新登录', 'error')
+      } else if (!list.ok) {
+        // Silent failures here read as «the app did nothing» (field case 2026-09-01).
+        toast(list.error ?? '刷新失败', 'error')
+      }
+      await applyLocalTree()
+    } finally {
+      setRefreshBusy(false)
     }
-    await applyLocalTree()
-  }, [bridge, toast, applyLocalTree])
+  }, [bridge, toast, applyLocalTree, refreshBusy])
 
   const refreshProviders = useCallback(async (): Promise<void> => {
     const res = await bridge.providers.list()
@@ -649,6 +661,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   return {
     session,
     sessionBusy,
+    refreshBusy,
     tree,
     filteredTree,
     treeLoaded,

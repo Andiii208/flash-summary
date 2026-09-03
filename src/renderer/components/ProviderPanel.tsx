@@ -58,7 +58,12 @@ export function ProviderPanel({ providers, busy, onSave, onRemove }: ProviderPan
                   {p.name} — {bound.join('、') || '未绑定'}
                   {p.hasKey ? '' : ' 无Key'}
                 </span>
-                <button class="btn small" onClick={() => onRemove(p.id)}>
+                <button
+                  class="btn small danger"
+                  onClick={() => {
+                    if (window.confirm(`删除 Provider「${p.name}」？删除后需重新录入 API Key 并重新绑定能力。`)) onRemove(p.id)
+                  }}
+                >
                   删除
                 </button>
               </div>

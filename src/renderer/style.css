@@ -13,7 +13,8 @@
   --surface-3: #e3e8f2;
   --text: #171a21;
   --text-secondary: #454d5d;
-  --text-muted: #79818f;
+  /* #667085 keeps small muted text at ~5.0:1 on --surface (WCAG AA); #79818f was 3.9:1. */
+  --text-muted: #667085;
   --accent: #3b5bdb;
   --accent-hover: #3450c9;
   --accent-2: #7048e8;
@@ -677,7 +678,7 @@ body {
 
 /* ---- provider panel ---- */
 .provider-form { display: flex; flex-direction: column; gap: 8px; max-width: 560px; }
-.provider-row { display: flex; gap: 8px; }
+.provider-row { display: flex; gap: 8px; padding: 8px 10px; }
 .provider-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 
 /* ---- settings ---- */
@@ -793,10 +794,11 @@ body {
 .msg { font-size: var(--font-size-sm); color: var(--text-muted); margin: 4px 0; }
 .msg.error, .error { color: var(--danger); }
 .subheading { font-size: var(--font-size-md); margin: 20px 0 8px; color: var(--text-secondary); font-weight: 620; }
+/* Padding lives with the specific classes (.course-item/.history-row/.provider-row):
+   a base padding here would win the cascade for equal specificity later in file. */
 .item {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px 10px;
   background: var(--surface);
   font-size: var(--font-size-md);
 }
