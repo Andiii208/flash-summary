@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NoteSchema, parseNote } from '../src/main/notes/schema'
-import { projectNote, VIEW_IDS } from '../src/main/notes/views'
+import { projectNote, projectNoteBlocks, VIEW_IDS, looksLikeMarkdown } from '../src/main/notes/views'
 import type { Note } from '../src/main/notes/schema'
 
 const sampleNote: Note = {
@@ -55,9 +55,9 @@ describe('note schema', () => {
   })
 })
 
-describe('four views from the same JSON', () => {
-  it('exposes exactly the four spec views', () => {
-    expect(VIEW_IDS).toEqual(['detailed', 'standard', 'key_points', 'methodology'])
+describe('views from the same JSON', () => {
+  it('exposes the five reading views (2026-09-04: + mindmap)', () => {
+    expect(VIEW_IDS).toEqual(['detailed', 'standard', 'key_points', 'methodology', 'mindmap'])
   })
 
   it('detailed view contains all sections', () => {
@@ -91,11 +91,72 @@ describe('four views from the same JSON', () => {
     expect(sections[1].lines).toContain('先化简再代入')
   })
 
-  it('all four views derive from one JSON without independent generation', () => {
+  it('all reading views derive from one JSON without independent generation', () => {
     const json = JSON.stringify(sampleNote)
     const parsed = parseNote(json)
-    for (const view of VIEW_IDS) {
+    // Flat projections keep four non-empty views; mindmap renders via blocks.
+    for (const view of VIEW_IDS.filter((v) => v !== 'mindmap')) {
       expect(projectNote(parsed, view).length).toBeGreaterThan(0)
     }
+    for (const view of VIEW_IDS) {
+      expect(projectNoteBlocks(parsed, view).length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('projectNoteBlocks structured projections (2026-09-04)', () => {
+  it('detailed view maps every section to typed blocks', () => {
+    const sections = projectNoteBlocks(sampleNote, 'detailed')
+    const headings = sections.map((s) => s.heading)
+    expect(headings).toEqual(['课程概览', '知识结构', '时间线', '概念与定义', '公式、代码与操作步骤', '考试与作业提示', '疑问与缺口'])
+    expect(sections[1].blocks[0]).toEqual({ block: 'tree', node: sampleNote.knowledgeTree })
+    expect(sections[2].blocks[0]?.block).toBe('timeline')
+    expect(sections[3].blocks[0]?.block).toBe('concepts')
+    expect(sections[4].blocks[0]?.block).toBe('formulas')
+    expect(sections[5].blocks[0]).toMatchObject({ block: 'callout', tone: 'exam' })
+    expect(sections[6].blocks[0]).toMatchObject({ block: 'callout', tone: 'gap' })
+  })
+
+  it('empty sections are omitted instead of rendering headers with nothing', () => {
+    const minimal = parseNote(
+      JSON.stringify({ overview: '一句话', knowledgeTree: { title: 'r', children: [] }, methodology: 'm', examCues: [], questionsAndGaps: [] })
+    )
+    const sections = projectNoteBlocks(minimal, 'detailed')
+    expect(sections.map((s) => s.heading)).toEqual(['课程概览', '知识结构'])
+  })
+
+  it('plain-text overview projects as paragraph, markdown-ish as markdown block', () => {
+    const plain = projectNoteBlocks(sampleNote, 'detailed')[0].blocks[0]
+    expect(plain).toEqual({ block: 'paragraph', text: sampleNote.overview })
+    const mdNote = parseNote(JSON.stringify({ ...sampleNote, overview: '总起。\n\n## 主线\n- A' }))
+    expect(projectNoteBlocks(mdNote, 'detailed')[0].blocks[0]?.block).toBe('markdown')
+  })
+
+  it('mindmap view carries the tree plus overview', () => {
+    const sections = projectNoteBlocks(sampleNote, 'mindmap')
+    expect(sections[0]).toEqual({ heading: '知识导图', blocks: [{ block: 'tree', node: sampleNote.knowledgeTree }] })
+    expect(sections[1].blocks[0]?.block).toBe('paragraph')
+  })
+
+  it('methodology view steps exclude formulas and carry explanations', () => {
+    const sections = projectNoteBlocks(sampleNote, 'methodology')
+    const steps = sections[1].blocks[0]
+    expect(steps).toMatchObject({
+      block: 'steps',
+      items: [
+        { content: 'syms x; limit(sin(x)/x, x, 0)', explanation: 'MATLAB 验证' },
+        { content: '先化简再代入', explanation: '' }
+      ]
+    })
+  })
+})
+
+describe('looksLikeMarkdown', () => {
+  it('detects headings, lists, and bold; rejects plain prose', () => {
+    expect(looksLikeMarkdown('## 小节')).toBe(true)
+    expect(looksLikeMarkdown('- 项目')).toBe(true)
+    expect(looksLikeMarkdown('**加粗**')).toBe(true)
+    expect(looksLikeMarkdown('1. 步骤')).toBe(true)
+    expect(looksLikeMarkdown('这就是一句普通的中文句子。')).toBe(false)
   })
 })

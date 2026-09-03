@@ -22,3 +22,6 @@ tmp-chunk-*
 
 # local agent-tool state
 .zcode/
+
+# UI screenshot harness output (dev-only artifacts)
+.ui-shots/

@@ -33,5 +33,6 @@ export const VIEW_LABELS: Record<ViewId, string> = {
   detailed: '详细笔记',
   standard: '标准总结',
   key_points: '要点',
-  methodology: '方法论'
+  methodology: '方法论',
+  mindmap: '思维导图'
 }

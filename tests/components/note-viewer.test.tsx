@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { NoteViewer } from '../../src/renderer/components/NoteViewer'
 import { mount, click } from '../helpers/preact'
 import type { Note } from '../../src/shared/notes/schema'
@@ -19,18 +19,36 @@ const NOTE: Note = {
   evidence: []
 }
 
+const ATTACHMENT = {
+  ref: 'kf:kf-3',
+  kind: 'keyframe' as const,
+  at: 300,
+  dataUrl: 'data:image/jpeg;base64,Zm9v'
+}
+
 describe('NoteViewer', () => {
   it('shows the placeholder when there is no note', () => {
     const host = mount(<NoteViewer note={null} />)
     expect(host.textContent).toContain('尚无笔记')
   })
 
-  it('renders the detailed view by default with timestamp-styled lines', () => {
+  it('renders the detailed view by default as timeline cards with stamps', () => {
     const host = mount(<NoteViewer note={NOTE} />)
     expect(host.textContent).toContain('课程概览')
-    expect(host.textContent).toContain('01:05 引入')
-    const tsLines = host.querySelectorAll('p.ts')
-    expect(tsLines.length).toBeGreaterThan(0)
+    expect(host.textContent).toContain('01:05')
+    expect(host.textContent).toContain('引入')
+    const cards = host.querySelectorAll('.timeline-card')
+    expect(cards).toHaveLength(2)
+    expect(host.querySelector('.timeline-stamp')?.textContent).toBe('01:05')
+  })
+
+  it('binds the nearest keyframe onto a timeline card without evidence refs', () => {
+    const host = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
+    const card = host.querySelectorAll('.timeline-card')[1]!
+    expect(card.querySelector('.timeline-thumb img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
+    expect(card.querySelector('.thumb-origin')?.textContent).toBe('就近')
+    // The 引入 card (65s) is out of tolerance from the 300s keyframe.
+    expect(host.querySelectorAll('.timeline-card')[0]!.querySelector('.timeline-thumb')).toBeNull()
   })
 
   it('switches views when a tab is clicked', () => {
@@ -40,12 +58,44 @@ describe('NoteViewer', () => {
     const keyPoints = Array.from(tabs).find((b) => b.textContent === '要点') ?? null
     click(keyPoints)
     expect(keyPoints?.classList.contains('active')).toBe(true)
-    expect(host.textContent).toContain('【考点】必考：复杂度计算')
+    expect(host.textContent).toContain('必考：复杂度计算')
+    expect(host.querySelectorAll('.callout-item').length).toBeGreaterThan(0)
   })
 
-  it('renders all four view tabs', () => {
+  it('renders all five view tabs including the mind map', () => {
     const host = mount(<NoteViewer note={NOTE} />)
     const labels = Array.from(host.querySelectorAll('.note-tabs button')).map((b) => b.textContent)
-    expect(labels).toEqual(['详细笔记', '标准总结', '要点', '方法论'])
+    expect(labels).toEqual(['详细笔记', '标准总结', '要点', '方法论', '思维导图'])
+    const mindmapTab = Array.from(host.querySelectorAll('.note-tabs button')).find((b) => b.textContent === '思维导图') ?? null
+    click(mindmapTab)
+    expect(host.querySelector('[data-testid="mindmap"]')).not.toBeNull()
+    expect(host.querySelectorAll('.mindmap-node')).toHaveLength(2)
+  })
+
+  it('renders markdown overview through md-lite (headings, bold, lists)', () => {
+    const markdownNote: Note = {
+      ...NOTE,
+      overview: '总起一句。\n\n## 本讲主线\n\n- 复杂度定义\n- **大O** 记号'
+    }
+    const host = mount(<NoteViewer note={markdownNote} />)
+    expect(host.querySelectorAll('.md-lite .md-h')).toHaveLength(1)
+    expect(host.querySelectorAll('.md-lite .md-list li')).toHaveLength(2)
+    expect(host.querySelector('.md-lite strong')?.textContent).toBe('大O')
+  })
+
+  it('shows the regenerate button only with a note and wires busy state', () => {
+    const onRegenerate = vi.fn()
+    const idle = mount(<NoteViewer note={NOTE} onRegenerate={onRegenerate} regenBusy={false} />)
+    const button = Array.from(idle.querySelectorAll('button')).find((b) => b.textContent === '重新生成')!
+    click(button)
+    expect(onRegenerate).toHaveBeenCalledTimes(1)
+    const busy = mount(<NoteViewer note={NOTE} onRegenerate={onRegenerate} regenBusy />)
+    expect(Array.from(busy.querySelectorAll('button')).find((b) => b.textContent === '生成中…')).not.toBeNull()
+  })
+
+  it('renders the evidence gallery section in the detailed view', () => {
+    const host = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
+    expect(host.querySelector('[data-testid="evidence-gallery"]')).not.toBeNull()
+    expect(host.querySelector('.evidence-fig img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
   })
 })

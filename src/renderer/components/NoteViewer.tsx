@@ -1,9 +1,12 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
-import { projectNote, VIEW_IDS, type ViewId } from '../../shared/notes/views'
+import type { AttachmentLike } from '../../shared/notes/evidence'
+import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
 import type { NoteAttachmentInfo } from '../../shared/bridge'
+import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
+import { MindMap } from './MindMap'
 
 export interface NoteViewerProps {
   note: Note | null
@@ -18,8 +21,8 @@ export interface NoteViewerProps {
   onCopy?: () => void
 }
 
-/** Four-view note reader (spec §5): one note JSON, four projections. */
-export function NoteViewer({ note, onRegenerate, regenBusy = false, onExport, onCopy }: NoteViewerProps): JSX.Element {
+/** Five-view note reader: one note JSON, five projections (2026-09-04). */
+export function NoteViewer({ note, attachments = [], regenBusy = false, onRegenerate, onExport, onCopy }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
   return (
     <div class="note-viewer">
@@ -64,7 +67,7 @@ export function NoteViewer({ note, onRegenerate, regenBusy = false, onExport, on
               复制 Markdown
             </button>
           )}
-          {onExport != null && (
+          {onExport != null && note != null && (
             <button class="btn small" onClick={onExport}>
               导出 Markdown
             </button>
@@ -74,23 +77,23 @@ export function NoteViewer({ note, onRegenerate, regenBusy = false, onExport, on
       <div class="note-body">
         {note == null ? (
           <p class="msg">尚无笔记 — 运行任务生成后自动显示</p>
+        ) : view === 'mindmap' ? (
+          <MindMap tree={note.knowledgeTree} />
         ) : (
-          projectNote(note, view).map((section) => (
+          projectNoteBlocks(note, view).map((section) => (
             <section key={section.heading} class="note-section">
               <h3>{section.heading}</h3>
-              {section.lines.map((line, i) => (
-                <p key={i} class={isTimestamped(line) ? 'ts' : ''}>
-                  {line}
-                </p>
-              ))}
+              <NoteBlocks blocks={section.blocks} attachments={attachments as AttachmentLike[]} />
             </section>
           ))
+        )}
+        {note != null && view === 'detailed' && (
+          <section class="note-section">
+            <h3>课堂画面</h3>
+            <EvidenceGallery note={note} attachments={attachments as AttachmentLike[]} />
+          </section>
         )}
       </div>
     </div>
   )
-}
-
-function isTimestamped(line: string): boolean {
-  return /^(\d{2}:\d{2})/.test(line)
 }

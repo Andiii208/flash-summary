@@ -4,10 +4,12 @@ import { useEffect } from 'preact/hooks'
 export interface DialogProps {
   open: boolean
   title: string
-  message: string
+  message?: string
   confirmLabel?: string
   /** Danger actions render the confirm in the destructive color. */
   danger?: boolean
+  /** 2026-09-04: optional custom body (e.g. an image viewer) between title and actions. */
+  children?: preact.ComponentChildren
   onConfirm: () => void
   onCancel: () => void
 }
@@ -17,7 +19,7 @@ export interface DialogProps {
  * looked alien and blocked the renderer). Escape cancels; focus lands on
  * the cancel button so Enter-twice accidents are unlikely.
  */
-export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, onConfirm, onCancel }: DialogProps): JSX.Element | null {
+export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, children, onConfirm, onCancel }: DialogProps): JSX.Element | null {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
@@ -32,7 +34,8 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
     <div class="dialog-backdrop" role="presentation">
       <div class="dialog" role="alertdialog" aria-modal="true" aria-label={title}>
         <h3 class="dialog-title">{title}</h3>
-        <p class="dialog-message">{message}</p>
+        {message != null && message !== '' && <p class="dialog-message">{message}</p>}
+        {children}
         <div class="dialog-actions">
           <button class="btn" autoFocus onClick={onCancel}>
             取消

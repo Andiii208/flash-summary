@@ -30,11 +30,15 @@ export const TimelineEntrySchema = z.object({
   evidence: z.array(EvidenceRefSchema).default([])
 })
 
+export type TimelineEntry = z.infer<typeof TimelineEntrySchema>
+
 export const ConceptSchema = z.object({
   term: z.string(),
   definition: z.string(),
   refs: z.array(TranscriptRefSchema).default([])
 })
+
+export type Concept = z.infer<typeof ConceptSchema>
 
 export const FormulaOrStepSchema = z.object({
   kind: z.enum(['formula', 'code', 'operation']),
@@ -42,6 +46,8 @@ export const FormulaOrStepSchema = z.object({
   explanation: z.string().default(''),
   refs: z.array(TranscriptRefSchema).default([])
 })
+
+export type FormulaOrStep = z.infer<typeof FormulaOrStepSchema>
 
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
   z.object({
