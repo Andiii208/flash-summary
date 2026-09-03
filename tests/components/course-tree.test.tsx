@@ -81,7 +81,7 @@ describe('CourseTree', () => {
       />
     )
     const subs = host.querySelectorAll('.course-sub')
-    expect(subs[0]!.textContent).toBe('周一 第3-4节 · 中山-312')
+    expect(subs[0]!.textContent).toBe('周一 第3-4节 · 中山-312 · 2026-2027')
     expect(host.querySelector('.badge.same')?.textContent).toContain('同课')
   })
 

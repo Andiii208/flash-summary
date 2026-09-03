@@ -61,9 +61,11 @@ interface CourseRowProps {
   onToggleMine: (courseId: string, mine: boolean) => void
 }
 
-/** Teacher / meeting-times / classroom sub line, as the official site shows (C3). */
+/** Teacher / times / classroom / term line under the title, official-site parity (C3). */
 function courseSubLine(course: CourseTreeInfo): string | null {
-  const parts = [course.teacher, course.courTimes, course.classroom].filter((p): p is string => p != null && p !== '')
+  const parts = [course.teacher, course.courTimes, course.classroom, course.term].filter(
+    (p): p is string => p != null && p !== ''
+  )
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
@@ -72,12 +74,11 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, onToggle, onS
   return (
     <div class="item course-item">
       <div class="course-row-head">
-        <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded}>
+        <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded} title={course.name}>
           <span class="caret">{expanded ? '▾' : '▸'}</span>
           <span class="course-name">{course.name}</span>
           {sameCourse && <span class="badge same">同课</span>}
           {course.lessons.length > 0 && <span class="course-count">{course.lessons.length}</span>}
-          <span class="course-meta">{course.term ?? ''}</span>
         </button>
         <button
           class={`pin-btn${course.isMine === true ? ' pinned' : ''}`}
