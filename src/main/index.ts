@@ -32,6 +32,9 @@ function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    minWidth: 960,
+    minHeight: 600,
+    backgroundColor: '#f2f4f9',
     title: APP_TITLE,
     // The smoke probe drives the window over CDP; keep it invisible there.
     show: process.env.SEU_SMOKE !== '1',

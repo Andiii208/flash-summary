@@ -17,9 +17,31 @@ export function NoteViewer({ note, onExport, onCopy }: NoteViewerProps): JSX.Ele
   return (
     <div class="note-viewer">
       <div class="note-toolbar">
-        <nav class="note-tabs" role="tablist">
+        <nav
+          class="note-tabs"
+          role="tablist"
+          onKeyDown={(e) => {
+            // M3-2: roving-focus arrow navigation, matching the main tabs.
+            const buttons = [...e.currentTarget.querySelectorAll('button')]
+            const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
+            if (i < 0) return
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+              e.preventDefault()
+              const next = buttons[(i + (e.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length]
+              next?.focus()
+              next?.click()
+            }
+          }}
+        >
           {VIEW_IDS.map((id) => (
-            <button key={id} class={id === view ? 'active' : ''} role="tab" aria-selected={id === view} onClick={() => setView(id)}>
+            <button
+              key={id}
+              class={id === view ? 'active' : ''}
+              role="tab"
+              aria-selected={id === view}
+              tabIndex={id === view ? 0 : -1}
+              onClick={() => setView(id)}
+            >
               {VIEW_LABELS[id]}
             </button>
           ))}

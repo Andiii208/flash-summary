@@ -118,7 +118,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                       </button>
                     </div>
                     <CourseTree
-                      tree={state.filteredTree}
+                      tree={state.filteredTree.slice(0, state.visibleCourses)}
                       selectedLesson={state.currentLesson}
                       expanded={state.expanded}
                       searching={false}
@@ -128,6 +128,11 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                       onHarvestLessons={state.harvestLessons}
                       onToggleMine={state.toggleMine}
                     />
+                    {state.filteredTree.length > state.visibleCourses && (
+                      <button class="btn small ghost show-more" onClick={state.showMoreCourses}>
+                        显示更多（还有 {state.filteredTree.length - state.visibleCourses} 门）
+                      </button>
+                    )}
                   </>
                 )}
               </section>
@@ -136,9 +141,31 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           <ManualAdd onAdd={state.addManual} />
         </aside>
         <main class="content">
-          <nav class="tabs" role="tablist">
+          <nav
+            class="tabs"
+            role="tablist"
+            onKeyDown={(e) => {
+              // M3-2: proper tablist keyboard support (roving focus + select).
+              const buttons = [...e.currentTarget.querySelectorAll('button')]
+              const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
+              if (i < 0) return
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault()
+                const next = buttons[(i + (e.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length]
+                next?.focus()
+                next?.click()
+              }
+            }}
+          >
             {TAB_LABELS.map((t) => (
-              <button key={t.id} role="tab" aria-selected={tab === t.id} class={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                tabIndex={tab === t.id ? 0 : -1}
+                class={tab === t.id ? 'active' : ''}
+                onClick={() => setTab(t.id)}
+              >
                 {t.label}
               </button>
             ))}
@@ -216,6 +243,8 @@ interface AppState {
   sameCourses: CourseTreeInfo[]
   allCoursesOpen: boolean
   toggleAllCourses: () => void
+  visibleCourses: number
+  showMoreCourses: () => void
   note: Note | null
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (serial queue visibility). */
@@ -610,6 +639,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   )
 
   const toggleAllCourses = useCallback((): void => setAllCoursesOpen((open) => !open), [])
+  // M3-2: reveal the catalog in chunks — 2000 collapsed rows in one DOM is
+  // the slow path the deep-audit flagged.
+  const [visibleCourses, setVisibleCourses] = useState(150)
+  useEffect(() => {
+    setVisibleCourses(150)
+  }, [searchMode])
+  const showMoreCourses = useCallback((): void => setVisibleCourses((n) => n + 150), [])
 
   // V1.3: harvest a course's «第N节课» catalog from the play page. The main
   // window navigates away mid-call, so this is fire-and-forget: the fresh
@@ -929,6 +965,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     sameCourses,
     allCoursesOpen,
     toggleAllCourses,
+    visibleCourses,
+    showMoreCourses,
     note,
     history,
     globalHistory,
