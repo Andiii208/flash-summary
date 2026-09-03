@@ -107,6 +107,7 @@ describe('lesson detail parsing', () => {
         name: '网络信息编程（全英文）',
         term: '2026-2027',
         teacher: '汪海、李某',
+        subjCode: 'B0803291',
         teclId: '154717',
         teclCode: '202620271B080329101'
       }
@@ -128,5 +129,34 @@ describe('parseCoursePageCount (t-1 pagination, B1)', () => {
     expect(parseCoursePageCount({ code: '0', result: [] })).toBe(1)
     expect(parseCoursePageCount(null)).toBe(1)
     expect(parseCoursePageCount({ data: { pageCount: 0 } })).toBe(1)
+  })
+})
+
+describe('parseCourseList course metadata (C1/C3)', () => {
+  it('extracts subjCode / clroName / courTimes from the live t-1 record shape', () => {
+    const courses = parseCourseList({
+      code: null,
+      data: {
+        records: [
+          {
+            id: '1691584',
+            subjName: '网络信息编程（全英文）',
+            subjCode: 'CS3011',
+            teacNames: ['汪海'],
+            clroName: '中山-312',
+            courTimes: ['周一 第3-4节', '周三 第1-2节'],
+            teclId: 154717,
+            teclCode: '202620271B080329101'
+          }
+        ],
+        pageCount: 648
+      }
+    })
+    expect(courses[0]).toMatchObject({ subjCode: 'CS3011', classroom: '中山-312', courTimes: '周一 第3-4节、周三 第1-2节' })
+  })
+
+  it('omits metadata fields when the record carries none', () => {
+    const courses = parseCourseList([{ id: 'x1' }])
+    expect(courses[0]).toEqual({ id: 'x1', name: '' })
   })
 })

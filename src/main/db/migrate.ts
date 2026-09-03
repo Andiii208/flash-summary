@@ -5,6 +5,7 @@ import { migration003 } from './migrations/003_providers'
 import { migration004 } from './migrations/004_settings'
 import { migration005 } from './migrations/005_error_kind'
 import { migration006 } from './migrations/006_play_refs'
+import { migration007 } from './migrations/007_course_meta'
 import type { Migration } from './migration-types'
 
 const MIGRATIONS: Migration[] = [
@@ -13,7 +14,8 @@ const MIGRATIONS: Migration[] = [
   { version: 3, name: 'providers', up: migration003.up },
   { version: 4, name: 'settings', up: migration004.up },
   { version: 5, name: 'error_kind', up: migration005.up },
-  { version: 6, name: 'play_refs', up: migration006.up }
+  { version: 6, name: 'play_refs', up: migration006.up },
+  { version: 7, name: 'course_meta', up: migration007.up }
 ]
 
 /**

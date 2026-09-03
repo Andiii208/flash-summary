@@ -20,14 +20,14 @@ afterEach(() => {
 
 describe('migrations', () => {
   it('applies all migrations on a fresh database', () => {
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7])
   })
 
   it('is idempotent when reopened', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7])
   })
 
   it('applies only pending migrations on an upgraded database', () => {
@@ -35,7 +35,7 @@ describe('migrations', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7])
   })
 
   it('adds play-page reference columns (006)', () => {
@@ -45,6 +45,30 @@ describe('migrations', () => {
     expect(course).toEqual({ tecl_id: '154717', tecl_code: '202620271B080329101' })
     const lesson = db.prepare('SELECT play_ref FROM lessons WHERE id = ?').get('l1') as { play_ref: string }
     expect(lesson.play_ref).toBe('0')
+  })
+
+  it('adds course metadata columns with a defaulted is_mine pin (007)', () => {
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-03T00:00:00Z')").run()
+    const row = db.prepare('SELECT subj_code, classroom, cour_times, is_mine FROM courses WHERE id = ?').get('c1') as {
+      subj_code: null
+      classroom: null
+      cour_times: null
+      is_mine: number
+    }
+    expect(row).toEqual({ subj_code: null, classroom: null, cour_times: null, is_mine: 0 })
+
+    db.prepare('UPDATE courses SET is_mine = 1, subj_code = ?, classroom = ?, cour_times = ? WHERE id = ?').run(
+      'CS101',
+      '中山-312',
+      '周一 第3-4节',
+      'c1'
+    )
+    const pinned = db.prepare('SELECT is_mine, classroom FROM courses WHERE id = ?').get('c1') as { is_mine: number; classroom: string }
+    expect(pinned.is_mine).toBe(1)
+    expect(pinned.classroom).toBe('中山-312')
+
+    // The pin is a 0/1 flag, not a free counter (CHECK constraint).
+    expect(() => db.prepare('UPDATE courses SET is_mine = 2 WHERE id = ?').run('c1')).toThrowError()
   })
 })
 

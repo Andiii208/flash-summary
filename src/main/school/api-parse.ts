@@ -19,6 +19,12 @@ export interface CourseSummary {
   teclId?: string
   /** Recording-class code for the play-page route (live t-1 field, 2026-09). */
   teclCode?: string
+  /** Subject code: shared across a subject's sections/teachers (C1). */
+  subjCode?: string
+  /** Classroom of the recording class (live t-1 field clroName, C3). */
+  classroom?: string
+  /** Meeting times as the platform writes them (live t-1 field courTimes, C3). */
+  courTimes?: string
 }
 
 export interface LessonDetail {
@@ -122,13 +128,19 @@ export function parseCourseList(payload: unknown): CourseSummary[] {
         pickStringArray(item, ['teacNames', 'teacherNames'])
       const teclId = pickString(item, ['teclId', 'tecl_id'])
       const teclCode = pickString(item, ['teclCode', 'tecl_code'])
+      const subjCode = pickString(item, ['subjCode', 'subj_code', 'subjectCode'])
+      const classroom = pickString(item, ['clroName', 'classroom', 'classRoom'])
+      const courTimes = pickString(item, ['courTimes', 'cour_times']) || pickStringArray(item, ['courTimes', 'cour_times'])
       return {
         id,
         name,
         ...(term ? { term } : {}),
         ...(teacher ? { teacher } : {}),
         ...(teclId !== '' ? { teclId } : {}),
-        ...(teclCode !== '' ? { teclCode } : {})
+        ...(teclCode !== '' ? { teclCode } : {}),
+        ...(subjCode !== '' ? { subjCode } : {}),
+        ...(classroom !== '' ? { classroom } : {}),
+        ...(courTimes !== '' ? { courTimes } : {})
       }
     })
     .filter((c) => c.id !== '')

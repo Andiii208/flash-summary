@@ -36,6 +36,7 @@ function makeBridge(): SeuSummaryBridge {
       addManualCourse: vi.fn(async () => ok({ courseId: 'c', lessonId: 'l' })),
       courseTree: vi.fn(async () => ok(courseTreeRows)),
       netCheck: vi.fn(async () => ok({ intercepted: false, resolved: [] })),
+      setMine: vi.fn(async () => ok(true)),
       onRefreshProgress: vi.fn(() => () => undefined)
     },
     providers: {

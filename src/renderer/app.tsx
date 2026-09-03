@@ -4,6 +4,7 @@ import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, SeuSummaryBr
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
+import { orderMyCoursesFirst } from '../shared/course-order'
 import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
 import { TaskPanel } from './components/TaskPanel'
@@ -84,9 +85,11 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               selectedLesson={state.currentLesson}
               expanded={state.expanded}
               searching={state.query.trim() !== ''}
+              sameCourseIds={state.sameCourseIds}
               onToggle={state.toggleCourse}
               onSelect={state.selectLesson}
               onHarvestLessons={state.harvestLessons}
+              onToggleMine={state.toggleMine}
             />
           )}
           <ManualAdd onAdd={state.addManual} />
@@ -158,6 +161,8 @@ interface AppState {
   expanded: ReadonlySet<string>
   query: string
   currentLesson: string
+  /** Same-subject sections of pinned courses, for the «同课» badge (C4). */
+  sameCourseIds: ReadonlySet<string>
   note: Note | null
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (serial queue visibility). */
@@ -179,6 +184,7 @@ interface AppState {
   collapseAll: () => void
   setQuery: (q: string) => void
   harvestLessons: (courseId: string) => void
+  toggleMine: (courseId: string, mine: boolean) => void
   selectLesson: (lessonId: string) => void
   addManual: (courseId: string, lessonId: string) => void
   createAndRun: () => void
@@ -481,10 +487,14 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     setExpanded(new Set())
   }, [])
 
+  // C2/C4: pin sorting — «my courses» first, then other teachers' sections
+  // of the same subjects («同课» badge), then the rest of the catalog.
+  const orderedTree = useMemo(() => orderMyCoursesFirst(tree), [tree])
+
   const filteredTree = useMemo<CourseTreeInfo[]>(() => {
     const q = query.trim().toLowerCase()
-    if (q === '') return tree
-    return tree
+    if (q === '') return orderedTree.tree
+    return orderedTree.tree
       .filter((c) => {
         const haystack = `${c.name} ${c.teacher ?? ''} ${c.term ?? ''} ${c.id}`.toLowerCase()
         return haystack.includes(q) || c.lessons.some((l) => l.title.toLowerCase().includes(q))
@@ -493,7 +503,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
         const lessons = c.lessons.filter((l) => l.title.toLowerCase().includes(q))
         return lessons.length > 0 && lessons.length < c.lessons.length ? { ...c, lessons } : c
       })
-  }, [tree, query])
+  }, [orderedTree, query])
 
   // V1.3: harvest a course's «第N节课» catalog from the play page. The main
   // window navigates away mid-call, so this is fire-and-forget: the fresh
@@ -519,6 +529,21 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
       void loadQaHistory(lessonId)
     },
     [loadNote, loadHistory, loadQaHistory]
+  )
+
+  // C2: pin/unpin «my course»; re-read the local tree so the ordering applies.
+  const toggleMine = useCallback(
+    (courseId: string, mine: boolean): void => {
+      void (async () => {
+        const res = await bridge.school.setMine(courseId, mine)
+        if (!res.ok) {
+          toast(res.error ?? '操作失败', 'error')
+          return
+        }
+        await applyLocalTree()
+      })()
+    },
+    [bridge, toast, applyLocalTree]
   )
 
   const addManual = useCallback(
@@ -742,6 +767,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     expanded,
     query,
     currentLesson,
+    sameCourseIds: orderedTree.sameCourseIds,
     note,
     history,
     globalHistory,
@@ -762,6 +788,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     collapseAll,
     setQuery,
     harvestLessons,
+    toggleMine,
     selectLesson,
     addManual,
     createAndRun,

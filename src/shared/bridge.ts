@@ -14,6 +14,11 @@ export interface CourseSummaryInfo {
   /** Recording-class identifiers (main-side only; used for play-page routes). */
   teclId?: string
   teclCode?: string
+  /** Subject code — shared across a subject's sections/teachers (C1). */
+  subjCode?: string
+  /** Classroom + meeting times as the platform shows them (C3). */
+  classroom?: string
+  courTimes?: string
 }
 
 export interface LessonTreeInfo {
@@ -24,6 +29,8 @@ export interface LessonTreeInfo {
 
 export interface CourseTreeInfo extends CourseSummaryInfo {
   lessons: LessonTreeInfo[]
+  /** Pinned as «my course» (C2); the sidebar sorts these first. */
+  isMine?: boolean
 }
 
 export interface TaskProgressInfo {
@@ -69,6 +76,8 @@ export interface SchoolBridge {
   harvestLessons(courseId: string): Promise<ApiResult<{ lessons: number }>>
   /** Fake-IP preflight (A5): true when a proxy resolver answers the campus hosts with virtual addresses. */
   netCheck(): Promise<ApiResult<{ intercepted: boolean; resolved: Array<{ host: string; ip: string }> }>>
+  /** C2: pin/unpin a course as «mine» (sidebar sorts it first). */
+  setMine(courseId: string, mine: boolean): Promise<ApiResult<boolean>>
   /** Page progress while a paged course refresh runs (B2). */
   onRefreshProgress(cb: (p: { page: number; pageCount: number }) => void): () => void
 }

@@ -559,4 +559,54 @@ describe('U1: course tree and task list', () => {
       { page: 2, pageCount: 2 }
     ])
   })
+
+  it('school:listCourses keeps prior metadata when a fetch record lacks it (C1 COALESCE)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare(
+      "INSERT INTO courses (id, name, subj_code, classroom, cour_times, is_mine, fetched_at) VALUES ('c1', '课一', 'CS101', '中山-312', '周一 第3-4节', 1, '2026-09-03T00:00:00Z')"
+    ).run()
+    ;(ctx as { school: unknown }).school = {
+      listCoursesPaged: async () => ({
+        courses: [{ id: 'c1', name: '课一（改名）' }],
+        platformPages: 1,
+        fetchedPages: 1,
+        platformTotal: 500
+      })
+    }
+    const res = (await ipc.invoke('school:listCourses')) as { ok: boolean }
+    expect(res.ok).toBe(true)
+    const row = db.prepare('SELECT name, subj_code, classroom, cour_times, is_mine FROM courses WHERE id = ?').get('c1') as {
+      name: string
+      subj_code: string | null
+      classroom: string | null
+      is_mine: number
+    }
+    expect(row.name).toBe('课一（改名）')
+    expect(row.subj_code).toBe('CS101')
+    expect(row.classroom).toBe('中山-312')
+    expect(row.is_mine).toBe(1)
+  })
+
+  it('school:setMine pins and unpins, and courseTree reports metadata + pin (C1/C2)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare(
+      "INSERT INTO courses (id, name, subj_code, classroom, cour_times, fetched_at) VALUES ('c1', '课一', 'CS101', '中山-312', '周一 第3-4节', '2026-09-03T00:00:00Z')"
+    ).run()
+
+    const pinned = (await ipc.invoke('school:setMine', 'c1', true)) as { ok: boolean }
+    expect(pinned.ok).toBe(true)
+    const invalid = (await ipc.invoke('school:setMine', 'c1', 'yes')) as { ok: boolean; error?: string }
+    expect(invalid.ok).toBe(false)
+
+    const tree = (await ipc.invoke('school:courseTree')) as {
+      value?: Array<{ id: string; subjCode?: string; classroom?: string; courTimes?: string; isMine?: boolean }>
+    }
+    expect(tree.value?.[0]).toMatchObject({ id: 'c1', subjCode: 'CS101', classroom: '中山-312', courTimes: '周一 第3-4节', isMine: true })
+
+    await ipc.invoke('school:setMine', 'c1', false)
+    const after = (await ipc.invoke('school:courseTree')) as { value?: Array<{ isMine?: boolean }> }
+    expect(after.value?.[0].isMine).toBe(false)
+  })
 })

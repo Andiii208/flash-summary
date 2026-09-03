@@ -186,15 +186,22 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         onProgress: (p) => options.sender?.send('school:refreshProgress', p)
       })
       const now = new Date().toISOString()
+      // C1: metadata columns keep their previous value when a fetch record
+      // carries none (manual rows and older snapshots must not be blanked).
       const upsert = ctx.db.prepare(
-        `INSERT INTO courses (id, name, term, teacher, tecl_id, tecl_code, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO courses (id, name, term, teacher, tecl_id, tecl_code, subj_code, classroom, cour_times, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET name = excluded.name, term = excluded.term,
            teacher = excluded.teacher, tecl_id = excluded.tecl_id, tecl_code = excluded.tecl_code,
-           fetched_at = excluded.fetched_at`
+           subj_code = COALESCE(excluded.subj_code, subj_code), classroom = COALESCE(excluded.classroom, classroom),
+           cour_times = COALESCE(excluded.cour_times, cour_times), fetched_at = excluded.fetched_at`
       )
       for (const c of page.courses) {
         if (c.id === '') continue
-        upsert.run(c.id, c.name, c.term ?? null, c.teacher ?? null, c.teclId ?? null, c.teclCode ?? null, now)
+        upsert.run(
+          c.id, c.name, c.term ?? null, c.teacher ?? null, c.teclId ?? null, c.teclCode ?? null,
+          c.subjCode ?? null, c.classroom ?? null, c.courTimes ?? null, now
+        )
       }
       return ok({ loaded: page.courses.length, platformTotal: page.platformTotal, platformPages: page.platformPages })
     } catch (e) {
@@ -277,8 +284,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   ipc.handle('school:courseTree', () => {
     try {
       const courses = ctx.db
-        .prepare('SELECT id, name, term, teacher FROM courses ORDER BY fetched_at DESC')
-        .all() as Array<{ id: string; name: string; term: string | null; teacher: string | null }>
+        .prepare('SELECT id, name, term, teacher, subj_code, classroom, cour_times, is_mine FROM courses ORDER BY fetched_at DESC')
+        .all() as Array<{
+        id: string
+        name: string
+        term: string | null
+        teacher: string | null
+        subj_code: string | null
+        classroom: string | null
+        cour_times: string | null
+        is_mine: number
+      }>
       const lessonRows = ctx.db
         .prepare(
           `SELECT l.id, l.course_id, l.title, l.started_at,
@@ -291,11 +307,29 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         name: c.name,
         term: c.term ?? undefined,
         teacher: c.teacher ?? undefined,
+        subjCode: c.subj_code ?? undefined,
+        classroom: c.classroom ?? undefined,
+        courTimes: c.cour_times ?? undefined,
+        isMine: c.is_mine === 1,
         lessons: lessonRows
           .filter((l) => l.course_id === c.id)
           .map((l) => ({ id: l.id, title: l.title, hasNote: l.note_count > 0 }))
       }))
       return ok(tree)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // C2: pin/unpin a course as «mine». The schedule-API probe may automate
+  // this later; until then the user decides, and the sidebar sorts pinned
+  // courses (plus their same-subject sections) to the top.
+  ipc.handle('school:setMine', (_e, courseId: unknown, mine: unknown) => {
+    try {
+      const cid = str(courseId, 'courseId')
+      if (typeof mine !== 'boolean') throw new Error('mine must be a boolean')
+      ctx.db.prepare('UPDATE courses SET is_mine = ? WHERE id = ?').run(mine ? 1 : 0, cid)
+      return ok(true)
     } catch (e) {
       return err(e)
     }
