@@ -460,18 +460,73 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
   // tasks:list (U1): history so the UI can show past/failed tasks.
+  // M1-2: JOIN lessons/courses so rows read as «课程名 · 课时名» — the raw
+  // lesson id means nothing to a user.
   ipc.handle('tasks:list', (_e, lessonId: unknown) => {
     try {
+      const baseSelect =
+        'SELECT t.id, t.lesson_id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id'
       const rows = (
         lessonId == null
-          ? ctx.db.prepare('SELECT id, lesson_id, state, failed_stage, error_message, error_kind, created_at, updated_at FROM tasks ORDER BY created_at DESC LIMIT 50').all()
-          : ctx.db
-              .prepare(
-                'SELECT id, lesson_id, state, failed_stage, error_message, error_kind, created_at, updated_at FROM tasks WHERE lesson_id = ? ORDER BY created_at DESC LIMIT 50'
-              )
-              .all(str(lessonId, 'lessonId'))
-      ) as Array<{ id: string; lesson_id: string; state: string; failed_stage: string | null; error_message: string | null; error_kind: string | null; created_at: string; updated_at: string }>
+          ? ctx.db.prepare(`${baseSelect} ORDER BY t.created_at DESC LIMIT 50`).all()
+          : ctx.db.prepare(`${baseSelect} WHERE t.lesson_id = ? ORDER BY t.created_at DESC LIMIT 50`).all(str(lessonId, 'lessonId'))
+      ) as Array<{
+        id: string
+        lesson_id: string
+        state: string
+        failed_stage: string | null
+        error_message: string | null
+        error_kind: string | null
+        created_at: string
+        updated_at: string
+        lesson_title: string | null
+        course_name: string | null
+      }>
       return ok(rows)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // M1-2: delete one history row (and its stage evidence + cache dir).
+  // A running task cannot be deleted — cancel it first.
+  ipc.handle('tasks:delete', (_e, taskId: unknown) => {
+    try {
+      const id = str(taskId, 'taskId')
+      const row = new TaskRepository(ctx.db).get(id)
+      if (row == null) throw new Error('任务不存在')
+      if (row.state !== 'succeeded' && row.state !== 'failed') throw new Error('任务尚未结束，请先取消再删除')
+      ctx.db.prepare('DELETE FROM task_stage_outputs WHERE task_id = ?').run(id)
+      ctx.db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+      const dir = join(resolveCacheDir(getSetting(ctx.db, 'cacheDir', ''), ctx.libraryRoot), id)
+      rmSync(dir, { recursive: true, force: true })
+      ctx.logger.info(`task deleted: ${id}`)
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // M1-2: clear every terminal-state row (succeeded/failed) with evidence
+  // and cache cleanup. Returns the number of removed rows.
+  ipc.handle('tasks:clearFinished', () => {
+    try {
+      const rows = ctx.db
+        .prepare("SELECT id FROM tasks WHERE state IN ('succeeded', 'failed')")
+        .all() as Array<{ id: string }>
+      if (rows.length === 0) return ok({ removed: 0 })
+      const cacheRoot = resolveCacheDir(getSetting(ctx.db, 'cacheDir', ''), ctx.libraryRoot)
+      ctx.db.transaction(() => {
+        for (const { id } of rows) {
+          ctx.db.prepare('DELETE FROM task_stage_outputs WHERE task_id = ?').run(id)
+          ctx.db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+        }
+      })()
+      for (const { id } of rows) {
+        rmSync(join(cacheRoot, id), { recursive: true, force: true })
+      }
+      ctx.logger.info(`cleared ${rows.length} finished tasks`)
+      return ok({ removed: rows.length })
     } catch (e) {
       return err(e)
     }

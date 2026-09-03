@@ -119,7 +119,7 @@ function findFreePort(start) {
 const EXPECTED_BRIDGE = {
   school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'netCheck', 'setMine'],
   providers: ['list', 'save', 'remove', 'bind'],
-  tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'onProgress'],
+  tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
   notes: ['latest', 'exportMarkdown'],
   qa: ['ask', 'history'],
   settings: ['get', 'setCacheDir', 'setTheme', 'chooseLibrary', 'openPath'],

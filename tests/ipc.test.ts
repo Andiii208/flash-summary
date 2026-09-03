@@ -505,6 +505,40 @@ describe('U1: course tree and task list', () => {
     expect(onlyL2.value?.map((t) => t.id)).toEqual([b.value!.id])
   })
 
+  it('tasks:list joins course/lesson names, delete removes row+evidence, clearFinished sweeps (M1-2)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c9', '网络信息编程', '2026-09-03T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l9', 'c9', '第五讲', '2026-09-03T00:00:00Z')").run()
+
+    const created = (await ipc.invoke('tasks:create', 'l9')) as { value?: { id: string } }
+    const taskId = created.value!.id
+    db.prepare("UPDATE tasks SET state = 'failed', failed_stage = 'downloading_video', error_message = 'boom', error_kind = NULL WHERE id = ?").run(taskId)
+
+    const listed = (await ipc.invoke('tasks:list')) as { value?: Array<{ course_name?: string; lesson_title?: string }> }
+    expect(listed.value?.[0]?.course_name).toBe('网络信息编程')
+    expect(listed.value?.[0]?.lesson_title).toBe('第五讲')
+
+    // A still-running (pending) task cannot be deleted — cancel first.
+    const running = (await ipc.invoke('tasks:create', 'l9')) as { value?: { id: string } }
+    const delRunning = (await ipc.invoke('tasks:delete', running.value!.id)) as { ok: boolean; error?: string }
+    expect(delRunning.ok).toBe(false)
+    expect(delRunning.error).toContain('取消')
+
+    // delete: row + stage outputs gone.
+    db.prepare('INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, ?, ?)').run(taskId, 'fetching_course', '{}')
+    const del = (await ipc.invoke('tasks:delete', taskId)) as { ok: boolean }
+    expect(del.ok).toBe(true)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE id = ?').get(taskId) as { n: number }).n).toBe(0)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM task_stage_outputs WHERE task_id = ?').get(taskId) as { n: number }).n).toBe(0)
+
+    // clearFinished sweeps every terminal row.
+    db.prepare("UPDATE tasks SET state = 'succeeded' WHERE id = ?").run(running.value!.id)
+    const cleared = (await ipc.invoke('tasks:clearFinished')) as { value?: { removed: number } }
+    expect(cleared.value?.removed).toBe(1)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM tasks').get() as { n: number }).n).toBe(0)
+  })
+
   it('school:listCourses upserts rows so the tree has durable data', async () => {
     const ctx = makeCtx()
     // Point the school client at an unreachable origin: the upsert test uses

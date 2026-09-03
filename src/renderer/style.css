@@ -439,6 +439,22 @@ body {
   background: var(--accent-soft);
 }
 
+/* M1-2: history filter chips + tools row */
+.history-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  padding: 2px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--text-secondary); }
+.chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
 .lesson-row {
   display: flex;
   align-items: center;

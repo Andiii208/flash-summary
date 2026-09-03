@@ -1,5 +1,7 @@
+import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { TaskProgressInfo, TaskRowInfo } from '../../shared/bridge'
+import { humanizeTaskError } from '../../shared/errors'
 import { PIPELINE_STAGES, STAGE_LABELS, stageLabel } from '../labels'
 import { ProgressBar } from './ProgressBar'
 import { EmptyState } from './EmptyState'
@@ -15,6 +17,31 @@ export interface TaskPanelProps {
   onCreateRun: () => void
   onRetry: (taskId: string) => void
   onCancel: () => void
+  /** M1-2: delete one terminal history row. */
+  onDelete: (taskId: string) => void
+  /** M1-2: clear every terminal history row. */
+  onClearFinished: () => void
+}
+
+type HistoryFilter = 'all' | 'running' | 'succeeded' | 'failed'
+
+const FILTER_LABELS: Array<{ id: HistoryFilter; label: string }> = [
+  { id: 'all', label: '全部' },
+  { id: 'running', label: '进行中' },
+  { id: 'succeeded', label: '已完成' },
+  { id: 'failed', label: '失败/取消' }
+]
+
+function matchFilter(row: TaskRowInfo, filter: HistoryFilter): boolean {
+  if (filter === 'all') return true
+  if (filter === 'running') return row.state !== 'succeeded' && row.state !== 'failed'
+  return row.state === filter
+}
+
+/** 课程名 · 课时名 with the raw id as the fallback/tooltip (M1-2). */
+function taskLabel(row: TaskRowInfo): string {
+  const names = [row.course_name, row.lesson_title].filter((n): n is string => n != null && n !== '')
+  return names.length > 0 ? names.join(' · ') : row.lesson_id
 }
 
 export function TaskPanel({
@@ -26,7 +53,9 @@ export function TaskPanel({
   globalHistory,
   onCreateRun,
   onRetry,
-  onCancel
+  onCancel,
+  onDelete,
+  onClearFinished
 }: TaskPanelProps): JSX.Element {
   const noLesson = currentLesson === ''
   return (
@@ -36,7 +65,7 @@ export function TaskPanel({
         <>
           <EmptyState title="先选择课时" hint="从左侧课程树点击一个课时，即可创建并运行任务。" />
           <h3 class="subheading">全部任务（最近 50 条）</h3>
-          <HistoryList history={globalHistory} onRetry={onRetry} disabled={running} />
+          <HistoryList history={globalHistory} onRetry={onRetry} disabled={running} onDelete={onDelete} onClearFinished={onClearFinished} />
         </>
       ) : (
         <>
@@ -51,7 +80,7 @@ export function TaskPanel({
           )}
           {progress != null && <TaskStatusCard progress={progress} />}
           <h3 class="subheading">本课时历史任务</h3>
-          <HistoryList history={history} onRetry={onRetry} disabled={running} />
+          <HistoryList history={history} onRetry={onRetry} disabled={running} onDelete={onDelete} onClearFinished={onClearFinished} />
         </>
       )}
     </section>
@@ -96,22 +125,56 @@ interface HistoryListProps {
   history: TaskRowInfo[]
   onRetry: (taskId: string) => void
   disabled: boolean
+  onDelete: (taskId: string) => void
+  onClearFinished: () => void
 }
 
-function HistoryList({ history, onRetry, disabled }: HistoryListProps): JSX.Element {
+function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: HistoryListProps): JSX.Element {
+  const [filter, setFilter] = useState<HistoryFilter>('all')
   if (history.length === 0) return <p class="msg">暂无任务</p>
+  const visible = history.filter((row) => matchFilter(row, filter))
+  const clearable = history.filter((row) => row.state === 'succeeded' || row.state === 'failed').length
   return (
     <div class="history-list">
-      {history.map((row) => (
+      <div class="history-tools">
+        <div class="filter-chips" role="group" aria-label="任务筛选">
+          {FILTER_LABELS.map((f) => (
+            <button key={f.id} class={`chip${filter === f.id ? ' active' : ''}`} onClick={() => setFilter(f.id)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {clearable > 0 && (
+          <button
+            class="btn small ghost"
+            onClick={() => {
+              if (window.confirm(`清空 ${clearable} 条已结束的任务记录？正在运行的任务不受影响；课程与笔记不会删除。`)) onClearFinished()
+            }}
+          >
+            清空记录
+          </button>
+        )}
+      </div>
+      {visible.length === 0 && <p class="msg">该筛选下暂无任务</p>}
+      {visible.map((row) => (
         <div key={row.id} class="item history-row">
           <span class={`history-state state-${row.state}`}>{stageLabel(row.state, row.failed_stage)}</span>
           <span class="history-lesson" title={row.lesson_id}>
-            {row.lesson_id}
+            {taskLabel(row)}
           </span>
-          {row.error_message != null && <span class="history-error">{row.error_message}</span>}
+          {row.error_message != null && (
+            <span class="history-error" title={row.error_message}>
+              {humanizeTaskError(row.error_message, row.error_kind)}
+            </span>
+          )}
           {row.state === 'failed' && (
             <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled}>
               重试
+            </button>
+          )}
+          {(row.state === 'succeeded' || row.state === 'failed') && (
+            <button class="btn small ghost" title="删除这条记录" onClick={() => onDelete(row.id)}>
+              ✕
             </button>
           )}
         </div>

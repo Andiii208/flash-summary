@@ -113,6 +113,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onCreateRun={state.createAndRun}
               onRetry={state.retryTask}
               onCancel={state.cancelTask}
+              onDelete={state.removeTask}
+              onClearFinished={state.clearFinishedTasks}
             />
           )}
           {tab === 'notes' && (
@@ -190,6 +192,8 @@ interface AppState {
   createAndRun: () => void
   retryTask: (taskId: string) => void
   cancelTask: () => void
+  removeTask: (taskId: string) => void
+  clearFinishedTasks: () => void
   ask: (question: string) => void
   saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
   removeProvider: (id: string) => void
@@ -607,6 +611,38 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     void bridge.tasks.cancel(id)
   }, [bridge, running, progress])
 
+  // M1-2: delete one terminal history row / clear all terminal rows, then
+  // refresh the visible histories.
+  const removeTask = useCallback(
+    (taskId: string): void => {
+      void (async () => {
+        const res = await bridge.tasks.remove(taskId)
+        if (!res.ok) {
+          toast(res.error ?? '删除失败', 'error')
+          return
+        }
+        await loadGlobalHistory()
+        const lid = lessonRef.current
+        if (lid !== '') void loadHistory(lid)
+      })()
+    },
+    [bridge, toast, loadGlobalHistory, loadHistory]
+  )
+
+  const clearFinishedTasks = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.tasks.clearFinished()
+      if (!res.ok) {
+        toast(res.error ?? '清理失败', 'error')
+        return
+      }
+      toast(`已清理 ${res.value?.removed ?? 0} 条任务记录`, 'success')
+      await loadGlobalHistory()
+      const lid = lessonRef.current
+      if (lid !== '') void loadHistory(lid)
+    })()
+  }, [bridge, toast, loadGlobalHistory, loadHistory])
+
   const ask = useCallback(
     (question: string): void => {
       const lid = lessonRef.current
@@ -794,6 +830,8 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
     createAndRun,
     retryTask,
     cancelTask,
+    removeTask,
+    clearFinishedTasks,
     ask,
     saveProvider,
     removeProvider,

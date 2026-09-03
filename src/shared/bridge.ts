@@ -52,6 +52,9 @@ export interface TaskRowInfo {
   error_kind?: string | null
   created_at?: string
   updated_at?: string
+  /** M1-2: human-readable names from the lessons/courses JOIN. */
+  lesson_title?: string | null
+  course_name?: string | null
 }
 
 export interface SchoolBridge {
@@ -117,6 +120,10 @@ export interface TasksBridge {
    *  A failed task re-run through this resumes from its failed stage. */
   runAsync(taskId: string): Promise<ApiResult<{ id: string; state: string }>>
   cancel(taskId: string): Promise<ApiResult<{ cancelled: boolean }>>
+  /** M1-2: delete one terminal task row (evidence + cache dir included). */
+  remove(taskId: string): Promise<ApiResult<boolean>>
+  /** M1-2: delete every terminal task row; returns how many. */
+  clearFinished(): Promise<ApiResult<{ removed: number }>>
   onProgress(cb: (p: TaskProgressInfo) => void): () => void
 }
 
