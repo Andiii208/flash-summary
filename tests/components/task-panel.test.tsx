@@ -61,7 +61,7 @@ describe('TaskPanel', () => {
 
   it('shows course/lesson names and humanized errors, and wires delete/clear (M1-2)', async () => {
     const history: TaskRowInfo[] = [
-      { id: 't1', lesson_id: 'l1', state: 'failed', failed_stage: 'downloading_video', error_message: 'download failed: ERR_CONNECTION_RESET', error_kind: null, course_name: '网络信息编程', lesson_title: '第五讲' }
+      { id: 't1', lesson_id: 'l1', state: 'failed', failed_stage: 'downloading_video', error_message: 'download failed: ERR_CONNECTION_RESET', error_kind: null, course_name: '网络信息编程', lesson_title: '第五讲', teacher: '汪海', courTimes: '周一 第3-4节', classroom: '中山-312' }
     ]
     const onDelete = vi.fn()
     const onClearFinished = vi.fn()
@@ -69,6 +69,8 @@ describe('TaskPanel', () => {
       <TaskPanel currentLesson="l1" running={false} busy={false} progress={null} history={history} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={onDelete} onClearFinished={onClearFinished} />
     )
     expect(host.querySelector('.history-lesson')?.textContent).toBe('网络信息编程 · 第五讲')
+    // F4: teacher / meeting-times / classroom secondary line.
+    expect(host.querySelector('.history-meta')?.textContent).toBe('汪海 · 周一 第3-4节 · 中山-312')
     // Network code translated to user guidance; raw text kept in tooltip.
     expect(host.querySelector('.history-error')?.textContent).toContain('网络连接被中断')
     expect(host.querySelector('.history-error')?.getAttribute('title')).toContain('ERR_CONNECTION_RESET')

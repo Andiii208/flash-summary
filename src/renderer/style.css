@@ -223,6 +223,8 @@ body {
   padding: 14px 12px 18px;
   overflow-y: auto;
   overflow-x: hidden;
+  /* F3: 展开全部课程出现滚动条时不再挤压内容宽度（左侧栏跳变的根因）。 */
+  scrollbar-gutter: stable;
   background: var(--surface);
   display: flex;
   flex-direction: column;
@@ -691,12 +693,26 @@ body {
 }
 .history-state.state-succeeded { background: var(--success-soft); color: var(--success); }
 .history-state.state-failed { background: var(--danger-soft); color: var(--danger); }
+.history-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+  max-width: 300px;
+  min-width: 0;
+}
 .history-lesson {
   font-size: var(--font-size-sm);
   font-weight: 550;
   color: var(--text);
-  flex-shrink: 0;
-  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* F4: 教师 · 上课时间 · 教室 second line in every history row. */
+.history-meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

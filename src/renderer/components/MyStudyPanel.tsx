@@ -1,13 +1,14 @@
+import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { CourseTree } from './CourseTree'
 
 export interface MyStudyPanelProps {
-  /** 星标课程（C2）。 */
+  /** 收藏课程（星标；2026-09-04 起语义为「收藏」而非课表——平台课表与实际上课安排有出入，不自动同步）。 */
   mine: CourseTreeInfo[]
   /** 已提取课程（M1-4 聚合，有笔记即算，按 lastTaskAt 倒序）。 */
   extracted: CourseTreeInfo[]
-  /** 同课推荐（与钉选课程同 subjCode 的其他教学班，C4）。 */
+  /** 同课推荐（与收藏课程同 subjCode 的其他教学班，C4）。 */
   sameCourses: CourseTreeInfo[]
   selectedLesson: string
   expanded: ReadonlySet<string>
@@ -21,19 +22,30 @@ interface StudyGroupProps {
   label: string
   count: number
   hint?: string
+  /** F2: ≥2 门课时允许折叠；0/1 门始终展开（没什么可收的）。 */
   children?: preact.ComponentChildren
 }
 
 function StudyGroup({ label, count, hint, children }: StudyGroupProps): JSX.Element {
+  const collapsible = count >= 2
+  const [open, setOpen] = useState(true)
+  const toggle = (): void => setOpen((o) => !o)
+  const showBody = count > 0 && (!collapsible || open)
   return (
     <section class="flex flex-col gap-1.5">
-      <h3 class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-[1.2px] text-muted uppercase">
+      <h3
+        class={`flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-[1.2px] text-muted uppercase${collapsible ? ' cursor-pointer select-none' : ''}`}
+        onClick={collapsible ? toggle : undefined}
+        aria-expanded={collapsible ? open : undefined}
+        role={collapsible ? 'button' : undefined}
+      >
+        {collapsible && <span class="caret text-[10px]">{open ? '▾' : '▸'}</span>}
         {label}
         {count > 0 && <span class="rounded-full bg-surface-2 px-1.5 py-px text-[11px] font-medium normal-case tracking-normal text-muted">{count}</span>}
       </h3>
-      {count > 0 ? (
+      {showBody ? (
         children
-      ) : hint != null ? (
+      ) : count > 0 ? null : hint != null ? (
         <p class="px-0.5 text-[11px] leading-relaxed text-muted">{hint}</p>
       ) : null}
     </section>
@@ -62,7 +74,7 @@ function renderTree(
 
 /**
  * M2 批 A：侧栏顶部的「我的学习」聚合区。已提取课程自动浮上来（无需任何
- * 手动动作），星标与同课推荐紧随其后；三组都为空时给出一条可操作的引导。
+ * 手动动作），收藏与同课推荐紧随其后；三组都为空时给出一条可操作的引导。
  */
 export function MyStudyPanel(props: MyStudyPanelProps): JSX.Element {
   const { mine, extracted, sameCourses } = props
@@ -72,14 +84,14 @@ export function MyStudyPanel(props: MyStudyPanelProps): JSX.Element {
       <h3 class="px-0.5 text-[11px] font-semibold tracking-[1.2px] text-muted uppercase">我的学习</h3>
       {empty ? (
         <p class="px-0.5 text-[11px] leading-relaxed text-muted">
-          在下方「全部课程」里找到你的课，点卡上的 ☆ 标记；生成笔记后它会自动出现在这里。
+          在下方「全部课程」里找到你的课，点卡上的 ☆ 收藏；生成笔记后它会自动出现在这里。
         </p>
       ) : (
         <>
           <StudyGroup label="已提取" count={extracted.length} hint="还没有生成过笔记——从「全部课程」选一门课开始。">
             {renderTree(extracted, props)}
           </StudyGroup>
-          <StudyGroup label="我的课程" count={mine.length} hint="点课程卡右侧的 ☆，把你的课钉在这里。">
+          <StudyGroup label="我的收藏" count={mine.length} hint="点课程卡右侧的 ☆，把常看的课收进这里。">
             {renderTree(mine, props)}
           </StudyGroup>
           {sameCourses.length > 0 && (

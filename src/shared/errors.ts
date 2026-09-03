@@ -12,7 +12,8 @@ const NETWORK_CODE_MAP: Array<[RegExp, string]> = [
   [/ERR_NAME_NOT_RESOLVED/, '域名解析失败——若使用 Clash 等 TUN 代理，请添加 DOMAIN-SUFFIX,seu.edu.cn,DIRECT 规则'],
   [/ERR_TIMED_OUT|ETIMEDOUT|timeout/i, '连接超时——校园网可能较慢或服务暂不可用，稍后重试'],
   [/ERR_CERT|SSL/, '安全证书校验失败——请确认未对该域名做中间人代理'],
-  [/ECONNREFUSED|ECONNRESET|EPIPE/, '连接被对端断开——多为校园网/代理拦截，请检查网络后重试']
+    [/ECONNREFUSED|ECONNRESET|EPIPE/, '连接被对端断开——多为校园网/代理拦截，请检查网络后重试'],
+  [/process failed|ffmpeg/i, '视频处理中断——多为网络波动或源流异常，可重试；反复失败请到设置页打开日志反馈']
 ]
 
 /**

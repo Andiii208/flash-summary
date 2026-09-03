@@ -45,6 +45,12 @@ function taskLabel(row: TaskRowInfo): string {
   return names.length > 0 ? names.join(' · ') : row.lesson_id
 }
 
+/** F4: 教师 · 上课时间 · 教室 secondary line (whatever the course row has). */
+function taskMetaLine(row: TaskRowInfo): string | null {
+  const parts = [row.teacher, row.courTimes, row.classroom].filter((p): p is string => p != null && p !== '')
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 export function TaskPanel({
   currentLesson,
   running,
@@ -166,29 +172,35 @@ function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: 
         onCancel={() => setConfirmClear(false)}
       />
       {visible.length === 0 && <p class="msg">该筛选下暂无任务</p>}
-      {visible.map((row) => (
-        <div key={row.id} class="item history-row">
-          <span class={`history-state state-${row.state}`}>{stageLabel(row.state, row.failed_stage)}</span>
-          <span class="history-lesson" title={row.lesson_id}>
-            {taskLabel(row)}
-          </span>
-          {row.error_message != null && (
-            <span class="history-error" title={row.error_message}>
-              {humanizeTaskError(row.error_message, row.error_kind)}
-            </span>
-          )}
-          {row.state === 'failed' && (
-            <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled}>
-              重试
-            </button>
-          )}
-          {(row.state === 'succeeded' || row.state === 'failed') && (
-            <button class="btn small ghost" title="删除这条记录" onClick={() => onDelete(row.id)}>
-              ✕
-            </button>
-          )}
-        </div>
-      ))}
+      {visible.map((row) => {
+        const meta = taskMetaLine(row)
+        return (
+          <div key={row.id} class="item history-row">
+            <span class={`history-state state-${row.state}`}>{stageLabel(row.state, row.failed_stage)}</span>
+            <div class="history-label">
+              <span class="history-lesson" title={row.lesson_id}>
+                {taskLabel(row)}
+              </span>
+              {meta != null && <span class="history-meta">{meta}</span>}
+            </div>
+            {row.error_message != null && (
+              <span class="history-error" title={row.error_message}>
+                {humanizeTaskError(row.error_message, row.error_kind)}
+              </span>
+            )}
+            {row.state === 'failed' && (
+              <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled}>
+                重试
+              </button>
+            )}
+            {(row.state === 'succeeded' || row.state === 'failed') && (
+              <button class="btn small ghost" title="删除这条记录" onClick={() => onDelete(row.id)}>
+                ✕
+              </button>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

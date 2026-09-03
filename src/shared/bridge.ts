@@ -61,6 +61,10 @@ export interface TaskRowInfo {
   /** M1-2: human-readable names from the lessons/courses JOIN. */
   lesson_title?: string | null
   course_name?: string | null
+  /** F4: the course's teacher/meeting-times/classroom for the history rows. */
+  teacher?: string | null
+  courTimes?: string | null
+  classroom?: string | null
 }
 
 export interface SchoolBridge {

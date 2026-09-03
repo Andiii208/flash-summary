@@ -28,7 +28,7 @@ describe('MyStudyPanel (M2 批 A: 我的学习聚合区)', () => {
   it('shows one actionable hint when all three groups are empty', () => {
     const host = mount(<MyStudyPanel {...baseProps()} />)
     expect(host.textContent).toContain('我的学习')
-    expect(host.textContent).toContain('☆ 标记')
+    expect(host.textContent).toContain('☆ 收藏')
     expect(host.querySelectorAll('.course-head')).toHaveLength(0)
   })
 
@@ -47,6 +47,27 @@ describe('MyStudyPanel (M2 批 A: 我的学习聚合区)', () => {
     expect(withSame.textContent).toContain('李骏扬班')
     const withoutSame = mount(<MyStudyPanel {...baseProps({ mine: PINNED })} />)
     expect(withoutSame.textContent).not.toContain('同课其他老师')
+    // F1: 星标语义是「收藏」——平台课表与实际上课有出入，不做自动同步。
+    expect(withSame.textContent).toContain('我的收藏')
+    expect(withSame.textContent).not.toContain('我的课程')
+  })
+
+  it('collapses a group only once it holds two or more courses (F2)', () => {
+    const two: CourseTreeInfo[] = [
+      { id: 'e1', name: '课一', hasExtracted: true, lessons: [] },
+      { id: 'e2', name: '课二', hasExtracted: true, lessons: [] }
+    ]
+    const host = mount(<MyStudyPanel {...baseProps({ extracted: two })} />)
+    const head = host.querySelectorAll('h3')[1]!
+    expect(head.getAttribute('aria-expanded')).toBe('true')
+    expect(host.querySelectorAll('.course-head')).toHaveLength(2)
+    click(head)
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+    expect(host.querySelectorAll('.course-head')).toHaveLength(0)
+
+    // 0/1 门课不值得折叠。
+    const single = mount(<MyStudyPanel {...baseProps({ extracted: STUDIED })} />)
+    expect(single.querySelectorAll('h3')[1]!.getAttribute('aria-expanded')).toBeNull()
   })
 
   it('forwards pin toggles from the embedded course rows', () => {

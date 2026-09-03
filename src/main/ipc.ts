@@ -519,7 +519,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   ipc.handle('tasks:list', (_e, lessonId: unknown) => {
     try {
       const baseSelect =
-        'SELECT t.id, t.lesson_id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id'
+        'SELECT t.id, t.lesson_id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name, c.teacher AS teacher, c.cour_times AS courTimes, c.classroom AS classroom FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id'
       const rows = (
         lessonId == null
           ? ctx.db.prepare(`${baseSelect} ORDER BY t.created_at DESC LIMIT 50`).all()
@@ -535,6 +535,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         updated_at: string
         lesson_title: string | null
         course_name: string | null
+        teacher: string | null
+        courTimes: string | null
+        classroom: string | null
       }>
       return ok(rows)
     } catch (e) {

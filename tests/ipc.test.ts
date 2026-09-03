@@ -509,15 +509,24 @@ describe('U1: course tree and task list', () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c9', '网络信息编程', '2026-09-03T00:00:00Z')").run()
+    db.prepare(
+      "UPDATE courses SET teacher = '汪海', cour_times = '周一 第3-4节', classroom = '中山-312' WHERE id = 'c9'"
+    ).run()
     db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l9', 'c9', '第五讲', '2026-09-03T00:00:00Z')").run()
 
     const created = (await ipc.invoke('tasks:create', 'l9')) as { value?: { id: string } }
     const taskId = created.value!.id
     db.prepare("UPDATE tasks SET state = 'failed', failed_stage = 'downloading_video', error_message = 'boom', error_kind = NULL WHERE id = ?").run(taskId)
 
-    const listed = (await ipc.invoke('tasks:list')) as { value?: Array<{ course_name?: string; lesson_title?: string }> }
+    const listed = (await ipc.invoke('tasks:list')) as {
+      value?: Array<{ course_name?: string; lesson_title?: string; teacher?: string | null; courTimes?: string | null; classroom?: string | null }>
+    }
     expect(listed.value?.[0]?.course_name).toBe('网络信息编程')
     expect(listed.value?.[0]?.lesson_title).toBe('第五讲')
+    // F4: teacher/meeting-times/classroom ride along for the history rows.
+    expect(listed.value?.[0]?.teacher).toBe('汪海')
+    expect(listed.value?.[0]?.courTimes).toBe('周一 第3-4节')
+    expect(listed.value?.[0]?.classroom).toBe('中山-312')
 
     // A still-running (pending) task cannot be deleted — cancel first.
     const running = (await ipc.invoke('tasks:create', 'l9')) as { value?: { id: string } }

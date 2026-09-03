@@ -19,3 +19,11 @@ describe('humanizeTaskError (M1-2: errors speak human)', () => {
     expect(humanizeTaskError(null, null)).toBe('未知错误')
   })
 })
+
+describe('ffmpeg banner garbage maps to human copy (F4)', () => {
+  it('the raw remux failure the user screenshotted becomes guidance', () => {
+    const raw = '下载视频失败: process failed: ffmpeg version 6.1.1-essentials_build-www.gyan.dev Copyright (c) ...'
+    expect(humanizeTaskError(raw, null)).toContain('视频处理中断')
+    expect(humanizeTaskError(raw, null)).not.toContain('ffmpeg version')
+  })
+})
