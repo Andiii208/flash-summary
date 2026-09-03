@@ -4,7 +4,7 @@
  * Constructed with injectable overrides so tests can drive the IPC layer
  * against stubs.
  */
-import { app, type BrowserWindow } from 'electron'
+import { app, session, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { openDatabase, type Db } from './db/open'
 import { defaultLibraryRoot, ensureLibraryLayout, resolveCacheDir, exportsPath } from './library/paths'
@@ -228,6 +228,22 @@ export function createContext(overrides: Partial<{
     )
   }
 
+  /**
+   * 退出登录的浏览器侧清理（field-traced 坑：logout 只删 session.bin）：
+   * cookie 罐里残留的有效 SSO cookie 会让下一次登录静默复用旧会话，平台
+   * 还把 refresh token 放在 localStorage。sessionStorage 随标签页生命周
+   * 期消亡，无需处理。defaultSession = 主窗口使用的会话（无分区）。
+   */
+  const clearBrowserSessionState = async (): Promise<void> => {
+    try {
+      if (session?.defaultSession == null) return
+      await session.defaultSession.clearStorageData({ storages: ['cookies', 'localstorage'] })
+      logger.info('logout: browser cookies and storage cleared')
+    } catch (err) {
+      logger.error(`logout: clearing browser state failed: ${(err as Error).message}`)
+    }
+  }
+
   const loginViaLegacyWindow = async (): Promise<void> => {
     await openCasLoginWindow({ serviceOrigin: CAS_BASE_URL, onSession: persistSession })
   }
@@ -319,7 +335,10 @@ export function createContext(overrides: Partial<{
         throw err
       }
     },
-    logout: () => clearSession(userDataDir),
+    logout: () => {
+      clearSession(userDataDir)
+      void clearBrowserSessionState()
+    },
     sessionState: () => {
       try {
         const rec = loadSession(userDataDir, cryptor)
