@@ -31,6 +31,10 @@ export interface CourseTreeInfo extends CourseSummaryInfo {
   lessons: LessonTreeInfo[]
   /** Pinned as «my course» (C2); the sidebar sorts these first. */
   isMine?: boolean
+  /** M1-4: extracted-study aggregation — the sidebar floats these. */
+  noteCount?: number
+  lastTaskAt?: string
+  hasExtracted?: boolean
 }
 
 export interface TaskProgressInfo {

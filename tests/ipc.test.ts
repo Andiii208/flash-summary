@@ -643,6 +643,28 @@ describe('U1: course tree and task list', () => {
     const after = (await ipc.invoke('school:courseTree')) as { value?: Array<{ isMine?: boolean }> }
     expect(after.value?.[0].isMine).toBe(false)
   })
+
+  it('courseTree aggregates extracted-study state per course (M1-4)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课一', '2026-09-03T00:00:00Z')").run()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c2', '课二', '2026-09-03T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '第一讲', '2026-09-03T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, '{}', 'p', 'm', '2026-09-03T01:00:00Z')"
+    ).run()
+    db.prepare(
+      "INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('tk1', 'l1', 'succeeded', '2026-09-03T01:00:00Z', '2026-09-03T01:30:00Z')"
+    ).run()
+
+    const tree = (await ipc.invoke('school:courseTree')) as {
+      value?: Array<{ id: string; noteCount?: number; hasExtracted?: boolean; lastTaskAt?: string }>
+    }
+    const studied = tree.value?.find((c) => c.id === 'c1')
+    const untouched = tree.value?.find((c) => c.id === 'c2')
+    expect(studied).toMatchObject({ noteCount: 1, hasExtracted: true, lastTaskAt: '2026-09-03T01:30:00Z' })
+    expect(untouched).toMatchObject({ noteCount: 0, hasExtracted: false })
+  })
 })
 
 describe('registerIpc handle API (M1-3: close-window confirm)', () => {

@@ -300,10 +300,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // Course → lesson tree (U1): one shot payload for the sidebar. Lesson rows
   // come from the DB (auto list or manual fallback); each lesson reports
   // whether a note already exists so the UI can badge processed lessons.
+  // M1-4: per-course extracted aggregation («已提取») so the sidebar can
+  // float the courses the user actually studied.
   ipc.handle('school:courseTree', () => {
     try {
       const courses = ctx.db
-        .prepare('SELECT id, name, term, teacher, subj_code, classroom, cour_times, is_mine FROM courses ORDER BY fetched_at DESC')
+        .prepare(
+          `SELECT c.id, c.name, c.term, c.teacher, c.subj_code, c.classroom, c.cour_times, c.is_mine,
+                  (SELECT COUNT(*) FROM notes n JOIN lessons nl ON n.lesson_id = nl.id WHERE nl.course_id = c.id) AS note_count,
+                  (SELECT MAX(t.updated_at) FROM tasks t JOIN lessons tl ON t.lesson_id = tl.id WHERE tl.course_id = c.id) AS last_task_at
+           FROM courses c ORDER BY c.fetched_at DESC`
+        )
         .all() as Array<{
         id: string
         name: string
@@ -313,6 +320,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         classroom: string | null
         cour_times: string | null
         is_mine: number
+        note_count: number
+        last_task_at: string | null
       }>
       const lessonRows = ctx.db
         .prepare(
@@ -330,6 +339,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         classroom: c.classroom ?? undefined,
         courTimes: c.cour_times ?? undefined,
         isMine: c.is_mine === 1,
+        noteCount: c.note_count,
+        lastTaskAt: c.last_task_at ?? undefined,
+        hasExtracted: c.note_count > 0,
         lessons: lessonRows
           .filter((l) => l.course_id === c.id)
           .map((l) => ({ id: l.id, title: l.title, hasNote: l.note_count > 0 }))
