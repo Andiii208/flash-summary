@@ -109,6 +109,17 @@ describe('SchoolClient over real fetch (local http server)', () => {
     await expect(makeClient(base).listCourses()).rejects.toMatchObject({ kind: 'bad_response' })
   })
 
+  it('classifies a bare 401 JSON as session_expired (jwt-token era platform, field 2026-09-03)', async () => {
+    const base = await startServer((_req, res) => {
+      res.writeHead(401, { 'content-type': 'application/json' })
+      res.end('{"code":"401","message":"unauthorized"}')
+    })
+    await expect(makeClient(base).listCourses()).rejects.toMatchObject({
+      name: 'SchoolApiError',
+      kind: 'session_expired'
+    })
+  })
+
   it('classifies a non-JSON 200 body as bad_response', async () => {
     const base = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain' })

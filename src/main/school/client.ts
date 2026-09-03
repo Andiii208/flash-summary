@@ -63,6 +63,10 @@ export class SchoolClient {
       if (isCasLoginRedirect(location)) throw new SchoolApiError('session_expired', 'school session expired (redirect to CAS)')
     }
     if (isCasLoginRedirect(res.url)) throw new SchoolApiError('session_expired', 'school session expired (landed on CAS page)')
+    // Field 2026-09-03: the jwt-token era platform answers a sessionless
+    // request with a bare 401 JSON instead of a CAS redirect — that must
+    // read as session_expired so withSessionRetry re-opens the login.
+    if (res.status === 401) throw new SchoolApiError('session_expired', `school session expired (HTTP 401 for ${path})`)
     if (!res.ok) throw new SchoolApiError('bad_response', `school API returned ${res.status} for ${path}`)
 
     const text = await res.text()
