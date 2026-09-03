@@ -389,7 +389,7 @@ describe('download progress polling (M1-3)', () => {
     // teacher file up front so the poller sees bytes, then hold the screen
     // download long enough for one poll tick.
     const teacherSrc = join(taskDir, 'src-teacher.mp4')
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+     
     const { execFileSync } = await import('child_process')
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     execFileSync(require('ffmpeg-static') as string, ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=64x64:rate=2', '-c:v', 'libx264', teacherSrc], { stdio: 'pipe' })

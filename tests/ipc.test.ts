@@ -650,12 +650,11 @@ describe('registerIpc handle API (M1-3: close-window confirm)', () => {
     const ctx = makeCtx()
     db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
     db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
-    let releaseFetch: (() => void) | null = null
     const handle = registerIpc(ctx, ipc as never, {
       executorsOverride: () => ({
         fetching_course: (stageCtx) =>
           new Promise((resolve, reject) => {
-            releaseFetch = () => resolve({ status: 'ok' })
+            void resolve
             stageCtx.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
           }),
         downloading_video: () => ({ status: 'ok' }),
