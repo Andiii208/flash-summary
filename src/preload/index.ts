@@ -51,7 +51,9 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('providers:save', input),
     remove: (id: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('providers:delete', id),
     bind: (capability: string, providerId: string, model: string): Promise<ApiResult<boolean>> =>
-      ipcRenderer.invoke('providers:bind', capability, providerId, model)
+      ipcRenderer.invoke('providers:bind', capability, providerId, model),
+    test: (input: { baseUrl: string; apiKey: string; model: string }): Promise<ApiResult<{ latencyMs: number; answer: string }>> =>
+      ipcRenderer.invoke('providers:test', input)
   },
   tasks: {
     create: (lessonId: string): Promise<ApiResult<{ id: string }>> => ipcRenderer.invoke('tasks:create', lessonId),

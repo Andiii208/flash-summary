@@ -80,6 +80,8 @@ export interface IpcOptions {
   executorsOverride?: () => Record<Stage, StageExecutor>
   /** Test hook: fake-IP preflight lookup so tests never touch real DNS. */
   netLookupOverride?: (host: string) => Promise<Array<{ address: string }>>
+  /** Test hook: provider connectivity probe (tests avoid real HTTP). */
+  providerTestOverride?: (baseUrl: string, apiKey: string, model: string) => Promise<{ latencyMs: number; answer: string }>
 }
 
 export interface IpcHandle {
@@ -403,6 +405,27 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (cap !== 'asr' && cap !== 'multimodal' && cap !== 'text') throw new Error('unknown capability')
       ctx.bind(cap, str(providerId, 'providerId'), str(model, 'model'))
       return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // M3 批 D: provider connectivity probe. Values come from the form in
+  // memory only — nothing is stored or logged.
+  ipc.handle('providers:test', async (_e, input: unknown) => {
+    try {
+      const i = input as { baseUrl?: string; apiKey?: string; model?: string }
+      const baseUrl = str(i.baseUrl, 'baseUrl')
+      const model = str(i.model, 'model')
+      const apiKey = typeof i.apiKey === 'string' ? i.apiKey : ''
+      const probe = options.providerTestOverride ?? (async (url: string, key: string, m: string) => {
+        const { OpenAiCompatibleClient } = await import('./providers/openai-client')
+        const client = new OpenAiCompatibleClient(url, key)
+        const started = Date.now()
+        const answer = await client.chat([{ role: 'user', content: '连接测试，请只回复：ok' }], m)
+        return { latencyMs: Date.now() - started, answer: answer.slice(0, 40) }
+      })
+      return ok(await probe(baseUrl, apiKey, model))
     } catch (e) {
       return err(e)
     }

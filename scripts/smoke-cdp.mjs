@@ -118,7 +118,7 @@ function findFreePort(start) {
 /** Expected bridge surface — keep in sync with src/shared/bridge.ts. */
 const EXPECTED_BRIDGE = {
   school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'netCheck', 'setMine'],
-  providers: ['list', 'save', 'remove', 'bind'],
+  providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
   notes: ['latest', 'exportMarkdown'],
   qa: ['ask', 'history'],

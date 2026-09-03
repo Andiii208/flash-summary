@@ -5,6 +5,7 @@ import { humanizeTaskError } from '../../shared/errors'
 import { PIPELINE_STAGES, STAGE_LABELS, stageLabel } from '../labels'
 import { ProgressBar } from './ProgressBar'
 import { EmptyState } from './EmptyState'
+import { Dialog } from '../ui/Dialog'
 
 export interface TaskPanelProps {
   currentLesson: string
@@ -132,6 +133,7 @@ interface HistoryListProps {
 
 function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: HistoryListProps): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all')
+  const [confirmClear, setConfirmClear] = useState(false)
   if (history.length === 0) return <p class="msg">暂无任务</p>
   const visible = history.filter((row) => matchFilter(row, filter))
   const clearable = history.filter((row) => row.state === 'succeeded' || row.state === 'failed').length
@@ -146,16 +148,23 @@ function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: 
           ))}
         </div>
         {clearable > 0 && (
-          <button
-            class="btn small ghost"
-            onClick={() => {
-              if (window.confirm(`清空 ${clearable} 条已结束的任务记录？正在运行的任务不受影响；课程与笔记不会删除。`)) onClearFinished()
-            }}
-          >
+          <button class="btn small ghost" onClick={() => setConfirmClear(true)}>
             清空记录
           </button>
         )}
       </div>
+      <Dialog
+        open={confirmClear}
+        title={`清空 ${clearable} 条已结束的任务记录？`}
+        message="只删除任务记录与其缓存文件，正在运行的任务不受影响；课程与笔记不会删除。"
+        confirmLabel="清空"
+        danger
+        onConfirm={() => {
+          setConfirmClear(false)
+          onClearFinished()
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
       {visible.length === 0 && <p class="msg">该筛选下暂无任务</p>}
       {visible.map((row) => (
         <div key={row.id} class="item history-row">

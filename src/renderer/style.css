@@ -497,6 +497,34 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* M3 批 D: in-app confirm dialog */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 18, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+}
+.dialog {
+  width: min(420px, calc(100vw - 48px));
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 18px 20px;
+}
+.dialog-title { margin: 0 0 8px; font-size: var(--font-size-base); }
+.dialog-message { margin: 0 0 16px; color: var(--text-secondary); font-size: var(--font-size-md); line-height: 1.6; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* M3 批 D: provider form helpers */
+.provider-hint { margin: 2px 0 0; color: var(--text-muted); font-size: var(--font-size-xs); }
+.provider-actions { display: flex; gap: 8px; }
+.provider-test { margin: 6px 0 0; font-size: var(--font-size-sm); }
+.provider-test.ok { color: var(--success); }
+.provider-test.fail { color: var(--danger); }
+
 .lesson-row {
   display: flex;
   align-items: center;

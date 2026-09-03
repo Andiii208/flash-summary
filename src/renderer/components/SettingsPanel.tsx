@@ -16,6 +16,8 @@ export interface SettingsPanelProps {
   providerBusy: boolean
   onSaveProvider: ProviderPanelProps['onSave']
   onRemoveProvider: ProviderPanelProps['onRemove']
+  onTestProvider?: ProviderPanelProps['onTest']
+  providerTestResult?: ProviderPanelProps['testResult']
   onSetCacheDir: (dir: string) => void
   onSetTheme: (theme: 'auto' | 'light' | 'dark') => void
   onChooseLibrary: () => void
@@ -117,7 +119,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
       </section>
 
       <section class="settings-block">
-        <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} />
+        <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} />
       </section>
     </section>
   )

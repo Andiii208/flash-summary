@@ -174,6 +174,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               providerBusy={state.providerBusy}
               onSaveProvider={state.saveProvider}
               onRemoveProvider={state.removeProvider}
+              onTestProvider={state.testProvider}
+              providerTestResult={state.providerTest}
               onSetCacheDir={state.setCacheDir}
               onSetTheme={state.setTheme}
               onChooseLibrary={state.chooseLibrary}
@@ -246,6 +248,8 @@ interface AppState {
   ask: (question: string) => void
   saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
   removeProvider: (id: string) => void
+  testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
+  providerTest: { ok: boolean; text: string } | null
   exportNote: (lessonId: string) => void
   copyNote: () => void
   setCacheDir: (dir: string) => void
@@ -801,6 +805,23 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     [bridge, toast, refreshProviders]
   )
 
+  // M3 批 D: probe the form values against the endpoint (in-memory only).
+  const [providerTest, setProviderTest] = useState<{ ok: boolean; text: string } | null>(null)
+  const testProvider = useCallback(
+    (input: { baseUrl: string; apiKey: string; model: string }): void => {
+      void (async () => {
+        setProviderTest({ ok: true, text: '测试中…' })
+        const res = await bridge.providers.test(input)
+        if (res.ok && res.value != null) {
+          setProviderTest({ ok: true, text: `连接成功（${res.value.latencyMs}ms）` })
+        } else {
+          setProviderTest({ ok: false, text: `连接失败：${res.error ?? '未知错误'}` })
+        }
+      })()
+    },
+    [bridge]
+  )
+
   const exportNote = useCallback(
     (lessonId: string): void => {
       void (async () => {
@@ -939,6 +960,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     ask,
     saveProvider,
     removeProvider,
+    testProvider,
+    providerTest,
     exportNote,
     copyNote,
     setCacheDir,

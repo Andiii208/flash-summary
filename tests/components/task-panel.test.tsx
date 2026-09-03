@@ -59,7 +59,7 @@ describe('TaskPanel', () => {
     expect(onRetry).toHaveBeenCalledWith('t1')
   })
 
-  it('shows course/lesson names and humanized errors, and wires delete/clear (M1-2)', () => {
+  it('shows course/lesson names and humanized errors, and wires delete/clear (M1-2)', async () => {
     const history: TaskRowInfo[] = [
       { id: 't1', lesson_id: 'l1', state: 'failed', failed_stage: 'downloading_video', error_message: 'download failed: ERR_CONNECTION_RESET', error_kind: null, course_name: '网络信息编程', lesson_title: '第五讲' }
     ]
@@ -74,8 +74,11 @@ describe('TaskPanel', () => {
     expect(host.querySelector('.history-error')?.getAttribute('title')).toContain('ERR_CONNECTION_RESET')
     click(host.querySelector<HTMLButtonElement>('.history-row button.ghost'))
     expect(onDelete).toHaveBeenCalledWith('t1')
-    window.confirm = vi.fn(() => true)
+    // M3 批 D: clear goes through the in-app Dialog, not window.confirm.
     click(host.querySelector<HTMLButtonElement>('.history-tools .btn'))
+    await new Promise((r) => setTimeout(r, 10))
+    click(host.querySelector('.dialog .btn.danger'))
+    await new Promise((r) => setTimeout(r, 10))
     expect(onClearFinished).toHaveBeenCalledOnce()
   })
 

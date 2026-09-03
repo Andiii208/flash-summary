@@ -43,7 +43,8 @@ function makeBridge(): SeuSummaryBridge {
       list: vi.fn(async (): Promise<ApiResult<ProvidersListResult>> => ok({ providers: [], bindings: [] })),
       save: vi.fn(async () => ok({ id: 'p', hasKey: true })),
       remove: vi.fn(async () => ok(true)),
-      bind: vi.fn(async () => ok(true))
+      bind: vi.fn(async () => ok(true)),
+      test: vi.fn(async () => ok({ latencyMs: 12, answer: 'ok' }))
     },
     tasks: {
       create: vi.fn(async () => ok({ id: 't1' })),

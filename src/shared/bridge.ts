@@ -115,6 +115,8 @@ export interface ProvidersBridge {
   save(input: { id?: string; name: string; baseUrl: string; apiKey: string }): Promise<ApiResult<{ id: string; hasKey: boolean }>>
   remove(id: string): Promise<ApiResult<boolean>>
   bind(capability: string, providerId: string, model: string): Promise<ApiResult<boolean>>
+  /** M3 批 D: probe a form-configured provider without storing anything. */
+  test(input: { baseUrl: string; apiKey: string; model: string }): Promise<ApiResult<{ latencyMs: number; answer: string }>>
 }
 
 export interface TasksBridge {
