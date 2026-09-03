@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-- **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；v0.2.0 已发布；v0.2.1 计划的 V1、**V2（登录流程产品化，2026-09-03）**、**V4.1 补测（全链 succeeded + auth_key TTL 实测）** 已完成
-- **进行中**：无——应用处于「可用软件」状态：会话（主窗口内嵌登录+过期自动恢复已活体验证）/课程/搜索/课时收割/全管线笔记生成/笔记四视图+导出+复制/全局任务历史/明暗主题全部实测可用
-- **下一步**：仅剩 **V4.2 干净机器安装验收（需用户拷 `release\SEU Summary Setup 0.2.1.exe` 到另一台 Windows）**→ 通过后最终重 dist + tag v0.2.1 + GitHub Release。V3 环境故障（第二渲染器）不阻塞发布，穿插排查；TEMP 遗留 ~600 项（含疑似敏感残留）待用户点头清理
+- **已完成阶段**：Phase 0-7 全部完成；U1-U5 全部完成；v0.2.0、v0.2.1 已发布；**可用性整改（2026-09-03 晚，用户实测反馈驱动）A/B/C 三阶段代码全部落地**
+- **进行中**：无——可用性整改 7 个提交：dev/安装版 userData 隔离（ed30f1c）、会话三态 JWT exp（d9d8dc8）、登录结果一次性反馈（5700b4d）、退出清浏览器状态（34cc0ec）、校园域名代理绕行+Fake-IP 预检（2008610）、课程分页+总量边界（eb1e719）、迁移007 课程元数据+我的课程置顶+同课推荐。四门禁 301/301 + smoke 19/19
+- **下一步**：①用户装新版实测验收（安装版现在应为干净未登录态；登录→刷新→星标我的课程→收割新课全链）；②**课表/「我的课程」平台接口活体探测**（方案 docs/plans/2026-09-03-usability-overhaul.md Phase C 探测节，需用户登录配合一次，探测结果决定是否把星标升级为自动课表同步）；③探测后按结果裁剪 v0.2.2 发布
 
 ## 环境实测（2026-08-30）
 
@@ -45,6 +45,7 @@
 | V2 登录流程产品化（2026-09-03） | ✅ 完成 | 计划 V2.1-V2.5 全勾销，测试 257→272（41 文件），smoke 19/19。**落地**：V2.1 `main-window-login.ts`——loginViaMainWindow 主窗口内嵌登录（第二渲染器彻底退役），三信号监听+probe 权威收割；V2.2 login() 分流接线（withSessionRetry 语义不变，仅用户主动动作触发重登）；V2.3 renderer fire-and-forget + `school:session` 新增一次性 justLoggedIn 标志（fresh mount 消费→自动刷新课程）；V2.4 `SEU_LOGIN_WINDOW=1` 回退旧登录窗（cas-login.ts 保留不删）；V2.5 **活体全链路通过**：logout（session.bin 清除）→点「登录 CAS」→主窗口导航→RBAC 授权→probe 确认→收割→自动回 UI→自动刷新 636 门课落库（fetched_at 铁证）。**活体揪出并修复 3 个真实缺陷**（详见关键决定记录 2026-09-03 批注）：①SSO 回跳立即收割 → 401 会话（OAuth 回调链未 settle）→ probe（t-1 业务信封）改为唯一权威完成信号；②HTTP 401 被分类 bad_response → withSessionRetry 永不触发重登 → 401 归类 session_expired（jwt-token 时代平台裸 401，不再 302 跳 CAS）；③门户根不写 SPA JWT（jwtPresent:false 活体取证）→ 登录入口改为 resourcemanage-ui SPA 本身（其自带 RBAC/OAuth 往返，回跳即签发 JWT）。**现场环境结论**：主窗口白屏=系统代理（规则模式）代理了教育网域名致静态资源加载失败；`SEU_DIRECT_NET=1`（no-proxy-server）绕过，与代理上 GitHub 互不影响 | 提交 6ef1168 之后的 4 个（V2 主体、probe 权威、401 分类、-ui 入口） |
 | UI 发布前小修 + V4.1 补测（2026-09-03 下午） | ✅ 完成 | **UI 审查（Explore agent 全量过 renderer 代码）→ 发布前 5 点修复**（提交 3da782a，测试 272→273）：①`.item` 基底 padding 级联覆盖 .course-item/.history-row（重做稿视觉规格实际未生效）；②追问面板无课时锁输入（原静默 no-op 死端）+提交按钮入 primary 层；③「刷新课程」busy 态（禁用+「刷新中…」）+非过期失败 toast（field case 2026-09-01 同类坑）；④删除 Provider 加 confirm + 启用从未使用的 danger 样式；⑤浅色 --text-muted #79818f→#667085（3.9:1→5.0:1 达 AA）。**发布后迭代清单 12 条记入 PROGRESS 遗留节**。**V4.1 补测**（用户退出 Clash 后，task-1788418654762-inwmnf）：收割→下载→音频→转写→关键帧→总结全链 **succeeded**（7 分钟，凌晨缓存 24h 内复用生效）；**auth_key TTL 实测结论：直链 auth_key 时间戳为昨日 22:57（V1.4 时期），8 小时后下载仍成功——静态绑定签名而非短时效令牌，长课下载中途过期风险解除**；重启免登录顺带验证（session.bin 03:21 收割沿用）；红线抽查日志 0 命中、lessons 表 0 泄漏、笔记 5266B 落库 | 提交 3da782a、269df84（测试数同步） |
 | v0.2.1 发布（2026-09-03） | ✅ 完成 | 四门禁 273/273 + smoke 19/19 + CI 绿；CHANGELOG/README/MVP 全量对齐（人工验收 4/5 ✅，干净机器项用户决定跳过并如实标注）；TEMP 遗留 577 项（27MB，含疑似敏感残留）已全部清理；发布按 scripts/release.md 清单执行：最终 dist → verify:asar → tag v0.2.1 → GitHub Release（资产与 tag 同提交构建——0.1.0 事故纪律） | 见发布提交 |
+| 可用性整改 A/B/C（2026-09-03 晚，用户实测反馈） | ✅ 代码完成 | **用户实测安装版三大症状根因全部取证定位**：①安装版与 dev 共用 userData（productName 不在 package.json 顶层，app.getName()=seu-summary）→「已登录」是 dev 会话泄漏；②listCourses 只抓 t-1 全校列表（648页×500）第 1 页 → 用户课程从未被抓到；③当日 17:52 cvs 被 ERR_CONNECTION_CLOSED 断连（ClashMI 规则再丢嫌疑）+ 登录失败反馈随 renderer 卸载而静默。**修复 7 提交**：dev userData `-dev` 后缀隔离（ed30f1c）、会话三态 JWT exp 本地判定 + TopBar/设置页（d9d8dc8）、loginOutcome 一次性通道（5700b4d）、logout 清 cookie 罐/localStorage（34cc0ec）、`*.seu.edu.cn` 代理绕行 + netCheck Fake-IP 预检带修复指引（2008610）、分页拉取 + courseListMaxPages 设置 + 进度事件 + 已加载/全校边界明示（eb1e719）、迁移007（subj_code/classroom/cour_times/is_mine）+ 星标我的课程置顶 + subjCode 同课推荐 + 课程卡时间/教室副行。**四门禁 301/301 + smoke 19/19**；方案与决策点见 docs/plans/2026-09-03-usability-overhaul.md（已批准） | 提交 ed30f1c…（7 个） |
 
 ## 遗留（诚实清单）
 

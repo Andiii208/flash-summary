@@ -2,6 +2,28 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 可用性整改（2026-09-03 用户实测反馈）
+
+用户实测安装版 v0.2.1 反馈「不可用」：一打开显示已登录、课程只有开发期的几门、点登录不跳平台。三大根因与修复（方案见 [docs/plans/2026-09-03-usability-overhaul.md](docs/plans/2026-09-03-usability-overhaul.md)）：
+
+### 新增
+
+- **dev/安装版数据隔离**：`app.getName()` 对开发与安装版都解析为 `seu-summary`（productName 不在 package.json 顶层），两者共用 `%APPDATA%` userData——安装版读到了开发期的会话与数据。开发运行现在使用独立的 `<userData>-dev` 目录，安装版保持原目录。
+- **会话三态**：本地解析 JWT 的 exp claim（无网络），徽标区分「已登录 / 已过期 / 未登录」，设置页显示会话保存与有效期；过期会话不再冒充「已登录」。
+- **登录结果一次性反馈**：主窗口导航会卸载发起登录的渲染层，此前登录失败完全静默（「点了没反应」）。main 侧记录一次性 outcome，回来后的新界面如实弹出成功/失败（含错误码）。
+- **校园域名代理绕行 + Fake-IP 预检**：默认会话设置 `*.seu.edu.cn` 代理绕行（系统代理规则污染也能直连）；刷新/登录前 dns.lookup 检测 Clash TUN 的 Fake-IP 解析（198.18/15、172.16/12），命中则给出「加 DIRECT 规则/退 TUN」的具体指引而非无响应。
+- **课程分页拉取**：此前只抓全校 t-1 列表（648 页×500 条）的第 1 页——用户自己的课程大概率从未被抓到。现按页拉取（默认 4 页 = 2000 门，`courseListMaxPages` 设置可调），逐页进度提示，侧栏明示「已加载 N 门 / 全校约 M 门」。
+- **课程元数据与「我的课程」**（迁移 007）：解析 t-1 记录的 subjCode / 教室（clroName）/ 上课时间（courTimes），课程卡片显示教师·时间·教室（与官网一致）；星标「我的课程」置顶，同课程其他老师的班次（共享 subjCode）自动排前并标「同课」。
+
+### 修复
+
+- **退出登录彻底化**：此前只删 session.bin，浏览器 cookie 罐里残留的有效 SSO cookie 会让下次登录静默复用旧会话，平台 refresh token 也留在 localStorage——现在一并清除。
+- 挂载期会话读取加了单次门控：界面依赖抖动导致的 effect 重跑不再可能覆盖用户刚设置的登录态。
+
+### 变更
+
+- 测试 273 → 301（解析纯函数 / 迁移 / IPC 三态与 outcome / netCheck / course-order / 组件交互）；smoke 桥面清单同步（school:netCheck、school:setMine、onRefreshProgress）。
+
 ## [0.2.1] - 2026-09-03
 
 从「能跑通」到「好用」的版本：真实课时下载管线全通（V1）、登录闭环与过期恢复（V2）、人性化交互与界面整体重做。
