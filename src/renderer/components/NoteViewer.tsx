@@ -16,13 +16,25 @@ export interface NoteViewerProps {
   regenBusy?: boolean
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
   onRegenerate?: () => void
+  /** 2026-09-04: export the full-lesson PDF handout. */
+  pdfBusy?: boolean
+  onExportPdf?: () => void
   onExport?: () => void
   /** Copy the markdown rendering to the clipboard (best-effort). */
   onCopy?: () => void
 }
 
 /** Five-view note reader: one note JSON, five projections (2026-09-04). */
-export function NoteViewer({ note, attachments = [], regenBusy = false, onRegenerate, onExport, onCopy }: NoteViewerProps): JSX.Element {
+export function NoteViewer({
+  note,
+  attachments = [],
+  regenBusy = false,
+  onRegenerate,
+  pdfBusy = false,
+  onExportPdf,
+  onExport,
+  onCopy
+}: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
   return (
     <div class="note-viewer">
@@ -57,6 +69,11 @@ export function NoteViewer({ note, attachments = [], regenBusy = false, onRegene
           ))}
         </nav>
         <div class="note-actions">
+          {onExportPdf != null && (
+            <button class="btn small primary" onClick={onExportPdf} disabled={pdfBusy}>
+              {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
+            </button>
+          )}
           {onRegenerate != null && note != null && (
             <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
               {regenBusy ? '生成中…' : '重新生成'}

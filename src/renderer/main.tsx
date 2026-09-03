@@ -1,6 +1,7 @@
 import { render } from 'preact'
 import './app.css'
 import './style.css'
+import './print.css'
 import type { SeuSummaryBridge } from '../shared/bridge'
 import { App } from './app'
 

@@ -1,0 +1,221 @@
+/*
+ * Print stylesheet for the PDF handout (2026-09-04 笔记工艺).
+ *
+ * Screen: #print-root is display:none — the handout only exists during an
+ * export. Print (printToPDF): the app shell disappears, the handout takes
+ * over with paper-white colors regardless of the app theme (dark included).
+ *
+ * Page geometry: A4; printable margins come from the printToPDF options
+ * (~15mm top/bottom for the page-number footer, 12mm sides). @page margin
+ * stays 0 so the two margin systems never stack.
+ */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+#print-root {
+  display: none;
+}
+
+@media print {
+  .app-shell {
+    display: none !important;
+  }
+  #print-root {
+    display: block;
+  }
+  body {
+    background: #ffffff !important;
+  }
+}
+
+/* ---- document ---- */
+.ph-doc {
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', system-ui, sans-serif;
+  color: #1f2430;
+  background: #ffffff;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  font-size: 10.5pt;
+  line-height: 1.75;
+}
+
+.ph-doc * {
+  box-sizing: border-box;
+}
+
+/* ---- cover ---- */
+.ph-cover {
+  height: 257mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10mm;
+  break-after: page;
+  padding: 0 4mm;
+}
+.ph-kicker {
+  font-size: 11pt;
+  letter-spacing: 4px;
+  color: #3b5bdb;
+  font-weight: 600;
+}
+.ph-cover h1 {
+  font-size: 30pt;
+  line-height: 1.3;
+  margin: 0;
+  font-weight: 700;
+  color: #14161f;
+}
+.ph-meta {
+  font-size: 11pt;
+  color: #5a616e;
+  line-height: 1.9;
+}
+.ph-cover-summary {
+  font-size: 11pt;
+  color: #3f4551;
+  border-left: 3px solid #d9e0ff;
+  padding: 4mm 6mm;
+  background: #f5f7ff;
+  border-radius: 0 3mm 3mm 0;
+}
+
+/* ---- sections ---- */
+.ph-section {
+  margin-top: 8mm;
+}
+.ph-section > h2 {
+  font-size: 15pt;
+  font-weight: 700;
+  color: #14161f;
+  margin: 0 0 4mm;
+  break-after: avoid;
+}
+.ph-section > h2::before {
+  content: '';
+  display: inline-block;
+  width: 2.2mm;
+  height: 5.5mm;
+  border-radius: 1mm;
+  background: #3b5bdb;
+  margin-right: 3mm;
+  vertical-align: -0.5mm;
+}
+.ph-mindmap-page {
+  break-before: page;
+}
+.ph-mindmap-page svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---- overview markdown ---- */
+.ph-doc .md-lite .md-para { margin: 0 0 2.5mm; color: #262b36; }
+.ph-doc .md-lite .md-h { margin: 4mm 0 1.5mm; color: #14161f; font-size: 11.5pt; font-weight: 650; }
+.ph-doc .md-lite .md-list { margin: 0 0 2mm; padding-left: 6mm; }
+.ph-doc .md-lite .md-list li { margin-bottom: 0.8mm; color: #262b36; }
+.ph-doc .md-lite .md-quote { margin: 1.5mm 0; padding: 1.5mm 3mm; border-left: 2px solid #c9d2f5; color: #5a616e; background: #f6f7fb; }
+.ph-doc .md-lite code { font-family: Consolas, ui-monospace, monospace; background: #f0f2f8; padding: 0 1mm; border-radius: 1mm; color: #2f3fd0; font-size: 9.5pt; }
+.ph-doc .md-lite strong { font-weight: 700; color: #14161f; }
+
+/* ---- knowledge tree (indented list) ---- */
+.ph-tree {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+.ph-tree .ph-tree-row { color: #262b36; margin: 1mm 0; }
+.ph-tree .ph-tree-row.ph-depth-1 { padding-left: 6mm; }
+.ph-tree .ph-tree-row.ph-depth-2 { padding-left: 12mm; }
+.ph-tree .ph-tree-row.ph-depth-3 { padding-left: 18mm; }
+.ph-tree .ph-tree-row::before { content: '•'; color: #3b5bdb; margin-right: 2mm; }
+
+/* ---- timeline cards ---- */
+.ph-timeline-card {
+  break-inside: avoid;
+  border: 1px solid #e3e6ee;
+  border-radius: 2.5mm;
+  padding: 4mm 5mm;
+  margin-bottom: 4mm;
+}
+.ph-timeline-head { display: flex; align-items: baseline; gap: 3mm; }
+.ph-timeline-stamp {
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 9pt;
+  color: #3b5bdb;
+  background: #eef1fd;
+  padding: 0.4mm 2.5mm;
+  border-radius: 99px;
+  font-weight: 600;
+}
+.ph-timeline-card h3 { font-size: 11.5pt; margin: 0; font-weight: 650; color: #14161f; }
+.ph-timeline-detail { margin: 1.5mm 0 0; color: #262b36; }
+.ph-timeline-quote { margin: 1.5mm 0 0; padding-left: 3mm; border-left: 2px solid #d9dee9; color: #6a7180; font-size: 9.5pt; }
+.ph-timeline-images { display: flex; gap: 3mm; margin-top: 2.5mm; }
+.ph-timeline-images img {
+  width: 72mm;
+  border: 1px solid #e3e6ee;
+  border-radius: 1.5mm;
+}
+
+/* ---- concepts ---- */
+.ph-concept-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+.ph-concept {
+  break-inside: avoid;
+  border: 1px solid #e3e6ee;
+  border-radius: 2mm;
+  padding: 3mm 4mm;
+}
+.ph-concept-term { font-weight: 700; color: #2f3fd0; margin-right: 2mm; }
+.ph-concept-def { display: inline; color: #262b36; }
+
+/* ---- formulas / steps ---- */
+.ph-formula { break-inside: avoid; margin-bottom: 3mm; }
+.ph-formula-tag {
+  font-size: 8.5pt;
+  font-weight: 600;
+  padding: 0.3mm 2.2mm;
+  border-radius: 99px;
+  background: #eef1fd;
+  color: #3b5bdb;
+  margin-right: 2mm;
+}
+.ph-formula.kind-code .ph-formula-tag { background: #e8f5ec; color: #2b8a3e; }
+.ph-formula.kind-operation .ph-formula-tag { background: #fdf3e3; color: #b06f0b; }
+.ph-formula-content { font-family: Consolas, ui-monospace, monospace; display: inline; color: #1f2430; }
+.ph-formula pre {
+  margin: 1.5mm 0 0;
+  background: #f4f5fa;
+  border-radius: 1.5mm;
+  padding: 3mm 4mm;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ph-formula-explain { margin: 1mm 0 0; color: #6a7180; font-size: 9.5pt; }
+
+/* ---- callouts ---- */
+.ph-callout { break-inside: avoid; border-radius: 2mm; padding: 2.5mm 4mm; margin-bottom: 2mm; }
+.ph-callout.exam { background: #fdf3e3; }
+.ph-callout.gap { background: #fdeaea; }
+.ph-callout-tag { font-weight: 700; font-size: 9.5pt; margin-right: 2.5mm; }
+.ph-callout.exam .ph-callout-tag { color: #b06f0b; }
+.ph-callout.gap .ph-callout-tag { color: #c03030; }
+
+/* ---- gallery ---- */
+.ph-gallery { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3mm; }
+.ph-gallery figure { break-inside: avoid; margin: 0; border: 1px solid #e3e6ee; border-radius: 1.5mm; overflow: hidden; }
+.ph-gallery img { width: 100%; display: block; }
+.ph-gallery figcaption { font-family: Consolas, ui-monospace, monospace; font-size: 8pt; color: #6a7180; padding: 1mm 2mm; }
+
+/* ---- footer line ---- */
+.ph-footer {
+  margin-top: 8mm;
+  padding-top: 2mm;
+  border-top: 1px solid #e3e6ee;
+  font-size: 8.5pt;
+  color: #9aa0ad;
+  text-align: center;
+}

@@ -77,7 +77,11 @@ const api: SeuSummaryBridge = {
     attachments: (lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>> =>
       ipcRenderer.invoke('notes:attachments', lessonId),
     regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number }>> =>
-      ipcRenderer.invoke('notes:regenerate', lessonId)
+      ipcRenderer.invoke('notes:regenerate', lessonId),
+    exportPdfDialog: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
+      ipcRenderer.invoke('notes:exportPdfDialog', lessonId),
+    exportPdfWrite: (path: string): Promise<ApiResult<{ path: string; bytes: number }>> =>
+      ipcRenderer.invoke('notes:exportPdfWrite', path)
   },
   qa: {
     ask: (lessonId: string, question: string): Promise<ApiResult<{ id: string; answer: string }>> =>

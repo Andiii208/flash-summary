@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { render } from 'preact'
 import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
@@ -10,12 +11,29 @@ import { CourseTree } from './components/CourseTree'
 import { MyStudyPanel } from './components/MyStudyPanel'
 import { TaskPanel } from './components/TaskPanel'
 import { NoteViewer } from './components/NoteViewer'
+import { PrintHandout } from './components/PrintHandout'
 import { QaPanel, type QaEntry } from './components/QaPanel'
 import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
 import { SettingsPanel } from './components/SettingsPanel'
+
+/** 2026-09-04: wait for every <img> in the print handout to decode before
+ *  printing — printToPDF snapshots the live DOM, undecoded images come out blank. */
+function waitForImages(root: HTMLElement): Promise<void> {
+  const images = [...root.querySelectorAll('img')]
+  return Promise.all(
+    images.map((img) =>
+      img.complete
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            img.addEventListener('load', () => resolve(), { once: true })
+            img.addEventListener('error', () => resolve(), { once: true })
+          })
+    )
+  ).then(() => undefined)
+}
 
 type MainTab = 'tasks' | 'notes' | 'qa' | 'settings'
 
@@ -36,7 +54,12 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   return (
-    <div class="app-shell">
+    <>
+      {/* 2026-09-04: hidden print handout — populated only during a PDF export.
+       *  Lives OUTSIDE .app-shell: print.css hides the whole shell under print
+       *  media, and display:none on an ancestor would hide this too. */}
+      <div id="print-root" />
+      <div class="app-shell">
       <TopBar session={state.session} busy={state.sessionBusy} running={state.running} onLogin={state.login} onLogout={state.logout} />
       <ToastArea toasts={state.toasts} />
       <div class="app-main">
@@ -190,7 +213,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               note={state.note}
               attachments={state.attachments}
               regenBusy={state.noteRegenBusy}
+              pdfBusy={state.pdfBusy}
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
+              onExportPdf={state.currentLesson !== '' && state.note != null ? () => state.exportNotePdf(state.currentLesson) : undefined}
               onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined}
               onCopy={state.copyNote}
             />
@@ -218,7 +243,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           )}
         </main>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -288,10 +314,12 @@ interface AppState {
   providerTest: { ok: boolean; text: string } | null
   exportNote: (lessonId: string) => void
   copyNote: () => void
-  /** 2026-09-04: regenerate + attachments for the note views. */
+  /** 2026-09-04: regenerate + attachments + PDF handout for the note views. */
   attachments: NoteAttachmentInfo[]
   noteRegenBusy: boolean
   regenerateNote: (lessonId: string) => void
+  pdfBusy: boolean
+  exportNotePdf: (lessonId: string) => void
   setCacheDir: (dir: string) => void
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   chooseLibrary: () => void
@@ -350,6 +378,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   /** 2026-09-04: lesson attachments (keyframes/PPT) for the note views. */
   const [attachments, setAttachments] = useState<NoteAttachmentInfo[]>([])
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
   const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
@@ -917,6 +946,53 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     [bridge, toast, loadNote]
   )
 
+  /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
+  const exportNotePdf = useCallback(
+    (lessonId: string): void => {
+      void (async () => {
+        if (note == null) return
+        setPdfBusy(true)
+        const printRoot = document.getElementById('print-root')
+        try {
+          const dialog = await bridge.notes.exportPdfDialog(lessonId)
+          if (!dialog.ok) {
+            toast(dialog.error ?? '导出失败', 'error')
+            return
+          }
+          if (dialog.value?.canceled || dialog.value?.path == null) return
+
+          const course = tree.find((c) => c.lessons.some((l) => l.id === lessonId))
+          const lessonInfo = course?.lessons.find((l) => l.id === lessonId)
+          // Render the handout, then let every image decode before printing.
+          render(
+            <PrintHandout
+              note={note}
+              attachments={attachments}
+              courseName={course?.name ?? ''}
+              lessonTitle={lessonInfo?.title ?? lessonId}
+              teacher={course?.teacher}
+              courTimes={course?.courTimes}
+              classroom={course?.classroom}
+              generatedAt={new Date().toLocaleString('zh-CN')}
+            />,
+            printRoot!
+          )
+          await waitForImages(printRoot!)
+          const res = await bridge.notes.exportPdfWrite(dialog.value.path)
+          if (!res.ok) {
+            toast(res.error ?? 'PDF 生成失败', 'error')
+            return
+          }
+          toast(`已导出 PDF（${Math.round((res.value?.bytes ?? 0) / 1024)} KB）：${res.value?.path ?? ''}`, 'success')
+        } finally {
+          render(null, printRoot!)
+          setPdfBusy(false)
+        }
+      })()
+    },
+    [bridge, toast, note, attachments, tree]
+  )
+
   const copyNote = useCallback((): void => {
     if (note == null) return
     void navigator.clipboard
@@ -1049,6 +1125,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     attachments,
     noteRegenBusy,
     regenerateNote,
+    pdfBusy,
+    exportNotePdf,
     setCacheDir,
     setTheme,
     chooseLibrary,

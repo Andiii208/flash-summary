@@ -156,6 +156,11 @@ export interface NotesBridge {
   attachments(lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>>
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */
   regenerate(lessonId: string): Promise<ApiResult<{ version: number; images: number }>>
+  /** 2026-09-04: PDF handout step 1 — system save dialog for the target file. */
+  exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
+  /** 2026-09-04: PDF handout step 2 — print the main window (handout already
+   *  rendered into #print-root) and write the file; returns the path + size. */
+  exportPdfWrite(path: string): Promise<ApiResult<{ path: string; bytes: number }>>
 }
 
 export interface AppSettingsInfo {

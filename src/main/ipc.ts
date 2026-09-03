@@ -23,6 +23,7 @@ import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachments } from './notes/attachments'
 import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
+import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
@@ -716,6 +717,43 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const result = await summarizeLesson(ctx.db, client, id)
       if ('error' in result) return err(new Error(result.error))
       return ok(result)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 2026-09-04: PDF handout export — step 1, pick the target file.
+  // SEU_PDF_PATH bypasses the native dialog (e2e/test seam; dev-only env).
+  ipc.handle('notes:exportPdfDialog', async (_e, lessonId: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const lesson = ctx.db.prepare('SELECT title FROM lessons WHERE id = ?').get(id) as { title: string } | undefined
+      const title = lesson?.title ?? id
+      const overridePath = process.env.SEU_PDF_PATH
+      if (overridePath != null && overridePath !== '') return ok({ canceled: false, path: overridePath })
+      const win = BrowserWindow.getFocusedWindow()
+      const options: SaveDialogOptions = {
+        title: '导出笔记为 PDF 讲义',
+        defaultPath: join(ctx.exportsDir(), `${safeFileName(title)}-讲义.pdf`),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }]
+      }
+      const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
+      if (canceled || filePath == null) return ok({ canceled: true })
+      return ok({ canceled: false, path: filePath })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 2026-09-04: PDF handout export — step 2, print the main window (renderer
+  // has already rendered the handout into #print-root) and write the file.
+  ipc.handle('notes:exportPdfWrite', async (_e, filePath: unknown) => {
+    try {
+      const path = str(filePath, 'filePath')
+      const win = BrowserWindow.getFocusedWindow()
+      if (win == null) throw new Error('主窗口不可用，无法生成 PDF')
+      const bytes = await printToPdfFile(win.webContents, path)
+      return ok({ path, bytes })
     } catch (e) {
       return err(e)
     }

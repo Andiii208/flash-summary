@@ -32,5 +32,6 @@ npm run lint && npm run typecheck && npm test
 
 ## 范围
 
-- MVP 不做：B 站、云端同步、多用户、本地 ASR、PDF 导出、macOS。
+- MVP 不做：B 站、云端同步、多用户、本地 ASR、macOS。
+- **PDF 导出已转正**（2026-09-04 用户批准，Note Revolution 计划）：主窗口 printToPDF 整册讲义，非 MVP 边界回退项。
 - 改变产品边界的决定先问用户；纯实现细节选更简单方案并在 PROGRESS.md 记录理由。
