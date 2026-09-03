@@ -34,7 +34,7 @@ SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 
 ## 🚀 安装
 
 从 [GitHub Releases](https://github.com/Andiii208/seu-summary/releases) 下载最新的
-`SEU.Summary.Setup.<version>.exe`，双击安装即可。
+`SEU Summary Setup <version>.exe`，双击安装即可。
 
 - 需要 **Windows 10/11 x64**。
 - **无需**安装 ffmpeg——安装包已内置 ffmpeg/ffprobe。
