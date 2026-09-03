@@ -10,7 +10,8 @@ import { openDatabase, type Db } from './db/open'
 import { defaultLibraryRoot, ensureLibraryLayout, resolveCacheDir, exportsPath } from './library/paths'
 import { dpapiCryptor } from './auth/electron-cryptor'
 import type { Cryptor } from './auth/session-crypto'
-import { loadSession, saveSession, clearSession } from './auth/session-store'
+import { loadSession, saveSession, clearSession, jwtExpiresAt } from './auth/session-store'
+import type { SessionStateValue } from '../shared/types'
 import { openCasLoginWindow } from './auth/cas-login'
 import { loginViaMainWindow, loginWindowFallbackRequested } from './auth/main-window-login'
 import { SchoolClient } from './school/client'
@@ -39,7 +40,9 @@ export interface AppContext {
   chatFor: (capability: Capability) => OpenAiCompatibleClient
   login: () => Promise<void>
   logout: () => void
-  sessionState: () => 'logged_in' | 'logged_out'
+  sessionState: () => SessionStateValue
+  /** Local session metadata (savedAt/JWT exp) for the settings page — no network. */
+  sessionMeta: () => { savedAt: string | null; expiresAt: number | null }
   /**
    * One-shot flag: true exactly once after a login flow completed. The
    * renderer queries it on mount — the main window navigates away during
@@ -298,9 +301,21 @@ export function createContext(overrides: Partial<{
     logout: () => clearSession(userDataDir),
     sessionState: () => {
       try {
-        return loadSession(userDataDir, cryptor) != null ? 'logged_in' : 'logged_out'
+        const rec = loadSession(userDataDir, cryptor)
+        if (rec == null) return 'logged_out'
+        const expiresAt = jwtExpiresAt(rec.jwt)
+        return expiresAt != null && expiresAt <= Date.now() ? 'expired' : 'logged_in'
       } catch {
         return 'logged_out'
+      }
+    },
+    sessionMeta: () => {
+      try {
+        const rec = loadSession(userDataDir, cryptor)
+        if (rec == null) return { savedAt: null, expiresAt: null }
+        return { savedAt: rec.savedAt, expiresAt: jwtExpiresAt(rec.jwt) }
+      } catch {
+        return { savedAt: null, expiresAt: null }
       }
     },
     consumeLoginJustCompleted: () => {

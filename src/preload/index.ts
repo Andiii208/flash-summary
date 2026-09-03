@@ -9,6 +9,7 @@ import type {
   TaskProgressInfo,
   AppSettingsInfo
 } from '../shared/bridge'
+import type { SessionStateValue } from '../shared/types'
 
 /**
  * Renderer bridge. Every call returns an ApiResult envelope; the renderer
@@ -19,7 +20,8 @@ const api: SeuSummaryBridge = {
   school: {
     login: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:login'),
     logout: (): Promise<ApiResult<{ state: string }>> => ipcRenderer.invoke('school:logout'),
-    session: (): Promise<ApiResult<{ state: string; justLoggedIn?: boolean }>> => ipcRenderer.invoke('school:session'),
+    session: (): Promise<ApiResult<{ state: SessionStateValue; justLoggedIn?: boolean; savedAt?: string | null; expiresAt?: number | null }>> =>
+      ipcRenderer.invoke('school:session'),
     listCourses: (): Promise<ApiResult<CourseSummaryInfo[]>> => ipcRenderer.invoke('school:listCourses'),
     addManualCourse: (courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>> =>
       ipcRenderer.invoke('school:addManualCourse', courseId, lessonId),

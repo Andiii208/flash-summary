@@ -7,6 +7,8 @@ import type { SessionState } from './TopBar'
 export interface SettingsPanelProps {
   settings: AppSettingsInfo | null
   session: SessionState
+  /** Local session metadata (savedAt/JWT exp) shown under the account block. */
+  sessionInfo: { savedAt: string | null; expiresAt: number | null }
   sessionBusy: boolean
   onLogin: () => void
   onLogout: () => void
@@ -18,6 +20,18 @@ export interface SettingsPanelProps {
   onSetTheme: (theme: 'auto' | 'light' | 'dark') => void
   onChooseLibrary: () => void
   onOpenPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
+}
+
+const SESSION_LABELS: Record<SessionState, string> = {
+  logged_in: '已登录 CAS',
+  expired: '已过期（请重新登录）',
+  logged_out: '未登录'
+}
+
+function formatSessionInfo(info: SettingsPanelProps['sessionInfo']): string | null {
+  if (info.expiresAt != null) return `会话有效期至 ${new Date(info.expiresAt).toLocaleString()}`
+  if (info.savedAt != null) return `会话保存于 ${new Date(info.savedAt).toLocaleString()}（有效期未知）`
+  return null
 }
 
 const THEME_OPTIONS: Array<{ value: 'auto' | 'light' | 'dark'; label: string }> = [
@@ -36,7 +50,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
       <section class="settings-block">
         <h3>账号</h3>
         <div class="settings-row">
-          <span class={`session-badge ${props.session}`}>{props.session === 'logged_in' ? '已登录 CAS' : '未登录'}</span>
+          <span class={`session-badge ${props.session}`}>{SESSION_LABELS[props.session]}</span>
           {props.session === 'logged_in' ? (
             <button class="btn" onClick={props.onLogout}>
               退出登录
@@ -47,6 +61,11 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
             </button>
           )}
         </div>
+        {props.session !== 'logged_out' && (
+          <div class="settings-row">
+            <span class="settings-hint">{formatSessionInfo(props.sessionInfo) ?? ''}</span>
+          </div>
+        )}
       </section>
 
       <section class="settings-block">

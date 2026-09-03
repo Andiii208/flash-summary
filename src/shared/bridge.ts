@@ -4,6 +4,7 @@
  * free of node dependencies).
  */
 import type { ApiResult } from './api-result'
+import type { SessionStateValue } from './types'
 
 export interface CourseSummaryInfo {
   id: string
@@ -49,8 +50,9 @@ export interface TaskRowInfo {
 export interface SchoolBridge {
   login(): Promise<ApiResult<{ state: string }>>
   logout(): Promise<ApiResult<{ state: string }>>
-  /** justLoggedIn: one-shot — true on the first read after a login flow completed. */
-  session(): Promise<ApiResult<{ state: string; justLoggedIn?: boolean }>>
+  /** justLoggedIn: one-shot — true on the first read after a login flow completed.
+   *  savedAt/expiresAt: local session metadata (JWT exp, no network). */
+  session(): Promise<ApiResult<{ state: SessionStateValue; justLoggedIn?: boolean; savedAt?: string | null; expiresAt?: number | null }>>
   listCourses(): Promise<ApiResult<CourseSummaryInfo[]>>
   addManualCourse(courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>>
   courseTree(): Promise<ApiResult<CourseTreeInfo[]>>

@@ -89,6 +89,33 @@ describe('ipc handlers over a real context', () => {
     expect(after.value?.state).toBe('logged_out')
   })
 
+  it('reports an expired session from the stored JWT exp claim (no network)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const { saveSession } = await import('../src/main/auth/session-store')
+    const header = Buffer.from('{"alg":"HS256"}').toString('base64url')
+    const expiredJwt = `${header}.${Buffer.from(JSON.stringify({ exp: 1_000_000 })).toString('base64url')}.sig`
+    const validJwt = `${header}.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.sig`
+
+    saveSession(
+      join(dir, 'userdata'),
+      { cookies: 'C=1', baseUrl: 'https://cvs.seu.edu.cn', savedAt: '2026-09-03T00:00:00Z', jwt: expiredJwt },
+      stubCryptor
+    )
+    const expired = (await ipc.invoke('school:session')) as { value?: { state: string; expiresAt: number | null; savedAt: string | null } }
+    expect(expired.value?.state).toBe('expired')
+    expect(expired.value?.expiresAt).toBe(1_000_000_000)
+    expect(expired.value?.savedAt).toBe('2026-09-03T00:00:00Z')
+
+    saveSession(
+      join(dir, 'userdata'),
+      { cookies: 'C=1', baseUrl: 'https://cvs.seu.edu.cn', savedAt: '2026-09-03T00:00:00Z', jwt: validJwt },
+      stubCryptor
+    )
+    const valid = (await ipc.invoke('school:session')) as { value?: { state: string } }
+    expect(valid.value?.state).toBe('logged_in')
+  })
+
   it('providers:save persists an encrypted key, providers:list hides plaintext', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)

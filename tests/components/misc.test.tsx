@@ -85,6 +85,18 @@ describe('TopBar', () => {
     click(host.querySelector('button'))
     expect(onLogout).toHaveBeenCalledOnce()
   })
+
+  it('marks an expired session and offers re-login instead of logout', () => {
+    const onLogin = vi.fn()
+    const onLogout = vi.fn()
+    const host = mount(<TopBar session="expired" busy={false} running={false} onLogin={onLogin} onLogout={onLogout} />)
+    expect(host.querySelector('.session-badge.expired')?.textContent).toContain('已过期')
+    const buttons = Array.from(host.querySelectorAll('button'))
+    click(buttons.find((b) => b.textContent?.includes('重新登录')) ?? null)
+    expect(onLogin).toHaveBeenCalledOnce()
+    // No logout affordance for a dead session — logout clears nothing extra.
+    expect(buttons.some((b) => b.textContent === '退出登录')).toBe(false)
+  })
 })
 
 describe('ManualAdd', () => {

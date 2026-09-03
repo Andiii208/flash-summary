@@ -104,6 +104,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             <SettingsPanel
               settings={state.settings}
               session={state.session}
+              sessionInfo={state.sessionInfo}
               sessionBusy={state.sessionBusy}
               onLogin={state.login}
               onLogout={state.logout}
@@ -125,6 +126,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
 
 interface AppState {
   session: SessionState
+  sessionInfo: { savedAt: string | null; expiresAt: number | null }
   sessionBusy: boolean
   /** A course-list refresh is in flight (network + possible login round-trip). */
   refreshBusy: boolean
@@ -191,6 +193,10 @@ function isActiveState(state: string): boolean {
 
 function useAppState(bridge: SeuSummaryBridge): AppState {
   const [session, setSession] = useState<SessionState>('logged_out')
+  const [sessionInfo, setSessionInfo] = useState<{ savedAt: string | null; expiresAt: number | null }>({
+    savedAt: null,
+    expiresAt: null
+  })
   const [sessionBusy, setSessionBusy] = useState(false)
   const [refreshBusy, setRefreshBusy] = useState(false)
   const [tree, setTree] = useState<CourseTreeInfo[]>([])
@@ -212,6 +218,10 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastId = useRef(0)
   const lessonRef = useRef('')
+  /** The mount-time session read runs once per real mount: the effect's
+   *  unstable deps (refreshTree flips with refreshBusy) must not re-read and
+   *  clobber a session state the user just set by logging in. */
+  const sessionReadDone = useRef(false)
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -298,9 +308,12 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
   useEffect(() => {
     let disposed = false
     void (async () => {
+      if (sessionReadDone.current) return
+      sessionReadDone.current = true
       const s = await bridge.school.session()
-      if (disposed || !s.ok || s.value == null || s.value.state !== 'logged_in') return
-      setSession('logged_in')
+      if (disposed || !s.ok || s.value == null) return
+      setSession(s.value.state)
+      setSessionInfo({ savedAt: s.value.savedAt ?? null, expiresAt: s.value.expiresAt ?? null })
       // V2: the login flow navigates the main window away, so «login just
       // finished» can only be seen by this fresh mount — finish what the
       // user's original action (e.g. 刷新课程) started.
@@ -660,6 +673,7 @@ function useAppState(bridge: SeuSummaryBridge): AppState {
 
   return {
     session,
+    sessionInfo,
     sessionBusy,
     refreshBusy,
     tree,

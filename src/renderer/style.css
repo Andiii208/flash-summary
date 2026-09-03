@@ -211,6 +211,8 @@ body {
 .badge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
 .session-badge.logged_in { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: var(--success-soft); }
 .session-badge.logged_in .badge-dot { background: var(--success); }
+.session-badge.expired { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); background: var(--warning-soft); }
+.session-badge.expired .badge-dot { background: var(--warning); }
 
 /* ---- layout ---- */
 .app-main { display: flex; flex: 1; min-height: 0; }
@@ -695,6 +697,7 @@ body {
 .settings-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .settings-row:last-child { margin-bottom: 0; }
 .settings-label { flex-shrink: 0; color: var(--text-muted); font-size: var(--font-size-sm); width: 64px; }
+.settings-hint { color: var(--text-muted); font-size: var(--font-size-sm); }
 .settings-path {
   font-family: Consolas, 'Cascadia Mono', monospace;
   font-size: var(--font-size-sm);

@@ -39,3 +39,22 @@ export function clearSession(userDataDir: string): void {
     rmSync(file)
   }
 }
+
+/**
+ * Expiry time (epoch ms) of the stored platform JWT, parsed locally from its
+ * exp claim — no network involved. null when the record carries no JWT, the
+ * token is malformed, or it has no exp claim (then freshness is unknown and
+ * the session keeps counting as logged_in).
+ */
+export function jwtExpiresAt(jwt: string | undefined): number | null {
+  if (jwt == null || jwt === '') return null
+  const parts = jwt.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as { exp?: unknown }
+    if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) return null
+    return payload.exp * 1000
+  } catch {
+    return null
+  }
+}

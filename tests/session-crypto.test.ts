@@ -8,7 +8,7 @@ import {
   encryptSession,
   decryptSession
 } from '../src/main/auth/session-crypto'
-import { saveSession, loadSession, clearSession, sessionFile } from '../src/main/auth/session-store'
+import { jwtExpiresAt, saveSession, loadSession, clearSession, sessionFile } from '../src/main/auth/session-store'
 
 /** Stub cryptor: XOR "encryption" standing in for DPAPI in unit tests. */
 const stubCryptor: Cryptor = {
@@ -79,5 +79,24 @@ describe('session store', () => {
     clearSession(dir)
     expect(loadSession(dir, stubCryptor)).toBeNull()
     rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('jwtExpiresAt (local session freshness, no network)', () => {
+  function jwtWithExp(exp: number | undefined): string {
+    const payload = exp === undefined ? {} : { exp }
+    const header = Buffer.from('{"alg":"HS256"}').toString('base64url')
+    return `${header}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`
+  }
+
+  it('returns the exp claim in epoch ms', () => {
+    expect(jwtExpiresAt(jwtWithExp(1_900_000_000))).toBe(1_900_000_000_000)
+  })
+
+  it('returns null for a missing/malformed token or a payload without exp', () => {
+    expect(jwtExpiresAt(undefined)).toBeNull()
+    expect(jwtExpiresAt('')).toBeNull()
+    expect(jwtExpiresAt('not-a-jwt')).toBeNull()
+    expect(jwtExpiresAt(jwtWithExp(undefined))).toBeNull()
   })
 })
