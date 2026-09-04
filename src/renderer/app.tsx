@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { ChevronDown, ChevronRight } from 'lucide-preact'
 import { render } from 'preact'
 import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
@@ -126,7 +127,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                   aria-expanded={state.allCoursesOpen}
                   onClick={state.toggleAllCourses}
                 >
-                  <span class="caret">{state.allCoursesOpen ? '▾' : '▸'}</span>
+                  <span class="caret">{state.allCoursesOpen ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
                   <span>全部课程</span>
                   <span class="all-courses-count">{state.tree.length}</span>
                 </button>

@@ -170,11 +170,12 @@ body {
 .brand-mark {
   width: 27px;
   height: 27px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
+  color: var(--accent-contrast);
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 15px;
   display: grid;
   place-items: center;
   user-select: none;
@@ -182,8 +183,9 @@ body {
 .topbar h1 {
   font-size: var(--font-size-lg);
   margin: 0;
-  font-weight: 650;
-  letter-spacing: 0.2px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.5px;
 }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 
@@ -289,7 +291,7 @@ body {
   padding: 18px 24px 40px;
   scroll-behavior: smooth;
 }
-.content h2 { font-size: var(--font-size-xl); margin: 2px 0 14px; font-weight: 650; }
+.content h2 { font-size: var(--font-size-xl); margin: 2px 0 14px; font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
 
 /* ---- tabs ---- */
 .tabs {
@@ -400,7 +402,7 @@ body {
   font-family: inherit;
 }
 .course-head:hover { background: var(--surface-2); }
-.caret { color: var(--text-muted); font-size: 10px; flex-shrink: 0; transition: transform var(--speed); }
+.caret { color: var(--text-muted); font-size: 10px; flex-shrink: 0; display: inline-flex; align-items: center; transition: transform var(--speed); }
 .course-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -473,7 +475,7 @@ body {
 .chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 /* M1-3: download sub-progress line + toast inline action */
-.task-detail { margin: 6px 0 0; color: var(--text-muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.task-detail { margin: 6px 0 0; color: var(--text-muted); font-size: var(--font-size-sm); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .toast { display: flex; align-items: center; gap: 10px; }
 .toast-action {
   flex-shrink: 0;
@@ -600,7 +602,7 @@ body {
 }
 .task-status.failed { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .task-status-line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 12px; }
-.task-id { font-family: Consolas, 'Cascadia Mono', monospace; font-size: var(--font-size-sm); color: var(--text-muted); }
+.task-id { font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text-muted); }
 .task-stage { font-weight: 650; font-size: var(--font-size-md); color: var(--accent); }
 .task-stage.done { color: var(--success); }
 .task-error {
@@ -796,7 +798,7 @@ body {
 }
 .note-section p { margin: 3px 0; font-size: var(--font-size-md); line-height: 1.7; white-space: pre-wrap; }
 .note-section p.ts {
-  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
@@ -855,7 +857,7 @@ body {
 .settings-label { flex-shrink: 0; color: var(--text-muted); font-size: var(--font-size-sm); width: 64px; }
 .settings-hint { color: var(--text-muted); font-size: var(--font-size-sm); }
 .settings-path {
-  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   background: var(--surface-2);
   border-radius: var(--radius-sm);
@@ -925,7 +927,7 @@ body {
     var(--surface);
   box-shadow: var(--shadow-sm);
 }
-.empty-state h3, .welcome-guide h2 { margin: 0 0 8px; font-size: var(--font-size-lg); }
+.empty-state h3, .welcome-guide h2 { margin: 0 0 8px; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
 .empty-state p, .welcome-guide p { color: var(--text-muted); margin: 0 0 14px; font-size: var(--font-size-md); }
 .guide-steps {
   text-align: left;
@@ -982,14 +984,14 @@ body {
 .md-lite .md-list li { font-size: var(--font-size-md); line-height: 1.65; color: var(--text); }
 .md-lite .md-list li::marker { color: var(--accent); }
 .md-lite .md-quote { margin: 4px 0; padding: 6px 12px; border-left: 2px solid var(--accent-soft-2); color: var(--text-muted); font-size: var(--font-size-sm); background: var(--surface-2); border-radius: 0 var(--radius) var(--radius) 0; }
-.md-lite code { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
+.md-lite code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
 
 /* ---- 知识树（阅读态） ---- */
 .tree-view { display: flex; flex-direction: column; gap: 3px; }
 .tree-row-wrap { display: flex; flex-direction: column; }
 .tree-toggle { display: flex; align-items: center; gap: 6px; width: fit-content; background: none; border: none; cursor: pointer; padding: 3px 6px; border-radius: 6px; color: var(--text); font-size: var(--font-size-md); text-align: left; }
 .tree-toggle:hover { background: var(--accent-soft); }
-.tree-caret { color: var(--text-muted); font-size: 11px; width: 12px; }
+.tree-caret { color: var(--text-muted); font-size: 11px; width: 12px; display: inline-flex; align-items: center; }
 .tree-count { background: var(--surface-2); color: var(--text-muted); border-radius: 999px; font-size: var(--font-size-xs); padding: 0 7px; }
 .tree-leaf { display: flex; align-items: center; gap: 8px; padding: 3px 6px; color: var(--text); font-size: var(--font-size-md); }
 .tree-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-soft-2); flex-shrink: 0; }
@@ -999,7 +1001,7 @@ body {
 .timeline-cards { display: flex; flex-direction: column; gap: 12px; }
 .timeline-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .timeline-head { display: flex; align-items: baseline; gap: 10px; }
-.timeline-stamp { font-family: ui-monospace, Consolas, monospace; font-size: var(--font-size-xs); color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 999px; font-weight: 600; border: none; cursor: pointer; }
+.timeline-stamp { font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 999px; font-weight: 600; border: none; cursor: pointer; }
 .timeline-stamp.active { background: var(--accent-soft-2); }
 .timeline-stamp:hover { background: var(--accent-soft-2); }
 .refs-toggle { align-self: flex-start; background: none; border: none; color: var(--text-muted); font-size: var(--font-size-xs); cursor: pointer; padding: 0; }
@@ -1008,20 +1010,20 @@ body {
 .timeline-title { margin: 0; font-size: var(--font-size-md); font-weight: 620; color: var(--text); }
 .timeline-detail { margin: 0; font-size: var(--font-size-md); line-height: 1.65; color: var(--text); }
 .timeline-quote { margin: 2px 0 0; padding: 6px 10px; border-left: 2px solid var(--border); color: var(--text-muted); font-size: var(--font-size-sm); }
-.quote-at { margin-left: 8px; font-family: ui-monospace, Consolas, monospace; font-size: var(--font-size-xs); }
+.quote-at { margin-left: 8px; font-family: var(--font-mono); font-size: var(--font-size-xs); }
 .timeline-images { display: flex; gap: 8px; flex-wrap: wrap; }
-.timeline-thumb { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: zoom-in; background: var(--surface-2); padding: 0; width: 168px; height: 96px; flex-shrink: 0; }
+.timeline-thumb { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: zoom-in; background: var(--surface-2); padding: 0; width: 168px; height: 96px; flex-shrink: 0; }
 .timeline-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-origin { position: absolute; left: 6px; bottom: 6px; font-size: 10px; padding: 0 6px; border-radius: 999px; backdrop-filter: blur(4px); color: #fff; background: rgba(0, 0, 0, 0.45); }
-.thumb-origin.evidence { background: rgba(59, 91, 219, 0.75); }
-.zoom-image { display: block; max-width: min(760px, 78vw); max-height: 64vh; object-fit: contain; border-radius: 8px; margin: 4px 0 10px; }
+.thumb-origin.evidence { background: var(--accent); color: var(--accent-contrast); }
+.zoom-image { display: block; max-width: min(760px, 78vw); max-height: 64vh; object-fit: contain; border-radius: var(--radius-lg); margin: 4px 0 10px; }
 
 /* ---- 概念卡 ---- */
 .concept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
 .concept-card { position: relative; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .concept-term { font-weight: 650; color: var(--accent); font-size: var(--font-size-md); }
 .concept-def { margin: 0; font-size: var(--font-size-sm); line-height: 1.6; color: var(--text); }
-.concept-ref { position: absolute; top: 8px; right: 10px; font-family: ui-monospace, Consolas, monospace; font-size: var(--font-size-xs); color: var(--text-muted); }
+.concept-ref { position: absolute; top: 8px; right: 10px; font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--text-muted); }
 
 /* ---- 公式/代码/操作 ---- */
 .formula-list { display: flex; flex-direction: column; gap: 10px; }
@@ -1029,9 +1031,9 @@ body {
 .formula-tag { align-self: flex-start; font-size: var(--font-size-xs); font-weight: 600; padding: 1px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .formula-item.kind-code .formula-tag { background: var(--success-soft); color: var(--success); }
 .formula-item.kind-operation .formula-tag { background: var(--warning-soft); color: var(--warning); }
-.formula-content { margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: var(--font-size-md); color: var(--text); }
+.formula-content { margin: 0; font-family: var(--font-mono); font-size: var(--font-size-md); color: var(--text); }
 .formula-code { margin: 0; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
-.formula-code code { font-family: ui-monospace, Consolas, monospace; font-size: var(--font-size-sm); color: var(--text); }
+.formula-code code { font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text); }
 .formula-explain { margin: 0; font-size: var(--font-size-sm); color: var(--text-muted); line-height: 1.6; }
 
 /* ---- 考点/缺口卡 ---- */
@@ -1040,8 +1042,8 @@ body {
 .callout-list.exam .callout-item { background: var(--warning-soft); }
 .callout-list.gap .callout-item { background: var(--danger-soft); }
 .callout-tag { flex-shrink: 0; font-size: var(--font-size-xs); font-weight: 650; padding: 1px 9px; border-radius: 999px; margin-top: 2px; }
-.callout-list.exam .callout-tag { color: var(--warning); background: rgba(232, 137, 12, 0.16); }
-.callout-list.gap .callout-tag { color: var(--danger); background: rgba(224, 49, 49, 0.14); }
+.callout-list.exam .callout-tag { color: var(--warning); background: color-mix(in srgb, var(--warning) 16%, transparent); }
+.callout-list.gap .callout-tag { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
 
 /* ---- 方法论步骤 ---- */
 .step-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; counter-reset: step; }
@@ -1063,11 +1065,11 @@ body {
 .mindmap-node:focus-visible .mindmap-box { stroke: var(--accent); stroke-width: 2; }
 .mindmap-label { font-size: 13px; fill: var(--text); }
 .mindmap-badge { fill: var(--accent); }
-.mindmap-badge-text { font-size: 10px; fill: #fff; font-weight: 700; }
+.mindmap-badge-text { font-size: 10px; fill: var(--accent-contrast); font-weight: 700; }
 
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.evidence-fig { margin: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-2); }
+.evidence-fig { margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
 .evidence-fig img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
 .evidence-fig figcaption { display: flex; justify-content: space-between; align-items: center; padding: 5px 9px; font-size: var(--font-size-xs); }
-.evidence-ref { font-family: ui-monospace, Consolas, monospace; color: var(--text-muted); }
+.evidence-ref { font-family: var(--font-mono); color: var(--text-muted); }

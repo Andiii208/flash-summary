@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { ChevronDown, ChevronRight } from 'lucide-preact'
 import type { Note, TreeNode } from '../../shared/notes/schema'
 import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
 import { bindTimelineImages, resolveEvidenceGallery, quoteForEntry, formatTime, NEAREST_SECONDS } from '../../shared/notes/evidence'
@@ -96,7 +97,7 @@ function TreeNodeRows({ node, depth }: { node: TreeNode; depth: number }): JSX.E
       <div class={`tree-row depth-${depth}`} style={`margin-left:${depth * 16}px`}>
         {hasChildren ? (
           <button class="tree-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-            <span class="tree-caret">{open ? '▾' : '▸'}</span>
+            <span class="tree-caret">{open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>
             <span class="tree-title" role={depth === 0 ? 'treeitem' : undefined}>
               {node.title}
             </span>

@@ -28,7 +28,7 @@ describe('MyStudyPanel (M2 批 A: 我的学习聚合区)', () => {
   it('shows one actionable hint when all three groups are empty', () => {
     const host = mount(<MyStudyPanel {...baseProps()} />)
     expect(host.textContent).toContain('我的学习')
-    expect(host.textContent).toContain('☆ 收藏')
+    expect(host.textContent).toContain('星标收藏')
     expect(host.querySelectorAll('.course-head')).toHaveLength(0)
   })
 

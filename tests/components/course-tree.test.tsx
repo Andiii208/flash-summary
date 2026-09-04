@@ -101,8 +101,9 @@ describe('CourseTree', () => {
       />
     )
     const pin = host.querySelector('.pin-btn')
-    expect(pin?.textContent).toBe('★')
+    expect(pin?.classList.contains('pinned')).toBe(true)
     expect(pin?.getAttribute('aria-pressed')).toBe('true')
+    expect(pin?.querySelector('svg')).not.toBeNull()
     click(pin)
     expect(onToggleMine).toHaveBeenCalledWith('c1', false)
   })

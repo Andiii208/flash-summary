@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { X } from 'lucide-preact'
 import type { TaskProgressInfo, TaskRowInfo } from '../../shared/bridge'
 import { humanizeTaskError } from '../../shared/errors'
 import { PIPELINE_STAGES, STAGE_LABELS, stageLabel } from '../labels'
@@ -194,8 +195,8 @@ function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: 
               </button>
             )}
             {(row.state === 'succeeded' || row.state === 'failed') && (
-              <button class="btn small ghost" title="删除这条记录" onClick={() => onDelete(row.id)}>
-                ✕
+              <button class="btn small ghost" title="删除这条记录" aria-label="删除这条记录" onClick={() => onDelete(row.id)}>
+                <X size={13} strokeWidth={1.75} />
               </button>
             )}
           </div>
