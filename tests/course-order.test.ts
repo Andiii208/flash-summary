@@ -51,7 +51,7 @@ describe('orderLessonsByNumber / orderTreeLessonsByNumber (批2 A4)', () => {
 
   it('applies the ordering across the whole tree', () => {
     const tree = [
-      { id: 'c1', name: '课一', lessons: [{ id: 'c1-L1', title: '第2节课' }, { id: 'c1-L0', title: '第1节课' }] }
+      { id: 'c1', name: '课一', lessons: [{ id: 'c1-L1', title: '第2节课', hasNote: false }, { id: 'c1-L0', title: '第1节课', hasNote: true }] }
     ]
     expect(orderTreeLessonsByNumber(tree)[0]!.lessons.map((l) => l.id)).toEqual(['c1-L0', 'c1-L1'])
   })
