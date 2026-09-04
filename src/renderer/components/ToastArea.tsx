@@ -20,7 +20,7 @@ export function ToastArea({ toasts }: ToastAreaProps): JSX.Element {
   return (
     <div class="toast-area" aria-live="polite">
       {toasts.map((t) => (
-        <div key={t.id} class={`toast toast-${t.kind}`}>
+        <div key={t.id} class={`toast toast-${t.kind}`} role={t.kind === 'error' ? 'alert' : undefined}>
           <span>{t.message}</span>
           {t.actionLabel != null && t.onAction != null && (
             <button

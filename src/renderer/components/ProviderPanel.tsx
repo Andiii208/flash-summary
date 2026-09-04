@@ -66,7 +66,8 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
 
   return (
     <section class="provider-panel">
-      <h2>Provider 设置</h2>
+      {/* 遗留④收口：嵌在 settings-block（h3）内，标题层级不再跳级。 */}
+      <h3>Provider 设置</h3>
       <div class="provider-form">
         <select
           class="qa-input"
