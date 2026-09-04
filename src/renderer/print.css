@@ -210,6 +210,14 @@
 .ph-gallery img { width: 100%; display: block; }
 .ph-gallery figcaption { font-family: Consolas, ui-monospace, monospace; font-size: 8pt; color: #6a7180; padding: 1mm 2mm; }
 
+/* ---- self-quiz: question | answer side by side (print has no flipping) ---- */
+.ph-quiz-row { display: grid; grid-template-columns: 55% 45%; gap: 4mm; break-inside: avoid; border: 1px solid #e3e6ee; border-radius: 2mm; padding: 2.5mm 4mm; margin-bottom: 2mm; }
+.ph-quiz-q { display: flex; flex-direction: column; gap: 1mm; }
+.ph-quiz-num { font-weight: 700; color: #4b5bd7; }
+.ph-quiz-tag { align-self: flex-start; font-size: 8.5pt; font-weight: 600; color: #4b5bd7; background: #eef0fb; border-radius: 999px; padding: 0.5mm 2.5mm; }
+.ph-quiz-question { font-weight: 600; }
+.ph-quiz-a { font-size: 10pt; color: #3c4250; border-left: 1px dashed #d8dce8; padding-left: 4mm; align-self: center; }
+
 /* ---- footer line ---- */
 .ph-footer {
   margin-top: 8mm;

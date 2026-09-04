@@ -15,6 +15,7 @@ const NOTE: Note = {
   methodology: '先定义后举例。',
   examCues: ['必考：复杂度计算'],
   questionsAndGaps: ['如何分析递归复杂度？'],
+  quiz: [],
   transcriptRefs: [],
   evidence: []
 }
@@ -130,6 +131,37 @@ describe('NoteViewer', () => {
     const host = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
     expect(host.querySelector('[data-testid="evidence-gallery"]')).not.toBeNull()
     expect(host.querySelector('.evidence-fig img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
+  })
+
+  it('flips a quiz card from question to answer on click (roadmap 2.1)', () => {
+    const quizNote: Note = {
+      ...NOTE,
+      quiz: [
+        { question: '什么是大O？', answer: '渐进上界', source: 'concept', term: '大O' },
+        { question: '递归复杂度怎么考？', answer: '主定理展开', source: 'examCue' }
+      ]
+    }
+    const host = mount(<NoteViewer note={quizNote} />)
+    const keyPoints = Array.from(host.querySelectorAll('.note-tabs button')).find((b) => b.textContent === '要点') ?? null
+    click(keyPoints)
+    expect(host.querySelector('[data-testid="quiz-cards"]')).not.toBeNull()
+    const cards = host.querySelectorAll('.quiz-card')
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.querySelector('.quiz-question')?.textContent).toBe('什么是大O？')
+    expect(cards[0]!.querySelector('.quiz-answer')).toBeNull()
+    expect(cards[0]!.querySelector('.quiz-tag')?.textContent).toBe('概念 · 大O')
+    // Question side shows the hint; clicking flips to the answer.
+    expect(cards[0]!.querySelector('.quiz-hint')?.textContent).toBe('点击翻面看答案')
+    click(cards[0]!.querySelector('.quiz-flip') as HTMLButtonElement)
+    expect(cards[0]!.querySelector('.quiz-answer')?.textContent).toBe('渐进上界')
+    expect(cards[0]!.querySelector('.quiz-hint')).toBeNull()
+    // The other card stays question-side until clicked too.
+    expect(cards[1]!.querySelector('.quiz-answer')).toBeNull()
+    click(cards[1]!.querySelector('.quiz-flip') as HTMLButtonElement)
+    expect(cards[1]!.querySelector('.quiz-answer')?.textContent).toBe('主定理展开')
+    // Flipped cards hide the answer again on a second click.
+    click(cards[0]!.querySelector('.quiz-flip') as HTMLButtonElement)
+    expect(cards[0]!.querySelector('.quiz-answer')).toBeNull()
   })
 
   it('shows the citation hit badge when evidence refs resolve, hides with none cited', () => {

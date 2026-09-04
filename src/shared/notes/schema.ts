@@ -49,6 +49,21 @@ export const FormulaOrStepSchema = z.object({
 
 export type FormulaOrStep = z.infer<typeof FormulaOrStepSchema>
 
+/**
+ * Self-quiz item (roadmap 2.1, 2026-09-04): Q/A flipped cards anchored to a
+ * concept term or an exam cue — every item must cite its anchor or it is
+ * dropped (no unanchored questions).
+ */
+export const QuizItemSchema = z.object({
+  question: z.string(),
+  answer: z.string(),
+  source: z.enum(['concept', 'examCue']),
+  /** Anchored concept term; exam-cue items may omit it. */
+  term: z.string().optional()
+})
+
+export type QuizItem = z.infer<typeof QuizItemSchema>
+
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
   z.object({
     title: z.string(),
@@ -73,6 +88,8 @@ export const NoteSchema = z.object({
   examCues: z.array(z.string()).default([]),
   /** 疑问与缺口 */
   questionsAndGaps: z.array(z.string()).default([]),
+  /** 自测题（问答翻转，逐题锚定概念/考点；无题时整块省略） */
+  quiz: z.array(QuizItemSchema).default([]),
   transcriptRefs: z.array(TranscriptRefSchema).default([]),
   evidence: z.array(EvidenceRefSchema).default([])
 })
@@ -122,6 +139,65 @@ function normalizeEvidence(raw: unknown): unknown {
   return entries
 }
 
+/**
+ * Quiz items must stay anchored and answerable: empty question/answer and
+ * unknown sources are dropped rather than failing the whole note (models
+ * occasionally emit filler items). `term` is kept only when a real string.
+ */
+function normalizeQuiz(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw
+  const items: unknown[] = []
+  for (const entry of raw) {
+    if (entry == null || typeof entry !== 'object') continue
+    const q = entry as Record<string, unknown>
+    if (typeof q.question !== 'string' || q.question.trim() === '') continue
+    if (typeof q.answer !== 'string' || q.answer.trim() === '') continue
+    if (q.source !== 'concept' && q.source !== 'examCue') continue
+    const item: Record<string, unknown> = { question: q.question, answer: q.answer, source: q.source }
+    if (typeof q.term === 'string' && q.term.trim() !== '') item.term = q.term
+    items.push(item)
+  }
+  return items
+}
+
+/**
+ * models occasionally emit a formulasAndSteps kind outside formula|code|
+ * operation (field case 2026-09-04, real mimo run: 'step'). The content is
+ * authoritative — degrade the kind to 'operation' instead of failing the
+ * whole note (mirrors the evidence-kind repair from 2026-09-02).
+ */
+function normalizeFormulaKinds(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw
+  return raw.map((entry) => {
+    if (entry == null || typeof entry !== 'object') return entry
+    const e = entry as Record<string, unknown>
+    if (e.kind === 'formula' || e.kind === 'code' || e.kind === 'operation') return e
+    return { ...e, kind: 'operation' }
+  })
+}
+
+/**
+ * examCues / questionsAndGaps are string lists, but models sometimes emit
+ * objects (field case 2026-09-04: [{title, detail}]). Extract the first
+ * meaningful text field; unconvertible items are dropped, never fatal.
+ */
+function normalizeStringList(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw
+  const textFields = ['title', 'text', 'detail', 'question', 'content', 'description', 'cue']
+  return raw
+    .map((entry) => {
+      if (typeof entry === 'string') return entry
+      if (entry != null && typeof entry === 'object') {
+        const e = entry as Record<string, unknown>
+        for (const field of textFields) {
+          if (typeof e[field] === 'string' && (e[field] as string).trim() !== '') return e[field]
+        }
+      }
+      return null
+    })
+    .filter((s): s is string => typeof s === 'string')
+}
+
 function withNormalizedTimestamps(raw: unknown): unknown {
   if (raw == null || typeof raw !== 'object') return raw
   const obj = raw as Record<string, unknown>
@@ -148,7 +224,11 @@ function withNormalizedTimestamps(raw: unknown): unknown {
     ...obj,
     timeline: fixList(obj.timeline),
     transcriptRefs: fixList(obj.transcriptRefs),
-    evidence: normalizeEvidence(obj.evidence)
+    evidence: normalizeEvidence(obj.evidence),
+    formulasAndSteps: normalizeFormulaKinds(obj.formulasAndSteps),
+    examCues: normalizeStringList(obj.examCues),
+    questionsAndGaps: normalizeStringList(obj.questionsAndGaps),
+    quiz: normalizeQuiz(obj.quiz)
   }
 }
 

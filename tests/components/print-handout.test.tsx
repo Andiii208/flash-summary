@@ -19,6 +19,7 @@ const NOTE: Note = {
   methodology: '先定义后举例。',
   examCues: ['必考：复杂度计算'],
   questionsAndGaps: ['递归复杂度如何分析？'],
+  quiz: [],
   transcriptRefs: [],
   evidence: []
 }
@@ -81,6 +82,30 @@ describe('PrintHandout (PDF 讲义, 2026-09-04)', () => {
     expect(host.querySelectorAll('.ph-callout.gap')).toHaveLength(1)
     const gallery = host.querySelector('.ph-gallery')
     expect(gallery?.querySelectorAll('figure')).toHaveLength(1)
+  })
+
+  it('quiz rows render question|answer side by side and omit when empty (roadmap 2.1)', () => {
+    const host = document.createElement('div')
+    const quizNote: Note = {
+      ...NOTE,
+      quiz: [
+        { question: '什么是大O？', answer: '渐进上界', source: 'concept', term: '大O' },
+        { question: '递归复杂度怎么考？', answer: '主定理展开', source: 'examCue' }
+      ]
+    }
+    render(
+      <PrintHandout note={quizNote} attachments={[]} courseName="c" lessonTitle="l" generatedAt="t" />,
+      host
+    )
+    const rows = host.querySelectorAll('.ph-quiz-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.querySelector('.ph-quiz-question')?.textContent).toBe('什么是大O？')
+    expect(rows[0]!.querySelector('.ph-quiz-tag')?.textContent).toBe('概念 · 大O')
+    expect(rows[0]!.querySelector('.ph-quiz-a')?.textContent).toBe('渐进上界')
+    expect(rows[1]!.querySelector('.ph-quiz-tag')?.textContent).toBe('考点')
+    const bare = document.createElement('div')
+    render(<PrintHandout note={NOTE} attachments={[]} courseName="c" lessonTitle="l" generatedAt="t" />, bare)
+    expect((bare.textContent ?? '')).not.toContain('自测题')
   })
 
   it('empty optional sections are omitted entirely', () => {

@@ -7,6 +7,45 @@ const base = {
   methodology: '方法'
 }
 
+describe('parseNote quiz normalization (roadmap 2.1, 2026-09-04)', () => {
+  it('defaults to an empty array for old notes without quiz', () => {
+    const note = parseNote(JSON.stringify(base))
+    expect(note.quiz).toEqual([])
+  })
+
+  it('keeps anchored items with concept/examCue sources', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        quiz: [
+          { question: '什么是大O？', answer: '渐进上界。', source: 'concept', term: '大O' },
+          { question: '复杂度必考哪类题？', answer: '递归树展开。', source: 'examCue' }
+        ]
+      })
+    )
+    expect(note.quiz).toHaveLength(2)
+    expect(note.quiz[0]).toEqual({ question: '什么是大O？', answer: '渐进上界。', source: 'concept', term: '大O' })
+    expect(note.quiz[1]?.term).toBeUndefined()
+  })
+
+  it('drops unanchored or empty items instead of failing the note', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        quiz: [
+          { question: '无锚题', answer: '有答案', source: 'madeUp' },
+          { question: '', answer: '答案', source: 'concept' },
+          { question: '有题', answer: '', source: 'concept' },
+          { question: '合法题', answer: '答案', source: 'concept', term: '大O' },
+          'garbage',
+          null
+        ]
+      })
+    )
+    expect(note.quiz).toEqual([{ question: '合法题', answer: '答案', source: 'concept', term: '大O' }])
+  })
+})
+
 describe('parseNote timestamp normalization (field case 2026-09-02)', () => {
   it('accepts numeric-string and mm:ss timeline/transcript timestamps', () => {
     const note = parseNote(
@@ -42,6 +81,40 @@ describe('parseNote timestamp normalization (field case 2026-09-02)', () => {
       })
     )
     expect(note.timeline[0].refs[0].at).toBe(65)
+  })
+})
+
+describe('parseNote formula-kind normalization (field case 2026-09-04)', () => {
+  it('degrades unknown formulasAndSteps kinds to operation instead of failing', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        formulasAndSteps: [
+          { kind: 'step', content: '三步走', explanation: '' },
+          { kind: 'code', content: 'print("hi")', explanation: '' }
+        ]
+      })
+    )
+    expect(note.formulasAndSteps[0]?.kind).toBe('operation')
+    expect(note.formulasAndSteps[0]?.content).toBe('三步走')
+    expect(note.formulasAndSteps[1]?.kind).toBe('code')
+  })
+
+  it('extracts text from object items in string lists (examCues as objects)', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        examCues: [
+          { title: '递归树展开是必考题', detail: '每年第三大题' },
+          '普通字符串考点',
+          { unrelated: 1 },
+          null
+        ],
+        questionsAndGaps: [{ question: '一致收敛为何难？' }]
+      })
+    )
+    expect(note.examCues).toEqual(['递归树展开是必考题', '普通字符串考点'])
+    expect(note.questionsAndGaps).toEqual(['一致收敛为何难？'])
   })
 })
 

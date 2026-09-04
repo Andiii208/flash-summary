@@ -2,6 +2,22 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 笔记演进批次 2.1：Quiz 自测题（2026-09-04）
+
+路线图 Phase 2 核心批次（D1 已拍板：问答翻转）。真实课时 1690625-L0 重新生成验证通过：6 题（3 概念锚定 + 3 考点锚定），要点视图翻面卡真实渲染。
+
+### 新增
+
+- **Quiz 数据契约**：`NoteSchema.quiz: [{question, answer, source: 'concept'|'examCue', term?}]`，旧笔记 default `[]` 零迁移；归一层过滤无锚/空题（无锚题不收）。**六处同步**（note-craft SKILL §0）：schema 归一、要点视图「自测题」块投影（空省略）、markdown 导出（编号 Q/A + 锚点行）、PrintHandout（题面|答案左右分栏，`break-inside: avoid`）、QuizCards 组件、四层测试。
+- **问答翻面卡**：要点视图先显示问题，点击翻面看答案（Preact `useState` 集合翻转，零依赖）；每题带「概念 · term」/「考点」锚点标签；再次点击收回答案。
+- **同轮出题 prompt**：summarize 一次调用同时产出 quiz（置于 JSON 末位字段防稀释总结质量），要求 5-8 题、逐题锚定概念/考点、禁止超纲凑数。
+- **Provider 请求硬超时**：chat 10 分钟 / ASR 分片 5 分钟（`AbortSignal.timeout`，超时走 network 错误链路）——G0 观测：大 body summarize 请求在代理链路上会静默挂起，此前无超时导致 UI 永久「生成中…」。
+
+### 变更
+
+- 模型输出容错（宽容归一延续，真实调用取证）：`formulasAndSteps.kind` 超纲值降级为 `operation`（保留内容）；`examCues`/`questionsAndGaps` 的对象形态提取其文本字段。
+- 测试 381 → 391（+10：quiz 归一/锚定过滤、kind 降级、字符串列表提取、要点视图投影与空省略、翻面交互、导出、PrintHandout、超时 signal 传递）。
+
 ## [未发布] — 笔记演进批次 1.3：证据引用命中率（2026-09-04）
 
 路线图 [docs/plans/2026-09-04-note-evolution-roadmap.md](docs/plans/2026-09-04-note-evolution-roadmap.md) Phase 1 可观测项。

@@ -44,6 +44,17 @@ function listSection(heading: string, items: string[]): string[] {
   return items.length === 0 ? [] : ['', `## ${heading}`, '', ...items.map((item) => `- ${item}`)]
 }
 
+/** Q/A self-quiz section (roadmap 2.1): answers inline, anchors labeled. */
+function quizSection(note: Note): string[] {
+  if (note.quiz.length === 0) return []
+  const lines = ['', '## 自测题', '']
+  note.quiz.forEach((item, i) => {
+    const anchor = item.source === 'concept' ? `概念：${item.term ?? ''}` : '考点'
+    lines.push(`${i + 1}. **Q**：${item.question}`, `   - **A**：${item.answer}`, `   - 锚点：${anchor}`)
+  })
+  return lines
+}
+
 /** Markdown export (secondary exchange format; structured per 笔记工艺 2026-09-04). */
 export function noteToMarkdown(note: Note, title: string): string {
   const tree: string[] = []
@@ -55,6 +66,7 @@ export function noteToMarkdown(note: Note, title: string): string {
   if (formulas.length > 0) lines.push('', '## 公式、代码与操作步骤', '', ...formulas)
   lines.push(...listSection('考试与作业提示', note.examCues))
   lines.push(...listSection('疑问与缺口', note.questionsAndGaps))
+  lines.push(...quizSection(note))
   lines.push('', '## 方法论', '', note.methodology.trim())
   return lines.join('\n')
 }

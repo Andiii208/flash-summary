@@ -41,4 +41,21 @@ describe('noteToMarkdown export', () => {
     expect(md).toContain('- **操作**：三步走')
     expect(md).toContain('- 证据：关键帧 1690625-L0-kf-3')
   })
+
+  it('quiz section exports numbered Q/A with anchors; omitted when empty (roadmap 2.1)', () => {
+    const note = parseNote(json)
+    note.quiz = [
+      { question: '什么是大O？', answer: '渐进上界', source: 'concept', term: '大O' },
+      { question: '递归复杂度怎么考？', answer: '主定理展开', source: 'examCue' }
+    ]
+    const md = noteToMarkdown(note, 't')
+    expect(md).toContain('## 自测题')
+    expect(md).toContain('1. **Q**：什么是大O？')
+    expect(md).toContain('   - **A**：渐进上界')
+    expect(md).toContain('   - 锚点：概念：大O')
+    expect(md).toContain('2. **Q**：递归复杂度怎么考？')
+    expect(md).toContain('   - 锚点：考点')
+    const bare = noteToMarkdown(parseNote(json), 't')
+    expect(bare).not.toContain('## 自测题')
+  })
 })

@@ -27,6 +27,7 @@ const sampleNote: Note = {
   methodology: '先从直观出发，再引入严格定义，最后用法则计算。',
   examCues: ['ε-δ 语言证明题几乎每年必考'],
   questionsAndGaps: ['一致收敛与逐点收敛的区别尚未讲清'],
+  quiz: [],
   transcriptRefs: [{ at: 5, text: '上节课我们讲到' }],
   evidence: [{ kind: 'ppt', ref: '3' }]
 }
@@ -148,6 +149,30 @@ describe('projectNoteBlocks structured projections (2026-09-04)', () => {
         { content: '先化简再代入', explanation: '' }
       ]
     })
+  })
+
+  it('key points view gains a self-quiz section; empty quiz omits it (roadmap 2.1)', () => {
+    const quizNote = parseNote(
+      JSON.stringify({
+        ...sampleNote,
+        quiz: [
+          { question: '什么是大O？', answer: '渐进上界', source: 'concept', term: '大O' },
+          { question: '递归复杂度怎么考？', answer: '主定理展开', source: 'examCue' }
+        ]
+      })
+    )
+    const sections = projectNoteBlocks(quizNote, 'key_points')
+    expect(sections.map((s) => s.heading)).toEqual(['要点', '自测题'])
+    expect(sections[1].blocks[0]).toEqual({
+      block: 'quiz',
+      items: [
+        { question: '什么是大O？', answer: '渐进上界', source: 'concept', term: '大O' },
+        { question: '递归复杂度怎么考？', answer: '主定理展开', source: 'examCue' }
+      ]
+    })
+    // No quiz → the whole section disappears (empty-section discipline).
+    const bare = projectNoteBlocks(sampleNote, 'key_points')
+    expect(bare.map((s) => s.heading)).toEqual(['要点'])
   })
 })
 

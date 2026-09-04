@@ -110,6 +110,22 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
         </section>
       )}
 
+      {note.quiz.length > 0 && (
+        <section class="ph-section">
+          <h2>自测题</h2>
+          {note.quiz.map((item, i) => (
+            <div key={i} class="ph-quiz-row">
+              <div class="ph-quiz-q">
+                <span class="ph-quiz-num">{i + 1}</span>
+                <span class="ph-quiz-tag">{item.source === 'concept' ? `概念 · ${item.term ?? ''}` : '考点'}</span>
+                <span class="ph-quiz-question">{item.question}</span>
+              </div>
+              <div class="ph-quiz-a">{item.answer}</div>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section class="ph-section">
         <h2>课堂画面</h2>
         <div class="ph-gallery">

@@ -6,11 +6,12 @@ interface RecordedCall {
   method: string
   headers: Record<string, string>
   body: unknown
+  signal?: AbortSignal
 }
 
 function fetchJson(status: number, body: unknown, calls: RecordedCall[]) {
-  return async (url: string, init: { headers: Record<string, string>; method: string; body: unknown }) => {
-    calls.push({ url, method: init.method, headers: init.headers, body: init.body })
+  return async (url: string, init: { headers: Record<string, string>; method: string; body: unknown; signal?: AbortSignal }) => {
+    calls.push({ url, method: init.method, headers: init.headers, body: init.body, signal: init.signal })
     return {
       ok: status >= 200 && status < 300,
       status,
@@ -21,8 +22,8 @@ function fetchJson(status: number, body: unknown, calls: RecordedCall[]) {
 }
 
 function fetchText(status: number, text: string, calls: RecordedCall[]) {
-  return async (url: string, init: { headers: Record<string, string>; method: string; body: unknown }) => {
-    calls.push({ url, method: init.method, headers: init.headers, body: init.body })
+  return async (url: string, init: { headers: Record<string, string>; method: string; body: unknown; signal?: AbortSignal }) => {
+    calls.push({ url, method: init.method, headers: init.headers, body: init.body, signal: init.signal })
     return {
       ok: status >= 200 && status < 300,
       status,
@@ -49,6 +50,17 @@ describe('OpenAiCompatibleClient.chat (mock HTTP)', () => {
     // plain object as the literal "[object Object]".
     expect(typeof calls[0].body).toBe('string')
     expect(JSON.parse(calls[0].body as string)).toMatchObject({ model: 'gpt-4o', max_tokens: 500 })
+  })
+
+  it('attaches a hard abort deadline to chat requests (G0 hang case 2026-09-04)', async () => {
+    const calls: RecordedCall[] = []
+    const client = new OpenAiCompatibleClient(
+      'https://api.x.com/v1',
+      'sk-secret',
+      fetchJson(200, { choices: [{ message: { content: 'ok' } }] }, calls)
+    )
+    await client.chatJson([{ role: 'user', content: 'q' }], 'gpt-4o')
+    expect(calls[0].signal).toBeInstanceOf(AbortSignal)
   })
 
   it('sends multimodal image parts', async () => {

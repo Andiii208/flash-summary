@@ -125,6 +125,7 @@ describe('notes:exportMarkdown (U3)', () => {
       methodology: '方法论',
       examCues: [],
       questionsAndGaps: [],
+      quiz: [],
       transcriptRefs: [],
       evidence: []
     }

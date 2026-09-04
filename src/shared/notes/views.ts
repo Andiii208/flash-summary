@@ -7,7 +7,7 @@
  *   - projectNoteBlocks: structured ViewBlock trees consumed by the
  *     renderer's five views (four reading tabs + mindmap). Pure functions.
  */
-import type { Note, TimelineEntry, Concept, FormulaOrStep, TreeNode } from './schema'
+import type { Note, TimelineEntry, Concept, FormulaOrStep, TreeNode, QuizItem } from './schema'
 
 export type ViewId = 'detailed' | 'standard' | 'key_points' | 'methodology' | 'mindmap'
 
@@ -29,6 +29,7 @@ export type ViewBlock =
   | { block: 'formulas'; items: FormulaOrStep[] }
   | { block: 'callout'; tone: 'exam' | 'gap'; items: string[] }
   | { block: 'steps'; items: Array<{ content: string; explanation: string }> }
+  | { block: 'quiz'; items: QuizItem[] }
 
 export interface BlockSection {
   heading: string
@@ -177,7 +178,11 @@ function keyPointsBlocks(note: Note): BlockSection[] {
   if (note.timeline.length > 0) {
     blocks.push({ block: 'timeline', entries: note.timeline.slice(0, 5) })
   }
-  return blocks.length > 0 ? [{ heading: '要点', blocks }] : []
+  // Cornell Cue semantics: the quiz is the self-test hook of the key points
+  // view; empty quiz omits the whole section (empty-section discipline).
+  const sections: BlockSection[] = [{ heading: '要点', blocks }]
+  if (note.quiz.length > 0) sections.push({ heading: '自测题', blocks: [{ block: 'quiz', items: note.quiz }] })
+  return sections.some((s) => s.blocks.length > 0) ? sections.filter((s) => s.blocks.length > 0) : []
 }
 
 function methodologyBlocks(note: Note): BlockSection[] {

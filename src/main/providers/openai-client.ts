@@ -31,7 +31,15 @@ export interface ProviderFetchInit {
   headers: Record<string, string>
   method: string
   body: unknown
+  /** Hard deadline: a hung gateway must not busy the UI forever (G0 finding
+   *  2026-09-04: a large summarize call can hang the connection silently). */
+  signal?: AbortSignal
 }
+
+/** Chat completions are slow (large multimodal summarize) but not infinite. */
+export const CHAT_TIMEOUT_MS = 600_000
+/** One ASR chunk (≤120s audio) should never take longer than this. */
+export const ASR_TIMEOUT_MS = 300_000
 
 export interface ProviderFetch {
   (url: string, init: ProviderFetchInit): Promise<{
@@ -47,7 +55,8 @@ const defaultFetch: ProviderFetch = async (url, init) => {
     return await fetch(url, {
       method: init.method,
       headers: init.headers,
-      body: init.body as BodyInit
+      body: init.body as BodyInit,
+      ...(init.signal != null ? { signal: init.signal } : {})
     })
   } catch (err) {
     // Surface the cause chain (ECONNRESET, ENOTFOUND, cert errors…) — a bare
@@ -102,7 +111,8 @@ export class OpenAiCompatibleClient {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: serialized
+        body: serialized,
+        signal: AbortSignal.timeout(CHAT_TIMEOUT_MS)
       })
     } catch (err) {
       if (err instanceof ProviderError) throw err
@@ -159,7 +169,8 @@ export class OpenAiCompatibleClient {
       res = await fetch(`${this.baseUrl}/audio/transcriptions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.apiKey}` },
-        body: form
+        body: form,
+        signal: AbortSignal.timeout(ASR_TIMEOUT_MS)
       })
     } catch (err) {
       const cause = (err as { cause?: unknown }).cause

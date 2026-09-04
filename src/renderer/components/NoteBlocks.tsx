@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import type { Note, TreeNode } from '../../shared/notes/schema'
+import type { Note, TreeNode, QuizItem } from '../../shared/notes/schema'
 import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
 import { bindTimelineImages, resolveEvidenceGallery, quoteForEntry, formatTime, NEAREST_SECONDS } from '../../shared/notes/evidence'
 import type { ViewBlock } from '../../shared/notes/views'
@@ -76,7 +76,40 @@ function BlockRenderer({ block, attachments }: { block: ViewBlock; attachments: 
           ))}
         </ol>
       )
+    case 'quiz':
+      return <QuizCards items={block.items} />
   }
+}
+
+/** Self-quiz flashcards (roadmap 2.1): question first, click to flip the
+ *  answer over — zero dependencies, plain Preact state. */
+function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
+  const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set())
+  const toggle = (index: number): void => {
+    setRevealed((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+  return (
+    <div class="quiz-list" data-testid="quiz-cards">
+      {items.map((item, i) => {
+        const open = revealed.has(i)
+        const anchor = item.source === 'concept' ? `概念 · ${item.term ?? ''}` : '考点'
+        return (
+          <article key={i} class={`quiz-card${open ? ' revealed' : ''}`}>
+            <span class="quiz-tag">{anchor}</span>
+            <button class="quiz-flip" onClick={() => toggle(i)} aria-expanded={open}>
+              <p class="quiz-question">{item.question}</p>
+              {open ? <p class="quiz-answer">{item.answer}</p> : <span class="quiz-hint">点击翻面看答案</span>}
+            </button>
+          </article>
+        )
+      })}
+    </div>
+  )
 }
 
 /** Collapsible indented tree (reading view; the interactive map is MindMap). */
