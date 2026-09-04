@@ -241,6 +241,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   ipc.handle('school:harvestLessons', async (_e, courseId: unknown) => {
     try {
       const cid = str(courseId, 'courseId')
+      ctx.harvestRuntime.start(cid)
       const course = ctx.db.prepare('SELECT id, tecl_id, tecl_code FROM courses WHERE id = ?').get(cid) as
         | { id: string; tecl_id: string | null; tecl_code: string | null }
         | undefined
@@ -270,9 +271,23 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         }
       })()
       ctx.logger.info(`harvestLessons: course=${cid} entries=${harvest.lessons.length}`)
+      ctx.harvestRuntime.finish(cid, { ok: true, lessons: harvest.lessons.length })
       return ok({ lessons: harvest.lessons.length })
     } catch (e) {
       ctx.logger.error(`harvestLessons failed: ${(e as Error).message}`)
+      // 批C: the initiating renderer dies with the navigation — the outcome
+      // is the only way the fresh mount can tell the user it failed.
+      if (typeof courseId === 'string') ctx.harvestRuntime.finish(courseId, { ok: false, lessons: 0, error: (e as Error).message })
+      return err(e)
+    }
+  })
+
+  // 批C: harvest visibility for the fresh mount — in-flight course ids plus
+  // the last outcome (renderer dedupes repeat toasts via outcome.seq).
+  ipc.handle('school:harvestState', () => {
+    try {
+      return ok(ctx.harvestRuntime.state())
+    } catch (e) {
       return err(e)
     }
   })

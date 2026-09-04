@@ -12,6 +12,8 @@ export interface CourseTreeProps {
   searching: boolean
   /** Same-subject sections of pinned courses, badged «同课» (C4). */
   sameCourseIds: ReadonlySet<string>
+  /** 批C: courses whose «第N节课» catalog harvest is running. */
+  harvestInflight?: ReadonlySet<string>
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -25,6 +27,7 @@ export function CourseTree({
   expanded,
   searching,
   sameCourseIds,
+  harvestInflight,
   onToggle,
   onSelect,
   onHarvestLessons,
@@ -42,6 +45,7 @@ export function CourseTree({
           expanded={searching || expanded.has(course.id)}
           selectedLesson={selectedLesson}
           sameCourse={sameCourseIds.has(course.id)}
+          inflight={harvestInflight?.has(course.id) ?? false}
           onToggle={onToggle}
           onSelect={onSelect}
           onHarvestLessons={onHarvestLessons}
@@ -57,6 +61,8 @@ interface CourseRowProps {
   expanded: boolean
   selectedLesson: string
   sameCourse: boolean
+  /** 批C: this course's catalog harvest is currently running. */
+  inflight: boolean
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -71,7 +77,7 @@ function courseSubLine(course: CourseTreeInfo): string | null {
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-function CourseRow({ course, expanded, selectedLesson, sameCourse, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
+function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
   const sub = courseSubLine(course)
   return (
     <div class="item course-item" style={`--course-ink:${subjectInk(course.id)}`}>
@@ -98,10 +104,12 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, onToggle, onS
       {expanded &&
         (course.lessons.length === 0 ? (
           <div class="lesson-row empty">
-            还没有课时目录
-            <button class="btn small" onClick={() => onHarvestLessons(course.id)}>
-              抓取课时目录
-            </button>
+            {inflight ? '正在抓取课时目录…' : '还没有课时目录'}
+            {!inflight && (
+              <button class="btn small" onClick={() => onHarvestLessons(course.id)}>
+                抓取课时目录
+              </button>
+            )}
           </div>
         ) : (
           course.lessons.map((lesson) => (

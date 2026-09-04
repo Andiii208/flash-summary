@@ -214,6 +214,38 @@ describe('ipc handlers over a real context', () => {
     ])
   })
 
+  it('school:harvestState tracks in-flight and outcome across the navigation (批C)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, tecl_id, tecl_code, fetched_at) VALUES ('c1', '课程', '154717', 'TC1', '2026-08-30T00:00:00Z')").run()
+
+    // 成功路径：outcome 记录课时数，inflight 清空。
+    ctx.harvestCoursePage = async () => ({
+      teacherStreamUrl: 'https://dncvsvod/t.mp4?auth_key=x',
+      lessons: [
+        { index: 0, title: '第1节课', ref: '0' },
+        { index: 1, title: '第2节课', ref: '1' }
+      ]
+    })
+    await ipc.invoke('school:harvestLessons', 'c1')
+    let state = (await ipc.invoke('school:harvestState')) as {
+      ok: boolean
+      value?: { inflight: string[]; outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null }
+    }
+    expect(state.ok).toBe(true)
+    expect(state.value?.inflight).toEqual([])
+    expect(state.value?.outcome).toMatchObject({ courseId: 'c1', ok: true, lessons: 2 })
+
+    // 失败路径：无 tecl 的课程 → outcome.ok=false 且带错误信息。
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c-manual', '手动课程', '2026-08-30T00:00:00Z')").run()
+    await ipc.invoke('school:harvestLessons', 'c-manual')
+    state = (await ipc.invoke('school:harvestState')) as { ok: boolean; value?: { inflight: string[]; outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null } }
+    expect(state.value?.outcome).toMatchObject({ courseId: 'c-manual', ok: false })
+    expect(String(state.value?.outcome?.error)).toContain('tecl')
+    // seq 单调递增，渲染层靠它去重 toast。
+    expect(state.value!.outcome!.seq).toBeGreaterThan(0)
+  })
+
   it('school:harvestLessons rejects a course without tecl refs (refresh needed)', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)

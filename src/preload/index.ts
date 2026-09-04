@@ -43,6 +43,8 @@ const api: SeuSummaryBridge = {
     courseTree: (): Promise<ApiResult<CourseTreeInfo[]>> => ipcRenderer.invoke('school:courseTree'),
     harvestLessons: (courseId: string): Promise<ApiResult<{ lessons: number }>> =>
       ipcRenderer.invoke('school:harvestLessons', courseId),
+    harvestState: (): Promise<ApiResult<{ inflight: string[]; outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null }>> =>
+      ipcRenderer.invoke('school:harvestState'),
     netCheck: (): Promise<ApiResult<{ intercepted: boolean; resolved: Array<{ host: string; ip: string }> }>> =>
       ipcRenderer.invoke('school:netCheck'),
     setMine: (courseId: string, mine: boolean): Promise<ApiResult<boolean>> =>

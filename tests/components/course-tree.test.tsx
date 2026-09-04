@@ -45,6 +45,25 @@ describe('CourseTree', () => {
     expect(selected?.textContent).toContain('第2讲 线性表')
   })
 
+  it('shows the in-flight harvest state and hides the harvest button (批C)', () => {
+    const host = mount(
+      <CourseTree
+        tree={TREE}
+        selectedLesson=""
+        searching={false}
+        expanded={new Set(['c2'])}
+        harvestInflight={new Set(['c2'])}
+        onToggle={() => undefined}
+        onSelect={() => undefined}
+        onHarvestLessons={() => undefined}
+        {...mineDefaults()}
+      />
+    )
+    const emptyRow = host.querySelector('.lesson-row.empty')
+    expect(emptyRow?.textContent).toContain('正在抓取课时目录')
+    expect(emptyRow?.querySelector('button')).toBeNull()
+  })
+
   it('fires onSelect with the lesson id', () => {
     const onSelect = vi.fn()
     const host = mount(<CourseTree tree={TREE} selectedLesson="" searching={false} expanded={new Set(['c1', 'c2'])} onToggle={() => undefined} onSelect={onSelect} onHarvestLessons={() => undefined} {...mineDefaults()} />)

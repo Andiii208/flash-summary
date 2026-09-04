@@ -117,7 +117,7 @@ function findFreePort(start) {
 
 /** Expected bridge surface — keep in sync with src/shared/bridge.ts. */
 const EXPECTED_BRIDGE = {
-  school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'netCheck', 'setMine'],
+  school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'harvestState', 'netCheck', 'setMine'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
   notes: ['latest', 'list', 'exportMarkdown', 'exportAnki', 'attachments', 'regenerate', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
@@ -136,6 +136,7 @@ const PROBES = [
   ['settings:get', 's.settings.get()', (r) => r.ok === true && typeof r.value?.theme === 'string'],
   ['tasks:list', 's.tasks.list()', (r) => r.ok === true && Array.isArray(r.value)],
   ['tasks:cancel (missing)', "s.tasks.cancel('smoke-none')", (r) => r.ok === true && r.value?.cancelled === true],
+  ['school:harvestState', 's.school.harvestState()', (r) => r.ok === true && Array.isArray(r.value?.inflight) && r.value.inflight.length === 0],
   ['notes:latest (missing)', "s.notes.latest('smoke-none')", (r) => r.ok === true && r.value === null],
   ['notes:list', 's.notes.list()', (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:recent', 's.qa.recent()', (r) => r.ok === true && Array.isArray(r.value)],

@@ -84,6 +84,22 @@ export interface AppContext {
    * (also on failure). One harvest at a time — the single window is shared.
    */
   harvestCoursePage: (target: PlayPageTarget, selectLessonRef?: string | null, signal?: AbortSignal) => Promise<PlayHarvestResult>
+  /**
+   * 批C: catalog-harvest visibility. The initiating renderer is unloaded by
+   * the play-page navigation, so the in-flight set and the outcome live here;
+   * the fresh mount polls school:harvestState to show progress and report
+   * success/failure. `outcome` keeps the LAST result (never cleared) — the
+   * renderer dedupes repeat toasts via the monotonic seq.
+   */
+  harvestRuntime: {
+    inflight: ReadonlySet<string>
+    start: (courseId: string) => void
+    finish: (courseId: string, result: { ok: boolean; lessons: number; error?: string }) => void
+    state: () => {
+      inflight: string[]
+      outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null
+    }
+  }
 }
 
 export function createContext(overrides: Partial<{
@@ -384,6 +400,22 @@ export function createContext(overrides: Partial<{
     setMainWindow: (win) => {
       mainWindowRef = win
     },
-    harvestCoursePage
+    harvestCoursePage,
+    harvestRuntime: (() => {
+      const inflight = new Set<string>()
+      let lastSeq = 0
+      let outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null = null
+      return {
+        inflight,
+        start: (courseId: string): void => {
+          inflight.add(courseId)
+        },
+        finish: (courseId: string, result: { ok: boolean; lessons: number; error?: string }): void => {
+          inflight.delete(courseId)
+          outcome = { seq: ++lastSeq, courseId, ...result }
+        },
+        state: () => ({ inflight: [...inflight], outcome })
+      }
+    })()
   }
 }

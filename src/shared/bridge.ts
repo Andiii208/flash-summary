@@ -87,6 +87,8 @@ export interface SchoolBridge {
   courseTree(): Promise<ApiResult<CourseTreeInfo[]>>
   /** V1.3: harvest the course's lesson catalog from the play page (main window navigates away and back). */
   harvestLessons(courseId: string): Promise<ApiResult<{ lessons: number }>>
+  /** 批C: in-flight catalog harvests + last outcome, for the fresh mount after navigation. */
+  harvestState(): Promise<ApiResult<{ inflight: string[]; outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null }>>
   /** Fake-IP preflight (A5): true when a proxy resolver answers the campus hosts with virtual addresses. */
   netCheck(): Promise<ApiResult<{ intercepted: boolean; resolved: Array<{ host: string; ip: string }> }>>
   /** C2: pin/unpin a course as «mine» (sidebar sorts it first). */

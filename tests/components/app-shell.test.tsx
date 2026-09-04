@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { App } from '../../src/renderer/app'
+import { render } from 'preact'
 import { mount, click } from '../helpers/preact'
 import type { SeuSummaryBridge, CourseTreeInfo, TaskRowInfo, ProvidersListResult, AppSettingsInfo } from '../../src/shared/bridge'
 import type { ApiResult } from '../../src/shared/api-result'
@@ -35,6 +36,8 @@ function makeBridge(): SeuSummaryBridge {
       listCourses: vi.fn(async () => ok({ loaded: 0, platformTotal: 0, platformPages: 1 })),
       addManualCourse: vi.fn(async () => ok({ courseId: 'c', lessonId: 'l' })),
       courseTree: vi.fn(async () => ok(courseTreeRows)),
+      harvestLessons: vi.fn(async () => ok({ lessons: 0 })),
+      harvestState: vi.fn(async () => ok({ inflight: [], outcome: null })),
       netCheck: vi.fn(async () => ok({ intercepted: false, resolved: [] })),
       setMine: vi.fn(async () => ok(true)),
       onRefreshProgress: vi.fn(() => () => undefined)
@@ -129,6 +132,9 @@ function openQaTab(host: HTMLElement): void {
 describe('App shell (useAppState over a mocked bridge)', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
+    // 批C: the app persists its UI snapshot in localStorage — tests must not
+    // inherit each other's selections/expanded state.
+    window.localStorage.clear()
   })
 
   it('starts with an honest logged_out badge, four tabs, and the loaded tree', async () => {
@@ -143,6 +149,25 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // M2 批 A: 全部课程默认折叠，我的学习聚合区常驻。
     expect(host.querySelector('[data-testid="all-courses-toggle"]')?.getAttribute('aria-expanded')).toBe('true')
     expect(host.textContent).toContain('我的学习')
+  })
+
+  it('restores the persisted lesson selection after a renderer reload (批C)', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    const saved = JSON.parse(window.localStorage.getItem('seu-summary.ui-state.v1') ?? '{}') as { currentLesson?: string }
+    expect(saved.currentLesson).toBe('l1')
+    // Reload: the fresh mount resumes the note/qa/history for that lesson.
+    render(null, host)
+    const reloaded = makeBridge()
+    const host2 = mount(<App bridge={reloaded} />)
+    await vi.waitFor(() => {
+      expect(reloaded.notes.latest).toHaveBeenCalledWith('l1')
+    })
+    // The open group + expanded course come back from the persisted snapshot,
+    // so the selected row is present without any clicks.
+    await waitForSelector('.lesson-row.selected')
+    expect(host2.querySelector('.lesson-row.selected')?.textContent).toContain('第1讲')
   })
 
   it('shows the welcome guide when the local tree is empty', async () => {

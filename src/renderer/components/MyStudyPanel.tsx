@@ -13,6 +13,8 @@ export interface MyStudyPanelProps {
   sameCourses: CourseTreeInfo[]
   selectedLesson: string
   expanded: ReadonlySet<string>
+  /** 批C: courses whose «第N节课» catalog harvest is running. */
+  harvestInflight?: ReadonlySet<string>
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -65,6 +67,7 @@ function renderTree(
       expanded={props.expanded}
       searching={false}
       sameCourseIds={sameIds}
+      harvestInflight={props.harvestInflight}
       onToggle={props.onToggle}
       onSelect={props.onSelect}
       onHarvestLessons={props.onHarvestLessons}

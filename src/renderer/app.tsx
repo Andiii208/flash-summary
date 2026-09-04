@@ -48,9 +48,63 @@ const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
   { id: 'settings', label: '设置' }
 ]
 
+/** 批C: sidebar/context persistence — the harvest and login flows navigate
+ *  the main window away, which unloads this renderer; without persistence
+ *  the user lands back at the top of a collapsed tree (field 2026-09-04). */
+const UI_STATE_KEY = 'seu-summary.ui-state.v1'
+const HARVEST_SEQ_KEY = 'seu-summary.harvest-seq.v1'
+
+interface PersistedUiState {
+  expanded: string[]
+  currentLesson: string
+  allCoursesOpen: boolean
+  tab: MainTab
+}
+
+function loadPersistedUi(): Partial<PersistedUiState> {
+  try {
+    const raw = window.localStorage.getItem(UI_STATE_KEY)
+    if (raw == null) return {}
+    const parsed = JSON.parse(raw) as Partial<PersistedUiState>
+    return parsed != null && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function savePersistedUi(patch: Partial<PersistedUiState>): void {
+  try {
+    const next = { ...loadPersistedUi(), ...patch }
+    window.localStorage.setItem(UI_STATE_KEY, JSON.stringify(next))
+  } catch {
+    // Persistence is an enhancement; quota/private-mode failures stay silent.
+  }
+}
+
+function readHarvestSeq(): number {
+  try {
+    return Number(window.localStorage.getItem(HARVEST_SEQ_KEY) ?? '0') || 0
+  } catch {
+    return 0
+  }
+}
+
+function writeHarvestSeq(seq: number): void {
+  try {
+    window.localStorage.setItem(HARVEST_SEQ_KEY, String(seq))
+  } catch {
+    // See savePersistedUi.
+  }
+}
+
 export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
-  const [tab, setTab] = useState<MainTab>('tasks')
-  const goTasks = useCallback(() => setTab('tasks'), [])
+  // 批C: the active tab survives renderer reloads (harvest/login navigation).
+  const [tab, setTabState] = useState<MainTab>(() => loadPersistedUi().tab ?? 'tasks')
+  const setTab = useCallback((next: MainTab): void => {
+    setTabState(next)
+    savePersistedUi({ tab: next })
+  }, [])
+  const goTasks = useCallback(() => setTab('tasks'), [setTab])
   const state = useAppState(bridge, goTasks)
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
@@ -102,6 +156,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               expanded={state.expanded}
               searching
               sameCourseIds={state.sameCourseIds}
+              harvestInflight={state.harvestInflight}
               onToggle={state.toggleCourse}
               onSelect={state.selectLesson}
               onHarvestLessons={state.harvestLessons}
@@ -147,6 +202,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                       expanded={state.expanded}
                       searching={false}
                       sameCourseIds={state.sameCourseIds}
+                      harvestInflight={state.harvestInflight}
                       onToggle={state.toggleCourse}
                       onSelect={state.selectLesson}
                       onHarvestLessons={state.harvestLessons}
@@ -301,6 +357,8 @@ interface AppState {
   noteIndex: NoteIndexInfo[]
   /** 批B: recent Q&A across lessons (qa tab empty state). */
   qaRecent: QaRecentInfo[]
+  /** 批C: courses whose catalog harvest is currently running. */
+  harvestInflight: ReadonlySet<string>
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (serial queue visibility). */
   globalHistory: TaskRowInfo[]
@@ -390,18 +448,23 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const [refreshProgress, setRefreshProgress] = useState<{ page: number; pageCount: number } | null>(null)
   const [tree, setTree] = useState<CourseTreeInfo[]>([])
   const [treeLoaded, setTreeLoaded] = useState(false)
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  // 批C: restore the persisted sidebar/context (collapsed/expanded state used
+  // to reset on every renderer reload, e.g. after a catalog harvest).
+  const [persisted] = useState(loadPersistedUi)
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(persisted.expanded ?? []))
   const [query, setQuery] = useState('')
   /** M2 批 A: 300ms 防抖后的搜索词（636+ 门课每键全量过滤太浪费）。 */
   const debouncedQuery = useDebounced(query, 300)
   const searchMode = debouncedQuery.trim() !== ''
   /** 全部课程分组默认折叠——「我的学习」是主语，目录是字典。 */
-  const [allCoursesOpen, setAllCoursesOpen] = useState(false)
-  const [currentLesson, setCurrentLesson] = useState('')
+  const [allCoursesOpen, setAllCoursesOpen] = useState(persisted.allCoursesOpen ?? false)
+  const [currentLesson, setCurrentLesson] = useState(persisted.currentLesson ?? '')
   const [note, setNote] = useState<Note | null>(null)
   /** 批B: cross-lesson note library + recent Q&A (tab empty states). */
   const [noteIndex, setNoteIndex] = useState<NoteIndexInfo[]>([])
   const [qaRecent, setQaRecent] = useState<QaRecentInfo[]>([])
+  /** 批C: courses whose catalog harvest is in flight (play-page navigation). */
+  const [harvestInflight, setHarvestInflight] = useState<ReadonlySet<string>>(new Set())
   /** 2026-09-04: lesson attachments (keyframes/PPT) for the note views. */
   const [attachments, setAttachments] = useState<NoteAttachmentInfo[]>([])
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
@@ -592,6 +655,17 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     void loadGlobalHistory()
     void loadNoteIndex()
     void loadQaRecent()
+    // 批C: resume the persisted lesson selection (loads note/attachments/
+    // history/QA so tabs are coherent after a reload).
+    const savedLesson = persisted.currentLesson ?? ''
+    if (savedLesson !== '') {
+      setCurrentLesson(savedLesson)
+      lessonRef.current = savedLesson
+      void loadNote(savedLesson)
+      void loadAttachments(savedLesson)
+      void loadHistory(savedLesson)
+      void loadQaHistory(savedLesson)
+    }
     // The renderer unloads during in-window navigations (harvest/未来登录) —
     // an in-flight task keeps running in main; restore its live state here.
     void (async () => {
@@ -632,7 +706,51 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
+
+  // 批C: write the UI snapshot back on every change — a navigation-induced
+  // reload (harvest/login) resumes exactly where the user was. Stale course
+  // ids drop out here as soon as the tree no longer contains them.
+  useEffect(() => {
+    savePersistedUi({ expanded: [...expanded].filter((id) => tree.some((c) => c.id === id)), currentLesson, allCoursesOpen })
+  }, [expanded, currentLesson, allCoursesOpen, tree])
+
+  // 批C: watch an in-flight catalog harvest across the navigation that
+  // started it; report the outcome once (deduped via the persisted seq).
+  useEffect(() => {
+    let stopped = false
+    let timer: number | undefined
+    const initialSeq = readHarvestSeq()
+    void (async () => {
+      for (;;) {
+        if (stopped) return
+        const res = await bridge.school.harvestState()
+        if (stopped || !res.ok || res.value == null) return
+        setHarvestInflight(new Set(res.value.inflight))
+        if (res.value.inflight.length === 0) {
+          const outcome = res.value.outcome
+          if (outcome != null && outcome.seq > initialSeq) {
+            writeHarvestSeq(outcome.seq)
+            if (outcome.ok) {
+              await applyLocalTree()
+              setExpanded((prev) => new Set(prev).add(outcome.courseId))
+              toast(`已抓取 ${outcome.lessons} 节课时`, 'success')
+            } else {
+              toast(`抓取课时目录失败：${(outcome.error ?? '未知错误').slice(0, 120)}`, 'error')
+            }
+          }
+          return
+        }
+        await new Promise((resolve) => {
+          timer = window.setTimeout(resolve, 2000)
+        })
+      }
+    })()
+    return () => {
+      stopped = true
+      if (timer != null) window.clearTimeout(timer)
+    }
+  }, [bridge, applyLocalTree, toast])
 
   const login = useCallback((): void => {
     if (sessionBusy) return // one login at a time (stacked windows field case 2026-09-01)
@@ -1196,6 +1314,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     note,
     noteIndex,
     qaRecent,
+    harvestInflight,
     history,
     globalHistory,
     progress,
