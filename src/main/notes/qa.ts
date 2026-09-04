@@ -66,6 +66,10 @@ export function buildQaMessages(ctx: QaContext, question: string): Array<{ role:
   if (ctx.note != null) {
     parts.push(`笔记概要：${ctx.note.overview}`)
     parts.push(`方法论：${ctx.note.methodology}`)
+  } else if (ctx.transcriptText === '') {
+    // 批C: no note AND no transcript — say so instead of silently answering
+    // from general knowledge (the «semantic bait-and-switch» audit item).
+    parts.push('注意：该课时尚无笔记与转写材料。请如实说明本课时还没有可依据的学习材料，不要编造课程内容；仅可回答不依赖课时材料的一般性问题。')
   }
   if (ctx.transcriptText !== '') parts.push(`转写摘录：\n${ctx.transcriptText}`)
   if (ctx.evidenceIds.length > 0) parts.push(`可用证据：${ctx.evidenceIds.join(', ')}`)

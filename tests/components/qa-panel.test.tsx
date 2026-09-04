@@ -82,4 +82,34 @@ describe('QaPanel', () => {
     expect(host.querySelector('[data-testid="qa-recent"]')).toBeNull()
     expect(host.textContent).toContain('选择课时后')
   })
+
+  it('renders the optimistic pending bubble with the question, no AI tag yet (批C)', () => {
+    const entries = [{ question: '什么是 MUX？', answer: '', pending: true }]
+    const host = mount(<QaPanel entries={entries} busy hasLesson onAsk={() => undefined} />)
+    expect(host.querySelector('[data-testid="qa-pending"]')?.textContent).toContain('思考中')
+    expect(host.querySelector('.qa-q')?.textContent).toBe('什么是 MUX？')
+    // The answer bubble (and its AI provenance tag) only exists once answered.
+    expect(host.querySelector('.qa-a .ai-tag')).toBeNull()
+  })
+
+  it('shows only one 思考中 when busy with a pending bubble (批C dedup)', () => {
+    const host = mount(<QaPanel entries={[{ question: 'q', answer: '', pending: true }]} busy hasLesson onAsk={() => undefined} />)
+    expect(host.textContent.split('思考中').length - 1).toBe(1)
+  })
+
+  it('renders exchange timestamps as relative labels (批C)', () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    const entries = [{ question: 'q', answer: 'a', createdAt: twoHoursAgo }]
+    const host = mount(<QaPanel entries={entries} busy={false} hasLesson onAsk={() => undefined} />)
+    expect(host.querySelector('.qa-time')?.textContent).toBe('2 小时前')
+  })
+
+  it('says the answer is not note-based when the lesson has no note, without gating input (批C)', () => {
+    const onAsk = vi.fn()
+    const host = mount(<QaPanel entries={[]} busy={false} hasLesson hasNote={false} onAsk={onAsk} />)
+    const field = host.querySelector<HTMLTextAreaElement>('textarea.qa-input')
+    expect(field?.disabled).toBe(false)
+    expect(field?.placeholder).toContain('尚无笔记')
+    expect(host.textContent).toContain('也可以直接提问')
+  })
 })

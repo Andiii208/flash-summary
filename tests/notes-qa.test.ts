@@ -88,6 +88,21 @@ describe('qa message building', () => {
     const ctx = assembleContext(db, 'l1', note)
     expect(ctx.transcriptText.length).toBeLessThanOrEqual(24_000)
   })
+
+  it('says the lesson has no material when neither note nor transcript exists (批C honest guard)', () => {
+    const ctx = assembleContext(db, 'l1', null)
+    const user = buildQaMessages(ctx, '这节课讲了什么?').find((m) => m.role === 'user')!.content
+    expect(user).toContain('尚无笔记与转写材料')
+    expect(user).toContain('不要编造课程内容')
+  })
+
+  it('stays silent about missing material when a transcript exists without a note', () => {
+    db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
+    const ctx = assembleContext(db, 'l1', null)
+    const user = buildQaMessages(ctx, '这节课讲了什么?').find((m) => m.role === 'user')!.content
+    expect(user).not.toContain('尚无笔记与转写材料')
+    expect(user).toContain('开场')
+  })
 })
 
 describe('recordQa', () => {

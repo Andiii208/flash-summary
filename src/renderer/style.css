@@ -1018,6 +1018,8 @@ body {
   box-shadow: var(--shadow-sm);
 }
 .qa-a.pending { color: var(--text-muted); }
+/* 批C: per-exchange timestamp, bottom-right of the answer bubble. */
+.qa-time { display: block; margin-top: 6px; text-align: right; font-size: var(--font-size-xs); color: var(--text-muted); font-family: var(--font-ui); }
 .qa-input-row { display: flex; gap: 8px; max-width: var(--content-max); align-items: flex-end; }
 .qa-input-row .qa-input { flex: 1; }
 textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-family: inherit; }

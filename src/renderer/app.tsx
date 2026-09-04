@@ -346,6 +346,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               lessonContext={state.lessonContextOrIndex != null ? { ...state.lessonContextOrIndex, lessonId: state.currentLesson } : null}
               lessonOptions={state.currentCourseLessons}
               onSelectLesson={state.switchLesson}
+              hasNote={state.note != null}
               onAsk={state.ask}
               recent={state.qaRecent}
               onOpenLesson={state.selectLesson}
@@ -716,8 +717,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     // Recorded exchanges live in the library (desc); show them oldest first.
     const res = await bridge.qa.history(lessonId)
     if (res.ok && res.value != null && lessonRef.current === lessonId) {
-      const rows = res.value as Array<{ question: string; answer: string }>
-      setQaEntries(rows.map((r) => ({ question: r.question, answer: r.answer })).reverse())
+      const rows = res.value as Array<{ question: string; answer: string; created_at: string }>
+      setQaEntries(rows.map((r) => ({ question: r.question, answer: r.answer, createdAt: r.created_at })).reverse())
     }
   }, [bridge])
 
@@ -1321,21 +1322,36 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     (question: string): void => {
       const lid = lessonRef.current
       if (lid === '' || qaBusy) return
+      // 批C: no-note soft guard — asking stays allowed (anti-gatekeeping),
+      // but the answer's basis is stated up front instead of silently swapped.
+      if (note == null) toast('该课时尚无笔记，回答不基于笔记内容', 'info')
+      // 批C: optimistic bubble — the user sees their question immediately.
+      const stamp = new Date().toISOString()
+      setQaEntries((es) => [...es, { question, answer: '', createdAt: stamp, pending: true }])
       void (async () => {
         setQaBusy(true)
         try {
           const res = await bridge.qa.ask(lid, question)
+          // A lesson switch/clear while in flight must not leak the answer
+          // into another lesson's conversation (same guard as the loaders).
+          if (lessonRef.current !== lid) return
           const entry: QaEntry = res.ok
-            ? { question, answer: (res.value as { answer: string }).answer }
-            : { question, answer: `失败：${res.error ?? '未知错误'}` }
-          setQaEntries((es) => [...es, entry])
+            ? { question, answer: (res.value as { answer: string }).answer, createdAt: stamp }
+            : { question, answer: `失败：${res.error ?? '未知错误'}`, createdAt: stamp }
+          setQaEntries((es) => {
+            const idx = es.findIndex((e) => e.pending === true && e.question === question)
+            if (idx < 0) return [...es, entry]
+            const next = [...es]
+            next[idx] = entry
+            return next
+          })
           if (res.ok) void loadQaRecent()
         } finally {
           setQaBusy(false)
         }
       })()
     },
-    [bridge, qaBusy, loadQaRecent]
+    [bridge, qaBusy, note, toast, loadQaRecent]
   )
 
   const saveProvider = useCallback(
