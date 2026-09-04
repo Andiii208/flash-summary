@@ -1,4 +1,14 @@
 import { render } from 'preact'
+// Bundled type system (paper & ink): kai display / song body / sans chrome /
+// mono time. unicode-range slices load only the glyphs actually rendered.
+import 'lxgw-wenkai-screen-webfont/lxgwwenkaigbscreen.css'
+import '@fontsource/noto-serif-sc/400.css'
+import '@fontsource/noto-serif-sc/600.css'
+import '@fontsource/noto-sans-sc/400.css'
+import '@fontsource/noto-sans-sc/500.css'
+import '@fontsource/noto-sans-sc/700.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/600.css'
 import './app.css'
 import './style.css'
 import './print.css'
