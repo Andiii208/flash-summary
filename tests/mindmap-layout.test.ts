@@ -19,6 +19,9 @@ const TREE: TreeNode = {
   ]
 }
 
+/** Line-start-forbidden closers (mirrors the layout's 禁则 set). */
+const NO_LINE_START_LIKE = /^[）」』》】，。、；：？！…]/
+
 describe('computeMindMapLayout', () => {
   it('places the root leftmost and children one level to the right', () => {
     const layout = computeMindMapLayout(TREE, new Set())
@@ -102,5 +105,12 @@ describe('computeMindMapLayout', () => {
     const node = layout.nodes[0]!
     expect(node.lines.join('')).toBe(mixed.title)
     expect(node.lines.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('closing punctuation never starts a line (禁则)', () => {
+    const layout = computeMindMapLayout({ title: '数据选择器（MUX）', children: [] }, new Set())
+    const lines = layout.nodes[0]!.lines
+    expect(lines.join('')).toBe('数据选择器（MUX）')
+    for (const line of lines) expect(NO_LINE_START_LIKE.test(line)).toBe(false)
   })
 })

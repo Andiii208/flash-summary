@@ -58,6 +58,9 @@ function nodeWidth(title: string): number {
   return Math.min(NODE_MAX_WIDTH, Math.max(64, Math.round(units * CHAR_UNIT_W + 24)))
 }
 
+/** 行首禁则：这些标点不许单独落行首，换行时挂在上一行行尾（略微超宽可接受）。 */
+const NO_LINE_START = new Set([...'）」』》】，。、；：？！…'])
+
 /**
  * 批E: wrap a title into the lines that fit the box width. Pure and
  * deterministic; the layout uses its length for the node height and the
@@ -70,6 +73,11 @@ export function wrapTitleLines(title: string, boxWidth: number): string[] {
   let currentUnits = 0
   for (const ch of [...title]) {
     const unit = isWideChar(ch) ? 1 : 0.55
+    // 禁则字符跟紧前一行行尾，不单独成行首。
+    if (NO_LINE_START.has(ch) && current !== '') {
+      current += ch
+      continue
+    }
     if (currentUnits + unit > usable && current !== '') {
       lines.push(current)
       current = ch
