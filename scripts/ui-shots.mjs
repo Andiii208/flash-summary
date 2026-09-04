@@ -158,9 +158,13 @@ async function main() {
       }
     }, 20000)
 
-    // --light: pin the light theme via DOM override (auto follows a dark OS).
+    // --light / --dark: pin the theme via DOM override (auto follows the OS).
     if (process.argv.includes('--light')) {
       await cdp.eval('document.documentElement.dataset.theme = "light"')
+      await sleep(300)
+    }
+    if (process.argv.includes('--dark')) {
+      await cdp.eval('document.documentElement.dataset.theme = "dark"')
       await sleep(300)
     }
 
