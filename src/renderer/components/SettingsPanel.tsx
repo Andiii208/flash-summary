@@ -4,6 +4,7 @@ import type { AppSettingsInfo } from '../../shared/bridge'
 import { ProviderPanel, type ProviderPanelProps } from './ProviderPanel'
 import type { SessionState } from './TopBar'
 import { Colonnade } from '../ui/Colonnade'
+import { PageHeader } from './PageHeader'
 import { Dialog } from '../ui/Dialog'
 
 export interface SettingsPanelProps {
@@ -59,7 +60,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
   const [pendingLogout, setPendingLogout] = useState(false)
   return (
     <section class="settings-panel">
-      <h2>设置</h2>
+      <PageHeader title="设置" />
 
       <section class="settings-block">
         <h3>账号</h3>

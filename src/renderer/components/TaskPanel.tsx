@@ -7,12 +7,18 @@ import { humanizeTaskError } from '../../shared/errors'
 import { PIPELINE_STAGES, STAGE_LABELS, stageLabel } from '../labels'
 import { ProgressBar } from './ProgressBar'
 import { EmptyState } from './EmptyState'
+import { PageHeader } from './PageHeader'
+import { LessonChip, type LessonChipLesson } from './LessonChip'
 import { Dialog } from '../ui/Dialog'
 
 export interface TaskPanelProps {
   currentLesson: string
-  /** A3: readable «course · lesson» identity of the selection (null = raw id). */
-  lessonLabel?: string | null
+  /** 批A: identity of the selection for the header chip (null = none picked). */
+  lessonContext?: { courseName: string; lessonTitle: string } | null
+  /** 批A: sibling lessons for the chip's quick-switch dropdown. */
+  lessonOptions?: LessonChipLesson[]
+  /** 批A: chip dropdown selection — switches lesson, keeps the tasks tab. */
+  onSelectLesson?: (lessonId: string) => void
   running: boolean
   busy: boolean
   progress: TaskProgressInfo | null
@@ -59,7 +65,9 @@ function taskMetaLine(row: TaskRowInfo): string | null {
 
 export function TaskPanel({
   currentLesson,
-  lessonLabel = null,
+  lessonContext = null,
+  lessonOptions,
+  onSelectLesson,
   running,
   busy,
   progress,
@@ -74,9 +82,19 @@ export function TaskPanel({
 }: TaskPanelProps): JSX.Element {
   const noLesson = currentLesson === ''
   const hasNoteAlready = history.some((row) => row.state === 'succeeded')
+  const chip =
+    lessonContext != null ? (
+      <LessonChip
+        courseName={lessonContext.courseName}
+        lessonTitle={lessonContext.lessonTitle}
+        lessons={lessonOptions}
+        currentLessonId={currentLesson}
+        onSelectLesson={onSelectLesson}
+      />
+    ) : undefined
   return (
     <section class="task-panel">
-      <h2>任务</h2>
+      <PageHeader title="任务" chip={chip} />
       {noLesson ? (
         <>
           <EmptyState title="先选择课时" hint="从左侧课程树点击一个课时，即可创建并运行任务。" />
@@ -93,7 +111,6 @@ export function TaskPanel({
         </>
       ) : (
         <>
-          <p class="msg">已选课时：{lessonLabel ?? currentLesson}</p>
           {/* B1: queueing is allowed while another task runs. */}
           <button class="btn primary" onClick={onCreateRun} disabled={busy}>
             {busy ? '提交中…' : running ? '排队下一节' : '创建并运行'}

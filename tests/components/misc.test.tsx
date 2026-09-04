@@ -70,20 +70,50 @@ describe('WelcomeGuide', () => {
 })
 
 describe('TopBar', () => {
+  /** 批A: the brand button renders first — target session buttons explicitly. */
+  const btnByText = (host: HTMLElement, text: string): HTMLButtonElement | null =>
+    (Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.includes(text)) as HTMLButtonElement | undefined) ?? null
+
   it('shows login when logged out and fires onLogin', () => {
     const onLogin = vi.fn()
-    const host = mount(<TopBar session="logged_out" busy={false} running={false} onLogin={onLogin} onLogout={() => undefined} />)
+    const host = mount(<TopBar session="logged_out" busy={false} running={false} onLogin={onLogin} onLogout={() => undefined} onHome={() => undefined} breadcrumb={null} onClearLesson={() => undefined} />)
     expect(host.textContent).toContain('登录 CAS')
-    click(host.querySelector('button'))
+    click(btnByText(host, '登录 CAS'))
     expect(onLogin).toHaveBeenCalledOnce()
+  })
+
+  it('brand click fires onHome (批A: back to the start view)', () => {
+    const onHome = vi.fn()
+    const host = mount(<TopBar session="logged_out" busy={false} running={false} onLogin={() => undefined} onLogout={() => undefined} onHome={onHome} breadcrumb={null} onClearLesson={() => undefined} />)
+    click(host.querySelector('.brand'))
+    expect(onHome).toHaveBeenCalledOnce()
+  })
+
+  it('shows the course/lesson breadcrumb and clears the lesson from the course crumb (批A)', () => {
+    const onClearLesson = vi.fn()
+    const host = mount(
+      <TopBar
+        session="logged_in"
+        busy={false}
+        running={false}
+        onLogin={() => undefined}
+        onLogout={() => undefined}
+        onHome={() => undefined}
+        breadcrumb={{ courseName: '数据结构', lessonTitle: '第4讲' }}
+        onClearLesson={onClearLesson}
+      />
+    )
+    expect(host.querySelector('.crumb-current')?.textContent).toBe('第4讲')
+    click(host.querySelector('.crumb'))
+    expect(onClearLesson).toHaveBeenCalledOnce()
   })
 
   it('shows logout when logged in with a session badge, behind a confirmation (批4 C4)', () => {
     const onLogout = vi.fn()
-    const host = mount(<TopBar session="logged_in" busy={false} running={false} onLogin={() => undefined} onLogout={onLogout} />)
+    const host = mount(<TopBar session="logged_in" busy={false} running={false} onLogin={() => undefined} onLogout={onLogout} onHome={() => undefined} breadcrumb={null} onClearLesson={() => undefined} />)
     expect(host.textContent).toContain('已登录')
     expect(host.querySelector('.session-badge.logged_in')).not.toBeNull()
-    click(host.querySelector('button'))
+    click(btnByText(host, '退出登录'))
     // The dialog must appear first; logout fires only on confirm.
     expect(host.querySelector('.dialog')).not.toBeNull()
     expect(onLogout).not.toHaveBeenCalled()
@@ -121,13 +151,12 @@ describe('TopBar', () => {
   it('marks an expired session and offers re-login instead of logout', () => {
     const onLogin = vi.fn()
     const onLogout = vi.fn()
-    const host = mount(<TopBar session="expired" busy={false} running={false} onLogin={onLogin} onLogout={onLogout} />)
+    const host = mount(<TopBar session="expired" busy={false} running={false} onLogin={onLogin} onLogout={onLogout} onHome={() => undefined} breadcrumb={null} onClearLesson={() => undefined} />)
     expect(host.querySelector('.session-badge.expired')?.textContent).toContain('已过期')
-    const buttons = Array.from(host.querySelectorAll('button'))
-    click(buttons.find((b) => b.textContent?.includes('重新登录')) ?? null)
+    click(btnByText(host, '重新登录'))
     expect(onLogin).toHaveBeenCalledOnce()
     // No logout affordance for a dead session — logout clears nothing extra.
-    expect(buttons.some((b) => b.textContent === '退出登录')).toBe(false)
+    expect(btnByText(host, '退出登录')).toBeNull()
   })
 })
 

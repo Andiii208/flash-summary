@@ -2,6 +2,8 @@ import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { QaRecentInfo } from '../../shared/bridge'
 import { MdLite } from './MdLite'
+import { PageHeader } from './PageHeader'
+import { LessonChip, type LessonChipLesson } from './LessonChip'
 
 export interface QaEntry {
   question: string
@@ -13,6 +15,12 @@ export interface QaPanelProps {
   busy: boolean
   /** False when no lesson is selected — the input then reads as unavailable instead of silently no-op'ing. */
   hasLesson: boolean
+  /** 批A: identity of the selection for the header chip. */
+  lessonContext?: { courseName: string; lessonTitle: string; lessonId?: string } | null
+  /** 批A: sibling lessons for the chip's quick-switch dropdown. */
+  lessonOptions?: LessonChipLesson[]
+  /** 批A: chip dropdown selection — switches lesson, keeps the qa tab. */
+  onSelectLesson?: (lessonId: string) => void
   onAsk: (question: string) => void
   /** 批B: recent exchanges across lessons, shown as the empty state. */
   recent?: QaRecentInfo[]
@@ -27,7 +35,7 @@ function recentStamp(iso: string): string {
 }
 
 /** Follow-up Q&A chat flow (no streaming in MVP — busy state only). */
-export function QaPanel({ entries, busy, hasLesson, onAsk, recent = [], onOpenLesson }: QaPanelProps): JSX.Element {
+export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lessonOptions, onSelectLesson, onAsk, recent = [], onOpenLesson }: QaPanelProps): JSX.Element {
   const [draft, setDraft] = useState('')
   const askable = hasLesson && !busy
   const submit = (): void => {
@@ -36,9 +44,19 @@ export function QaPanel({ entries, busy, hasLesson, onAsk, recent = [], onOpenLe
     setDraft('')
     onAsk(q)
   }
+  const chip =
+    lessonContext != null ? (
+      <LessonChip
+        courseName={lessonContext.courseName}
+        lessonTitle={lessonContext.lessonTitle}
+        lessons={lessonOptions}
+        currentLessonId={lessonContext.lessonId}
+        onSelectLesson={onSelectLesson}
+      />
+    ) : undefined
   return (
     <section class="qa-panel">
-      <h2>本课时追问</h2>
+      <PageHeader title="追问" chip={chip} />
       <div class="qa-log">
         {entries.length === 0 && hasLesson && <p class="msg">针对当前课时的笔记提问。</p>}
         {entries.length === 0 && !hasLesson && recent.length > 0 && onOpenLesson != null && (

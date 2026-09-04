@@ -16,6 +16,7 @@ import { PrintHandout } from './components/PrintHandout'
 import { QaPanel, type QaEntry } from './components/QaPanel'
 import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
+import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
@@ -128,6 +129,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   const goNotes = useCallback(() => setTab('notes'), [setTab])
   const goSettings = useCallback(() => setTab('settings'), [setTab])
   const state = useAppState(bridge, goTasks, goNotes, goSettings, setTab)
+  const sidebarRef = useRef<HTMLElement>(null)
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   return (
@@ -146,10 +148,22 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onCancel={state.dismissJump}
       />
       <div class="app-shell">
-      <TopBar session={state.session} busy={state.sessionBusy} running={state.running} onLogin={state.login} onLogout={state.logout} />
+      <TopBar
+        session={state.session}
+        busy={state.sessionBusy}
+        running={state.running}
+        onLogin={state.login}
+        onLogout={state.logout}
+        onHome={() => {
+          state.goHome()
+          sidebarRef.current?.scrollTo({ top: 0 })
+        }}
+        breadcrumb={state.lessonContextOrIndex != null ? { courseName: state.lessonContextOrIndex.courseName, lessonTitle: state.lessonContextOrIndex.lessonTitle } : null}
+        onClearLesson={state.clearLesson}
+      />
       <ToastArea toasts={state.toasts} />
       <div class="app-main">
-        <aside class="sidebar">
+        <aside class="sidebar" ref={sidebarRef}>
           <div class="sidebar-head">
             <h2>课程</h2>
             <button
@@ -286,7 +300,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           {tab === 'tasks' && (
             <TaskPanel
               currentLesson={state.currentLesson}
-              lessonLabel={state.lessonContextOrIndex != null ? [state.lessonContextOrIndex.courseName, state.lessonContextOrIndex.lessonTitle].filter(Boolean).join(' · ') : null}
+              lessonContext={state.lessonContextOrIndex}
+              lessonOptions={state.currentCourseLessons}
+              onSelectLesson={state.switchLesson}
               running={state.running}
               busy={state.submitBusy}
               progress={state.progress}
@@ -305,6 +321,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               note={state.note}
               attachments={state.attachments}
               lesson={state.lessonContextOrIndex}
+              lessonOptions={state.currentCourseLessons}
+              currentLessonId={state.currentLesson}
               library={state.noteIndex}
               onOpenLesson={state.selectLesson}
               onGoTasks={goTasks}
@@ -325,6 +343,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               entries={state.qaEntries}
               busy={state.qaBusy}
               hasLesson={state.currentLesson !== ''}
+              lessonContext={state.lessonContextOrIndex != null ? { ...state.lessonContextOrIndex, lessonId: state.currentLesson } : null}
+              lessonOptions={state.currentCourseLessons}
+              onSelectLesson={state.switchLesson}
               onAsk={state.ask}
               recent={state.qaRecent}
               onOpenLesson={state.selectLesson}
@@ -462,6 +483,14 @@ interface AppState {
   harvestLessons: (courseId: string) => void
   toggleMine: (courseId: string, mine: boolean) => void
   selectLesson: (lessonId: string) => void
+  /** 批A: clear the lesson selection (breadcrumb course crumb) — stays put. */
+  clearLesson: () => void
+  /** 批A: back to the start view — no lesson picked, tasks tab. */
+  goHome: () => void
+  /** 批A: switch lesson in place (chip dropdown) — keeps the current tab. */
+  switchLesson: (lessonId: string) => void
+  /** 批A: sibling lessons of the selected lesson's course (chip dropdown). */
+  currentCourseLessons: LessonChipLesson[]
   addManual: (courseId: string, lessonId: string) => void
   /** A2: one click from a finished task to its note. */
   openLessonNotes: (lessonId: string) => void
@@ -739,6 +768,38 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   // See the ref declaration above: assignments stay unconditional so the
   // subscription always calls the freshest closure without re-subscribing.
   openLessonNotesRef.current = openLessonNotes
+
+  // 批A: drop the selection without leaving the current tab (breadcrumb's
+  // course crumb); panels fall back to their library/empty states.
+  const clearLesson = useCallback((): void => {
+    setCurrentLesson('')
+    lessonRef.current = ''
+    setQaEntries([])
+    setAttachments([])
+  }, [])
+
+  // 批A: the brand click — back to the start view (no lesson, tasks tab).
+  const goHome = useCallback((): void => {
+    clearLesson()
+    goTasks()
+  }, [clearLesson, goTasks])
+
+  // 批A: chip-dropdown switching — same loaders as selectLesson but the tab
+  // stays put: the user is already on the page they chose to be on.
+  const switchLesson = useCallback(
+    (lessonId: string): void => {
+      if (lessonId === '' || lessonId === lessonRef.current) return
+      setCurrentLesson(lessonId)
+      lessonRef.current = lessonId
+      setQaEntries([])
+      setAttachments([])
+      void loadNote(lessonId)
+      void loadAttachments(lessonId)
+      void loadHistory(lessonId)
+      void loadQaHistory(lessonId)
+    },
+    [loadNote, loadAttachments, loadHistory, loadQaHistory]
+  )
 
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
   useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
@@ -1028,6 +1089,19 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       lessonTitle: entry.lessonTitle ?? entry.lessonId
     }
   }, [lessonContext, noteIndex, currentLesson])
+
+  // 批A: the selected lesson's course (for the chip's sibling-lesson dropdown).
+  const currentCourse = useMemo(() => {
+    if (currentLesson === '') return null
+    for (const c of tree) {
+      if (c.lessons.some((l) => l.id === currentLesson)) return c
+    }
+    return null
+  }, [tree, currentLesson])
+  const currentCourseLessons = useMemo<LessonChipLesson[]>(
+    () => (currentCourse?.lessons ?? []).map((l) => ({ id: l.id, title: l.title, hasNote: l.hasNote })),
+    [currentCourse]
+  )
 
   const filteredTree = useMemo<CourseTreeInfo[]>(() => {
     const q = debouncedQuery.trim().toLowerCase()
@@ -1601,6 +1675,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     harvestLessons,
     toggleMine,
     selectLesson,
+    clearLesson,
+    goHome,
+    switchLesson,
+    currentCourseLessons,
     addManual,
     createAndRun,
     retryTask,

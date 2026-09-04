@@ -175,7 +175,54 @@ body {
   position: relative;
   z-index: 10;
 }
-.brand { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  /* 批A: the brand is the «back to start» button — reset the button chrome. */
+  border: none;
+  background: none;
+  padding: 3px 8px;
+  margin: -3px -8px;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--speed);
+}
+.brand:hover { background: var(--surface-2); }
+.brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.topbar-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+/* 批A: «you are here» breadcrumb next to the brand (WinUI header duty). */
+.crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: var(--font-size-sm); color: var(--text-muted); }
+.crumb {
+  border: none;
+  background: none;
+  padding: 2px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--speed), background var(--speed);
+}
+.crumb:hover { color: var(--accent); background: var(--accent-soft); }
+.crumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.crumb-sep { color: var(--border-strong); }
+.crumb-current {
+  color: var(--text);
+  font-weight: 550;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .brand-mark {
   width: 27px;
   height: 27px;
@@ -304,6 +351,69 @@ body {
   scroll-behavior: smooth;
 }
 .content h2 { font-size: var(--font-size-xl); margin: 2px 0 14px; font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
+
+/* ---- 批A: unified page head + lesson identity chip ---- */
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 14px; }
+.page-head h2 { margin: 0; }
+.lesson-chip { position: relative; flex-shrink: 0; max-width: 100%; }
+.lesson-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 440px;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: border-color var(--speed), background var(--speed);
+}
+.lesson-chip-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.lesson-chip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lesson-chip-course { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lesson-chip-dot { color: var(--text-muted); }
+.lesson-chip-lesson { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-caret { flex-shrink: 0; transition: transform var(--speed); }
+.chip-caret.open { transform: rotate(180deg); }
+.lesson-chip-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 250px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lesson-chip-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: none;
+  background: none;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.lesson-chip-menu button:hover { background: var(--surface-2); }
+.lesson-chip-menu button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.lesson-chip-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.menu-lesson-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- tabs ---- */
 .tabs {

@@ -77,11 +77,12 @@ describe('TaskPanel', () => {
     lesson_title: '第1讲'
   }
 
-  it('shows the readable lesson label instead of the raw id (批1 A3)', () => {
+  it('shows the readable lesson identity in the header chip instead of the raw id (批1 A3 → 批A chip)', () => {
     const host = mount(
-      <TaskPanel currentLesson="1690625-L4" lessonLabel="数据结构 · 第4讲" running={false} busy={false} progress={null} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+      <TaskPanel currentLesson="1690625-L4" lessonContext={{ courseName: '数据结构', lessonTitle: '第4讲' }} running={false} busy={false} progress={null} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
     )
-    expect(host.textContent).toContain('已选课时：数据结构 · 第4讲')
+    expect(host.querySelector('.lesson-chip-btn')?.textContent).toContain('数据结构')
+    expect(host.querySelector('.lesson-chip-btn')?.textContent).toContain('第4讲')
     expect(host.textContent).not.toContain('1690625-L4')
   })
 

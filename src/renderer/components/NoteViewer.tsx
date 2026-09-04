@@ -9,6 +9,8 @@ import type { NoteAttachmentInfo } from '../../shared/bridge'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
 import { NoteLibrary } from './NoteLibrary'
 import { MindMap } from './MindMap'
+import { PageHeader } from './PageHeader'
+import { LessonChip, type LessonChipLesson } from './LessonChip'
 
 /** 试卷头 (V4): the lesson's identity line — course · teacher · lesson. */
 export interface LessonContext {
@@ -23,6 +25,10 @@ export interface NoteViewerProps {
   attachments?: NoteAttachmentInfo[]
   /** Lesson identity for the exam-paper masthead (V4). */
   lesson?: LessonContext | null
+  /** 批A: sibling lessons for the header chip's quick-switch dropdown. */
+  lessonOptions?: LessonChipLesson[]
+  /** 批A: id of the selected lesson (chips' active-row highlight). */
+  currentLessonId?: string
   /** 批B: cross-lesson library shown instead of the dead empty state. */
   library?: NoteIndexInfo[]
   /** 批B: open a library entry = select that lesson globally. */
@@ -54,6 +60,8 @@ export function NoteViewer({
   note,
   attachments = [],
   lesson = null,
+  lessonOptions,
+  currentLessonId,
   library = [],
   onOpenLesson,
   onGoTasks,
@@ -74,6 +82,20 @@ export function NoteViewer({
   const hitRate = note != null ? evidenceHitRate(note, attachments) : null
   return (
     <div class="note-viewer">
+      <PageHeader
+        title="笔记"
+        chip={
+          lesson != null ? (
+            <LessonChip
+              courseName={lesson.courseName}
+              lessonTitle={lesson.lessonTitle}
+              lessons={lessonOptions}
+              currentLessonId={currentLessonId}
+              onSelectLesson={onNavigateLesson}
+            />
+          ) : undefined
+        }
+      />
       <div class="note-toolbar">
         <nav
           class="note-tabs"

@@ -13,6 +13,12 @@ export interface TopBarProps {
   running: boolean
   onLogin: () => void
   onLogout: () => void
+  /** 批A: brand click = back to the start view (no lesson picked, tasks tab). */
+  onHome: () => void
+  /** 批A: «you are here» breadcrumb — present only while a lesson is picked. */
+  breadcrumb: { courseName: string; lessonTitle: string } | null
+  /** 批A: clicking the course crumb clears the lesson selection. */
+  onClearLesson: () => void
 }
 
 const SESSION_LABELS: Record<SessionState, string> = {
@@ -21,16 +27,29 @@ const SESSION_LABELS: Record<SessionState, string> = {
   logged_out: '未登录'
 }
 
-export function TopBar({ session, busy, running, onLogin, onLogout }: TopBarProps): JSX.Element {
+export function TopBar({ session, busy, running, onLogin, onLogout, onHome, breadcrumb, onClearLesson }: TopBarProps): JSX.Element {
   // C4: logout wipes the working context — confirm first.
   const [pendingLogout, setPendingLogout] = useState(false)
   return (
     <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">
-          <Colonnade size={17} />
-        </span>
-        <h1>SEU Summary</h1>
+      <div class="topbar-left">
+        <button class="brand" onClick={onHome} title="回到起始页">
+          <span class="brand-mark" aria-hidden="true">
+            <Colonnade size={17} />
+          </span>
+          <h1>SEU Summary</h1>
+        </button>
+        {breadcrumb != null && (
+          <nav class="crumbs" aria-label="当前位置">
+            <button class="crumb" onClick={onClearLesson} title="回到全部课程">
+              {breadcrumb.courseName}
+            </button>
+            <span class="crumb-sep" aria-hidden="true">
+              /
+            </span>
+            <span class="crumb-current">{breadcrumb.lessonTitle}</span>
+          </nav>
+        )}
       </div>
       <div class="topbar-right">
         {running && (
