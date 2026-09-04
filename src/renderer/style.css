@@ -1,105 +1,117 @@
 /* ==========================================================================
-   SEU Summary design system — «quiet academia»
-   Calm neutrals, one confident indigo accent, soft depth, tabular numerals.
-   Light default; dark via prefers-color-scheme or data-theme override (U3).
+   SEU Summary design system — «文楷纸张 · 礼堂墨绿» (paper & ink)
+   Warm paper surfaces, auditorium-viridian ink, one brass counterpoint,
+   kai display / song body / sans chrome / mono time.
+   Light «宣纸» default; dark «夜林» via prefers-color-scheme or data-theme (U3).
+   Hard rule: deep green #00432B is INK — on dark surfaces it dies (1.53:1);
+   the dark theme always speaks in leaf green instead.
    ========================================================================== */
 
 /* ---- tokens ---- */
 :root {
-  --bg: #f2f4f9;
-  --bg-tint: #e9edf6;
-  --surface: #ffffff;
-  --surface-2: #eef1f7;
-  --surface-3: #e3e8f2;
-  --text: #171a21;
-  --text-secondary: #454d5d;
-  /* #667085 keeps small muted text at ~5.0:1 on --surface (WCAG AA); #79818f was 3.9:1. */
-  --text-muted: #667085;
-  --accent: #3b5bdb;
-  --accent-hover: #3450c9;
-  --accent-2: #7048e8;
-  --accent-soft: rgba(59, 91, 219, 0.1);
-  --accent-soft-2: rgba(59, 91, 219, 0.18);
-  --accent-contrast: #ffffff;
-  --danger: #e03131;
-  --danger-soft: rgba(224, 49, 49, 0.1);
-  --success: #2b8a3e;
-  --success-soft: rgba(43, 138, 62, 0.12);
-  --warning: #e8890c;
-  --warning-soft: rgba(232, 137, 12, 0.12);
-  --border: #dfe4ef;
-  --border-strong: #c9d2e4;
-  --radius-sm: 7px;
-  --radius: 11px;
-  --radius-lg: 15px;
-  --shadow-sm: 0 1px 2px rgba(23, 26, 33, 0.05), 0 1px 6px rgba(23, 26, 33, 0.04);
-  --shadow: 0 2px 6px rgba(23, 26, 33, 0.06), 0 8px 24px rgba(23, 26, 33, 0.07);
-  --shadow-lg: 0 4px 12px rgba(23, 26, 33, 0.1), 0 16px 44px rgba(23, 26, 33, 0.14);
+  --bg: #f5f1e6;
+  --surface: #fbf9f3;
+  --surface-2: #efe9da;
+  --surface-3: #e6dfcb;
+  --text: #1c221c;
+  --text-secondary: #43503f;
+  /* #5A6655 on --surface = 5.75:1 (AA). */
+  --text-muted: #5a6655;
+  --accent: #00432b;
+  --accent-hover: #00602f;
+  --accent-2: #6e5426;
+  --accent-soft: rgba(0, 67, 43, 0.08);
+  --accent-soft-2: rgba(0, 67, 43, 0.16);
+  --accent-contrast: #fbf9f3;
+  --brass: #6e5426;
+  --brass-soft: rgba(110, 84, 38, 0.12);
+  --danger: #b34a3c;
+  --danger-soft: rgba(179, 74, 60, 0.1);
+  --success: #2f6b3f;
+  --success-soft: rgba(47, 107, 63, 0.12);
+  --warning: #a8551e;
+  --warning-soft: rgba(168, 85, 30, 0.12);
+  --border: #e3dccc;
+  --border-strong: #cfc8b4;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-sm: 0 1px 2px rgba(28, 34, 28, 0.04), 0 1px 4px rgba(28, 34, 28, 0.03);
+  --shadow: 0 2px 6px rgba(28, 34, 28, 0.05), 0 8px 20px rgba(28, 34, 28, 0.06);
+  --shadow-lg: 0 4px 10px rgba(28, 34, 28, 0.08), 0 16px 36px rgba(28, 34, 28, 0.12);
   --font-size-xs: 11px;
   --font-size-sm: 12.5px;
-  --font-size-md: 13.5px;
-  --font-size-lg: 15.5px;
-  --font-size-xl: 18px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
   --speed: 140ms;
+  --font-ui: 'Segoe UI Variable Text', 'Noto Sans SC', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif;
+  --font-display: 'LXGW WenKai Screen', 'LXGW WenKai', 'KaiTi', 'STKaiti', serif;
+  --font-serif: 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+  --font-mono: 'JetBrains Mono', Consolas, 'Cascadia Mono', monospace;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #101319;
-    --bg-tint: #0c0f14;
-    --surface: #181c25;
-    --surface-2: #1f2430;
-    --surface-3: #293041;
-    --text: #e9ebf1;
-    --text-secondary: #b6bdc9;
-    --text-muted: #828b9c;
-    --accent: #748ffc;
-    --accent-hover: #91a5ff;
-    --accent-2: #9775fa;
-    --accent-soft: rgba(116, 143, 252, 0.14);
-    --accent-soft-2: rgba(116, 143, 252, 0.24);
-    --danger: #ff8787;
-    --danger-soft: rgba(255, 135, 135, 0.12);
-    --success: #69db7c;
-    --success-soft: rgba(105, 219, 124, 0.13);
-    --warning: #ffd43b;
-    --warning-soft: rgba(255, 212, 59, 0.12);
-    --border: #262d3b;
-    --border-strong: #363f52;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 6px rgba(0, 0, 0, 0.25);
-    --shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.35);
-    --shadow-lg: 0 4px 14px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.5);
+    --bg: #0d110d;
+    --surface: #151b16;
+    --surface-2: #1d281b;
+    --surface-3: #24322a;
+    --text: #e8e3d6;
+    --text-secondary: #a9b4a6;
+    --text-muted: #7e8b7b;
+    --accent: #7cc791;
+    --accent-hover: #8fd6a0;
+    --accent-2: #d8c48f;
+    --accent-soft: rgba(124, 199, 145, 0.12);
+    --accent-soft-2: rgba(124, 199, 145, 0.2);
+    --accent-contrast: #102016;
+    --brass: #d8c48f;
+    --brass-soft: rgba(216, 196, 143, 0.14);
+    --danger: #e08573;
+    --danger-soft: rgba(224, 133, 115, 0.12);
+    --success: #8fd6a0;
+    --success-soft: rgba(143, 214, 160, 0.13);
+    --warning: #e0a36a;
+    --warning-soft: rgba(224, 163, 106, 0.13);
+    --border: #2a382e;
+    --border-strong: #3d5042;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.25);
+    --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.4), 0 16px 36px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
 }
 
 /* Explicit theme override (U3): wins over prefers-color-scheme. */
 :root[data-theme='dark'] {
-  --bg: #101319;
-  --bg-tint: #0c0f14;
-  --surface: #181c25;
-  --surface-2: #1f2430;
-  --surface-3: #293041;
-  --text: #e9ebf1;
-  --text-secondary: #b6bdc9;
-  --text-muted: #828b9c;
-  --accent: #748ffc;
-  --accent-hover: #91a5ff;
-  --accent-2: #9775fa;
-  --accent-soft: rgba(116, 143, 252, 0.14);
-  --accent-soft-2: rgba(116, 143, 252, 0.24);
-  --danger: #ff8787;
-  --danger-soft: rgba(255, 135, 135, 0.12);
-  --success: #69db7c;
-  --success-soft: rgba(105, 219, 124, 0.13);
-  --warning: #ffd43b;
-  --warning-soft: rgba(255, 212, 59, 0.12);
-  --border: #262d3b;
-  --border-strong: #363f52;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 6px rgba(0, 0, 0, 0.25);
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 4px 14px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.5);
+  --bg: #0d110d;
+  --surface: #151b16;
+  --surface-2: #1d281b;
+  --surface-3: #24322a;
+  --text: #e8e3d6;
+  --text-secondary: #a9b4a6;
+  --text-muted: #7e8b7b;
+  --accent: #7cc791;
+  --accent-hover: #8fd6a0;
+  --accent-2: #d8c48f;
+  --accent-soft: rgba(124, 199, 145, 0.12);
+  --accent-soft-2: rgba(124, 199, 145, 0.2);
+  --accent-contrast: #102016;
+  --brass: #d8c48f;
+  --brass-soft: rgba(216, 196, 143, 0.14);
+  --danger: #e08573;
+  --danger-soft: rgba(224, 133, 115, 0.12);
+  --success: #8fd6a0;
+  --success-soft: rgba(143, 214, 160, 0.13);
+  --warning: #e0a36a;
+  --warning-soft: rgba(224, 163, 106, 0.13);
+  --border: #2a382e;
+  --border-strong: #3d5042;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.25);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.4), 0 16px 36px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 
@@ -110,8 +122,11 @@ html { height: 100%; }
 
 body {
   margin: 0;
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif;
-  background: var(--bg);
+  font-family: var(--font-ui);
+  /* Uncoated-paper grain: one faint turbulence tile over the desk color.
+     Kills flat-color banding; ~4% so it reads as texture, not noise. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240' opacity='0.05'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-color: var(--bg);
   color: var(--text);
   font-size: var(--font-size-md);
   line-height: 1.55;

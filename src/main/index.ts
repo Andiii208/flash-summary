@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session } from 'electron'
 import { join } from 'path'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
@@ -34,7 +34,9 @@ function createMainWindow(): BrowserWindow {
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: '#f2f4f9',
+    // Match the paper-and-ink tokens (style.css) so first paint never flashes
+    // white on a dark system (or dark on light).
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0D110D' : '#F5F1E6',
     title: APP_TITLE,
     // The smoke probe drives the window over CDP; keep it invisible there.
     show: process.env.SEU_SMOKE !== '1',

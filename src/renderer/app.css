@@ -30,6 +30,8 @@
   --color-danger-soft: var(--danger-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-brass: var(--brass);
+  --color-brass-soft: var(--brass-soft);
   --radius-card: var(--radius);
   --radius-inner: var(--radius-sm);
   --text-2xs: 11px;
