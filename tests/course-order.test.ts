@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { orderMyCoursesFirst } from '../src/shared/course-order'
+import { orderMyCoursesFirst, orderLessonsByNumber, orderTreeLessonsByNumber } from '../src/shared/course-order'
 import type { CourseTreeInfo } from '../src/shared/bridge'
 
 function course(partial: Partial<CourseTreeInfo> & { id: string }): CourseTreeInfo {
@@ -40,5 +40,19 @@ describe('orderMyCoursesFirst (C2/C4 + M1-4 recommendation ordering)', () => {
     const { tree: ordered, sameCourseIds } = orderMyCoursesFirst([course({ id: 'm', isMine: true, subjCode: '' }), course({ id: 'n', subjCode: '' })])
     expect(ordered.map((c) => c.id)).toEqual(['m', 'n'])
     expect(sameCourseIds.size).toBe(0)
+  })
+})
+
+describe('orderLessonsByNumber / orderTreeLessonsByNumber (批2 A4)', () => {
+  it('orders lessons by their «第N节» number, numberless rows tail stably', () => {
+    const lessons = [{ id: 'a', title: '第12节课' }, { id: 'b', title: '第2节课' }, { id: 'c', title: '附加材料' }, { id: 'd', title: '第1节课' }]
+    expect(orderLessonsByNumber(lessons).map((l) => l.id)).toEqual(['d', 'b', 'a', 'c'])
+  })
+
+  it('applies the ordering across the whole tree', () => {
+    const tree = [
+      { id: 'c1', name: '课一', lessons: [{ id: 'c1-L1', title: '第2节课' }, { id: 'c1-L0', title: '第1节课' }] }
+    ]
+    expect(orderTreeLessonsByNumber(tree)[0]!.lessons.map((l) => l.id)).toEqual(['c1-L0', 'c1-L1'])
   })
 })

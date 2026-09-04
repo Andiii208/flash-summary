@@ -27,6 +27,14 @@ export interface NoteViewerProps {
   library?: NoteIndexInfo[]
   /** 批B: open a library entry = select that lesson globally. */
   onOpenLesson?: (lessonId: string) => void
+  /** A7: jump to the tasks tab when the selected lesson has no note. */
+  onGoTasks?: () => void
+  /** B4: «上一节/下一节» neighbors within the same course (sorted order;
+   *  structural subset — only id/title are used, any lesson row fits). */
+  prevLesson?: { id: string; title: string } | null
+  nextLesson?: { id: string; title: string } | null
+  /** B4: navigate to a neighbor lesson (stays on the notes tab). */
+  onNavigateLesson?: (lessonId: string) => void
   /** Regenerate in flight (button busy state). */
   regenBusy?: boolean
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
@@ -48,6 +56,10 @@ export function NoteViewer({
   lesson = null,
   library = [],
   onOpenLesson,
+  onGoTasks,
+  prevLesson = null,
+  nextLesson = null,
+  onNavigateLesson,
   regenBusy = false,
   onRegenerate,
   pdfBusy = false,
@@ -93,6 +105,30 @@ export function NoteViewer({
           ))}
         </nav>
         <div class="note-actions">
+          {onNavigateLesson != null && (prevLesson != null || nextLesson != null) && (
+            <span class="lesson-nav">
+              <button
+                class="btn small"
+                disabled={prevLesson == null}
+                title={prevLesson?.title ?? '已是第一节'}
+                onClick={() => {
+                  if (prevLesson != null) onNavigateLesson(prevLesson.id)
+                }}
+              >
+                ‹ 上一节
+              </button>
+              <button
+                class="btn small"
+                disabled={nextLesson == null}
+                title={nextLesson?.title ?? '已是最后一节'}
+                onClick={() => {
+                  if (nextLesson != null) onNavigateLesson(nextLesson.id)
+                }}
+              >
+                下一节 ›
+              </button>
+            </span>
+          )}
           {hitRate != null && hitRate.total > 0 && (
             <span class="badge" title={`时间线证据引用精确命中附件 ${hitRate.hits}/${hitRate.total}`}>
               引用命中 {hitRate.hits}/{hitRate.total}
@@ -133,11 +169,26 @@ export function NoteViewer({
           </header>
         )}
         {note == null ? (
-          library.length > 0 && onOpenLesson != null ? (
-            <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
-          ) : (
-            <p class="msg">尚无笔记 — 运行任务生成后自动显示</p>
-          )
+          <>
+            {/* A7: when a lesson IS selected, say so — the library must not
+                mask «this lesson has no note yet». */}
+            {lesson != null && onGoTasks != null && (
+              <div class="note-empty-current" data-testid="note-empty-current">
+                <p class="msg">「{lesson.lessonTitle}」尚无笔记 — 先运行任务生成。</p>
+                <button class="btn primary" onClick={onGoTasks}>
+                  去创建任务
+                </button>
+              </div>
+            )}
+            {library.length > 0 && onOpenLesson != null ? (
+              <>
+                {lesson != null && <p class="msg">或打开其他笔记：</p>}
+                <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
+              </>
+            ) : lesson == null ? (
+              <p class="msg">尚无笔记 — 运行任务生成后自动显示</p>
+            ) : null}
+          </>
         ) : view === 'mindmap' ? (
           <MindMap tree={note.knowledgeTree} />
         ) : (

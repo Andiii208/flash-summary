@@ -6,7 +6,7 @@ import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, NoteIndexInfo
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
-import { orderMyCoursesFirst } from '../shared/course-order'
+import { orderMyCoursesFirst, orderTreeLessonsByNumber } from '../shared/course-order'
 import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
 import { MyStudyPanel } from './components/MyStudyPanel'
@@ -276,6 +276,10 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               lesson={state.lessonContextOrIndex}
               library={state.noteIndex}
               onOpenLesson={state.selectLesson}
+              onGoTasks={goTasks}
+              prevLesson={state.lessonNeighbors.prev}
+              nextLesson={state.lessonNeighbors.next}
+              onNavigateLesson={state.openLessonNotes}
               regenBusy={state.noteRegenBusy}
               pdfBusy={state.pdfBusy}
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
@@ -361,8 +365,10 @@ interface AppState {
   noteIndex: NoteIndexInfo[]
   /** 批B: recent Q&A across lessons (qa tab empty state). */
   qaRecent: QaRecentInfo[]
-  /** 批C: courses whose catalog harvest is currently running. */
-  harvestInflight: ReadonlySet<string>
+    /** B4: neighbors of the selected lesson (sorted, same course). */
+    lessonNeighbors: { prev: { id: string; title: string } | null; next: { id: string; title: string } | null }
+    /** 批C: courses whose catalog harvest is currently running. */
+    harvestInflight: ReadonlySet<string>
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (serial queue visibility). */
   globalHistory: TaskRowInfo[]
@@ -521,7 +527,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const applyLocalTree = useCallback(async (): Promise<void> => {
     const res = await bridge.school.courseTree()
     if (res.ok && res.value != null) {
-      setTree(res.value)
+      // A4: store lessons «第N节»-sorted so every consumer reads one order.
+      setTree(orderTreeLessonsByNumber(res.value))
       setTreeLoaded(true)
     }
   }, [bridge])
@@ -862,6 +869,22 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   // C2/C4: pin sorting — «my courses» first, then other teachers' sections
   // of the same subjects («同课» badge), then the rest of the catalog.
   const orderedTree = useMemo(() => orderMyCoursesFirst(tree), [tree])
+
+  // B4: neighbors of the selected lesson within its course (sorted order —
+  // applyLocalTree stores the tree with lessons already «第N节»-sorted).
+  const lessonNeighbors = useMemo<{ prev: CourseTreeInfo['lessons'][number] | null; next: CourseTreeInfo['lessons'][number] | null }>(() => {
+    if (currentLesson === '') return { prev: null, next: null }
+    for (const c of orderedTree.tree) {
+      const idx = c.lessons.findIndex((l) => l.id === currentLesson)
+      if (idx >= 0) {
+        return {
+          prev: idx > 0 ? (c.lessons[idx - 1] ?? null) : null,
+          next: idx < c.lessons.length - 1 ? (c.lessons[idx + 1] ?? null) : null
+        }
+      }
+    }
+    return { prev: null, next: null }
+  }, [orderedTree, currentLesson])
 
   // V4 试卷头: identity of the selected lesson, read from the local tree.
   const lessonContext = useMemo(() => {
@@ -1351,6 +1374,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     mineCourses,
     lessonContext,
     lessonContextOrIndex,
+    lessonNeighbors,
     extractedCourses,
     sameCourses,
     allCoursesOpen,

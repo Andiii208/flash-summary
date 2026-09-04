@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { QaRecentInfo } from '../../shared/bridge'
+import { MdLite } from './MdLite'
 
 export interface QaEntry {
   question: string
@@ -71,21 +72,29 @@ export function QaPanel({ entries, busy, hasLesson, onAsk, recent = [], onOpenLe
               <span class="ai-tag" aria-hidden="true">
                 AI
               </span>
-              <p>{e.answer}</p>
+              {/* A6: model answers render as markdown-lite; single newlines are
+                  promoted to paragraph breaks (answers are not md documents). */}
+              <MdLite text={e.answer.replace(/\r?\n/g, '\n\n')} />
             </div>
           </div>
         ))}
         {busy && <p class="qa-a pending">思考中…</p>}
       </div>
       <div class="qa-input-row">
-        <input
+        <textarea
           class="qa-input"
+          rows={2}
           value={draft}
-          placeholder={hasLesson ? '针对当前课时提问…' : '先选择一条笔记或课时'}
+          placeholder={hasLesson ? '针对当前课时提问…（Enter 提问，Shift+Enter 换行）' : '先选择一条笔记或课时'}
           disabled={!hasLesson}
-          onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+          onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
+            // A5: an IME composition Enter (pinyin confirm) must not submit.
+            // Preact forwards the native KeyboardEvent — isComposing lives on it.
+            if (e.key === 'Enter' && !e.shiftKey && (e as unknown as KeyboardEvent).isComposing !== true) {
+              e.preventDefault()
+              submit()
+            }
           }}
         />
         <button class="btn primary" onClick={submit} disabled={!askable || draft.trim() === ''}>

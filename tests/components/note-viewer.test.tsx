@@ -206,6 +206,43 @@ describe('NoteViewer', () => {
     expect(uncited.querySelector('.note-actions .badge')).toBeNull()
   })
 
+  it('distinguishes «selected lesson has no note» from the library (批2 A7)', () => {
+    const onGoTasks = vi.fn()
+    const library = [
+      { lessonId: 'l2', version: 1, createdAt: '2026-09-04T00:00:00Z', courseName: '算法', teacher: null, lessonTitle: '第2节课' }
+    ]
+    const host = mount(<NoteViewer note={null} lesson={{ courseName: '算法', lessonTitle: '第1节课' }} library={library} onOpenLesson={() => undefined} onGoTasks={onGoTasks} />)
+    expect(host.querySelector('[data-testid="note-empty-current"]')).not.toBeNull()
+    expect(host.textContent).toContain('「第1节课」尚无笔记')
+    const goButton = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '去创建任务')
+    click(goButton ?? null)
+    expect(onGoTasks).toHaveBeenCalledTimes(1)
+    // The library stays reachable below.
+    expect(host.querySelector('[data-testid="note-library"]')).not.toBeNull()
+    expect(host.textContent).toContain('或打开其他笔记')
+  })
+
+  it('navigates to the previous/next lesson via the toolbar (批2 B4)', () => {
+    const onNavigate = vi.fn()
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        prevLesson={{ id: 'l0', title: '第0节课' }}
+        nextLesson={null}
+        onNavigateLesson={onNavigate}
+      />
+    )
+    const prev = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '‹ 上一节')
+    const next = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '下一节 ›')
+    click(prev ?? null)
+    expect(onNavigate).toHaveBeenCalledWith('l0')
+    expect((next as HTMLButtonElement | undefined)?.disabled).toBe(true)
+  })
+
+  it('hides the lesson nav when no neighbors are provided', () => {
+    const host = mount(<NoteViewer note={NOTE} />)
+    expect(host.querySelector('.lesson-nav')).toBeNull()
+  })
   it('shows the cross-lesson note library instead of the dead empty state (批B)', () => {
     const onOpenLesson = vi.fn()
     const library = [

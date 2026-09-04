@@ -75,7 +75,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         <h3>资料库与缓存位置</h3>
         <div class="settings-row">
           <span class="settings-label">资料库</span>
-          <code class="settings-path">{props.settings?.libraryRoot ?? '…'}</code>
+          <code class="settings-path" title={props.settings?.libraryRoot ?? ''}>{props.settings?.libraryRoot ?? '…'}</code>
           <button class="btn small" onClick={props.onChooseLibrary}>
             更改
           </button>

@@ -17,8 +17,8 @@ export function click(target: Element | null): void {
   })
 }
 
-/** Set an input value the way a user would, then flush preact updates. */
-export function input(target: HTMLInputElement | null, value: string): void {
+/** Set an input/textarea value the way a user would, then flush preact updates. */
+export function input(target: HTMLInputElement | HTMLTextAreaElement | null, value: string): void {
   act(() => {
     if (target == null) return
     target.value = value

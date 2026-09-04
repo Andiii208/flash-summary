@@ -15,7 +15,7 @@ describe('QaPanel', () => {
   it('fires onAsk with the typed question and clears the input', () => {
     const onAsk = vi.fn()
     const host = mount(<QaPanel entries={[]} busy={false} hasLesson onAsk={onAsk} />)
-    const field = host.querySelector<HTMLInputElement>('input.qa-input')
+    const field = host.querySelector<HTMLTextAreaElement>('textarea.qa-input')
     input(field, '再讲一遍')
     click(host.querySelector('button'))
     expect(onAsk).toHaveBeenCalledWith('再讲一遍')
@@ -31,13 +31,36 @@ describe('QaPanel', () => {
   it('locks the input when no lesson is selected instead of silently no-op\'ing', () => {
     const onAsk = vi.fn()
     const host = mount(<QaPanel entries={[]} busy={false} hasLesson={false} onAsk={onAsk} />)
-    const field = host.querySelector<HTMLInputElement>('input.qa-input')
+    const field = host.querySelector<HTMLTextAreaElement>('textarea.qa-input')
     expect(field?.disabled).toBe(true)
     expect((host.querySelector('button') as HTMLButtonElement).disabled).toBe(true)
     expect(host.textContent).toContain('选择课时后')
     input(field, '这个问题不会被发送')
     click(host.querySelector('button'))
     expect(onAsk).not.toHaveBeenCalled()
+  })
+
+  it('does not submit while the IME composition is active (批2 A5)', () => {
+    const onAsk = vi.fn()
+    const host = mount(<QaPanel entries={[]} busy={false} hasLesson onAsk={onAsk} />)
+    const field = host.querySelector<HTMLTextAreaElement>('textarea.qa-input')
+    input(field, '递归复杂度')
+    // Preact forwards the native event; happy-dom needs isComposing patched on.
+    const composing = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+    Object.defineProperty(composing, 'isComposing', { value: true })
+    field!.dispatchEvent(composing)
+    expect(onAsk).not.toHaveBeenCalled()
+    // A normal Enter (not composing) submits.
+    field!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(onAsk).toHaveBeenCalledWith('递归复杂度')
+  })
+
+  it('renders the answer as markdown-lite with paragraph breaks (批2 A6)', () => {
+    const entries = [{ question: '总结一下', answer: '第一点。\n第二点有 **加粗**。' }]
+    const host = mount(<QaPanel entries={entries} busy={false} hasLesson onAsk={() => undefined} />)
+    const paras = host.querySelectorAll('.qa-a .md-para')
+    expect(paras.length).toBeGreaterThanOrEqual(2)
+    expect(host.querySelector('.qa-a strong')?.textContent).toBe('加粗')
   })
 
   it('shows recent cross-lesson exchanges when no lesson is selected (批B)', () => {

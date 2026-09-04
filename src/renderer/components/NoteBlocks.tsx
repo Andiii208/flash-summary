@@ -237,19 +237,26 @@ function FormulaList({ items }: { items: Note['formulasAndSteps'] }): JSX.Elemen
 
 /** The evidence gallery section (cited first, then remaining keyframes). */
 export function EvidenceGallery({ note, attachments }: { note: Note; attachments: AttachmentLike[] }): JSX.Element {
+  const [zoom, setZoom] = useState<TimelineImage | null>(null)
   const gallery = resolveEvidenceGallery(note, attachments)
   if (gallery.length === 0) return <p class="msg">本课时尚无可用画面素材</p>
   return (
     <div class="evidence-gallery" data-testid="evidence-gallery">
       {gallery.map((img) => (
         <figure key={img.ref} class="evidence-fig">
-          <img src={img.dataUrl} alt={`课堂画面 ${img.ref}`} loading="lazy" />
+          {/* C3: gallery figures zoom like the timeline thumbs. */}
+          <button class="evidence-zoom-btn" title={`放大 ${img.ref}`} onClick={() => setZoom(img)}>
+            <img src={img.dataUrl} alt={`课堂画面 ${img.ref}`} loading="lazy" />
+          </button>
           <figcaption>
             <span class="evidence-ref">{img.ref}</span>
             <span class={`thumb-origin ${img.origin}`}>{img.origin === 'evidence' ? '笔记引用' : '时间线画面'}</span>
           </figcaption>
         </figure>
       ))}
+      <Dialog open={zoom != null} title={zoom?.ref ?? ''} confirmLabel="关闭" onConfirm={() => setZoom(null)} onCancel={() => setZoom(null)}>
+        {zoom != null && <img class="zoom-image" src={zoom.dataUrl} alt={zoom.ref} />}
+      </Dialog>
     </div>
   )
 }
