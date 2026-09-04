@@ -983,7 +983,17 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
             toast(res.error ?? 'PDF 生成失败', 'error')
             return
           }
-          toast(`已导出 PDF（${Math.round((res.value?.bytes ?? 0) / 1024)} KB）：${res.value?.path ?? ''}`, 'success')
+          const filePath = res.value?.path ?? ''
+          toast(
+            `已导出 PDF（${Math.round((res.value?.bytes ?? 0) / 1024)} KB）：${filePath}`,
+            'success',
+            {
+              actionLabel: '打开所在文件夹',
+              onAction: () => {
+                void bridge.notes.revealFile(filePath)
+              }
+            }
+          )
         } finally {
           render(null, printRoot!)
           setPdfBusy(false)

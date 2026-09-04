@@ -984,7 +984,12 @@ body {
 .timeline-cards { display: flex; flex-direction: column; gap: 12px; }
 .timeline-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .timeline-head { display: flex; align-items: baseline; gap: 10px; }
-.timeline-stamp { font-family: ui-monospace, Consolas, monospace; font-size: var(--font-size-xs); color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 999px; font-weight: 600; }
+.timeline-stamp { font-family: ui-monospace, Consolas, monospace; font-size: var(--font-size-xs); color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 999px; font-weight: 600; border: none; cursor: pointer; }
+.timeline-stamp.active { background: var(--accent-soft-2); }
+.timeline-stamp:hover { background: var(--accent-soft-2); }
+.refs-toggle { align-self: flex-start; background: none; border: none; color: var(--text-muted); font-size: var(--font-size-xs); cursor: pointer; padding: 0; }
+.refs-toggle:hover { color: var(--accent); }
+.timeline-quote.best { border-left-color: var(--accent-soft-2); }
 .timeline-title { margin: 0; font-size: var(--font-size-md); font-weight: 620; color: var(--text); }
 .timeline-detail { margin: 0; font-size: var(--font-size-md); line-height: 1.65; color: var(--text); }
 .timeline-quote { margin: 2px 0 0; padding: 6px 10px; border-left: 2px solid var(--border); color: var(--text-muted); font-size: var(--font-size-sm); }
@@ -1039,6 +1044,8 @@ body {
 .mindmap-node.root .mindmap-label { font-weight: 700; }
 .mindmap-node[data-clickable] .mindmap-box, .mindmap-node[role='button'] { cursor: pointer; }
 .mindmap-node:hover .mindmap-box { stroke: var(--accent); }
+.mindmap-node:focus { outline: none; }
+.mindmap-node:focus-visible .mindmap-box { stroke: var(--accent); stroke-width: 2; }
 .mindmap-label { font-size: 13px; fill: var(--text); }
 .mindmap-badge { fill: var(--accent); }
 .mindmap-badge-text { font-size: 10px; fill: #fff; font-weight: 700; }

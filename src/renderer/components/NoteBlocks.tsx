@@ -114,25 +114,50 @@ function TreeNodeRows({ node, depth }: { node: TreeNode; depth: number }): JSX.E
   )
 }
 
-/** Timeline as image-annotated cards (the heart of the detailed view). */
+/** Timeline as image-annotated cards (the heart of the detailed view).
+ *  Clicking the mm:ss stamp expands every transcript quote of the entry
+ *  (the collapsed card shows only the closest one). */
 function TimelineCards({ entries, attachments }: { entries: Note['timeline']; attachments: AttachmentLike[] }): JSX.Element {
   const [zoom, setZoom] = useState<TimelineImage | null>(null)
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
+  const toggleRefs = (index: number): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
   return (
     <div class="timeline-cards" data-testid="timeline-cards">
       {entries.map((entry, i) => {
         const images = bindTimelineImages(entry, attachments)
         const quote = quoteForEntry(entry)
+        const showAllRefs = expanded.has(i)
+        const refs = showAllRefs ? entry.refs : quote != null ? [quote] : []
         return (
           <article key={i} class="timeline-card">
             <header class="timeline-head">
-              <span class="timeline-stamp">{formatTime(entry.at)}</span>
+              <button
+                class={`timeline-stamp${showAllRefs ? ' active' : ''}`}
+                onClick={() => toggleRefs(i)}
+                title={entry.refs.length > 1 ? '点击展开/收起全部转写引文' : undefined}
+                aria-expanded={entry.refs.length > 1 ? showAllRefs : undefined}
+              >
+                {formatTime(entry.at)}
+              </button>
               <h4 class="timeline-title">{entry.title}</h4>
             </header>
             <p class="timeline-detail">{entry.detail}</p>
-            {quote != null && (
-              <blockquote class="timeline-quote">
-                「{quote.text}」<span class="quote-at">{formatTime(quote.at)}</span>
+            {refs.map((ref, j) => (
+              <blockquote key={j} class={`timeline-quote${j === 0 && !showAllRefs ? ' best' : ''}`}>
+                「{ref.text}」<span class="quote-at">{formatTime(ref.at)}</span>
               </blockquote>
+            ))}
+            {entry.refs.length > 1 && (
+              <button class="refs-toggle" onClick={() => toggleRefs(i)}>
+                {showAllRefs ? `收起（${entry.refs.length} 条）` : `展开全部 ${entry.refs.length} 条引文`}
+              </button>
             )}
             {images.length > 0 && (
               <div class="timeline-images">

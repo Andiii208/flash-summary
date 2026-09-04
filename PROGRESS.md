@@ -53,6 +53,7 @@
 
 ## 遗留（诚实清单）
 
+- **笔记质变「明确不做」清单（2026-09-04 Note Revolution 计划承诺记录，未来候选）**：①QA 追问发图（现状只传证据 ID 字符串，升级多模态时参照 note-craft SKILL §1）；②时间戳跳转视频（本地视频已删、平台播放页无时间参数——硬约束）；③笔记在线编辑器；④笔记版本切换 UI（版本数据全量留存于 notes 表，只差交互）。另：新 prompt 的 evidence 引用遵循度需用户真实点一次「重新生成」验证（预期缩略图角标从「就近」变为「引用」）。
 - **UI 发布后迭代清单（2026-09-03 审查产出，按性价比排序；发布前 5 个小点已修）**：①浅/深主题页签 ARIA 收口（tablist 无方向键导航——去 role 或补全，二选一）；②主窗口 `minWidth/minHeight` + `backgroundColor`（防白闪，主进程单行）；③空态样式统一（EmptyState 卡 vs `.msg` 灰字两级待遇）；④ProviderPanel h2 跳级 + NoteViewer 缺页标题；⑤资料库迁移按钮加 busy 防护；⑥失败时表单过早清空（ManualAdd/ProviderPanel 的 Key）；⑦课程树截断文本补 title；⑧死令牌清理（--bg-tint/--warning 系）与深色令牌块去重；⑨错误 toast 用 assertive（role=alert）；⑩搜索防抖；⑪回车提交行为统一；⑫侧栏可折叠。审查详情见提交记录。
 
 - **UI 主界面组装 ✅ 已完成**（提交 72be62f/7837368，2026-08-30）：AppContext（资料库+会话+Provider+媒体路径组装）、IPC API surface（school/providers/tasks/notes/qa 共 16 通道）、preload 桥接（SeuSummaryBridge 类型化）、renderer 三栏主界面（课程列表/任务面板/四视图笔记+追问）。真实 Electron 启动烟测通过：7 秒运行日志干净、资料库三目录+app.db 正常建立、renderer 标题正确。112/112 测试绿。

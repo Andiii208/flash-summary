@@ -11,6 +11,7 @@ import type { Cryptor } from '../src/main/auth/session-crypto'
 // must pass printBackground + A4 and write the returned bytes verbatim.
 const printToPdf = vi.hoisted(() => vi.fn(async () => Buffer.from('%PDF-1.7 fake-handout')))
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
+const showItemInFolder = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   ipcMain: undefined,
@@ -18,7 +19,7 @@ vi.mock('electron', () => ({
     showSaveDialog: vi.fn(async () => saveDialog),
     showOpenDialog: vi.fn()
   },
-  shell: { openPath: vi.fn(async () => '') },
+  shell: { openPath: vi.fn(async () => ''), showItemInFolder },
   BrowserWindow: {
     getFocusedWindow: () => ({ webContents: { printToPDF: printToPdf } })
   },
@@ -84,6 +85,24 @@ describe('notes:exportPdfDialog (2026-09-04)', () => {
     registerIpc(ctx, ipc as never)
     const res = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as { ok: boolean; value?: { canceled: boolean } }
     expect(res.value).toEqual({ canceled: true })
+  })
+})
+
+describe('notes:revealFile (2026-09-04)', () => {
+  it('reveals the exported file in Explorer', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('notes:revealFile', join(dir, 'handout.pdf'))) as { ok: boolean; value?: boolean }
+    expect(res.ok).toBe(true)
+    expect(res.value).toBe(true)
+    expect(showItemInFolder).toHaveBeenCalledWith(join(dir, 'handout.pdf'))
+  })
+
+  it('rejects a non-string path', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('notes:revealFile', 123)) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
   })
 })
 

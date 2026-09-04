@@ -759,6 +759,16 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
 
+  // 2026-09-04: reveal an exported file in Explorer (toast action after export).
+  ipc.handle('notes:revealFile', (_e, filePath: unknown) => {
+    try {
+      shell.showItemInFolder(str(filePath, 'filePath'))
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
   // ---- Q&A ----
   ipc.handle('qa:ask', async (_e, lessonId: unknown, question: unknown) => {
     try {

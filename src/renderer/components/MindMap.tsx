@@ -35,15 +35,27 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
         ))}
         {layout.nodes.map((node) => {
           const isRoot = node.depth === 0
+          const hasChildren = node.hasChildren
+          const onKey =
+            hasChildren
+              ? (e: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    toggle(node.path)
+                  }
+                }
+              : undefined
           return (
             <g
               key={node.id}
               class={`mindmap-node depth-${node.depth}${isRoot ? ' root' : ''}${node.collapsed ? ' collapsed' : ''}`}
               transform={`translate(${node.x}, ${node.y})`}
-              onClick={node.hasChildren ? () => toggle(node.path) : undefined}
-              role={node.hasChildren ? 'button' : undefined}
-              aria-expanded={node.hasChildren ? !node.collapsed : undefined}
-              aria-label={node.hasChildren ? `${node.title}（点击${node.collapsed ? '展开' : '折叠'}）` : node.title}
+              onClick={hasChildren ? () => toggle(node.path) : undefined}
+              onKeyDown={onKey}
+              tabIndex={hasChildren ? 0 : undefined}
+              role={hasChildren ? 'button' : undefined}
+              aria-expanded={hasChildren ? !node.collapsed : undefined}
+              aria-label={hasChildren ? `${node.title}（点击${node.collapsed ? '展开' : '折叠'}）` : node.title}
             >
               <rect width={node.width} height={NODE_HEIGHT} rx={8} class="mindmap-box" />
               <text x={12} y={NODE_HEIGHT / 2 + 5} class="mindmap-label">

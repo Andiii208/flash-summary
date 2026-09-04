@@ -81,7 +81,8 @@ const api: SeuSummaryBridge = {
     exportPdfDialog: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportPdfDialog', lessonId),
     exportPdfWrite: (path: string): Promise<ApiResult<{ path: string; bytes: number }>> =>
-      ipcRenderer.invoke('notes:exportPdfWrite', path)
+      ipcRenderer.invoke('notes:exportPdfWrite', path),
+    revealFile: (path: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('notes:revealFile', path)
   },
   qa: {
     ask: (lessonId: string, question: string): Promise<ApiResult<{ id: string; answer: string }>> =>

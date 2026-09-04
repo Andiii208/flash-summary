@@ -51,6 +51,39 @@ describe('NoteViewer', () => {
     expect(host.querySelectorAll('.timeline-card')[0]!.querySelector('.timeline-thumb')).toBeNull()
   })
 
+  it('clicking the timestamp expands every transcript quote, then collapses', () => {
+    const richNote: Note = {
+      ...NOTE,
+      timeline: [
+        {
+          at: 65,
+          title: '引入',
+          detail: '开始讲解',
+          refs: [
+            { at: 60, text: '第一条引文' },
+            { at: 70, text: '第二条引文' },
+            { at: 80, text: '第三条引文' }
+          ],
+          evidence: []
+        }
+      ]
+    }
+    const host = mount(<NoteViewer note={richNote} />)
+    const card = host.querySelector('.timeline-card')!
+    // Collapsed: the closest quote — at=65 ties 60 and 70 at Δ5, the earlier wins.
+    expect(card.querySelectorAll('.timeline-quote')).toHaveLength(1)
+    expect(card.textContent).toContain('第一条引文')
+    const toggle = card.querySelector('.refs-toggle') as HTMLButtonElement
+    expect(toggle.textContent).toContain('3 条引文')
+    click(toggle)
+    expect(card.querySelectorAll('.timeline-quote')).toHaveLength(3)
+    expect(card.textContent).toContain('第二条引文')
+    expect(card.textContent).toContain('第三条引文')
+    // The mm:ss stamp is itself a button toggling the same state.
+    click(card.querySelector('.timeline-stamp') as HTMLButtonElement)
+    expect(card.querySelectorAll('.timeline-quote')).toHaveLength(1)
+  })
+
   it('switches views when a tab is clicked', () => {
     const host = mount(<NoteViewer note={NOTE} />)
     const tabs = host.querySelectorAll('.note-tabs button')
