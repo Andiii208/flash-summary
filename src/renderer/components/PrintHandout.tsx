@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import type { Note, TreeNode } from '../../shared/notes/schema'
 import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
 import { bindTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime } from '../../shared/notes/evidence'
-import { computeMindMapLayout, NODE_HEIGHT } from '../../shared/notes/mindmap-layout'
+import { computeMindMapLayout, firstLineBaseline } from '../../shared/notes/mindmap-layout'
 import { MdLite } from './MdLite'
 
 export interface PrintHandoutData {
@@ -179,7 +179,9 @@ function PrintTimelineCard({ entry, attachments }: { entry: Note['timeline'][num
 function StaticMindMap({ tree }: { tree: TreeNode }): JSX.Element {
   const layout = computeMindMapLayout(tree, new Set())
   const maxPageWidth = 730
-  const scale = layout.width > maxPageWidth ? maxPageWidth / layout.width : 1
+  const maxPageHeight = 900
+  // 批E: multi-line nodes grow tall — scale to fit both page dimensions.
+  const scale = Math.min(maxPageWidth / layout.width, maxPageHeight / layout.height, 1)
   return (
     <svg
       width={Math.round(layout.width * scale)}
@@ -195,13 +197,18 @@ function StaticMindMap({ tree }: { tree: TreeNode }): JSX.Element {
         <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
           <rect
             width={node.width}
-            height={NODE_HEIGHT}
+            height={node.height}
             rx={8}
             fill={node.depth === 0 ? '#e0e6ff' : '#f4f5fa'}
             stroke={node.depth === 0 ? 'none' : '#e3e6ee'}
           />
-          <text x={12} y={NODE_HEIGHT / 2 + 5} font-size={13} fill="#1f2430" font-weight={node.depth === 0 ? 700 : 400}>
-            {truncateTitle(node.title, node.width)}
+          {/* 批E: wrapped tspans — titles print in full, never truncated. */}
+          <text x={12} y={firstLineBaseline(node.height, node.lines.length)} font-size={13} fill="#1f2430" font-weight={node.depth === 0 ? 700 : 400}>
+            {node.lines.map((line, i) => (
+              <tspan key={i} x={12} dy={i === 0 ? 0 : 18}>
+                {line}
+              </tspan>
+            ))}
           </text>
         </g>
       ))}
@@ -211,9 +218,4 @@ function StaticMindMap({ tree }: { tree: TreeNode }): JSX.Element {
 
 function labelOf(kind: 'formula' | 'code' | 'operation'): string {
   return kind === 'formula' ? '公式' : kind === 'code' ? '代码' : '操作'
-}
-
-function truncateTitle(title: string, boxWidth: number): string {
-  const maxChars = Math.floor((boxWidth - 30) / 13)
-  return title.length > maxChars ? `${title.slice(0, Math.max(1, maxChars - 1))}…` : title
 }

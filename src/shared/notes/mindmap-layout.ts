@@ -6,6 +6,11 @@
 import type { TreeNode } from './schema'
 
 export const NODE_HEIGHT = 40
+/** 批E: per-line advance and vertical padding for multi-line node titles. */
+export const LINE_HEIGHT = 18
+const TEXT_PAD_Y = 12
+/** Character unit width used by both nodeWidth and wrapTitleLines (CJK = 1). */
+const CHAR_UNIT_W = 13
 export const NODE_GAP = 14
 export const LEVEL_WIDTH = 230
 export const PADDING = 24
@@ -21,6 +26,10 @@ export interface LayoutNode {
   x: number
   y: number
   width: number
+  /** 批E: per-node height — grows with wrapped line count (min NODE_HEIGHT). */
+  height: number
+  /** 批E: the title wrapped into lines the renderer prints verbatim (no ellipsis). */
+  lines: string[]
   hasChildren: boolean
   collapsed: boolean
 }
@@ -39,10 +48,49 @@ export interface MindMapLayout {
   height: number
 }
 
+function isWideChar(ch: string): boolean {
+  return /[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch)
+}
+
 /** Estimate a node's box width from its title length (CJK ≈ full width). */
 function nodeWidth(title: string): number {
-  const units = [...title].reduce((acc, ch) => acc + (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch) ? 1 : 0.55), 0)
-  return Math.min(NODE_MAX_WIDTH, Math.max(64, Math.round(units * 13 + 24)))
+  const units = [...title].reduce((acc, ch) => acc + (isWideChar(ch) ? 1 : 0.55), 0)
+  return Math.min(NODE_MAX_WIDTH, Math.max(64, Math.round(units * CHAR_UNIT_W + 24)))
+}
+
+/**
+ * 批E: wrap a title into the lines that fit the box width. Pure and
+ * deterministic; the layout uses its length for the node height and the
+ * renderers print the lines verbatim — long titles are never truncated.
+ */
+export function wrapTitleLines(title: string, boxWidth: number): string[] {
+  const usable = Math.max(1, Math.floor((boxWidth - 24) / CHAR_UNIT_W))
+  const lines: string[] = []
+  let current = ''
+  let currentUnits = 0
+  for (const ch of [...title]) {
+    const unit = isWideChar(ch) ? 1 : 0.55
+    if (currentUnits + unit > usable && current !== '') {
+      lines.push(current)
+      current = ch
+      currentUnits = unit
+    } else {
+      current += ch
+      currentUnits += unit
+    }
+  }
+  if (current !== '') lines.push(current)
+  return lines.length > 0 ? lines : ['']
+}
+
+/** Node box height for the wrapped lines (single line keeps NODE_HEIGHT). */
+function nodeHeight(lines: string[]): number {
+  return Math.max(NODE_HEIGHT, lines.length * LINE_HEIGHT + TEXT_PAD_Y)
+}
+
+/** Baseline of the first text line inside a box of the given height. */
+export function firstLineBaseline(nodeHeightPx: number, lineCount: number): number {
+  return (nodeHeightPx - lineCount * LINE_HEIGHT) / 2 + 13
 }
 
 interface TreeSlice {
@@ -59,6 +107,8 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
   const measure = (node: TreeNode, depth: number, path: string): TreeSlice => {
     const id = nextId++
     const isCollapsed = collapsed.has(path)
+    const width = nodeWidth(node.title)
+    const lines = wrapTitleLines(node.title, width)
     const layout: LayoutNode = {
       id,
       path,
@@ -66,7 +116,9 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
       depth,
       x: 0,
       y: 0,
-      width: nodeWidth(node.title),
+      width,
+      height: nodeHeight(lines),
+      lines,
       hasChildren: node.children.length > 0,
       collapsed: isCollapsed
     }
@@ -80,19 +132,20 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
   // Assign y top-down: leaves stack by rows, parents center on their children.
   let cursorY = PADDING
   const place = (sliceNode: TreeSlice): { top: number; bottom: number } => {
+    const boxHeight = sliceNode.node.height
     if (sliceNode.children.length === 0) {
       sliceNode.node.y = cursorY
-      cursorY += NODE_HEIGHT
-      return { top: sliceNode.node.y, bottom: sliceNode.node.y + NODE_HEIGHT }
+      cursorY += boxHeight
+      return { top: sliceNode.node.y, bottom: sliceNode.node.y + boxHeight }
     }
     const childTops: Array<{ top: number; bottom: number }> = []
     for (const child of sliceNode.children) childTops.push(place(child))
     const first = childTops[0]!
     const last = childTops[childTops.length - 1]!
-    sliceNode.node.y = (first.top + last.bottom) / 2 - NODE_HEIGHT / 2
+    sliceNode.node.y = (first.top + last.bottom) / 2 - boxHeight / 2
     // Children stacked with gaps; ensure the parent never overlaps a child.
     cursorY += NODE_GAP
-    return { top: Math.min(sliceNode.node.y, first.top), bottom: Math.max(sliceNode.node.y + NODE_HEIGHT, last.bottom) }
+    return { top: Math.min(sliceNode.node.y, first.top), bottom: Math.max(sliceNode.node.y + boxHeight, last.bottom) }
   }
   place(slice)
 
@@ -104,15 +157,15 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
   }
 
   const width = Math.max(...nodes.map((n) => n.x + n.width)) + PADDING
-  const height = Math.max(...nodes.map((n) => n.y + NODE_HEIGHT)) + PADDING
+  const height = Math.max(...nodes.map((n) => n.y + n.height)) + PADDING
   return { nodes, edges, width, height }
 }
 
 function edgePath(parent: LayoutNode, child: LayoutNode): string {
   const x1 = parent.x + parent.width
-  const y1 = parent.y + NODE_HEIGHT / 2
+  const y1 = parent.y + parent.height / 2
   const x2 = child.x
-  const y2 = child.y + NODE_HEIGHT / 2
+  const y2 = child.y + child.height / 2
   const mid = (x1 + x2) / 2
   return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
 }

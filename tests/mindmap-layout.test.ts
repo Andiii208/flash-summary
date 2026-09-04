@@ -79,4 +79,28 @@ describe('computeMindMapLayout', () => {
     expect(layout.edges).toEqual([])
     expect(layout.width).toBeGreaterThan(0)
   })
+
+  it('long titles wrap into lines and grow the node height (批E, no truncation)', () => {
+    const long = { title: '一'.repeat(40), children: [] }
+    const layout = computeMindMapLayout(long, new Set())
+    const node = layout.nodes[0]!
+    // The full title is preserved across the wrapped lines.
+    expect(node.lines.join('')).toBe(long.title)
+    expect(node.lines.length).toBeGreaterThan(1)
+    expect(node.height).toBeGreaterThan(NODE_HEIGHT)
+    // The canvas accounts for the taller box.
+    expect(layout.height).toBeGreaterThanOrEqual(node.y + node.height + PADDING)
+    // A short title stays single-line at the classic height.
+    const short = computeMindMapLayout({ title: '短', children: [] }, new Set())
+    expect(short.nodes[0]!.lines).toEqual(['短'])
+    expect(short.nodes[0]!.height).toBe(NODE_HEIGHT)
+  })
+
+  it('mixed CJK/ASCII wrapping uses the same unit model as the width', () => {
+    const mixed = { title: 'Recursion递归递归递归递归', children: [] }
+    const layout = computeMindMapLayout(mixed, new Set())
+    const node = layout.nodes[0]!
+    expect(node.lines.join('')).toBe(mixed.title)
+    expect(node.lines.length).toBeGreaterThanOrEqual(1)
+  })
 })
