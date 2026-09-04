@@ -117,12 +117,12 @@ function findFreePort(start) {
 
 /** Expected bridge surface — keep in sync with src/shared/bridge.ts. */
 const EXPECTED_BRIDGE = {
-  school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'harvestState', 'netCheck', 'setMine'],
+  school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'harvestState', 'removeCourse', 'netCheck', 'setMine'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
   notes: ['latest', 'list', 'exportMarkdown', 'exportAnki', 'attachments', 'regenerate', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
-  settings: ['get', 'setCacheDir', 'setTheme', 'chooseLibrary', 'openPath'],
+  settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath'],
   log: ['rendererError']
 }
 

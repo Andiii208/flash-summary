@@ -214,6 +214,27 @@ describe('ipc handlers over a real context', () => {
     ])
   })
 
+  it('school:removeCourse deletes empty courses but protects processed ones (批4 C6)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c-empty', '空课程', '2026-09-04T00:00:00Z')").run()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c-data', '有数据课程', '2026-09-04T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('c-data-L0', 'c-data', '第1节课', '2026-09-04T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'c-data-L0', 1, '{}', 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run()
+
+    const okRes = (await ipc.invoke('school:removeCourse', 'c-empty')) as { ok: boolean; value?: boolean }
+    expect(okRes.ok).toBe(true)
+    expect((db.prepare("SELECT COUNT(*) AS n FROM courses WHERE id = 'c-empty'").get() as { n: number }).n).toBe(0)
+
+    const refused = (await ipc.invoke('school:removeCourse', 'c-data')) as { ok: boolean; error?: string }
+    expect(refused.ok).toBe(false)
+    expect(refused.error).toContain('不允许删除')
+    // The note survived the refused delete.
+    expect((db.prepare('SELECT COUNT(*) AS n FROM notes').get() as { n: number }).n).toBe(1)
+  })
+
   it('school:harvestState tracks in-flight and outcome across the navigation (批C)', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)

@@ -20,6 +20,7 @@ vi.mock('electron', () => ({
   },
   shell: { openPath: vi.fn(async () => '') },
   BrowserWindow: { getFocusedWindow: () => null },
+  app: { getVersion: () => '0.0.0-test' },
   WebContents: undefined
 }))
 

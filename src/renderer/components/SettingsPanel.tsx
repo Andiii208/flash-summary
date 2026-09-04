@@ -1,9 +1,10 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { AppSettingsInfo } from '../../shared/bridge'
 import { ProviderPanel, type ProviderPanelProps } from './ProviderPanel'
 import type { SessionState } from './TopBar'
 import { Colonnade } from '../ui/Colonnade'
+import { Dialog } from '../ui/Dialog'
 
 export interface SettingsPanelProps {
   settings: AppSettingsInfo | null
@@ -20,6 +21,10 @@ export interface SettingsPanelProps {
   onTestProvider?: ProviderPanelProps['onTest']
   providerTestResult?: ProviderPanelProps['testResult']
   onSetCacheDir: (dir: string) => void
+  /** C10: open the folder picker; result arrives via chosenCacheDir. */
+  onChooseCacheDir?: () => void
+  /** C10: path picked in the folder dialog, for the draft input. */
+  chosenCacheDir?: string | null
   onSetTheme: (theme: 'auto' | 'light' | 'dark') => void
   onChooseLibrary: () => void
   onOpenPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
@@ -46,6 +51,12 @@ const THEME_OPTIONS: Array<{ value: 'auto' | 'light' | 'dark'; label: string }> 
 /** Settings page (U3): account, providers, library/cache location, theme. */
 export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
   const [cacheDraft, setCacheDraft] = useState(props.settings?.cacheDir ?? '')
+  // C10: a picked folder fills the draft once (effect, not render-phase set).
+  useEffect(() => {
+    if (props.chosenCacheDir != null) setCacheDraft(props.chosenCacheDir)
+  }, [props.chosenCacheDir])
+  // C4: logout needs a confirmation — it clears the whole working context.
+  const [pendingLogout, setPendingLogout] = useState(false)
   return (
     <section class="settings-panel">
       <h2>设置</h2>
@@ -55,7 +66,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         <div class="settings-row">
           <span class={`session-badge ${props.session}`}>{SESSION_LABELS[props.session]}</span>
           {props.session === 'logged_in' ? (
-            <button class="btn" onClick={props.onLogout}>
+            <button class="btn" onClick={() => setPendingLogout(true)}>
               退出登录
             </button>
           ) : (
@@ -86,6 +97,11 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         <div class="settings-row">
           <span class="settings-label">任务缓存</span>
           <input class="qa-input" value={cacheDraft} placeholder="留空使用默认（资料库\\cache）" onInput={(e) => setCacheDraft((e.target as HTMLInputElement).value)} />
+          {props.onChooseCacheDir != null && (
+            <button class="btn small" onClick={props.onChooseCacheDir}>
+              浏览…
+            </button>
+          )}
           <button class="btn small" onClick={() => props.onSetCacheDir(cacheDraft.trim())}>
             保存
           </button>
@@ -125,8 +141,21 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
 
       <footer class="settings-footer">
         <Colonnade size={18} />
-        <span>止于至善</span>
+        <span>止于至善{props.settings?.version != null ? ` · v${props.settings.version}` : ''}</span>
       </footer>
+
+      <Dialog
+        open={pendingLogout}
+        title="退出登录？"
+        message="将清除本机保存的学校会话；课程收藏与已生成的笔记保留，重新登录后即可继续。"
+        confirmLabel="退出"
+        danger
+        onConfirm={() => {
+          setPendingLogout(false)
+          props.onLogout()
+        }}
+        onCancel={() => setPendingLogout(false)}
+      />
     </section>
   )
 }

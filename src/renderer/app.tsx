@@ -188,6 +188,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               searching
               sameCourseIds={state.sameCourseIds}
               harvestInflight={state.harvestInflight}
+              onRemoveCourse={state.removeCourse}
               onToggle={state.toggleCourse}
               onSelect={state.selectLesson}
               onHarvestLessons={state.harvestLessons}
@@ -234,6 +235,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                       searching={false}
                       sameCourseIds={state.sameCourseIds}
                       harvestInflight={state.harvestInflight}
+                      onRemoveCourse={state.removeCourse}
                       onToggle={state.toggleCourse}
                       onSelect={state.selectLesson}
                       onHarvestLessons={state.harvestLessons}
@@ -343,6 +345,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onTestProvider={state.testProvider}
               providerTestResult={state.providerTest}
               onSetCacheDir={state.setCacheDir}
+              onChooseCacheDir={state.chooseCacheDir}
+              chosenCacheDir={state.chosenCacheDir}
               onSetTheme={state.setTheme}
               onChooseLibrary={state.chooseLibrary}
               onOpenPath={state.openPath}
@@ -468,7 +472,7 @@ interface AppState {
   removeTask: (taskId: string) => void
   clearFinishedTasks: () => void
   ask: (question: string) => void
-  saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
+  saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capabilities: string[]; model: string }) => void
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   providerTest: { ok: boolean; text: string } | null
@@ -483,6 +487,11 @@ interface AppState {
   pdfBusy: boolean
   exportNotePdf: (lessonId: string) => void
   setCacheDir: (dir: string) => void
+  /** C10: open the folder picker; result lands in the panel via chosenCacheDir. */
+  chooseCacheDir: () => void
+  chosenCacheDir: string | null
+  /** C6: remove an empty course from the sidebar. */
+  removeCourse: (courseId: string) => void
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   chooseLibrary: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
@@ -565,6 +574,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [providers, setProviders] = useState<ProvidersListResult | null>(null)
   const [providerBusy, setProviderBusy] = useState(false)
   const [settings, setSettings] = useState<AppSettingsInfo | null>(null)
+  /** C10: path picked via the folder dialog, for the draft input. */
+  const [chosenCacheDir, setChosenCacheDir] = useState<string | null>(null)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastId = useRef(0)
   const lessonRef = useRef('')
@@ -736,7 +747,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       // login has no surviving renderer: the one-shot outcome channel is
       // the only way the user ever hears about it.
       if (s.value.justLoggedIn === true) {
-        toast('登录成功', 'success')
+        // C8: first-step guidance continues after the login round-trip.
+        toast('登录成功', 'success', {
+          actionLabel: '去选课',
+          onAction: () => setAllCoursesOpen(true)
+        })
         void refreshTree()
         // M1-3 (B7): after a re-login, surface the retryable failures left
         // by the expired session instead of making the user hunt for them.
@@ -1236,21 +1251,25 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   const saveProvider = useCallback(
-    (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }): void => {
+    (input: { name: string; baseUrl: string; apiKey: string; capabilities: string[]; model: string }): void => {
       void (async () => {
         setProviderBusy(true)
         try {
+          // B3: one key entry, N capability bindings in a loop.
           const saved = await bridge.providers.save({ name: input.name, baseUrl: input.baseUrl, apiKey: input.apiKey })
           if (!saved.ok) {
             toast(saved.error ?? '保存失败', 'error')
             return
           }
-          const bound = await bridge.providers.bind(input.capability, (saved.value as { id: string }).id, input.model)
-          if (!bound.ok) {
-            toast(bound.error ?? '绑定失败', 'error')
-            return
+          const providerId = (saved.value as { id: string }).id
+          for (const capability of input.capabilities) {
+            const bound = await bridge.providers.bind(capability, providerId, input.model)
+            if (!bound.ok) {
+              toast(bound.error ?? `绑定 ${capability} 失败`, 'error')
+              return
+            }
           }
-          toast(`已绑定 ${input.capability} → ${input.name}/${input.model}`, 'success')
+          toast(`已绑定 ${input.capabilities.length} 项能力 → ${input.name}/${input.model}`, 'success')
           await refreshProviders()
         } finally {
           setProviderBusy(false)
@@ -1436,6 +1455,35 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast, refreshSettings]
   )
 
+  /** C10: folder picker — returns the chosen path for the draft input. */
+  const chooseCacheDir = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.settings.chooseCacheDir()
+      if (!res.ok) {
+        toast(res.error ?? '选择失败', 'error')
+        return
+      }
+      if (res.value?.canceled || res.value?.path == null) return
+      setChosenCacheDir(res.value.path)
+    })()
+  }, [bridge, toast])
+
+  /** C6: remove an empty (never-processed) course from the sidebar. */
+  const removeCourse = useCallback(
+    (courseId: string): void => {
+      void (async () => {
+        const res = await bridge.school.removeCourse(courseId)
+        if (!res.ok) {
+          toast(res.error ?? '删除失败', 'error')
+          return
+        }
+        toast('已删除该课程', 'success')
+        await applyLocalTree()
+      })()
+    },
+    [bridge, toast, applyLocalTree]
+  )
+
   const setTheme = useCallback(
     (theme: 'auto' | 'light' | 'dark'): void => {
       void (async () => {
@@ -1559,6 +1607,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     pdfBusy,
     exportNotePdf,
     setCacheDir,
+    chooseCacheDir,
+    chosenCacheDir,
+    removeCourse,
     setTheme,
     chooseLibrary,
     openPath

@@ -7,7 +7,7 @@
  * immediately; stage progress is pushed to the main window over the
  * 'tasks:progress' channel so the renderer never blocks.
  */
-import { ipcMain, dialog, shell, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
+import { ipcMain, dialog, shell, app, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { lookup as dnsLookup } from 'dns/promises'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join, dirname } from 'path'
@@ -374,6 +374,32 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
 
+  // C6: remove a manually mis-added course — ONLY when nothing was ever
+  // processed with it (every table cascades on course delete, so a course
+  // with notes/tasks must be refused to protect the data).
+  ipc.handle('school:removeCourse', (_e, courseId: unknown) => {
+    try {
+      const cid = str(courseId, 'courseId')
+      const noteRow = ctx.db
+        .prepare('SELECT COUNT(*) AS n FROM notes n JOIN lessons l ON n.lesson_id = l.id WHERE l.course_id = ?')
+        .get(cid) as { n: number }
+      const taskRow = ctx.db
+        .prepare('SELECT COUNT(*) AS n FROM tasks t JOIN lessons l ON t.lesson_id = l.id WHERE l.course_id = ?')
+        .get(cid) as { n: number }
+      if (noteRow.n > 0 || taskRow.n > 0) {
+        throw new Error('该课程已有笔记或任务记录，为保护数据不允许删除')
+      }
+      ctx.db.transaction(() => {
+        ctx.db.prepare('DELETE FROM lessons WHERE course_id = ?').run(cid)
+        ctx.db.prepare('DELETE FROM courses WHERE id = ?').run(cid)
+      })()
+      ctx.logger.info(`removeCourse: ${cid} (empty course)`)
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
   // C2: pin/unpin a course as «mine». The schedule-API probe may automate
   // this later; until then the user decides, and the sidebar sorts pinned
   // courses (plus their same-subject sections) to the top.
@@ -455,7 +481,21 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   ipc.handle('settings:get', () => {
     try {
       const s = ctx.settings()
-      return ok({ libraryRoot: s.libraryRoot, cacheDir: resolveCacheDir(s.cacheDir, s.libraryRoot), theme: s.theme })
+      // C7: the UI shows the app version in the settings footer.
+      return ok({ libraryRoot: s.libraryRoot, cacheDir: resolveCacheDir(s.cacheDir, s.libraryRoot), theme: s.theme, version: app.getVersion() })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // C10: folder picker for the cache dir — hand-typing Windows paths was
+  // unfriendly; the chosen path is returned (not saved) for the draft input.
+  ipc.handle('settings:chooseCacheDir', async () => {
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const options: OpenDialogOptions = { title: '选择任务缓存目录', properties: ['openDirectory', 'createDirectory'] }
+      const { canceled, filePaths } = win == null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(win, options)
+      if (canceled || filePaths[0] == null) return ok({ canceled: true })
+      return ok({ canceled: false, path: filePaths[0] })
     } catch (e) {
       return err(e)
     }

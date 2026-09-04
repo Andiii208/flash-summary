@@ -1,6 +1,8 @@
+import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { SessionStateValue } from '../../shared/types'
 import { Colonnade } from '../ui/Colonnade'
+import { Dialog } from '../ui/Dialog'
 
 export type SessionState = SessionStateValue
 
@@ -20,6 +22,8 @@ const SESSION_LABELS: Record<SessionState, string> = {
 }
 
 export function TopBar({ session, busy, running, onLogin, onLogout }: TopBarProps): JSX.Element {
+  // C4: logout wipes the working context — confirm first.
+  const [pendingLogout, setPendingLogout] = useState(false)
   return (
     <header class="topbar">
       <div class="brand">
@@ -40,7 +44,7 @@ export function TopBar({ session, busy, running, onLogin, onLogout }: TopBarProp
           {SESSION_LABELS[session]}
         </span>
         {session === 'logged_in' ? (
-          <button class="btn" onClick={onLogout} disabled={busy}>
+          <button class="btn" onClick={() => setPendingLogout(true)} disabled={busy}>
             退出登录
           </button>
         ) : (
@@ -49,6 +53,18 @@ export function TopBar({ session, busy, running, onLogin, onLogout }: TopBarProp
           </button>
         )}
       </div>
+      <Dialog
+        open={pendingLogout}
+        title="退出登录？"
+        message="将清除本机保存的学校会话；课程收藏与已生成的笔记保留，重新登录后即可继续。"
+        confirmLabel="退出"
+        danger
+        onConfirm={() => {
+          setPendingLogout(false)
+          onLogout()
+        }}
+        onCancel={() => setPendingLogout(false)}
+      />
     </header>
   )
 }

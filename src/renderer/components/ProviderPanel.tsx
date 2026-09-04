@@ -18,7 +18,7 @@ const PROVIDER_PRESETS: Array<{ label: string; name: string; baseUrl: string; mo
 export interface ProviderPanelProps {
   providers: ProvidersListResult | null
   busy: boolean
-  onSave: (input: { name: string; baseUrl: string; apiKey: string; capability: string; model: string }) => void
+  onSave: (input: { name: string; baseUrl: string; apiKey: string; capabilities: string[]; model: string }) => void
   onRemove: (id: string) => void
   /** M3 批 D: probe the form values against the real endpoint. */
   onTest?: (input: { baseUrl: string; apiKey: string; model: string }) => void
@@ -31,7 +31,8 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
   const [name, setName] = useState(PROVIDER_PRESETS[0]!.name)
   const [baseUrl, setBaseUrl] = useState(PROVIDER_PRESETS[0]!.baseUrl)
   const [apiKey, setApiKey] = useState('')
-  const [capability, setCapability] = useState('asr')
+  // B3: one key entry can bind several capabilities at once.
+  const [capabilities, setCapabilities] = useState<ReadonlySet<string>>(new Set(['asr']))
   const [model, setModel] = useState(PROVIDER_PRESETS[0]!.model)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
 
@@ -45,9 +46,19 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
     }
   }
 
+  const toggleCapability = (value: string): void => {
+    setCapabilities((prev) => {
+      const next = new Set(prev)
+      if (next.has(value)) next.delete(value)
+      else next.add(value)
+      return next
+    })
+  }
+
   const submit = (): void => {
     if (name.trim() === '' || baseUrl.trim() === '' || model.trim() === '') return
-    onSave({ name: name.trim(), baseUrl: baseUrl.trim(), apiKey, capability, model: model.trim() })
+    if (capabilities.size === 0) return
+    onSave({ name: name.trim(), baseUrl: baseUrl.trim(), apiKey, capabilities: [...capabilities], model: model.trim() })
     setApiKey('')
   }
 
@@ -72,22 +83,20 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
         <input class="qa-input" value={name} placeholder="名称（如 OpenAI）" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
         <input class="qa-input" value={baseUrl} placeholder="Base URL（https://api.openai.com/v1）" onInput={(e) => setBaseUrl((e.target as HTMLInputElement).value)} />
         <input class="qa-input" type="password" value={apiKey} placeholder="API Key（仅存内存，DPAPI 加密落库）" onInput={(e) => setApiKey((e.target as HTMLInputElement).value)} />
-        <div class="provider-row">
-          <select class="qa-input" value={capability} onChange={(e) => setCapability((e.target as HTMLSelectElement).value)}>
-            {Object.entries(CAPABILITY_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <input class="qa-input" value={model} placeholder="模型名（如 whisper-1 / gpt-4o）" onInput={(e) => setModel((e.target as HTMLInputElement).value)} />
+        {/* B3: checkbox group — the same key often serves all three abilities. */}
+        <div class="capability-group" role="group" aria-label="绑定能力（可多选）">
+          {Object.entries(CAPABILITY_LABELS).map(([value, label]) => (
+            <label key={value} class="capability-check">
+              <input type="checkbox" checked={capabilities.has(value)} onChange={() => toggleCapability(value)} />
+              {label}
+            </label>
+          ))}
         </div>
-        {capability === 'asr' && (
-          <p class="provider-hint">ASR 模型通常是专门的语音模型（如 whisper-1 / mimo-v2.5-asr），与对话模型不同。</p>
-        )}
+        <input class="qa-input" value={model} placeholder="模型名（如 whisper-1 / gpt-4o）" onInput={(e) => setModel((e.target as HTMLInputElement).value)} />
+        <p class="provider-hint">勾选要绑定的能力（可多选，同一把 Key 通吃）。ASR 通常需要专门的语音模型（如 whisper-1 / mimo-v2.5-asr），与对话模型不同。</p>
         <div class="provider-actions">
-          <button class="btn primary" onClick={submit} disabled={busy}>
-            {busy ? '保存中…' : '保存并绑定'}
+          <button class="btn primary" onClick={submit} disabled={busy || capabilities.size === 0}>
+            {busy ? '保存中…' : capabilities.size > 1 ? `保存并绑定 ${capabilities.size} 项能力` : '保存并绑定'}
           </button>
           {onTest != null && (
             <button class="btn" onClick={() => onTest({ baseUrl: baseUrl.trim(), apiKey, model: model.trim() })} disabled={!canTest || busy}>

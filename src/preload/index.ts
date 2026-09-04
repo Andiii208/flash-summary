@@ -45,6 +45,7 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('school:harvestLessons', courseId),
     harvestState: (): Promise<ApiResult<{ inflight: string[]; outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null }>> =>
       ipcRenderer.invoke('school:harvestState'),
+    removeCourse: (courseId: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('school:removeCourse', courseId),
     netCheck: (): Promise<ApiResult<{ intercepted: boolean; resolved: Array<{ host: string; ip: string }> }>> =>
       ipcRenderer.invoke('school:netCheck'),
     setMine: (courseId: string, mine: boolean): Promise<ApiResult<boolean>> =>
@@ -101,6 +102,7 @@ const api: SeuSummaryBridge = {
   settings: {
     get: (): Promise<ApiResult<AppSettingsInfo>> => ipcRenderer.invoke('settings:get'),
     setCacheDir: (dir: string): Promise<ApiResult<{ cacheDir: string }>> => ipcRenderer.invoke('settings:setCacheDir', dir),
+    chooseCacheDir: (): Promise<ApiResult<{ canceled: boolean; path?: string }>> => ipcRenderer.invoke('settings:chooseCacheDir'),
     setTheme: (theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>> => ipcRenderer.invoke('settings:setTheme', theme),
     chooseLibrary: (): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>> =>
       ipcRenderer.invoke('settings:chooseLibrary'),

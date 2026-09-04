@@ -1,7 +1,9 @@
-import { ChevronDown, ChevronRight, Star } from 'lucide-preact'
+import { useState } from 'preact/hooks'
+import { ChevronDown, ChevronRight, Star, Trash2 } from 'lucide-preact'
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { subjectInk } from '../../shared/subject-ink'
+import { Dialog } from '../ui/Dialog'
 
 export interface CourseTreeProps {
   tree: CourseTreeInfo[]
@@ -14,6 +16,8 @@ export interface CourseTreeProps {
   sameCourseIds: ReadonlySet<string>
   /** 批C: courses whose «第N节课» catalog harvest is running. */
   harvestInflight?: ReadonlySet<string>
+  /** C6: remove an empty (never-processed) course. */
+  onRemoveCourse?: (courseId: string) => void
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -28,6 +32,7 @@ export function CourseTree({
   searching,
   sameCourseIds,
   harvestInflight,
+  onRemoveCourse,
   onToggle,
   onSelect,
   onHarvestLessons,
@@ -46,6 +51,7 @@ export function CourseTree({
           selectedLesson={selectedLesson}
           sameCourse={sameCourseIds.has(course.id)}
           inflight={harvestInflight?.has(course.id) ?? false}
+          onRemoveCourse={onRemoveCourse}
           onToggle={onToggle}
           onSelect={onSelect}
           onHarvestLessons={onHarvestLessons}
@@ -63,6 +69,8 @@ interface CourseRowProps {
   sameCourse: boolean
   /** 批C: this course's catalog harvest is currently running. */
   inflight: boolean
+  /** C6: remove an empty course (propagated from CourseTree). */
+  onRemoveCourse?: (courseId: string) => void
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -77,8 +85,11 @@ function courseSubLine(course: CourseTreeInfo): string | null {
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
+function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onRemoveCourse, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
   const sub = courseSubLine(course)
+  // C6: only never-processed courses are deletable (cascade protection).
+  const deletable = course.lessons.length === 0 && course.noteCount === 0 && onRemoveCourse != null
+  const [pendingDelete, setPendingDelete] = useState(false)
   return (
     <div class="item course-item" style={`--course-ink:${subjectInk(course.id)}`}>
       <div class="course-row-head">
@@ -91,6 +102,11 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onT
           {sameCourse && <span class="badge same">同课</span>}
           {course.lessons.length > 0 && <span class="course-count">{course.lessons.length}</span>}
         </button>
+        {deletable && (
+          <button class="pin-btn" title="删除这门课（未产生过笔记/任务）" aria-label={`删除课程 ${course.name}`} onClick={() => setPendingDelete(true)}>
+            <Trash2 size={13} strokeWidth={1.75} />
+          </button>
+        )}
         <button
           class={`pin-btn${course.isMine === true ? ' pinned' : ''}`}
           title={course.isMine === true ? '取消收藏标记' : '收藏这门课（排序置顶）'}
@@ -100,6 +116,18 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onT
           <Star size={14} strokeWidth={1.75} fill={course.isMine === true ? 'currentColor' : 'none'} />
         </button>
       </div>
+      <Dialog
+        open={pendingDelete}
+        title={`删除课程「${course.name}」？`}
+        message="只删除这条从未使用过的课程记录；一旦产生过笔记或任务，应用会拒绝删除以保护数据。"
+        confirmLabel="删除"
+        danger
+        onConfirm={() => {
+          setPendingDelete(false)
+          onRemoveCourse?.(course.id)
+        }}
+        onCancel={() => setPendingDelete(false)}
+      />
       {sub != null && <div class="course-sub">{sub}</div>}
       {expanded &&
         (course.lessons.length === 0 ? (

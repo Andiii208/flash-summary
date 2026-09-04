@@ -89,6 +89,8 @@ export interface SchoolBridge {
   harvestLessons(courseId: string): Promise<ApiResult<{ lessons: number }>>
   /** 批C: in-flight catalog harvests + last outcome, for the fresh mount after navigation. */
   harvestState(): Promise<ApiResult<{ inflight: string[]; outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null }>>
+  /** C6: remove an empty (never-processed) course; refuses otherwise. */
+  removeCourse(courseId: string): Promise<ApiResult<boolean>>
   /** Fake-IP preflight (A5): true when a proxy resolver answers the campus hosts with virtual addresses. */
   netCheck(): Promise<ApiResult<{ intercepted: boolean; resolved: Array<{ host: string; ip: string }> }>>
   /** C2: pin/unpin a course as «mine» (sidebar sorts it first). */
@@ -195,11 +197,15 @@ export interface AppSettingsInfo {
   libraryRoot: string
   cacheDir: string
   theme: string
+  /** C7: app version for the settings footer. */
+  version?: string
 }
 
 export interface SettingsBridge {
   get(): Promise<ApiResult<AppSettingsInfo>>
   setCacheDir(dir: string): Promise<ApiResult<{ cacheDir: string }>>
+  /** C10: folder picker for the cache dir (returns the chosen path, unsaved). */
+  chooseCacheDir(): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   setTheme(theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>>
   chooseLibrary(): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>>
   openPath(kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>>

@@ -3,6 +3,7 @@ import { ToastArea } from '../../src/renderer/components/ToastArea'
 import { ProgressBar } from '../../src/renderer/components/ProgressBar'
 import { EmptyState } from '../../src/renderer/components/EmptyState'
 import { WelcomeGuide } from '../../src/renderer/components/WelcomeGuide'
+import { ProviderPanel } from '../../src/renderer/components/ProviderPanel'
 import { TopBar } from '../../src/renderer/components/TopBar'
 import { ManualAdd } from '../../src/renderer/components/ManualAdd'
 import { mount, click, input } from '../helpers/preact'
@@ -77,15 +78,46 @@ describe('TopBar', () => {
     expect(onLogin).toHaveBeenCalledOnce()
   })
 
-  it('shows logout when logged in with a session badge', () => {
+  it('shows logout when logged in with a session badge, behind a confirmation (批4 C4)', () => {
     const onLogout = vi.fn()
     const host = mount(<TopBar session="logged_in" busy={false} running={false} onLogin={() => undefined} onLogout={onLogout} />)
     expect(host.textContent).toContain('已登录')
     expect(host.querySelector('.session-badge.logged_in')).not.toBeNull()
     click(host.querySelector('button'))
+    // The dialog must appear first; logout fires only on confirm.
+    expect(host.querySelector('.dialog')).not.toBeNull()
+    expect(onLogout).not.toHaveBeenCalled()
+    const confirm = Array.from(host.querySelectorAll('.dialog-actions button')).find((b) => b.textContent === '退出')
+    click(confirm ?? null)
     expect(onLogout).toHaveBeenCalledOnce()
   })
 
+
+  it('ProviderPanel binds several capabilities from one key entry (批4 B3)', () => {
+    const onSave = vi.fn()
+    const host = mount(
+      <ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />
+    )
+    // Check all three capability boxes, fill the required fields, submit.
+    const boxes = host.querySelectorAll('.capability-check input[type="checkbox"]')
+    expect(boxes).toHaveLength(3)
+    for (const box of boxes) if (!(box as HTMLInputElement).checked) click(box)
+    const inputs = host.querySelectorAll('.provider-form input.qa-input')
+    input(inputs[0] as HTMLInputElement, 'DeepSeek')
+    input(inputs[1] as HTMLInputElement, 'https://api.deepseek.com/v1')
+    input(inputs[2] as HTMLInputElement, 'sk-test')
+    input(inputs[3] as HTMLInputElement, 'deepseek-chat')
+    const submit = Array.from(host.querySelectorAll('button')).find((b) => b.textContent!.includes('保存并绑定'))
+    expect(submit?.textContent).toContain('3 项能力')
+    click(submit ?? null)
+    expect(onSave).toHaveBeenCalledWith({
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      capabilities: ['asr', 'multimodal', 'text'],
+      model: 'deepseek-chat'
+    })
+  })
   it('marks an expired session and offers re-login instead of logout', () => {
     const onLogin = vi.fn()
     const onLogout = vi.fn()

@@ -248,7 +248,11 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     click(jump ?? null)
     await waitForSelector('[data-testid="session-badge"].logged_in')
 
+    // C4: logout also confirms first.
     click(host.querySelector('.topbar .btn:not(.primary)'))
+    await waitForSelector('.dialog')
+    const logoutConfirm = Array.from(host.querySelectorAll('.dialog-actions button')).find((b) => b.textContent === '退出')
+    click(logoutConfirm ?? null)
     await waitForSelector('[data-testid="session-badge"].logged_out')
     await waitForGone('.lesson-row')
     expect(bridge.school.logout).toHaveBeenCalled()
