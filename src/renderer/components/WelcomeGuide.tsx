@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { Colonnade } from '../ui/Colonnade'
 
 export interface WelcomeGuideProps {
   onLogin: () => void
@@ -11,6 +12,9 @@ export interface WelcomeGuideProps {
 export function WelcomeGuide({ onLogin, onOpenSettings, busy = false }: WelcomeGuideProps): JSX.Element {
   return (
     <div class="welcome-guide">
+      <div class="empty-mark" aria-hidden="true">
+        <Colonnade size={34} />
+      </div>
       <h2>开始使用</h2>
       <ol class="guide-steps">
         <li>登录 CAS</li>

@@ -1,5 +1,6 @@
 import type { JSX } from 'preact'
 import type { SessionStateValue } from '../../shared/types'
+import { Colonnade } from '../ui/Colonnade'
 
 export type SessionState = SessionStateValue
 
@@ -22,7 +23,9 @@ export function TopBar({ session, busy, running, onLogin, onLogout }: TopBarProp
   return (
     <header class="topbar">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">S</span>
+        <span class="brand-mark" aria-hidden="true">
+          <Colonnade size={17} />
+        </span>
         <h1>SEU Summary</h1>
       </div>
       <div class="topbar-right">

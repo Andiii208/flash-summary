@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Star } from 'lucide-preact'
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
+import { subjectInk } from '../../shared/subject-ink'
 
 export interface CourseTreeProps {
   tree: CourseTreeInfo[]
@@ -73,10 +74,13 @@ function courseSubLine(course: CourseTreeInfo): string | null {
 function CourseRow({ course, expanded, selectedLesson, sameCourse, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
   const sub = courseSubLine(course)
   return (
-    <div class="item course-item">
+    <div class="item course-item" style={`--course-ink:${subjectInk(course.id)}`}>
       <div class="course-row-head">
         <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded} title={course.name}>
           <span class="caret">{expanded ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
+          <span class="course-mono" aria-hidden="true">
+            {course.name.slice(0, 1)}
+          </span>
           <span class="course-name">{course.name}</span>
           {sameCourse && <span class="badge same">同课</span>}
           {course.lessons.length > 0 && <span class="course-count">{course.lessons.length}</span>}

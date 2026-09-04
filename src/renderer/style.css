@@ -374,15 +374,30 @@ body {
 /* ---- course tree ---- */
 .course-tree { display: flex; flex-direction: column; gap: 7px; }
 
-.course-item {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 3px;
-  background: var(--surface);
-  transition: border-color var(--speed), box-shadow var(--speed);
+.item.course-item {
+  border: none;
+  border-left: 2px solid var(--course-ink, var(--border-strong));
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 3px 0 5px 7px;
+  background: transparent;
+  transition: background var(--speed);
   overflow: hidden;
 }
-.course-item:hover { border-color: var(--border-strong); }
+.item.course-item:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+.course-mono {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  line-height: 1;
+  color: var(--course-ink, var(--text-secondary));
+  background: color-mix(in srgb, var(--course-ink, var(--text-muted)) 12%, transparent);
+}
 
 .course-head {
   display: flex;
@@ -927,6 +942,7 @@ body {
     var(--surface);
   box-shadow: var(--shadow-sm);
 }
+.empty-mark { color: var(--brass); opacity: 0.85; margin-bottom: 6px; display: flex; justify-content: center; }
 .empty-state h3, .welcome-guide h2 { margin: 0 0 8px; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
 .empty-state p, .welcome-guide p { color: var(--text-muted); margin: 0 0 14px; font-size: var(--font-size-md); }
 .guide-steps {
