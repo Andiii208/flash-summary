@@ -655,24 +655,29 @@ body {
   background: var(--surface-3);
 }
 .stage-step:first-child::before { display: none; }
-.stage-step.done::before, .stage-step.active::before { background: var(--accent); }
+.stage-step.done::before, .stage-step.active::before { background: linear-gradient(90deg, var(--accent), var(--brass)); }
 .stage-dot {
-  width: 15px;
-  height: 15px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  border: 2px solid var(--border-strong);
+  border: 1.5px solid var(--border-strong);
   background: var(--surface);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
   position: relative;
   z-index: 1;
-  transition: background var(--speed), border-color var(--speed), box-shadow var(--speed);
+  transition: background var(--speed), border-color var(--speed), box-shadow var(--speed), color var(--speed);
 }
-.stage-step.done .stage-dot { background: var(--accent); border-color: var(--accent); }
+.stage-step.done .stage-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .stage-step.active .stage-dot {
   border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
   box-shadow: 0 0 0 4px var(--accent-soft);
   animation: pulse 1.6s ease-in-out infinite;
 }
-.stage-step.error .stage-dot { background: var(--danger); border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+.stage-step.error .stage-dot { background: var(--danger); border-color: var(--danger); color: var(--accent-contrast); box-shadow: 0 0 0 4px var(--danger-soft); }
 .stage-name {
   font-size: 10px;
   color: var(--text-muted);
@@ -697,7 +702,7 @@ body {
   transition: width 0.3s ease;
 }
 .progress.active .progress-bar {
-  background: linear-gradient(90deg, var(--accent-hover), var(--accent), var(--accent-hover));
+  background: linear-gradient(90deg, var(--accent), var(--brass), var(--accent));
   background-size: 200% 100%;
   animation: sheen 1.8s linear infinite;
 }
@@ -714,17 +719,24 @@ body {
   gap: 10px;
   padding: 9px 12px;
 }
+/* V3: status as one-character ink seals — 成 / 败 / 行 / 停 (kai, stamp-like) */
 .history-state {
-  font-weight: 600;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 14px;
   flex-shrink: 0;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  background: var(--surface-2);
+  color: var(--text-muted);
 }
-.history-state.state-succeeded { background: var(--success-soft); color: var(--success); }
-.history-state.state-failed { background: var(--danger-soft); color: var(--danger); }
+.history-state.seal-ok { color: var(--success); background: var(--success-soft); }
+.history-state.seal-bad { color: var(--danger); background: var(--danger-soft); }
+.history-state.seal-run { color: var(--accent); background: var(--accent-soft); }
 .history-label {
   display: flex;
   flex-direction: column;
