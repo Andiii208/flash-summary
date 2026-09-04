@@ -21,6 +21,8 @@
   --color-muted: var(--text-muted);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-fill-hover: var(--accent-fill-hover);
   --color-accent-soft: var(--accent-soft);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);

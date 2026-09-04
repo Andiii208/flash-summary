@@ -19,6 +19,8 @@
   --text-muted: #5a6655;
   --accent: #00432b;
   --accent-hover: #00602f;
+  --accent-fill: #00432b;
+  --accent-fill-hover: #00602f;
   --accent-2: #6e5426;
   --accent-soft: rgba(0, 67, 43, 0.08);
   --accent-soft-2: rgba(0, 67, 43, 0.16);
@@ -54,19 +56,21 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0d110d;
-    --surface: #151b16;
-    --surface-2: #1d281b;
-    --surface-3: #24322a;
-    --text: #e8e3d6;
+    --bg: #0f1211;
+    --surface: #171b19;
+    --surface-2: #202523;
+    --surface-3: #292f2c;
+    --text: #e6e4dc;
     --text-secondary: #a9b4a6;
     --text-muted: #7e8b7b;
     --accent: #7cc791;
     --accent-hover: #8fd6a0;
+    --accent-fill: #35714e;
+    --accent-fill-hover: #3f8159;
     --accent-2: #d8c48f;
     --accent-soft: rgba(124, 199, 145, 0.12);
     --accent-soft-2: rgba(124, 199, 145, 0.2);
-    --accent-contrast: #102016;
+    --accent-contrast: #f0ede2;
     --brass: #d8c48f;
     --brass-soft: rgba(216, 196, 143, 0.14);
     --danger: #e08573;
@@ -75,8 +79,8 @@
     --success-soft: rgba(143, 214, 160, 0.13);
     --warning: #e0a36a;
     --warning-soft: rgba(224, 163, 106, 0.13);
-    --border: #2a382e;
-    --border-strong: #3d5042;
+    --border: #2c332f;
+    --border-strong: #3d453f;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.25);
     --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
     --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.4), 0 16px 36px rgba(0, 0, 0, 0.5);
@@ -86,19 +90,21 @@
 
 /* Explicit theme override (U3): wins over prefers-color-scheme. */
 :root[data-theme='dark'] {
-  --bg: #0d110d;
-  --surface: #151b16;
-  --surface-2: #1d281b;
-  --surface-3: #24322a;
-  --text: #e8e3d6;
+  --bg: #0f1211;
+  --surface: #171b19;
+  --surface-2: #202523;
+  --surface-3: #292f2c;
+  --text: #e6e4dc;
   --text-secondary: #a9b4a6;
   --text-muted: #7e8b7b;
   --accent: #7cc791;
   --accent-hover: #8fd6a0;
+  --accent-fill: #35714e;
+  --accent-fill-hover: #3f8159;
   --accent-2: #d8c48f;
   --accent-soft: rgba(124, 199, 145, 0.12);
   --accent-soft-2: rgba(124, 199, 145, 0.2);
-  --accent-contrast: #102016;
+  --accent-contrast: #f0ede2;
   --brass: #d8c48f;
   --brass-soft: rgba(216, 196, 143, 0.14);
   --danger: #e08573;
@@ -107,8 +113,8 @@
   --success-soft: rgba(143, 214, 160, 0.13);
   --warning: #e0a36a;
   --warning-soft: rgba(224, 163, 106, 0.13);
-  --border: #2a382e;
-  --border-strong: #3d5042;
+  --border: #2c332f;
+  --border-strong: #3d453f;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.25);
   --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.4), 0 16px 36px rgba(0, 0, 0, 0.5);
@@ -171,7 +177,7 @@ body {
   width: 27px;
   height: 27px;
   border-radius: var(--radius-sm);
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-contrast);
   font-family: var(--font-display);
   font-weight: 400;
@@ -342,11 +348,11 @@ body {
 .btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .btn:active { transform: translateY(1px); }
 .btn.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-color: transparent;
   color: var(--accent-contrast);
 }
-.btn.primary:hover { background: var(--accent-hover); }
+.btn.primary:hover { background: var(--accent-fill-hover); }
 .btn.danger { border-color: color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); background: var(--surface); }
 .btn.danger:hover { background: var(--danger-soft); border-color: var(--danger); }
 .btn.small { font-size: var(--font-size-sm); padding: 3px 10px; }
@@ -669,7 +675,7 @@ body {
   z-index: 1;
   transition: background var(--speed), border-color var(--speed), box-shadow var(--speed), color var(--speed);
 }
-.stage-step.done .stage-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.stage-step.done .stage-dot { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--accent-contrast); }
 .stage-step.active .stage-dot {
   border-color: var(--accent);
   color: var(--accent);
@@ -697,12 +703,12 @@ body {
 .progress-bar {
   height: 100%;
   width: 0;
-  background: var(--accent);
+  background: var(--accent-fill);
   border-radius: 6px;
   transition: width 0.3s ease;
 }
 .progress.active .progress-bar {
-  background: linear-gradient(90deg, var(--accent), var(--brass), var(--accent));
+  background: linear-gradient(90deg, var(--accent-fill), var(--brass), var(--accent-fill));
   background-size: 200% 100%;
   animation: sheen 1.8s linear infinite;
 }
@@ -1042,7 +1048,7 @@ body {
 .timeline-thumb { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: zoom-in; background: var(--surface-2); padding: 0; width: 168px; height: 96px; flex-shrink: 0; }
 .timeline-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-origin { position: absolute; left: 6px; bottom: 6px; font-size: 10px; padding: 0 6px; border-radius: 999px; backdrop-filter: blur(4px); color: #fff; background: rgba(0, 0, 0, 0.45); }
-.thumb-origin.evidence { background: var(--accent); color: var(--accent-contrast); }
+.thumb-origin.evidence { background: var(--accent-fill); color: var(--accent-contrast); }
 .zoom-image { display: block; max-width: min(760px, 78vw); max-height: 64vh; object-fit: contain; border-radius: var(--radius-lg); margin: 4px 0 10px; }
 
 /* ---- 概念卡 ---- */
@@ -1091,7 +1097,7 @@ body {
 .mindmap-node:focus { outline: none; }
 .mindmap-node:focus-visible .mindmap-box { stroke: var(--accent); stroke-width: 2; }
 .mindmap-label { font-size: 13px; fill: var(--text); }
-.mindmap-badge { fill: var(--accent); }
+.mindmap-badge { fill: var(--accent-fill); }
 .mindmap-badge-text { font-size: 10px; fill: var(--accent-contrast); font-weight: 700; }
 
 /* ---- 证据图集 ---- */
