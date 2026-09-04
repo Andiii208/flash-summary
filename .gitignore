@@ -25,3 +25,6 @@ tmp-chunk-*
 
 # UI screenshot harness output (dev-only artifacts)
 .ui-shots/
+
+.ui-shots-audit/
+.ui-shots-audit2/
