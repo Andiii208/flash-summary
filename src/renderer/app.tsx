@@ -127,7 +127,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   const goTasks = useCallback(() => setTab('tasks'), [setTab])
   const goNotes = useCallback(() => setTab('notes'), [setTab])
   const goSettings = useCallback(() => setTab('settings'), [setTab])
-  const state = useAppState(bridge, goTasks, goNotes, goSettings)
+  const state = useAppState(bridge, goTasks, goNotes, goSettings, setTab)
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   return (
@@ -529,7 +529,7 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced
 }
 
-function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () => void, goSettings: () => void): AppState {
+function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () => void, goSettings: () => void, goTab: (tab: 'tasks' | 'notes' | 'qa' | 'settings') => void): AppState {
   const [session, setSession] = useState<SessionState>('logged_out')
   const [sessionInfo, setSessionInfo] = useState<{ savedAt: string | null; expiresAt: number | null }>({
     savedAt: null,
@@ -579,6 +579,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastId = useRef(0)
   const lessonRef = useRef('')
+  /** 批5: identity-stable indirection for callbacks used inside long-lived
+   *  subscriptions (see the note at openLessonNotesRef). */
+  const openLessonNotesRef = useRef<(lessonId: string) => void>(() => undefined)
   /** The mount-time session read runs once per real mount: the effect's
    *  unstable deps (refreshTree flips with refreshBusy) must not re-read and
    *  clobber a session state the user just set by logging in. */
@@ -715,8 +718,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       void loadAttachments(lessonId)
       void loadHistory(lessonId)
       void loadQaHistory(lessonId)
+      // C9: land on the tab that matches the lesson's state — a processed
+      // lesson opens its note, an unprocessed one opens the task creation.
+      const fromTree = tree.some((c) => c.lessons.some((l) => l.id === lessonId && l.hasNote))
+      const fromIndex = noteIndex.some((e) => e.lessonId === lessonId)
+      goTab(fromTree || fromIndex ? 'notes' : 'tasks')
     },
-    [loadNote, loadAttachments, loadHistory, loadQaHistory]
+    [loadNote, loadAttachments, loadHistory, loadQaHistory, tree, noteIndex, goTab]
   )
 
   /** A2: one click from a finished task to its note. */
@@ -728,6 +736,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     },
     [selectLesson, goNotes]
   )
+  // See the ref declaration above: assignments stay unconditional so the
+  // subscription always calls the freshest closure without re-subscribing.
+  openLessonNotesRef.current = openLessonNotes
 
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
   useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
@@ -828,7 +839,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           }
           toast(`${row != null ? `「${taskLabelOf(row)}」任务完成` : `任务 ${p.taskId} 完成`}`, 'success', {
             actionLabel: '查看笔记',
-            onAction: () => openLessonNotes(doneLesson !== '' ? doneLesson : lid)
+            onAction: () => openLessonNotesRef.current(doneLesson !== '' ? doneLesson : lid)
           })
         })()
       } else if (p.state === 'failed') {
@@ -844,7 +855,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       disposed = true
       off()
     }
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, openLessonNotes, refreshTree, goTasks])
+    // openLessonNotes goes through its ref (identity-unstable: it flips with
+    // tree/noteIndex, and this effect calls applyLocalTree which produces a
+    // fresh tree — depending on it directly re-runs the effect forever).
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
 
   // 批C: write the UI snapshot back on every change — a navigation-induced
   // reload (harvest/login) resumes exactly where the user was. Stale course

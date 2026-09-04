@@ -232,6 +232,42 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
+  it('lands on the notes tab for a processed lesson (批5 C9)', async () => {
+    const bridge = makeBridge()
+    courseTreeRows = [
+      { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] }
+    ]
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    await waitForSelector('.course-head')
+    click(document.querySelector('.course-head'))
+    await waitForSelector('.lesson-row')
+    click(document.querySelector('.lesson-row'))
+    await vi.waitFor(() => {
+      const active = host.querySelector('.tabs button.active')
+      expect(active?.textContent).toBe('笔记')
+    })
+  })
+
+  it('lands on the tasks tab for an unprocessed lesson (批5 C9)', async () => {
+    // C9 persists the tab: reset so this mount starts from a clean slate.
+    window.localStorage.clear()
+    const bridge = makeBridge()
+    courseTreeRows = [
+      { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: false }] }
+    ]
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    await waitForSelector('.course-head')
+    click(document.querySelector('.course-head'))
+    await waitForSelector('.lesson-row')
+    click(document.querySelector('.lesson-row'))
+    await vi.waitFor(() => {
+      const active = host.querySelector('.tabs button.active')
+      expect(active?.textContent).toBe('任务')
+    })
+  })
+
   it('login flips the badge and logout clears the tree and qa panel', async () => {
     const bridge = makeBridge()
     qaHistoryRows = [{ question: '问', answer: '答' }]
