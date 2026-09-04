@@ -208,7 +208,7 @@ async function main() {
     await sleep(500)
     await cdp.shot(shotName('07-dark-settings'))
     await goTab('笔记')
-    await goNoteView('详细')
+    await goNoteView('详细笔记')
     await sleep(600)
     await cdp.shot(shotName('08-dark-note'))
     await goTab('任务')
