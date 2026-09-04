@@ -2,6 +2,19 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 笔记演进批次 1.3：证据引用命中率（2026-09-04）
+
+路线图 [docs/plans/2026-09-04-note-evolution-roadmap.md](docs/plans/2026-09-04-note-evolution-roadmap.md) Phase 1 可观测项。
+
+### 新增
+
+- **引用命中率度量**：`evidenceHitRate` 纯函数（`src/shared/notes/evidence.ts`）统计 timeline 证据引用精确命中附件的比例（引用按唯一 ref 去重；判定口径 = 实际发送给模型的素材）。`notes:regenerate` 返回值新增 `hitRate: {hits, total}`。
+- **引用命中显示**：重新生成成功 toast 显示「已生成第 N 版笔记，引用命中 H/M」；笔记工具栏常驻「引用命中 N/M」徽标（title 说明口径），笔记无证据引用时整块隐藏（空 section 纪律）。
+
+### 变更
+
+- 测试 376 → 381（+5：命中率全命中/部分命中/全不中+去重与零引用边界、regenerate IPC 返回契约、徽标渲染与隐藏条件）。
+
 ## [未发布] — 笔记系统质变（Note Revolution，2026-09-04，用户批准）
 
 方案：五批次计划（生成侧对齐 → 数据通道 → 五视图渲染 → PDF 讲义 → SKILL 沉淀）。工艺规范沉淀于 [docs/skills/note-craft/SKILL.md](docs/skills/note-craft/SKILL.md)。

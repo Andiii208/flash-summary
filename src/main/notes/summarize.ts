@@ -7,6 +7,7 @@
 import { readFileSync } from 'fs'
 import type { Db } from '../db/open'
 import { parseNote, type Note } from './schema'
+import { evidenceHitRate } from '../../shared/notes/evidence'
 import type { ChatPart, OpenAiCompatibleClient } from '../providers/openai-client'
 
 /** Max images embedded in the multimodal summarize call (token guard, U4). */
@@ -148,7 +149,7 @@ export async function summarizeLesson(
   db: Db,
   client: OpenAiCompatibleClient,
   lessonId: string
-): Promise<{ version: number; images: number } | { error: string }> {
+): Promise<{ version: number; images: number; hitRate: { hits: number; total: number } } | { error: string }> {
   const binding = db.prepare("SELECT model FROM capability_bindings WHERE capability = 'multimodal'").get() as
     | { model: string }
     | undefined
@@ -158,7 +159,10 @@ export async function summarizeLesson(
   try {
     const note = await generateNote(client, binding.model, inputs.transcriptText, inputs.images)
     const version = saveNoteVersion(db, lessonId, note, binding.model)
-    return { version, images: inputs.images.length }
+    // Citation quality signal (roadmap 1.3): refs are judged against the
+    // images actually sent — the model never saw attachments beyond the cap.
+    const hitRate = evidenceHitRate(note, inputs.images)
+    return { version, images: inputs.images.length, hitRate }
   } catch (err) {
     return { error: `笔记生成失败: ${(err as Error).message}` }
   }

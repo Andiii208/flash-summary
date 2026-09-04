@@ -936,7 +936,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
             toast(res.error ?? '重新生成失败', 'error')
             return
           }
-          toast(`已生成第 ${res.value?.version ?? '?'} 版笔记`, 'success')
+          // Citation quality signal (roadmap 1.3): hidden when nothing cited.
+          const result = res.value
+          if (result == null) {
+            toast('重新生成失败：返回数据缺失', 'error')
+            return
+          }
+          const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
+          toast(`已生成第 ${result.version} 版笔记${hitSuffix}`, 'success')
           await loadNote(lessonId)
         } finally {
           setNoteRegenBusy(false)

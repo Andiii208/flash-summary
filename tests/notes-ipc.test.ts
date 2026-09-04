@@ -138,9 +138,13 @@ describe('notes:regenerate (2026-09-04)', () => {
     chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
 
     registerIpc(ctx, ipc as never)
-    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { version: number; images: number } }
+    const res = (await invoke('notes:regenerate', 'l1')) as {
+      ok: boolean
+      value?: { version: number; images: number; hitRate: { hits: number; total: number } }
+    }
     expect(res.ok).toBe(true)
-    expect(res.value).toEqual({ version: 1, images: 1 })
+    // Roadmap 1.3: the cited evidence ref resolves against the sent images.
+    expect(res.value).toEqual({ version: 1, images: 1, hitRate: { hits: 1, total: 1 } })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
     expect(row).toEqual({ version: 1, model: 'mimo-v2.5' })
   })

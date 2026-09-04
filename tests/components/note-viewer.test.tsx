@@ -131,4 +131,18 @@ describe('NoteViewer', () => {
     expect(host.querySelector('[data-testid="evidence-gallery"]')).not.toBeNull()
     expect(host.querySelector('.evidence-fig img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
   })
+
+  it('shows the citation hit badge when evidence refs resolve, hides with none cited', () => {
+    const citedNote: Note = {
+      ...NOTE,
+      timeline: [
+        { at: 10, title: 'a', detail: 'd', refs: [], evidence: [{ kind: 'keyframe', ref: 'kf:kf-3' }] },
+        { at: 20, title: 'b', detail: 'd', refs: [], evidence: [{ kind: 'keyframe', ref: 'kf:missing.1' }] }
+      ]
+    }
+    const host = mount(<NoteViewer note={citedNote} attachments={[ATTACHMENT]} />)
+    expect(host.querySelector('.note-actions .badge')?.textContent).toBe('引用命中 1/2')
+    const uncited = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
+    expect(uncited.querySelector('.note-actions .badge')).toBeNull()
+  })
 })

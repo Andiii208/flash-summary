@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { bindTimelineImages, nearestKeyframe, resolveEvidenceGallery, formatTime, quoteForEntry, NEAREST_SECONDS, type AttachmentLike } from '../src/shared/notes/evidence'
+import {
+  bindTimelineImages,
+  nearestKeyframe,
+  resolveEvidenceGallery,
+  evidenceHitRate,
+  formatTime,
+  quoteForEntry,
+  NEAREST_SECONDS,
+  type AttachmentLike
+} from '../src/shared/notes/evidence'
 import { parseNote } from '../src/shared/notes/schema'
 
 function kf(ref: string, at: number, dataUrl = `data:image/jpeg;base64,${ref}`): AttachmentLike {
@@ -69,6 +78,41 @@ describe('resolveEvidenceGallery', () => {
     const gallery = resolveEvidenceGallery(note, attachments)
     expect(gallery.map((g) => g.ref)).toEqual(['kf:z', 'ppt:0', 'kf:a', 'kf:b'])
     expect(gallery.slice(0, 2).every((g) => g.origin === 'evidence')).toBe(true)
+  })
+})
+
+describe('evidenceHitRate (roadmap 1.3, 2026-09-04)', () => {
+  const noteWith = (refs: string[]): ReturnType<typeof parseNote> =>
+    parseNote(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        timeline: refs.map((ref) => ({ at: 10, title: 't', detail: 'd', evidence: [{ kind: 'keyframe', ref }] }))
+      })
+    )
+
+  it('all cited refs resolve → hits === total', () => {
+    const rate = evidenceHitRate(noteWith(['kf:a', 'kf:b']), [kf('kf:a', 0), kf('kf:b', 30)])
+    expect(rate).toEqual({ hits: 2, total: 2 })
+  })
+
+  it('partly fabricated refs count against the total', () => {
+    // kf:fabricated.1 passes the schema ref-format filter but matches no
+    // attachment — exactly the real-world miss the metric measures.
+    const rate = evidenceHitRate(noteWith(['kf:a', 'kf:fabricated.1']), [kf('kf:a', 0)])
+    expect(rate).toEqual({ hits: 1, total: 2 })
+  })
+
+  it('no cited ref resolves → zero hits', () => {
+    const rate = evidenceHitRate(noteWith(['kf:x', 'kf:y']), [kf('kf:a', 0)])
+    expect(rate).toEqual({ hits: 0, total: 2 })
+  })
+
+  it('dedupes repeated refs and yields total 0 when nothing cited', () => {
+    const repeated = evidenceHitRate(noteWith(['kf:a', 'kf:a']), [kf('kf:a', 0)])
+    expect(repeated).toEqual({ hits: 1, total: 1 })
+    expect(evidenceHitRate(noteWith([]), [kf('kf:a', 0)])).toEqual({ hits: 0, total: 0 })
   })
 })
 

@@ -58,7 +58,7 @@ function makeBridge(): SeuSummaryBridge {
       latest: vi.fn(async () => ok(null)),
       exportMarkdown: vi.fn(async () => ok({ canceled: true })),
       attachments: vi.fn(async () => ok([])),
-      regenerate: vi.fn(async () => ok({ version: 1, images: 0 })),
+      regenerate: vi.fn(async () => ok({ version: 1, images: 0, hitRate: { hits: 0, total: 0 } })),
       exportPdfDialog: vi.fn(async () => ok({ canceled: true })),
       exportPdfWrite: vi.fn(async () => ok({ path: 'x.pdf', bytes: 1 })),
       revealFile: vi.fn(async () => ok(true))

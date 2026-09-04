@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
-import type { AttachmentLike } from '../../shared/notes/evidence'
+import { evidenceHitRate, type AttachmentLike } from '../../shared/notes/evidence'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
 import type { NoteAttachmentInfo } from '../../shared/bridge'
@@ -36,6 +36,9 @@ export function NoteViewer({
   onCopy
 }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
+  // Citation quality signal (roadmap 1.3): share of cited evidence refs that
+  // resolve to real attachments; hidden when the note cites none.
+  const hitRate = note != null ? evidenceHitRate(note, attachments) : null
   return (
     <div class="note-viewer">
       <div class="note-toolbar">
@@ -69,6 +72,11 @@ export function NoteViewer({
           ))}
         </nav>
         <div class="note-actions">
+          {hitRate != null && hitRate.total > 0 && (
+            <span class="badge" title={`时间线证据引用精确命中附件 ${hitRate.hits}/${hitRate.total}`}>
+              引用命中 {hitRate.hits}/{hitRate.total}
+            </span>
+          )}
           {onExportPdf != null && (
             <button class="btn small primary" onClick={onExportPdf} disabled={pdfBusy}>
               {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}

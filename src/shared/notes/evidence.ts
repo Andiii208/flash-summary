@@ -98,6 +98,24 @@ export function resolveEvidenceGallery(note: Note, attachments: AttachmentLike[]
   return gallery
 }
 
+/**
+ * Evidence citation hit rate (2026-09-04, roadmap 1.3): of the unique refs
+ * the model cited on timeline entries, how many resolve to a real attachment.
+ * Denominator 0 (no cited evidence) yields {hits:0,total:0} — callers hide
+ * the badge rather than divide by zero.
+ */
+export function evidenceHitRate(
+  note: Pick<Note, 'timeline'>,
+  attachments: ReadonlyArray<Pick<AttachmentLike, 'ref'>>
+): { hits: number; total: number } {
+  const known = new Set(attachments.map((a) => a.ref))
+  const cited = new Set<string>()
+  for (const entry of note.timeline) for (const evidence of entry.evidence) cited.add(evidence.ref)
+  let hits = 0
+  for (const ref of cited) if (known.has(ref)) hits += 1
+  return { hits, total: cited.size }
+}
+
 /** Format seconds as mm:ss (shared display helper). */
 export function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
