@@ -8,10 +8,19 @@ import type { NoteAttachmentInfo } from '../../shared/bridge'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
 import { MindMap } from './MindMap'
 
+/** 试卷头 (V4): the lesson's identity line — course · teacher · lesson. */
+export interface LessonContext {
+  courseName: string
+  teacher?: string
+  lessonTitle: string
+}
+
 export interface NoteViewerProps {
   note: Note | null
   /** 2026-09-04: lesson keyframes/PPT images (data URLs). */
   attachments?: NoteAttachmentInfo[]
+  /** Lesson identity for the exam-paper masthead (V4). */
+  lesson?: LessonContext | null
   /** Regenerate in flight (button busy state). */
   regenBusy?: boolean
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
@@ -28,6 +37,7 @@ export interface NoteViewerProps {
 export function NoteViewer({
   note,
   attachments = [],
+  lesson = null,
   regenBusy = false,
   onRegenerate,
   pdfBusy = false,
@@ -92,6 +102,12 @@ export function NoteViewer({
         </div>
       </div>
       <div class="note-body">
+        {note != null && lesson != null && (
+          <header class="note-masthead">
+            <h2 class="note-title">{lesson.courseName}</h2>
+            <p class="note-meta">{[lesson.teacher, lesson.lessonTitle].filter((x): x is string => x != null && x !== '').join(' · ')}</p>
+          </header>
+        )}
         {note == null ? (
           <p class="msg">尚无笔记 — 运行任务生成后自动显示</p>
         ) : view === 'mindmap' ? (

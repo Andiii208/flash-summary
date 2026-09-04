@@ -32,6 +32,16 @@ describe('NoteViewer', () => {
     expect(host.textContent).toContain('尚无笔记')
   })
 
+  it('renders the exam-paper masthead only with a note and lesson context (V4)', () => {
+    const bare = mount(<NoteViewer note={NOTE} />)
+    expect(bare.querySelector('.note-masthead')).toBeNull()
+    const host = mount(<NoteViewer note={NOTE} lesson={{ courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }} />)
+    const masthead = host.querySelector('.note-masthead')
+    expect(masthead).not.toBeNull()
+    expect(masthead?.querySelector('.note-title')?.textContent).toBe('算法导论')
+    expect(masthead?.querySelector('.note-meta')?.textContent).toBe('汪海 · 第五讲')
+  })
+
   it('renders the detailed view by default as timeline cards with stamps', () => {
     const host = mount(<NoteViewer note={NOTE} />)
     expect(host.textContent).toContain('课程概览')
