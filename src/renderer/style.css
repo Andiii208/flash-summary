@@ -585,7 +585,7 @@ body {
   font-family: inherit;
 }
 .pin-btn:hover { background: var(--surface-2); color: var(--warning); }
-.pin-btn.pinned { color: var(--warning); }
+.pin-btn.pinned { color: var(--warning); background: var(--warning-soft); }
 .pin-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .course-sub {
   padding: 0 9px 7px 27px;

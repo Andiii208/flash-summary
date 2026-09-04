@@ -1,0 +1,24 @@
+import { describe, expect, it } from 'vitest'
+import { tabForHotkey } from '../../src/renderer/app'
+
+describe('tab hotkeys (批F Ctrl+1..4)', () => {
+  it('maps Ctrl+1..4 to the four tabs in order', () => {
+    expect(tabForHotkey('1', { ctrl: true, alt: false, meta: false, shift: false })).toBe('tasks')
+    expect(tabForHotkey('2', { ctrl: true, alt: false, meta: false, shift: false })).toBe('notes')
+    expect(tabForHotkey('3', { ctrl: true, alt: false, meta: false, shift: false })).toBe('qa')
+    expect(tabForHotkey('4', { ctrl: true, alt: false, meta: false, shift: false })).toBe('settings')
+  })
+
+  it('ignores non-digit keys and out-of-range digits', () => {
+    expect(tabForHotkey('a', { ctrl: true, alt: false, meta: false, shift: false })).toBeNull()
+    expect(tabForHotkey('5', { ctrl: true, alt: false, meta: false, shift: false })).toBeNull()
+    expect(tabForHotkey('0', { ctrl: true, alt: false, meta: false, shift: false })).toBeNull()
+  })
+
+  it('requires Ctrl alone — shifted/alt/meta chords and bare keys do nothing', () => {
+    expect(tabForHotkey('1', { ctrl: false, alt: false, meta: false, shift: false })).toBeNull()
+    expect(tabForHotkey('1', { ctrl: true, alt: true, meta: false, shift: false })).toBeNull()
+    expect(tabForHotkey('1', { ctrl: true, alt: false, meta: true, shift: false })).toBeNull()
+    expect(tabForHotkey('1', { ctrl: true, alt: false, meta: false, shift: true })).toBeNull()
+  })
+})

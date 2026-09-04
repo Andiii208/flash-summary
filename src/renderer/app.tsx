@@ -50,6 +50,14 @@ const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
   { id: 'settings', label: '设置' }
 ]
 
+/** 批F: Ctrl+1..4 → tab id (null when the chord doesn't map to a tab). */
+export function tabForHotkey(key: string, modifiers: { ctrl: boolean; alt: boolean; meta: boolean; shift: boolean }): MainTab | null {
+  if (!modifiers.ctrl || modifiers.alt || modifiers.meta || modifiers.shift) return null
+  const entry = TAB_LABELS[Number(key) - 1]
+  if (entry == null || String(Number(key)) !== key) return null
+  return entry.id
+}
+
 /** 批C: sidebar/context persistence — the harvest and login flows navigate
  *  the main window away, which unloads this renderer; without persistence
  *  the user lands back at the top of a collapsed tree (field 2026-09-04). */
@@ -131,6 +139,18 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   const state = useAppState(bridge, goTasks, goNotes, goSettings, setTab)
   const sidebarRef = useRef<HTMLElement>(null)
   const showWelcome = state.treeLoaded && state.tree.length === 0
+
+  // 批F: Ctrl+1..4 switch the four tabs (desktop convention).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const next = tabForHotkey(e.key, { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey, shift: e.shiftKey })
+      if (next == null) return
+      e.preventDefault()
+      setTab(next)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [setTab])
 
   return (
     <>
@@ -284,13 +304,14 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               }
             }}
           >
-            {TAB_LABELS.map((t) => (
+            {TAB_LABELS.map((t, i) => (
               <button
                 key={t.id}
                 role="tab"
                 aria-selected={tab === t.id}
                 tabIndex={tab === t.id ? 0 : -1}
                 class={tab === t.id ? 'active' : ''}
+                title={`Ctrl+${i + 1}`}
                 onClick={() => setTab(t.id)}
               >
                 {t.label}
@@ -1161,6 +1182,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   // C2: pin/unpin «my course»; re-read the local tree so the ordering applies.
+  // 批F: a favorite now confirms itself (the star is small; state must be heard).
   const toggleMine = useCallback(
     (courseId: string, mine: boolean): void => {
       void (async () => {
@@ -1169,10 +1191,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           toast(res.error ?? '操作失败', 'error')
           return
         }
+        if (mine) {
+          const course = tree.find((c) => c.id === courseId)
+          toast(`已收藏「${course?.name ?? courseId}」`, 'success')
+        }
         await applyLocalTree()
       })()
     },
-    [bridge, toast, applyLocalTree]
+    [bridge, toast, applyLocalTree, tree]
   )
 
   const addManual = useCallback(
