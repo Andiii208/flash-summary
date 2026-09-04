@@ -81,7 +81,7 @@ SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（273 个用例，41 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（463 个用例，57 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -91,7 +91,7 @@ src/
   preload/    类型化桥接（contextBridge）
   renderer/   Preact UI（课程树/任务/笔记/追问/设置，CSS 变量设计系统）
   shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
-tests/        41 个测试文件（含真实 HTTP 集成与六阶段端到端）
+tests/        57 个测试文件（含真实 HTTP 集成与六阶段端到端）
 scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）
 docs/
   plans/ROADMAP.md         阶段计划（8 阶段 + 验收命令）

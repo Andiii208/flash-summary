@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- **已完成阶段**：Phase 0-7、U1-U5、v0.2.0/v0.2.1 已发布；可用性整改 A/B/C（10 提交）；UX 深审整改 M1/M2/M3 全部落地；**笔记系统质变 Note Revolution 五批次全部落地（2026-09-04，方案见 CHANGELOG 未发布节 + docs/skills/note-craft/SKILL.md，用户批准）**：①生成侧证据ID标注+ref 过滤+结构化 Markdown 导出（6327c5b）②attachments/regenerate IPC+三层对齐纯函数（666680a）③五视图块模型+md-lite+交互思维导图+时间线图文卡片（d0477c9）④PDF 整册讲义 printToPDF（a1e9b10，AGENTS 边界修订）⑤SKILL 沉淀+文档同步（本提交）。真实数据 e2e：五视图 8 section/6 时间线卡/17 图集图/19 导图节点；PDF 4.2MB·7页·17 DCT 图·矢量文本。**四门禁 373/373 + smoke 19/19**
+- **已完成阶段**：Phase 0-7、U1-U5、v0.2.0/v0.2.1 已发布；**v0.3.1 全面 UX 审查整改六批全部落地（2026-09-05，方案 docs/plans/2026-09-05-ux-audit-v031.md 已批准）**：①批A 导航骨架——TopBar 品牌按钮化回起始态+面包屑+LessonChip 课时身份胶囊+四页统一 PageHeader（92528bb）②批B 单一内容列——`--content-max: 860px` 全应用靠左统一左缘、卷头随轴、导图破格（ae6d363）③批C 追问闭环——乐观回显+跨课时守卫+相对时间戳+无笔记诚实守卫（渲染+main buildQaMessages 禁编造）（06165f5）④批E 细节——设置行拆分/空态 EmptyState 卡统一/Markdown 导出 toast 补「打开所在文件夹」（6321d2b）⑤批D 导图折叠重做——常驻 ▸/▾ caret+后代计数胶囊+FLIP 平滑过渡+连线/节点层级编码，**顺修存量 bug：折叠徽标数字一直算错**（路径多走一层+按叶数计）（f01e933）⑥批F——Ctrl+1..4 切页签+收藏 toast 确认（9050752）。遗留清单收口：错误 toast role=alert（⑨）、ProviderPanel 标题跳级（④）、笔记页缺页标题（批A）。**四门禁 463/463 + smoke 22/22；实机截图双主题逐批验证（B 批左缘对齐 ≈250px 同轴、D 批 CDP 探针权威验证折叠态/层级计算样式）**。版本 0.3.1
 - **进行中**：无——**笔记演进 1.3 / 2.1 / 2.2 / 1.1 四批次完成（2026-09-04）**：①**1.3 证据引用命中率**：evidenceHitRate 纯函数+hitRate 返回链+「引用命中 N/M」徽标（b306c8a）。②**2.1 Quiz 自测题**（974a094）：NoteSchema.quiz 六处同步+要点视图翻面卡+summarize 同轮出题；**真实 1690625-L0 出 6 题全锚定**；顺修 provider 零超时缺陷（chat 10min/ASR 5min 硬超时）+模型容错（kind 降级/字符串列表提取）。③**2.2 Anki TSV 导出**（3df357d）：概念卡/自测题两堆+来源课时列+空堆跳过+SEU_ANKI_PATH 缝。④**1.1 ASR 时间戳探测（只读）**：SAPI 合成 100s 已知内容音频×5 探测矩阵（Node https 传输——Electron main 的 fetch 走 Chromium 栈 AbortSignal 不生效会永久挂起），**结论=网关不支持 segment 时间戳且协议层封死**（text part 被拒「prompt is injected by the gateway」），**1.2 按计划兜底取消**，报告 docs/health/2026-09-04-asr-timestamp-probe.md，产品码零改动。**四门禁 399/399 + smoke 19/19**。**G0-2 真实数据：引用命中 0/8（<60%）→ 1.3b（prompt few-shot）候选待决策**。**现场：ClashMI TUN 是大请求挂起根因（API PATCH /configs 可逆关闭）**；探测完成后尝试恢复 TUN 时发现 ClashMI 进程已退出（TUN/系统代理均未接管，网络直连中，需 Andiii 重开）。版本 0.3.0
 - **进行中**：**UX 深审二期 23 项全部落地（2026-09-04，方案 docs/plans/2026-09-04-ux-deep-audit-fixes.md 已批准）**——五批提交 41f52a2（批1 任务链路：A1 Provider 前置校验/A2 完成去向「查看笔记」/A3 可读课时名/B6 重跑提示/C1 进度卡标课时）、55e8b06+c19b3a4（批2 阅读：A4 课时按「第N节」升序/A5 IME 回车守卫/A6 追问答案 MdLite/A7 空态区分/B4 上一节下一节/C2 textarea/C3 图集放大/C5 路径 title）、dddd8fd（批3 排队：B1 运行中可排队上限3+同课去重/B2 跳学校页确认对话框可跳过/B5 行内取消）、7448c4c（批4 设置：B3 一次录多能力/C4 退出确认/C6 空课程删除带级联保护/C7 版本号/C8 登录后去选课/C10 缓存目录浏览）、689fed4（批5 C9 智能切页签 + **修 mount effect 无限重跑**——openLessonNotes 依赖 tree/noteIndex 身份翻转死循环，vitest OOM 根因，经 ref 间接订阅修复）。**四门禁 443/443 + smoke 22/22；真实库截图抽验（课时 1→8 升序/笔记按钮/课时导航）**
 - **下一步**：
@@ -25,6 +25,7 @@
 
 | 阶段 | 状态 | 验收结果 | 备注 |
 |---|---|---|---|
+| v0.3.1 全面 UX 审查整改（2026-09-05） | ✅ 完成 | 四门禁 463/463 + smoke 22/22；实机双主题截图逐批验证（批B 左缘同轴 ≈250px、批D CDP 探针权威验证折叠态/层级计算样式） | 六批提交 92528bb…9050752；方案 docs/plans/2026-09-05-ux-audit-v031.md（已批准）；顺修导图折叠计数存量 bug；外部依据 NN/g 一致性 + WinUI NavigationView |
 | Phase 0 | ✅ 完成 | 四门禁 0 退出；CI success（run 33324490350）；私密仓库已建并推送 | 提交 96cbe56、a18f2c6 |
 | Phase 1 | ✅ 完成 | 15/15 测试过（迁移/幂等/外键/CHECK）；better-sqlite3 在 Node+Electron 双 ABI 验证可用 | 提交 082b9eb |
 | Phase 2 | ✅ 完成 | 37/37 测试过；会话 DPAPI 加密存储、API 客户端错误分类、过期检测三通道 | 提交 2c12993 |
@@ -61,8 +62,9 @@
 
 ## 遗留（诚实清单）
 
-- **笔记质变「明确不做」清单（2026-09-04 Note Revolution 计划承诺记录，未来候选）**：①QA 追问发图（现状只传证据 ID 字符串，升级多模态时参照 note-craft SKILL §1）；②时间戳跳转视频（本地视频已删、平台播放页无时间参数——硬约束）；③笔记在线编辑器；④笔记版本切换 UI（版本数据全量留存于 notes 表，只差交互）。另：新 prompt 的 evidence 引用遵循度需用户真实点一次「重新生成」验证（预期缩略图角标从「就近」变为「引用」）。
-- **UI 发布后迭代清单（2026-09-03 审查产出，按性价比排序；发布前 5 个小点已修）**：①浅/深主题页签 ARIA 收口（tablist 无方向键导航——去 role 或补全，二选一）；②主窗口 `minWidth/minHeight` + `backgroundColor`（防白闪，主进程单行）；③空态样式统一（EmptyState 卡 vs `.msg` 灰字两级待遇）；④ProviderPanel h2 跳级 + NoteViewer 缺页标题；⑤资料库迁移按钮加 busy 防护；⑥失败时表单过早清空（ManualAdd/ProviderPanel 的 Key）；⑦课程树截断文本补 title；⑧死令牌清理（--bg-tint/--warning 系）与深色令牌块去重；⑨错误 toast 用 assertive（role=alert）；⑩搜索防抖；⑪回车提交行为统一；⑫侧栏可折叠。审查详情见提交记录。
+- **UI 发布后迭代清单（2026-09-03 审查产出，2026-09-05 全面 UX 审查整改后核对）——已完成注销**：①页签 ARIA roving+方向键（M3-2/深审批5）；②主窗口 minWidth/minHeight/backgroundColor（main/index.ts）；③空态两级待遇（2026-09-05 批E EmptyState 统一）；④ProviderPanel h2 跳级 + NoteViewer 缺页标题（2026-09-05 批A PageHeader + h3 收口）；⑨错误 toast assertive（2026-09-05 role=alert）；⑩搜索防抖（M2 批A 已有）；⑪追问回车提交+IME 守卫（批2 A5/批C）；⑫（升级为方案项）内容列统一（2026-09-05 批B）。——**仍未做**：⑤资料库迁移按钮 busy 防护；⑥失败时表单过早清空（ManualAdd/ProviderPanel Key）；⑦课时行截断文本无 title（course-head 有、lesson-row 无）；⑧死令牌清理（--bg-tint/--warning 系）与深色令牌块去重；ManualAdd 回车提交；⑫侧栏可折叠。
+
+- **笔记质变「明确不做」清单（2026-09-04 Note Revolution 计划承诺记录，未来候选）**：①QA 追问发图（现状只传证据 ID 字符串，升级多模态时参照 note-craft SKILL §1）；②时间戳跳转视频（本地视频已删、平台播放页无时间参数——硬约束）；③笔记在线编辑器；④笔记版本切换 UI（版本数据全量留存于 notes 表，只差交互）。另：新 prompt 的 evidence 引用遵循度需用户真实点一次「重新生成」验证（预期缩略图角标从「就近」变为「引用」）。2026-09-05 审查追加「明确不做」：导图不换 markmap/d3 库（自绘 SVG 是 PDF 共用几何根基）、不做路由库/多窗口。
 
 - **UI 主界面组装 ✅ 已完成**（提交 72be62f/7837368，2026-08-30）：AppContext（资料库+会话+Provider+媒体路径组装）、IPC API surface（school/providers/tasks/notes/qa 共 16 通道）、preload 桥接（SeuSummaryBridge 类型化）、renderer 三栏主界面（课程列表/任务面板/四视图笔记+追问）。真实 Electron 启动烟测通过：7 秒运行日志干净、资料库三目录+app.db 正常建立、renderer 标题正确。112/112 测试绿。
 - **需人工验证的 5 项**：见 docs/acceptance/MVP.md（干净机器安装、真实 CAS 登录、真实课程拉取、45 分钟端到端、过期重登恢复）——其中「过期重登恢复」已于 2026-09-03 活体验证通过（V2.5，见阶段记录），待 V4.4 收口时在 MVP.md 归档为 ✅。
