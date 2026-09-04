@@ -226,6 +226,28 @@ describe('notes:regenerate (2026-09-04)', () => {
   })
 })
 
+describe('notes:exportMarkdown naming (批D, 2026-09-04)', () => {
+  it('proposes a full course-teacher-lesson file name in the save dialog', async () => {
+    const ctx = makeCtx()
+    // makeCtx 已建 c1（课程/课时）——直接补充教师与课程名。
+    db.prepare("UPDATE courses SET name = '算法导论', teacher = '汪海' WHERE id = 'c1'").run()
+    registerIpc(ctx, ipc as never)
+    const { dialog } = (await import('electron')) as { dialog: { showSaveDialog: (w: unknown, o?: unknown) => Promise<{ canceled: boolean }> } }
+    let captured: { defaultPath?: string } | undefined
+    // BrowserWindow.getFocusedWindow() 是 null → ipc 走单参数签名。
+    dialog.showSaveDialog = vi.fn(async (a: unknown, b?: { defaultPath?: string }) => {
+      captured = (b ?? (a as { defaultPath?: string })) as { defaultPath?: string }
+      return { canceled: true }
+    }) as never
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n-name', 'l1', 1, ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(VALID_NOTE)
+    const res = (await ipc.invoke('notes:exportMarkdown', 'l1')) as { ok: boolean; value?: { canceled: boolean } }
+    expect(res.ok).toBe(true)
+    expect(captured?.defaultPath).toContain('算法导论 - 汪海 - 课时.md')
+  })
+})
+
 describe('notes:list / qa:recent (批B, 2026-09-04)', () => {
   it('notes:list returns one row per lesson with course/teacher, newest first', async () => {
     const ctx = makeCtx()

@@ -27,6 +27,7 @@ import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { ankiDecks, deckToTsv } from '../shared/notes/anki'
+import { noteExportBaseName } from '../shared/notes/export-name'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import { formatBytes, formatSpeed } from '../shared/format'
 import type { Note } from '../shared/notes/schema'
@@ -717,13 +718,24 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
       if (row == null) throw new Error('该课时尚无笔记')
-      const lesson = ctx.db.prepare('SELECT title FROM lessons WHERE id = ?').get(id) as { title: string } | undefined
-      const title = lesson?.title ?? id
-      const md = noteToMarkdown(parseNote(row.note_json), title)
+      const lesson = ctx.db
+        .prepare(
+          `SELECT l.title, c.name AS course_name, c.teacher
+           FROM lessons l LEFT JOIN courses c ON c.id = l.course_id WHERE l.id = ?`
+        )
+        .get(id) as { title: string; course_name: string | null; teacher: string | null } | undefined
+      // 批D: the file name (and the in-file title) carry the full identity.
+      const fullName = noteExportBaseName({
+        courseName: lesson?.course_name,
+        teacher: lesson?.teacher,
+        lessonTitle: lesson?.title,
+        lessonId: id
+      })
+      const md = noteToMarkdown(parseNote(row.note_json), fullName)
       const win = BrowserWindow.getFocusedWindow()
       const options: SaveDialogOptions = {
         title: '导出笔记为 Markdown',
-        defaultPath: join(ctx.exportsDir(), `${safeFileName(title)}.md`),
+        defaultPath: join(ctx.exportsDir(), `${fullName}.md`),
         filters: [{ name: 'Markdown', extensions: ['md'] }]
       }
       const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
@@ -746,8 +758,20 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
       if (row == null) throw new Error('该课时尚无笔记')
-      const lesson = ctx.db.prepare('SELECT title FROM lessons WHERE id = ?').get(id) as { title: string } | undefined
+      const lesson = ctx.db
+        .prepare(
+          `SELECT l.title, c.name AS course_name, c.teacher
+           FROM lessons l LEFT JOIN courses c ON c.id = l.course_id WHERE l.id = ?`
+        )
+        .get(id) as { title: string; course_name: string | null; teacher: string | null } | undefined
       const title = lesson?.title ?? id
+      // 批D: deck files share the full course-teacher-lesson base name.
+      const baseName = noteExportBaseName({
+        courseName: lesson?.course_name,
+        teacher: lesson?.teacher,
+        lessonTitle: lesson?.title,
+        lessonId: id
+      })
       const decks = ankiDecks(parseNote(row.note_json), title)
       if (decks.length === 0) throw new Error('本笔记没有概念卡或自测题可导出')
       const overridePath = process.env.SEU_ANKI_PATH
@@ -758,7 +782,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         const win = BrowserWindow.getFocusedWindow()
         const options: SaveDialogOptions = {
           title: '导出 Anki 概念卡（其余牌堆写至同目录）',
-          defaultPath: join(ctx.exportsDir(), `${safeFileName(title)}-${decks[0]!.name}.txt`),
+          defaultPath: join(ctx.exportsDir(), `${baseName}-${decks[0]!.name}.txt`),
           filters: [{ name: 'Anki TSV', extensions: ['txt'] }]
         }
         const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
@@ -767,7 +791,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       }
       const written: string[] = []
       decks.forEach((deck, index) => {
-        const target = index === 0 ? firstPath : join(dirname(firstPath), `${safeFileName(title)}-${deck.name}.txt`)
+        const target = index === 0 ? firstPath : join(dirname(firstPath), `${baseName}-${deck.name}.txt`)
         writeFileSync(target, deckToTsv(deck), 'utf8')
         written.push(target)
       })
@@ -814,14 +838,25 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   ipc.handle('notes:exportPdfDialog', async (_e, lessonId: unknown) => {
     try {
       const id = str(lessonId, 'lessonId')
-      const lesson = ctx.db.prepare('SELECT title FROM lessons WHERE id = ?').get(id) as { title: string } | undefined
-      const title = lesson?.title ?? id
+      const lesson = ctx.db
+        .prepare(
+          `SELECT l.title, c.name AS course_name, c.teacher
+           FROM lessons l LEFT JOIN courses c ON c.id = l.course_id WHERE l.id = ?`
+        )
+        .get(id) as { title: string; course_name: string | null; teacher: string | null } | undefined
+      // 批D: full course-teacher-lesson base name for the handout file.
+      const baseName = noteExportBaseName({
+        courseName: lesson?.course_name,
+        teacher: lesson?.teacher,
+        lessonTitle: lesson?.title,
+        lessonId: id
+      })
       const overridePath = process.env.SEU_PDF_PATH
       if (overridePath != null && overridePath !== '') return ok({ canceled: false, path: overridePath })
       const win = BrowserWindow.getFocusedWindow()
       const options: SaveDialogOptions = {
         title: '导出笔记为 PDF 讲义',
-        defaultPath: join(ctx.exportsDir(), `${safeFileName(title)}-讲义.pdf`),
+        defaultPath: join(ctx.exportsDir(), `${baseName}-讲义.pdf`),
         filters: [{ name: 'PDF', extensions: ['pdf'] }]
       }
       const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
@@ -935,9 +970,4 @@ export function webContentsSender(win: { webContents: WebContents } | null): Pro
       if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
     }
   }
-}
-
-/** Strip characters that are unsafe in a Windows file name. */
-function safeFileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'note'
 }

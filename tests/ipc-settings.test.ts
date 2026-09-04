@@ -137,7 +137,8 @@ describe('notes:exportMarkdown (U3)', () => {
     expect(res.value.canceled).toBe(false)
     expect(res.value.path).toBe(outPath)
     const content = readFileSync(outPath, 'utf8')
-    expect(content).toContain(noteToMarkdown(note as never, '第1讲').slice(0, 40))
+    // 批D: the in-file title is the full course-teacher-lesson name.
+    expect(content).toContain(noteToMarkdown(note as never, '课程 - 第1讲').slice(0, 40))
   })
 
   it('fails when the lesson has no note yet', async () => {
