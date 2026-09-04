@@ -725,6 +725,9 @@ body {
   to { background-position: -200% 0; }
 }
 
+.dialog-check { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-sm); color: var(--text-secondary); margin: 4px 0 2px; }
+.task-status .btn.small { margin-top: 10px; }
+
 /* History (M2 批 B: 课程名·课时名为主体的可读行) */
 .history-list { display: flex; flex-direction: column; gap: 6px; }
 .history-row {

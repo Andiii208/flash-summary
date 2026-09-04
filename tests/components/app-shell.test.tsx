@@ -240,8 +240,12 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     click(document.querySelector('.course-head'))
     await waitForSelector('.lesson-row')
 
-    // logged_out topbar shows the login button first.
+    // logged_out topbar shows the login button first; B2 asks for a jump
+    // confirmation before the window becomes the school's page.
     click(host.querySelector('.topbar button.primary'))
+    await waitForSelector('.dialog')
+    const jump = Array.from(host.querySelectorAll('.dialog-actions button')).find((b) => b.textContent === '跳转')
+    click(jump ?? null)
     await waitForSelector('[data-testid="session-badge"].logged_in')
 
     click(host.querySelector('.topbar .btn:not(.primary)'))

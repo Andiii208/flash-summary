@@ -85,6 +85,7 @@ export function TaskPanel({
             history={globalHistory}
             onRetry={onRetry}
             disabled={running}
+            onCancel={onCancel}
             onDelete={onDelete}
             onClearFinished={onClearFinished}
             onOpenNote={onOpenNote}
@@ -93,8 +94,9 @@ export function TaskPanel({
       ) : (
         <>
           <p class="msg">已选课时：{lessonLabel ?? currentLesson}</p>
-          <button class="btn primary" onClick={onCreateRun} disabled={running || busy}>
-            {busy ? '提交中…' : running ? '运行中…' : '创建并运行'}
+          {/* B1: queueing is allowed while another task runs. */}
+          <button class="btn primary" onClick={onCreateRun} disabled={busy}>
+            {busy ? '提交中…' : running ? '排队下一节' : '创建并运行'}
           </button>
           {running && (
             <button class="btn danger" onClick={onCancel} disabled={busy}>
@@ -108,6 +110,8 @@ export function TaskPanel({
             <TaskStatusCard
               progress={progress}
               taskRow={globalHistory.find((row) => row.id === progress.taskId)}
+              onCancel={onCancel}
+              cancellable={running}
             />
           )}
           <h3 class="subheading">本课时历史任务</h3>
@@ -115,6 +119,7 @@ export function TaskPanel({
             history={history}
             onRetry={onRetry}
             disabled={running}
+            onCancel={onCancel}
             onDelete={onDelete}
             onClearFinished={onClearFinished}
             onOpenNote={onOpenNote}
@@ -129,6 +134,9 @@ interface TaskStatusCardProps {
   progress: TaskProgressInfo
   /** C1: the task row (course · lesson identity) when resolvable. */
   taskRow?: TaskRowInfo
+  /** B1: a queued task shows a badge instead of the progress card. */
+  cancellable?: boolean
+  onCancel?: () => void
 }
 
 /** V3 印章轴: one lucide glyph per pipeline stage (rail instrument icons). */
@@ -148,18 +156,21 @@ function sealFor(row: Pick<TaskRowInfo, 'state' | 'error_kind'>): { char: string
   return { char: '行', seal: 'run' }
 }
 
-function TaskStatusCard({ progress, taskRow }: TaskStatusCardProps): JSX.Element {
+function TaskStatusCard({ progress, taskRow, cancellable = false, onCancel }: TaskStatusCardProps): JSX.Element {
   const failed = progress.state === 'failed'
   const succeeded = progress.state === 'succeeded'
   // Position of the furthest reached stage on the rail.
   const reached = succeeded
     ? PIPELINE_STAGES.length
     : Math.max(0, PIPELINE_STAGES.indexOf((progress.stage ?? progress.state) as (typeof PIPELINE_STAGES)[number]))
+  const queued = progress.state === 'pending' && !succeeded && !failed
   return (
     <div class={`task-status${failed ? ' failed' : ''}`} data-testid="task-status">
       <div class="task-status-line">
         <span class="task-id">任务 {progress.taskId}</span>
-        <span class={`task-stage${succeeded ? ' done' : ''}`}>{stageLabel(progress.state, progress.stage)}</span>
+        <span class={`task-stage${succeeded ? ' done' : ''}`}>
+          {queued ? '排队中（等待当前任务完成）' : stageLabel(progress.state, progress.stage)}
+        </span>
       </div>
       {taskRow != null && (
         <p class="task-status-lesson" title={taskRow.lesson_id}>
@@ -181,6 +192,16 @@ function TaskStatusCard({ progress, taskRow }: TaskStatusCardProps): JSX.Element
       <ProgressBar percent={progress.percent} active={!succeeded && !failed} />
       {progress.detail != null && <p class="task-detail">{progress.detail}</p>}
       {failed && <p class="task-error">{progress.message}</p>}
+      {cancellable && !queued && onCancel != null && (
+        <button class="btn small danger" onClick={onCancel}>
+          取消任务
+        </button>
+      )}
+      {queued && onCancel != null && (
+        <button class="btn small ghost" onClick={onCancel}>
+          取消排队
+        </button>
+      )}
     </div>
   )
 }
@@ -189,13 +210,14 @@ interface HistoryListProps {
   history: TaskRowInfo[]
   onRetry: (taskId: string) => void
   disabled: boolean
+  onCancel: (taskId: string) => void
   onDelete: (taskId: string) => void
   onClearFinished: () => void
   /** A2: open a finished task's note. */
   onOpenNote?: (lessonId: string) => void
 }
 
-function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished, onOpenNote }: HistoryListProps): JSX.Element {
+function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFinished, onOpenNote }: HistoryListProps): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all')
   const [confirmClear, setConfirmClear] = useState(false)
   if (history.length === 0) return <p class="msg">暂无任务</p>
@@ -256,6 +278,11 @@ function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished, on
             {row.state === 'succeeded' && onOpenNote != null && (
               <button class="btn small" onClick={() => onOpenNote(row.lesson_id)} title="查看这节课的笔记">
                 笔记
+              </button>
+            )}
+            {row.state !== 'succeeded' && row.state !== 'failed' && (
+              <button class="btn small danger" onClick={() => onCancel(row.id)} title="取消这个任务">
+                取消
               </button>
             )}
             {row.state === 'failed' && (

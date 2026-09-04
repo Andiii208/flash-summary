@@ -23,14 +23,37 @@ describe('TaskPanel', () => {
     expect(host.querySelector('.task-status.failed')).not.toBeNull()
   })
 
-  it('disables the run button while running and shows progress state', () => {
+  it('offers queueing while a task runs instead of disabling (批3 B1)', () => {
     const progress: TaskProgressInfo = { taskId: 't2', state: 'summarizing', stage: 'summarizing', message: '生成笔记', percent: 83 }
     const host = mount(
       <TaskPanel currentLesson="l1" running busy={false} progress={progress} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
     )
     const run = host.querySelector<HTMLButtonElement>('button.primary')
-    expect(run?.disabled).toBe(true)
-    expect(run?.textContent).toBe('运行中…')
+    expect(run?.disabled).toBe(false)
+    expect(run?.textContent).toBe('排队下一节')
+  })
+
+  it('shows a queued task hint and a cancel-queue action (批3 B1)', () => {
+    const progress: TaskProgressInfo = { taskId: 't3', state: 'pending', stage: null, message: '排队中', percent: 0 }
+    const onCancel = vi.fn()
+    const host = mount(
+      <TaskPanel currentLesson="l1" running busy={false} progress={progress} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={onCancel} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    expect(host.textContent).toContain('排队中（等待当前任务完成）')
+    const cancelQueue = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '取消排队')
+    click(cancelQueue ?? null)
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('wires the per-row cancel button for active tasks (批3 B5)', () => {
+    const onCancel = vi.fn()
+    const running: TaskRowInfo = { ...ROW, id: 't-running', state: 'transcribing' }
+    const host = mount(
+      <TaskPanel currentLesson="" running={false} busy={false} progress={null} history={[]} globalHistory={[running]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={onCancel} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    const cancel = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '取消')
+    click(cancel ?? null)
+    expect(onCancel).toHaveBeenCalledWith('t-running')
   })
 
   it('fires onCreateRun when the create-and-run button is clicked', () => {

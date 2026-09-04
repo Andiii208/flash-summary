@@ -16,6 +16,7 @@ import { PrintHandout } from './components/PrintHandout'
 import { QaPanel, type QaEntry } from './components/QaPanel'
 import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
+import { Dialog } from './ui/Dialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -97,6 +98,25 @@ function writeHarvestSeq(seq: number): void {
   }
 }
 
+/** B2: «don't tell me again» for the platform-jump confirmation. */
+const JUMP_SKIP_KEY = 'seu-summary.jump-confirm.skip'
+
+function readJumpSkip(): boolean {
+  try {
+    return window.localStorage.getItem(JUMP_SKIP_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeJumpSkip(): void {
+  try {
+    window.localStorage.setItem(JUMP_SKIP_KEY, '1')
+  } catch {
+    // See savePersistedUi.
+  }
+}
+
 export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   // 批C: the active tab survives renderer reloads (harvest/login navigation).
   const [tab, setTabState] = useState<MainTab>(() => loadPersistedUi().tab ?? 'tasks')
@@ -116,6 +136,15 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
        *  Lives OUTSIDE .app-shell: print.css hides the whole shell under print
        *  media, and display:none on an ancestor would hide this too. */}
       <div id="print-root" />
+      {/* B2: expectation-setting before the window becomes the school's page. */}
+      <JumpConfirmDialog
+        pending={state.jumpConfirm}
+        onAccept={(remember) => {
+          if (remember) writeJumpSkip()
+          state.acceptJump()
+        }}
+        onCancel={state.dismissJump}
+      />
       <div class="app-shell">
       <TopBar session={state.session} busy={state.sessionBusy} running={state.running} onLogin={state.login} onLogout={state.logout} />
       <ToastArea toasts={state.toasts} />
@@ -326,6 +355,40 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   )
 }
 
+/** B2: platform-jump confirmation with a «don't show again» opt-out. */
+function JumpConfirmDialog({
+  pending,
+  onAccept,
+  onCancel
+}: {
+  pending: { kind: 'login' | 'harvest'; action: () => void } | null
+  onAccept: (remember: boolean) => void
+  onCancel: () => void
+}): JSX.Element | null {
+  const [remember, setRemember] = useState(false)
+  if (pending == null) return null
+  const login = pending.kind === 'login'
+  return (
+    <Dialog
+      open
+      title={login ? '跳转到学校登录页？' : '跳转到学校播放页抓取课时目录？'}
+      message={
+        login
+          ? '整个窗口会先变成学校的登录页面（通常 1-2 分钟），登录成功后自动回到应用，请稍候不要关闭。'
+          : '整个窗口会先变成学校的播放页面（通常 30-60 秒），抓取完成后自动回到应用并展开这门课，请稍候不要关闭。'
+      }
+      confirmLabel="跳转"
+      onConfirm={() => onAccept(remember)}
+      onCancel={onCancel}
+    >
+      <label class="dialog-check">
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember((e.target as HTMLInputElement).checked)} />
+        以后不再提示
+      </label>
+    </Dialog>
+  )
+}
+
 interface AppState {
   session: SessionState
   sessionInfo: { savedAt: string | null; expiresAt: number | null }
@@ -367,6 +430,10 @@ interface AppState {
   qaRecent: QaRecentInfo[]
     /** B4: neighbors of the selected lesson (sorted, same course). */
     lessonNeighbors: { prev: { id: string; title: string } | null; next: { id: string; title: string } | null }
+    /** B2: pending platform-jump confirmation (dialog state). */
+    jumpConfirm: { kind: 'login' | 'harvest'; action: () => void } | null
+    acceptJump: () => void
+    dismissJump: () => void
     /** 批C: courses whose catalog harvest is currently running. */
     harvestInflight: ReadonlySet<string>
   history: TaskRowInfo[]
@@ -397,7 +464,7 @@ interface AppState {
   /** A1: create + run with a pre-flight capability check. */
   createAndRun: () => void
   retryTask: (taskId: string) => void
-  cancelTask: () => void
+  cancelTask: (taskId?: string) => void
   removeTask: (taskId: string) => void
   clearFinishedTasks: () => void
   ask: (question: string) => void
@@ -733,11 +800,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       if (p.state === 'succeeded' || p.state === 'failed') void loadGlobalHistory()
       const lid = lessonRef.current
       if (p.state === 'succeeded') {
-        setRunning(false)
-        // A2: the task row carries the readable identity — toast offers a
-        // direct path to the note instead of stranding the user.
+        // B1: other tasks may still be queued — recompute from the fresh rows.
         void (async () => {
           const rows = await bridge.tasks.list()
+          setRunning(rows.ok && rows.value != null ? rows.value.some((t) => isActiveState(t.state)) : false)
           const row = rows.ok && rows.value != null ? rows.value.find((t) => t.id === p.taskId) : undefined
           const doneLesson = row?.lesson_id ?? lid
           void loadNoteIndex()
@@ -751,7 +817,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           })
         })()
       } else if (p.state === 'failed') {
-        setRunning(false)
+        void (async () => {
+          const rows = await bridge.tasks.list()
+          setRunning(rows.ok && rows.value != null ? rows.value.some((t) => isActiveState(t.state)) : false)
+        })()
         toast(p.message, 'error')
         if (p.kind === 'session_expired') toast('会话已过期，登录后可重试此任务', 'error')
       }
@@ -806,36 +875,57 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     }
   }, [bridge, applyLocalTree, toast])
 
+  // B2: the main window is about to become the school's page for up to a
+  // minute — set the expectation once, with an opt-out (localStorage).
+  const [jumpConfirm, setJumpConfirm] = useState<{ kind: 'login' | 'harvest'; action: () => void } | null>(null)
+  const confirmPlatformJump = useCallback((kind: 'login' | 'harvest', action: () => void): void => {
+    if (readJumpSkip()) {
+      action()
+      return
+    }
+    setJumpConfirm({ kind, action })
+  }, [])
+  const acceptJump = useCallback((): void => {
+    const pending = jumpConfirm
+    setJumpConfirm(null)
+    pending?.action()
+  }, [jumpConfirm])
+  const dismissJump = useCallback((): void => setJumpConfirm(null), [])
+
   const login = useCallback((): void => {
     if (sessionBusy) return // one login at a time (stacked windows field case 2026-09-01)
     void (async () => {
       // A5 preflight: a Fake-IP takeover fails the platform page before it
       // loads — explain the fix instead of leaving a dead window.
       if (!(await ensureCampusNet())) return
-      setSessionBusy(true)
-      try {
-        // V2: the main window navigates to the platform for the login, which
-        // unloads this renderer mid-call — completion is handled by the fresh
-        // mount (it re-reads the session and auto-refreshes via justLoggedIn).
-        // The promise below is only resolved on the legacy SEU_LOGIN_WINDOW=1
-        // path, where the app UI stays alive.
-        toast('正在跳转到平台登录页，完成后自动返回…')
-        const res = await bridge.school.login()
-        if (!res.ok) {
-          toast(res.error ?? '登录失败', 'error')
-          return
-        }
-        setSession('logged_in')
-        toast('登录成功', 'success')
-        void refreshTree()
-      } catch {
-        // Invoke-layer failures already reach the file log; the fresh mount
-        // reports the outcome through the one-shot loginOutcome channel.
-      } finally {
-        setSessionBusy(false)
-      }
+      confirmPlatformJump('login', () => {
+        void (async () => {
+          setSessionBusy(true)
+          try {
+            // V2: the main window navigates to the platform for the login, which
+            // unloads this renderer mid-call — completion is handled by the fresh
+            // mount (it re-reads the session and auto-refreshes via justLoggedIn).
+            // The promise below is only resolved on the legacy SEU_LOGIN_WINDOW=1
+            // path, where the app UI stays alive.
+            toast('正在跳转到平台登录页，完成后自动返回…')
+            const res = await bridge.school.login()
+            if (!res.ok) {
+              toast(res.error ?? '登录失败', 'error')
+              return
+            }
+            setSession('logged_in')
+            toast('登录成功', 'success')
+            void refreshTree()
+          } catch {
+            // Invoke-layer failures already reach the file log; the fresh mount
+            // reports the outcome through the one-shot loginOutcome channel.
+          } finally {
+            setSessionBusy(false)
+          }
+        })()
+      })
     })()
-  }, [bridge, toast, refreshTree, sessionBusy, ensureCampusNet])
+  }, [bridge, toast, refreshTree, sessionBusy, ensureCampusNet, confirmPlatformJump])
 
   const logout = useCallback((): void => {
     void bridge.school.logout()
@@ -955,13 +1045,15 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   // mount after the harvest re-reads the local tree and shows the lessons.
   const harvestLessons = useCallback(
     (courseId: string): void => {
-      toast('正在打开播放页抓取课时目录，请稍候…')
-      bridge.school
-        .harvestLessons(courseId)
-        .then(async () => applyLocalTree())
-        .catch(() => undefined)
+      confirmPlatformJump('harvest', () => {
+        toast('正在打开播放页抓取课时目录，请稍候…')
+        bridge.school
+          .harvestLessons(courseId)
+          .then(async () => applyLocalTree())
+          .catch(() => undefined)
+      })
     },
-    [bridge, toast, applyLocalTree]
+    [bridge, toast, applyLocalTree, confirmPlatformJump]
   )
 
   // C2: pin/unpin «my course»; re-read the local tree so the ordering applies.
@@ -996,20 +1088,29 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   const launch = useCallback(
-    async (taskId: string): Promise<void> => {
-      setProgress({ taskId, state: 'pending', stage: null, message: '排队中', percent: 0 })
-      setRunning(true)
+    async (taskId: string, queued: boolean): Promise<void> => {
+      // B1: a queued task gets no progress card yet — the serial queue will
+      // push progress events when its turn comes.
+      if (!queued) {
+        setProgress({ taskId, state: 'pending', stage: null, message: '排队中', percent: 0 })
+        setRunning(true)
+      }
       const res = await bridge.tasks.runAsync(taskId)
       if (!res.ok) {
-        setRunning(false)
+        if (!queued) setRunning(false)
         toast(res.error ?? '启动失败', 'error')
       }
     },
     [bridge, toast]
   )
 
+  /** B1: how many tasks are queued/running right now (from the latest rows). */
+  const countActive = useCallback((): number => {
+    return globalHistory.filter((row) => isActiveState(row.state)).length
+  }, [globalHistory])
+
   const createAndRun = useCallback((): void => {
-    if (currentLesson === '' || running) return
+    if (currentLesson === '' || submitBusy) return
     // A1: validate capability bindings BEFORE creating the task — a missing
     // binding used to surface only at the summarizing stage (30+ min lost).
     const caps = new Set((providers?.bindings ?? []).map((b) => b.capability))
@@ -1023,6 +1124,18 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       })
       return
     }
+    // B1: queueing is allowed while a task runs — bounded, and one task per
+    // lesson so the same video is never downloaded twice in parallel.
+    const queued = running
+    const activeCount = countActive()
+    if (queued && activeCount >= 3) {
+      toast('已有 3 个任务在排队/运行，等一个完成再排吧', 'error')
+      return
+    }
+    if (globalHistory.some((row) => row.lesson_id === currentLesson && isActiveState(row.state))) {
+      toast('该课时已有任务在排队/运行中', 'error')
+      return
+    }
     void (async () => {
       setSubmitBusy(true)
       try {
@@ -1031,27 +1144,43 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           toast(created.error ?? '创建任务失败', 'error')
           return
         }
-        await launch((created.value as { id: string }).id)
+        await launch((created.value as { id: string }).id, queued)
+        if (queued) {
+          toast('已加入队列，当前任务完成后自动开始', 'success')
+          await loadGlobalHistory()
+        }
       } finally {
         setSubmitBusy(false)
       }
     })()
-  }, [bridge, currentLesson, running, providers, toast, goSettings, launch])
+  }, [bridge, currentLesson, running, submitBusy, providers, toast, goSettings, launch, countActive, globalHistory, loadGlobalHistory])
 
   const retryTask = useCallback(
     (taskId: string): void => {
       if (running) return
-      void launch(taskId)
+      void launch(taskId, false)
     },
     [running, launch]
   )
 
-  const cancelTask = useCallback((): void => {
-    if (!running) return
-    const id = progress?.taskId
-    if (id == null) return
-    void bridge.tasks.cancel(id)
-  }, [bridge, running, progress])
+  /** B5: cancel any queued/running task by id (row-level button too). */
+  const cancelTask = useCallback(
+    (taskId?: string): void => {
+      const id = taskId ?? (running ? progress?.taskId : undefined)
+      if (id == null) return
+      void (async () => {
+        const res = await bridge.tasks.cancel(id)
+        if (!res.ok) {
+          toast(res.error ?? '取消失败', 'error')
+          return
+        }
+        await loadGlobalHistory()
+        const lid = lessonRef.current
+        if (lid !== '') void loadHistory(lid)
+      })()
+    },
+    [bridge, running, progress, toast, loadGlobalHistory, loadHistory]
+  )
 
   // M1-2: delete one terminal history row / clear all terminal rows, then
   // refresh the visible histories.
@@ -1375,6 +1504,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     lessonContext,
     lessonContextOrIndex,
     lessonNeighbors,
+    jumpConfirm,
+    acceptJump,
+    dismissJump,
     extractedCourses,
     sameCourses,
     allCoursesOpen,
