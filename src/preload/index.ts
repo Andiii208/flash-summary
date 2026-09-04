@@ -74,6 +74,8 @@ const api: SeuSummaryBridge = {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
     exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportMarkdown', lessonId),
+    exportAnki: (lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>> =>
+      ipcRenderer.invoke('notes:exportAnki', lessonId),
     attachments: (lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>> =>
       ipcRenderer.invoke('notes:attachments', lessonId),
     regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number } }>> =>

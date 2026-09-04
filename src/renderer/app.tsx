@@ -217,6 +217,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
               onExportPdf={state.currentLesson !== '' && state.note != null ? () => state.exportNotePdf(state.currentLesson) : undefined}
               onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined}
+              onExportAnki={state.currentLesson !== '' && state.note != null ? () => state.exportNoteAnki(state.currentLesson) : undefined}
               onCopy={state.copyNote}
             />
           )}
@@ -313,6 +314,8 @@ interface AppState {
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   providerTest: { ok: boolean; text: string } | null
   exportNote: (lessonId: string) => void
+  /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
+  exportNoteAnki: (lessonId: string) => void
   copyNote: () => void
   /** 2026-09-04: regenerate + attachments + PDF handout for the note views. */
   attachments: NoteAttachmentInfo[]
@@ -925,6 +928,26 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     [bridge, toast]
   )
 
+  /** 2026-09-04 roadmap 2.2: Anki TSV decks — toast carries a reveal action. */
+  const exportNoteAnki = useCallback(
+    (lessonId: string): void => {
+      void (async () => {
+        const res = await bridge.notes.exportAnki(lessonId)
+        if (!res.ok) {
+          toast(res.error ?? '导出失败', 'error')
+          return
+        }
+        const value = res.value
+        if (value == null || value.canceled || value.paths.length === 0) return
+        toast(`已导出 ${value.paths.length} 个牌堆文件`, 'success', {
+          actionLabel: '打开所在文件夹',
+          onAction: () => void bridge.notes.revealFile(value.paths[0] ?? '')
+        })
+      })()
+    },
+    [bridge, toast]
+  )
+
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
   const regenerateNote = useCallback(
     (lessonId: string): void => {
@@ -1138,6 +1161,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     testProvider,
     providerTest,
     exportNote,
+    exportNoteAnki,
     copyNote,
     attachments,
     noteRegenBusy,

@@ -124,6 +124,59 @@ describe('notes:attachments (2026-09-04)', () => {
   })
 })
 
+describe('notes:exportAnki (roadmap 2.2, 2026-09-04)', () => {
+  it('writes concept and quiz TSV decks; quiz deck sits beside the chosen path', async () => {
+    const ctx = makeCtx()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        concepts: [{ term: '大O', definition: '渐进上界' }],
+        quiz: [{ question: '什么是大O？', answer: '渐进上界', source: 'concept', term: '大O' }]
+      })
+    )
+    const firstPath = join(dir, 'chosen.txt')
+    const prev = process.env.SEU_ANKI_PATH
+    process.env.SEU_ANKI_PATH = firstPath
+    try {
+      registerIpc(ctx, ipc as never)
+      const res = (await invoke('notes:exportAnki', 'l1')) as { ok: boolean; value?: { canceled: boolean; paths: string[] } }
+      expect(res.ok).toBe(true)
+      expect(res.value?.canceled).toBe(false)
+      expect(res.value?.paths).toHaveLength(2)
+      const quizPath = res.value?.paths[1] ?? ''
+      expect(quizPath).toContain('Anki-自测题')
+      const { readFileSync } = await import('fs')
+      expect(readFileSync(firstPath, 'utf8')).toBe('大O\t渐进上界\t课时\n')
+      expect(readFileSync(quizPath, 'utf8')).toBe('什么是大O？\t渐进上界\t课时\n')
+    } finally {
+      if (prev == null) delete process.env.SEU_ANKI_PATH
+      else process.env.SEU_ANKI_PATH = prev
+    }
+  })
+
+  it('fails with a readable error when the note has no decks', async () => {
+    const ctx = makeCtx()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(VALID_NOTE)
+    const prev = process.env.SEU_ANKI_PATH
+    process.env.SEU_ANKI_PATH = join(dir, 'x.txt')
+    try {
+      registerIpc(ctx, ipc as never)
+      const res = (await invoke('notes:exportAnki', 'l1')) as { ok: boolean; error?: string }
+      expect(res.ok).toBe(false)
+      expect(res.error).toContain('概念卡或自测题')
+    } finally {
+      if (prev == null) delete process.env.SEU_ANKI_PATH
+      else process.env.SEU_ANKI_PATH = prev
+    }
+  })
+})
+
 describe('notes:regenerate (2026-09-04)', () => {
   it('reuses stored transcript/keyframes, inserts a new version row', async () => {
     const ctx = makeCtx()

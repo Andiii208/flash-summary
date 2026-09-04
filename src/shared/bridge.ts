@@ -152,6 +152,8 @@ export interface NoteAttachmentInfo {
 export interface NotesBridge {
   latest(lessonId: string): Promise<ApiResult<unknown>>
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
+  /** 2026-09-04 roadmap 2.2: Anki TSV decks (concepts + quiz), one file per deck. */
+  exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
   /** 2026-09-04: keyframe/PPT attachments for note views. */
   attachments(lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>>
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */

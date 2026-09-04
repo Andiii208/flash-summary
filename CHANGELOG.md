@@ -2,6 +2,21 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 笔记演进批次 2.2：Anki 导出（2026-09-04）
+
+路线图 Phase 2（D2 已拍板：TSV/CSV，不做 .apkg——零新依赖）。真实库 e2e：概念卡 7 行 + 自测题 5 行，3 列格式，空堆跳过验证。
+
+### 新增
+
+- **Anki TSV 牌堆导出**：`notes:exportAnki` 通道 + `ankiDecks` 纯函数（`src/shared/notes/anki.ts`）——概念卡（term → definition）与自测题（question → answer）各一个 TSV 文件，每行第三列为来源课时标题；字段内 tab/换行折叠为空格（兼容所有 Anki 版本的纯文本导入）；无数据的堆整堆跳过。
+- **导出交互**：笔记工具栏「导出 Anki」按钮；系统保存对话框选第一个文件（默认名 `safeFileName(课时)-Anki-概念卡.txt`），其余牌堆按派生名写至同目录；成功 toast 带「打开所在文件夹」动作（revealFile）。`SEU_ANKI_PATH` 环境变量为 e2e 测试缝（同 SEU_PDF_PATH 模式）。
+- Anki 导入用法：Anki「文件 → 导入」选 TSV，字段映射 Front/Back（+来源列可忽略或映射自定义字段），导入向导中选择目标牌组即可分堆。
+
+### 变更
+
+- smoke 桥面清单登记 `notes.exportAnki`。
+- 测试 391 → 399（+8：TSV 行/转义/空堆跳过/文件终止换行、IPC 两堆写入与空堆报错、按钮存在性与接线）。
+
 ## [未发布] — 笔记演进批次 2.1：Quiz 自测题（2026-09-04）
 
 路线图 Phase 2 核心批次（D1 已拍板：问答翻转）。真实课时 1690625-L0 重新生成验证通过：6 题（3 概念锚定 + 3 考点锚定），要点视图翻面卡真实渲染。

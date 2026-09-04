@@ -127,6 +127,16 @@ describe('NoteViewer', () => {
     expect(Array.from(busy.querySelectorAll('button')).find((b) => b.textContent === '生成中…')).not.toBeNull()
   })
 
+  it('shows the Anki export button only with a note and wires the click (roadmap 2.2)', () => {
+    const onExportAnki = vi.fn()
+    const host = mount(<NoteViewer note={NOTE} onExportAnki={onExportAnki} />)
+    const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '导出 Anki')!
+    click(button)
+    expect(onExportAnki).toHaveBeenCalledTimes(1)
+    const bare = mount(<NoteViewer note={null} onExportAnki={onExportAnki} />)
+    expect(Array.from(bare.querySelectorAll('button')).find((b) => b.textContent === '导出 Anki')).toBeUndefined()
+  })
+
   it('renders the evidence gallery section in the detailed view', () => {
     const host = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
     expect(host.querySelector('[data-testid="evidence-gallery"]')).not.toBeNull()

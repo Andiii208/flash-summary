@@ -10,7 +10,7 @@
 import { ipcMain, dialog, shell, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { lookup as dnsLookup } from 'dns/promises'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import type { AppContext } from './app-context'
 import type { Db } from './db/open'
 import { isFakeIpResolution } from './net-diagnostics'
@@ -26,6 +26,7 @@ import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
 import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
+import { ankiDecks, deckToTsv } from '../shared/notes/anki'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import { formatBytes, formatSpeed } from '../shared/format'
 import type { Note } from '../shared/notes/schema'
@@ -685,6 +686,48 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (canceled || filePath == null) return ok({ canceled: true })
       writeFileSync(filePath, md, 'utf8')
       return ok({ canceled: false, path: filePath })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 2026-09-04 roadmap 2.2: export Anki TSV decks (concept cards + quiz) via
+  // the save dialog; the first deck lands on the chosen path, additional
+  // decks sit beside it with derived names. SEU_ANKI_PATH bypasses the
+  // native dialog (e2e seam, same pattern as SEU_PDF_PATH).
+  ipc.handle('notes:exportAnki', async (_e, lessonId: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const row = ctx.db
+        .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
+        .get(id) as { note_json: string } | undefined
+      if (row == null) throw new Error('该课时尚无笔记')
+      const lesson = ctx.db.prepare('SELECT title FROM lessons WHERE id = ?').get(id) as { title: string } | undefined
+      const title = lesson?.title ?? id
+      const decks = ankiDecks(parseNote(row.note_json), title)
+      if (decks.length === 0) throw new Error('本笔记没有概念卡或自测题可导出')
+      const overridePath = process.env.SEU_ANKI_PATH
+      let firstPath: string
+      if (overridePath != null && overridePath !== '') {
+        firstPath = overridePath
+      } else {
+        const win = BrowserWindow.getFocusedWindow()
+        const options: SaveDialogOptions = {
+          title: '导出 Anki 概念卡（其余牌堆写至同目录）',
+          defaultPath: join(ctx.exportsDir(), `${safeFileName(title)}-${decks[0]!.name}.txt`),
+          filters: [{ name: 'Anki TSV', extensions: ['txt'] }]
+        }
+        const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
+        if (canceled || filePath == null) return ok({ canceled: true, paths: [] })
+        firstPath = filePath
+      }
+      const written: string[] = []
+      decks.forEach((deck, index) => {
+        const target = index === 0 ? firstPath : join(dirname(firstPath), `${safeFileName(title)}-${deck.name}.txt`)
+        writeFileSync(target, deckToTsv(deck), 'utf8')
+        written.push(target)
+      })
+      return ok({ canceled: false, paths: written })
     } catch (e) {
       return err(e)
     }

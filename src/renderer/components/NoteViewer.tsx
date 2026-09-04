@@ -20,6 +20,8 @@ export interface NoteViewerProps {
   pdfBusy?: boolean
   onExportPdf?: () => void
   onExport?: () => void
+  /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
+  onExportAnki?: () => void
   /** Copy the markdown rendering to the clipboard (best-effort). */
   onCopy?: () => void
 }
@@ -33,6 +35,7 @@ export function NoteViewer({
   pdfBusy = false,
   onExportPdf,
   onExport,
+  onExportAnki,
   onCopy
 }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
@@ -90,6 +93,11 @@ export function NoteViewer({
           {onCopy != null && note != null && (
             <button class="btn small" onClick={onCopy}>
               复制 Markdown
+            </button>
+          )}
+          {onExportAnki != null && note != null && (
+            <button class="btn small" onClick={onExportAnki}>
+              导出 Anki
             </button>
           )}
           {onExport != null && note != null && (
