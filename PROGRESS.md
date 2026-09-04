@@ -25,6 +25,7 @@
 
 | 阶段 | 状态 | 验收结果 | 备注 |
 |---|---|---|---|
+| v0.4.0 发布（2026-09-05） | ✅ 完成 | 高标准自查（方案逐条 grep 验证）→ bump 0.4.0（c8360c4 同提交含 CHANGELOG/PROGRESS/lock）→ push CI success（run 33906799304）→ 同提交 npm run dist（307MB Setup 0.4.0.exe）→ verify-asar OK（1100 文件 sha256 一致）→ tag v0.4.0 → GitHub Release 资产已上传且与 tag 同提交 | release: https://github.com/Andiii208/seu-summary/releases/tag/v0.4.0 |
 | v0.3.1 全面 UX 审查整改（2026-09-05） | ✅ 完成 | 四门禁 463/463 + smoke 22/22；实机双主题截图逐批验证（批B 左缘同轴 ≈250px、批D CDP 探针权威验证折叠态/层级计算样式） | 六批提交 92528bb…9050752；方案 docs/plans/2026-09-05-ux-audit-v031.md（已批准）；顺修导图折叠计数存量 bug；外部依据 NN/g 一致性 + WinUI NavigationView |
 | Phase 0 | ✅ 完成 | 四门禁 0 退出；CI success（run 33324490350）；私密仓库已建并推送 | 提交 96cbe56、a18f2c6 |
 | Phase 1 | ✅ 完成 | 15/15 测试过（迁移/幂等/外键/CHECK）；better-sqlite3 在 Node+Electron 双 ABI 验证可用 | 提交 082b9eb |
