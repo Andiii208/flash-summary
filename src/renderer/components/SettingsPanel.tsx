@@ -3,6 +3,7 @@ import type { JSX } from 'preact'
 import type { AppSettingsInfo } from '../../shared/bridge'
 import { ProviderPanel, type ProviderPanelProps } from './ProviderPanel'
 import type { SessionState } from './TopBar'
+import { Colonnade } from '../ui/Colonnade'
 
 export interface SettingsPanelProps {
   settings: AppSettingsInfo | null
@@ -121,6 +122,11 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
       <section class="settings-block">
         <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} />
       </section>
+
+      <footer class="settings-footer">
+        <Colonnade size={18} />
+        <span>止于至善</span>
+      </footer>
     </section>
   )
 }
