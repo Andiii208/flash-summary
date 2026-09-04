@@ -1259,17 +1259,37 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 
 /* ---- 思维导图 ---- */
 .mindmap-scroll { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 8px; }
-.mindmap-edge { stroke: var(--accent-soft-2); stroke-width: 1.6; }
+.mindmap-edge { stroke: color-mix(in srgb, var(--accent) 22%, transparent); stroke-width: 1.6; transition: d 180ms ease-out; }
+/* 批D: edge prominence fades with depth — trunk reads stronger than twigs.
+   （用 color-mix 拉开梯度：soft-2 只有 16% 底，叠 opacity 分不出层） */
+.mindmap-edge.edge-d1 { stroke: color-mix(in srgb, var(--accent) 58%, transparent); }
+.mindmap-edge.edge-d2 { stroke: color-mix(in srgb, var(--accent) 34%, transparent); }
 .mindmap-box { fill: var(--surface-2); stroke: var(--border); stroke-width: 1; }
 .mindmap-node.root .mindmap-box { fill: var(--accent-soft-2); stroke: none; }
+/* 批D: depth tiers — trunk bold, twigs lighter and dashed. */
+.mindmap-node.depth-1 .mindmap-box { stroke: var(--border-strong); }
+.mindmap-node.depth-2 .mindmap-box { fill: color-mix(in srgb, var(--surface-2) 50%, var(--surface)); }
+.mindmap-node.depth-3 .mindmap-box, .mindmap-node:not(.depth-0):not(.depth-1):not(.depth-2):not(.depth-3) .mindmap-box { fill: var(--surface); stroke-dasharray: 3 2; }
 .mindmap-node.root .mindmap-label { font-weight: 700; }
 .mindmap-node[data-clickable] .mindmap-box, .mindmap-node[role='button'] { cursor: pointer; }
 .mindmap-node:hover .mindmap-box { stroke: var(--accent); }
 .mindmap-node:focus { outline: none; }
 .mindmap-node:focus-visible .mindmap-box { stroke: var(--accent); stroke-width: 2; }
 .mindmap-label { font-size: 13px; fill: var(--text); }
-.mindmap-badge { fill: var(--accent-fill); }
-.mindmap-badge-text { font-size: 10px; fill: var(--accent-contrast); font-weight: 700; }
+/* 批D: caret on the branch direction + folded-count pill (replaces the old
+   cramped corner badge and the «…» suffix). */
+.mindmap-node { transition: transform 180ms ease-out; }
+.mindmap-caret .caret-hit { fill: transparent; }
+.mindmap-caret .caret-tri { fill: var(--text-muted); transition: fill var(--speed); }
+.mindmap-node:hover .caret-tri, .mindmap-caret.collapsed .caret-tri { fill: var(--accent); }
+.mindmap-caret .caret-count-box { fill: var(--accent-soft-2); stroke: none; }
+.mindmap-caret .caret-count { font-size: 10px; font-weight: 700; fill: var(--accent); font-family: var(--font-ui); }
+/* Freshly mounted nodes/edges fade in (existing ones are reused by preact). */
+@keyframes mindmap-in { from { opacity: 0; } to { opacity: 1; } }
+.mindmap-node, .mindmap-edge { animation: mindmap-in 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-node, .mindmap-edge { transition: none; animation: none; }
+}
 
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }

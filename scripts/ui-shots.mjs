@@ -220,6 +220,20 @@ async function main() {
       await sleep(500)
       await cdp.shot(shotName(`04-note-${label}`))
     }
+    // 批D: fold the first collapsible node and shoot the collapsed state.
+    // (SVG elements have no .click() — dispatch the event preact listens for.)
+    const folded = await cdp.eval(`(() => {
+      const node = document.querySelector('.mindmap-node[role="button"]')
+      if (node == null) return false
+      node.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      return true
+    })()`)
+    if (folded) {
+      await sleep(500)
+      await cdp.shot(shotName('04b-note-思维导图-折叠'))
+      await cdp.eval(`(() => { document.querySelector('.mindmap-node[role="button"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true })()`)
+      await sleep(400)
+    }
 
     // 4. qa + settings
     await goTab('追问')
