@@ -93,3 +93,33 @@ Note {
 - 本地视频已删、平台播放页无时间参数——时间戳跳转视频**明确不做**。
 - 笔记无在线编辑器；版本历史全量留存但 UI 无版本切换。
 - QA 追问暂不发图（只有证据 ID 字符串）——升级为多模态时参照本文件 §1。
+
+## 9. 方法论参照（GitHub 调研 2026-09-04）
+
+调研范围：`anthropics/skills` 官方仓库、`ComposioHQ/awesome-claude-skills`（74k★ 索引）、定向搜索 note/zettelkasten/cornell。**结论：社区没有可直接照搬的「LLM 笔记生成工艺」skill**——官方仓库的笔记产出类即本文件 §5/§6 已融合的 pdf/pptx；社区力量集中在集成编排与方法论生态。有价值的映射与启发如下：
+
+### Cornell 5R ↔ 五视图映射（视图设计的理论锚点）
+
+先例：`KenWuqianghao/Obsidian-Cornell-Notes-Generator`（LLM 从 lecture transcript 生成 Cornell 时间线笔记，与本产品场景同构）；生态参照 `latazadehomero/cornell-marginalia`（118★）、`TfTHacker/cornell-notes-learning-vault`（65★）。
+
+| Cornell 结构 | 本产品对应 | 设计含义 |
+|---|---|---|
+| Notes 栏（课堂详录） | 详细笔记视图（时间线卡片） | 详录以时间为主轴，正是时间线卡片的形态依据 |
+| Cue 栏（关键词/自测问题） | 要点视图（考点/缺口卡） | Cue 的本质是「自测钩子」——要点卡文案应保持可自测的问句/关键词形态，而非陈述句 |
+| Summary（页底总结） | 标准总结视图 | 总结必须是**合上详录后能独立读懂**的封闭叙述 |
+| Reflect / Review | 方法论 + 疑问与缺口 | 反思层永远不与详录混排—— methodology 单独成视图的依据 |
+
+未来改 prompt 或视图时先对照此表；破坏映射（如把考点写成陈述句）即违背 Cornell 语义。
+
+### Zettelkasten 原子化（概念卡的原则）
+
+参照 `01110100chony/optimized-study`（Obsidian Zettelkasten + Claude 苏格拉底式，STEM 深度学习）。原则：概念卡**一卡一概念、自足可读**。当前 `concepts[]` 已是原子卡；若未来引入跨课时概念链接（当前明确不做——追问严格限课时），需先给概念稳定 ID，参照本文件 §8。
+
+### 未来候选：练习题生成（Quiz）
+
+`joeseesun/qiaomu-anything-to-notebooklm`（5.9k★）的输出形态清单含 Quiz——比「考点提示」更进一步的自测材料。候选方案：在要点视图增加「自测题」块（LLM 从 concepts+examCues 生成 Q/A 分离的练习题，先答后翻）。未排期；实现时须走 §7 测试纪律与本文件的数据契约扩展流程。
+
+### 已评估不采纳
+
+- `tapestry/learn-this`（URL→提取→行动计划）：编排类，与「学习后转行动」思想同向，但本产品的方法论视图已承载该职责，无需引入编排层。
+- qiaomu 的多源抓取/NotebookLM 上传管线：与本产品「本地优先、自有管线」定位冲突。
