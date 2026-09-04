@@ -170,17 +170,23 @@ async function main() {
     await cdp.shot(shotName('01-tasks-initial'))
 
     // 2. expand the first course that has a lesson with a note (badge.ok), select that lesson
-    // Two steps: the sidebar defaults to the «我的学习» panel whose course rows are collapsed;
-    // click one course head at a time, wait for its lesson rows, check for a noted lesson.
-    const expandCourseWithNotes = `(() => {
-      const head = [...document.querySelectorAll('.sidebar .course-head')][0]
-      if (head == null) return false
-      head.click()
-      return true
-    })()`
+    // Idempotent course walk: persisted UI state may already have a course
+    // expanded, so blind toggle-clicks collapse instead of expand. Track the
+    // tried index on window; collapse strays before opening the current one.
     let notedClicked = false
     for (let attempt = 0; attempt < 30 && !notedClicked; attempt++) {
-      await cdp.eval(expandCourseWithNotes)
+      const stepped = await cdp.eval(`(() => {
+        if (window.__shotHeadIdx == null) window.__shotHeadIdx = 0
+        const heads = [...document.querySelectorAll('.sidebar .course-head')]
+        for (const h of heads) {
+          if (h.getAttribute('aria-expanded') === 'true' && heads.indexOf(h) !== window.__shotHeadIdx) h.click()
+        }
+        const head = heads[window.__shotHeadIdx]
+        if (head == null) return 'exhausted'
+        if (head.getAttribute('aria-expanded') !== 'true') head.click()
+        return 'ok'
+      })()`)
+      if (stepped === 'exhausted') break
       await sleep(250)
       notedClicked =
         (await cdp.eval(`(() => {
@@ -189,16 +195,9 @@ async function main() {
           return false
         })()`)) === true
       if (!notedClicked) {
-        // no noted lesson in the expanded course — try the next course head
-        await cdp.eval(`(() => {
-          const heads = [...document.querySelectorAll('.sidebar .course-head')]
-          const open = heads.find((h) => h.getAttribute('aria-expanded') === 'true')
-          const next = open != null ? heads[heads.indexOf(open) + 1] : heads[0]
-          if (open != null) open.click() // collapse before moving on
-          if (next != null) { next.click(); return true }
-          return false
-        })()`)
-        await sleep(250)
+        // no noted lesson in this course — move to the next course head
+        await cdp.eval('window.__shotHeadIdx = (window.__shotHeadIdx ?? 0) + 1')
+        await sleep(150)
       }
     }
     if (!notedClicked) throw new Error('no lesson with a note found in the sidebar')

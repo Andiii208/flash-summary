@@ -39,6 +39,9 @@
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
+  /* 批B: the single content column — every page shares one width and one
+     left edge (导图视图是唯一破格例外). */
+  --content-max: 860px;
   --shadow-sm: 0 1px 2px rgba(28, 34, 28, 0.04), 0 1px 4px rgba(28, 34, 28, 0.03);
   --shadow: 0 2px 6px rgba(28, 34, 28, 0.05), 0 8px 20px rgba(28, 34, 28, 0.06);
   --shadow-lg: 0 4px 10px rgba(28, 34, 28, 0.08), 0 16px 36px rgba(28, 34, 28, 0.12);
@@ -351,6 +354,10 @@ body {
   scroll-behavior: smooth;
 }
 .content h2 { font-size: var(--font-size-xl); margin: 2px 0 14px; font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
+
+/* ---- 批B: single content column — one width token, one left edge ---- */
+/* 页面板与内部容器一律靠左、共用 --content-max；导图视图唯一破格全宽。 */
+.task-panel, .qa-panel { max-width: var(--content-max); }
 
 /* ---- 批A: unified page head + lesson identity chip ---- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 14px; }
@@ -902,7 +909,7 @@ body {
 
 /* ---- note viewer ---- */
 /* 批B: cross-lesson note library (notes tab empty state) + recent Q&A rows. */
-.note-library, .qa-recent { display: flex; flex-direction: column; gap: 6px; margin-inline: auto; max-width: 780px; }
+.note-library, .qa-recent { display: flex; flex-direction: column; gap: 6px; max-width: var(--content-max); }
 .note-library-row, .qa-recent-row {
   display: flex;
   align-items: center;
@@ -933,6 +940,7 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  max-width: var(--content-max);
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
@@ -986,7 +994,7 @@ body {
 }
 
 /* ---- qa panel ---- */
-.qa-log { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; max-width: 780px; margin-inline: auto; }
+.qa-log { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; max-width: var(--content-max); }
 .qa-pair { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .qa-q {
   font-weight: 600;
@@ -1010,7 +1018,7 @@ body {
   box-shadow: var(--shadow-sm);
 }
 .qa-a.pending { color: var(--text-muted); }
-.qa-input-row { display: flex; gap: 8px; max-width: 780px; margin-inline: auto; align-items: flex-end; }
+.qa-input-row { display: flex; gap: 8px; max-width: var(--content-max); align-items: flex-end; }
 .qa-input-row .qa-input { flex: 1; }
 textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-family: inherit; }
 /* B4: lesson-to-lesson navigation in the note toolbar. */
@@ -1019,12 +1027,12 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .evidence-zoom-btn { display: block; padding: 0; border: none; background: none; cursor: zoom-in; width: 100%; }
 
 /* ---- provider panel ---- */
-.provider-form { display: flex; flex-direction: column; gap: 8px; max-width: 560px; margin-inline: auto; }
+.provider-form { display: flex; flex-direction: column; gap: 8px; }
 .provider-row { display: flex; gap: 8px; padding: 8px 10px; }
 .provider-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 
 /* ---- settings ---- */
-.settings-panel { max-width: 760px; margin-inline: auto; }
+.settings-panel { max-width: var(--content-max); }
 .settings-block {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1272,8 +1280,7 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 /* Reading measure: 34-38 CJK chars/line, song serif body, kai titles,
    mono stamps stay brass. Label chrome restores the sans explicitly. */
 .note-body {
-  max-width: 660px;
-  margin-inline: auto;
+  max-width: 680px;
   font-family: var(--font-serif);
   font-size: 15.5px;
   line-height: 1.85;
@@ -1290,9 +1297,10 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
   letter-spacing: 0.5px;
   color: var(--text);
 }
-/* 试卷头: 文武线 (thick-thin pair) framing the lesson identity. */
+/* 试卷头: 文武线 (thick-thin pair) framing the lesson identity. 批B: 靠左
+   与内容列同轴（居中是旧「阅读列居中」的残留，与全局左缘冲突）。 */
 .note-masthead {
-  text-align: center;
+  text-align: left;
   padding: 16px 0 12px;
   margin: 4px 0 18px;
   border-top: 3px double var(--accent);
