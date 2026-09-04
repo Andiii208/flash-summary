@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { ChevronDown, ChevronRight } from 'lucide-preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { CourseTree } from './CourseTree'
 
@@ -34,14 +35,14 @@ function StudyGroup({ label, count, hint, children }: StudyGroupProps): JSX.Elem
   return (
     <section class="flex flex-col gap-1.5">
       <h3
-        class={`flex items-center gap-1.5 px-0.5 text-[11px] font-semibold tracking-[1.2px] text-muted uppercase${collapsible ? ' cursor-pointer select-none' : ''}`}
+        class={`flex items-center gap-1.5 px-0.5 text-[12px] font-medium tracking-[1px] text-muted${collapsible ? ' cursor-pointer select-none' : ''}`}
         onClick={collapsible ? toggle : undefined}
         aria-expanded={collapsible ? open : undefined}
         role={collapsible ? 'button' : undefined}
       >
-        {collapsible && <span class="caret text-[10px]">{open ? '▾' : '▸'}</span>}
+        {collapsible && <span class="caret text-[10px]">{open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>}
         {label}
-        {count > 0 && <span class="rounded-full bg-surface-2 px-1.5 py-px text-[11px] font-medium normal-case tracking-normal text-muted">{count}</span>}
+        {count > 0 && <span class="rounded-full bg-surface-2 px-1.5 py-px text-[11px] font-medium tracking-normal text-muted">{count}</span>}
       </h3>
       {showBody ? (
         children
@@ -81,17 +82,17 @@ export function MyStudyPanel(props: MyStudyPanelProps): JSX.Element {
   const empty = mine.length === 0 && extracted.length === 0 && sameCourses.length === 0
   return (
     <div class="rounded-[var(--radius)] border border-border bg-surface p-2.5 flex flex-col gap-3">
-      <h3 class="px-0.5 text-[11px] font-semibold tracking-[1.2px] text-muted uppercase">我的学习</h3>
+      <h3 class="px-0.5 text-[12px] font-medium tracking-[1px] text-muted">我的学习</h3>
       {empty ? (
         <p class="px-0.5 text-[11px] leading-relaxed text-muted">
-          在下方「全部课程」里找到你的课，点卡上的 ☆ 收藏；生成笔记后它会自动出现在这里。
+          在下方「全部课程」里找到你的课，点课程行右侧的星标收藏；生成笔记后它会自动出现在这里。
         </p>
       ) : (
         <>
           <StudyGroup label="已提取" count={extracted.length} hint="还没有生成过笔记——从「全部课程」选一门课开始。">
             {renderTree(extracted, props)}
           </StudyGroup>
-          <StudyGroup label="我的收藏" count={mine.length} hint="点课程卡右侧的 ☆，把常看的课收进这里。">
+          <StudyGroup label="我的收藏" count={mine.length} hint="点课程行右侧的星标，把常看的课收进这里。">
             {renderTree(mine, props)}
           </StudyGroup>
           {sameCourses.length > 0 && (

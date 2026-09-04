@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { ChevronDown, ChevronRight } from 'lucide-preact'
 import { render } from 'preact'
 import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
@@ -10,7 +11,7 @@ import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
 import { MyStudyPanel } from './components/MyStudyPanel'
 import { TaskPanel } from './components/TaskPanel'
-import { NoteViewer } from './components/NoteViewer'
+import { NoteViewer, type LessonContext } from './components/NoteViewer'
 import { PrintHandout } from './components/PrintHandout'
 import { QaPanel, type QaEntry } from './components/QaPanel'
 import { TopBar, type SessionState } from './components/TopBar'
@@ -126,7 +127,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                   aria-expanded={state.allCoursesOpen}
                   onClick={state.toggleAllCourses}
                 >
-                  <span class="caret">{state.allCoursesOpen ? '▾' : '▸'}</span>
+                  <span class="caret">{state.allCoursesOpen ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
                   <span>全部课程</span>
                   <span class="all-courses-count">{state.tree.length}</span>
                 </button>
@@ -212,6 +213,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             <NoteViewer
               note={state.note}
               attachments={state.attachments}
+              lesson={state.lessonContext}
               regenBusy={state.noteRegenBusy}
               pdfBusy={state.pdfBusy}
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
@@ -273,6 +275,8 @@ interface AppState {
   sameCourseIds: ReadonlySet<string>
   /** 「我的学习」三组（M2 批 A）。 */
   mineCourses: CourseTreeInfo[]
+  /** V4 试卷头: identity of the selected lesson (course/teacher/lesson title). */
+  lessonContext: LessonContext | null
   extractedCourses: CourseTreeInfo[]
   sameCourses: CourseTreeInfo[]
   allCoursesOpen: boolean
@@ -659,6 +663,16 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   // C2/C4: pin sorting — «my courses» first, then other teachers' sections
   // of the same subjects («同课» badge), then the rest of the catalog.
   const orderedTree = useMemo(() => orderMyCoursesFirst(tree), [tree])
+
+  // V4 试卷头: identity of the selected lesson, read from the local tree.
+  const lessonContext = useMemo(() => {
+    if (currentLesson === '') return null
+    for (const c of tree) {
+      const lesson = c.lessons.find((l) => l.id === currentLesson)
+      if (lesson != null) return { courseName: c.name, teacher: c.teacher ?? undefined, lessonTitle: lesson.title }
+    }
+    return null
+  }, [tree, currentLesson])
 
   const filteredTree = useMemo<CourseTreeInfo[]>(() => {
     const q = debouncedQuery.trim().toLowerCase()
@@ -1121,6 +1135,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     currentLesson,
     sameCourseIds: orderedTree.sameCourseIds,
     mineCourses,
+    lessonContext,
     extractedCourses,
     sameCourses,
     allCoursesOpen,

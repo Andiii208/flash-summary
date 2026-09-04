@@ -162,7 +162,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
     await waitForSelector('.qa-q')
     const questions = Array.from(document.querySelectorAll('.qa-q')).map((q) => q.textContent)
-    expect(questions).toEqual(['问：第一问', '问：第二问'])
+    expect(questions).toEqual(['第一问', '第二问'])
   })
 
   it('does not leak the previous lesson qa panel when the new one has no history', async () => {

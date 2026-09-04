@@ -96,6 +96,19 @@ describe('TaskPanel', () => {
     click(failedChip)
     const rows = host.querySelectorAll('.history-row')
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.textContent).toContain('失败')
+    expect(rows[0]!.textContent).toContain('败')
+  })
+
+  it('stamps one-character ink seals: 成 / 停 / 败 (V3)', () => {
+    const history: TaskRowInfo[] = [
+      { id: 't1', lesson_id: 'l1', state: 'succeeded', failed_stage: null, error_message: null },
+      { id: 't2', lesson_id: 'l1', state: 'failed', failed_stage: 'downloading_video', error_message: 'x', error_kind: 'cancelled' },
+      { id: 't3', lesson_id: 'l1', state: 'failed', failed_stage: 'transcribing', error_message: 'y', error_kind: 'network' }
+    ]
+    const host = mount(
+      <TaskPanel currentLesson="l1" running={false} busy={false} progress={null} history={history} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    const seals = [...host.querySelectorAll('.history-state')].map((s) => s.textContent)
+    expect(seals).toEqual(['成', '停', '败'])
   })
 })

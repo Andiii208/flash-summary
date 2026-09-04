@@ -1,5 +1,7 @@
+import { ChevronDown, ChevronRight, Star } from 'lucide-preact'
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
+import { subjectInk } from '../../shared/subject-ink'
 
 export interface CourseTreeProps {
   tree: CourseTreeInfo[]
@@ -72,21 +74,24 @@ function courseSubLine(course: CourseTreeInfo): string | null {
 function CourseRow({ course, expanded, selectedLesson, sameCourse, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
   const sub = courseSubLine(course)
   return (
-    <div class="item course-item">
+    <div class="item course-item" style={`--course-ink:${subjectInk(course.id)}`}>
       <div class="course-row-head">
         <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded} title={course.name}>
-          <span class="caret">{expanded ? '▾' : '▸'}</span>
+          <span class="caret">{expanded ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
+          <span class="course-mono" aria-hidden="true">
+            {course.name.slice(0, 1)}
+          </span>
           <span class="course-name">{course.name}</span>
           {sameCourse && <span class="badge same">同课</span>}
           {course.lessons.length > 0 && <span class="course-count">{course.lessons.length}</span>}
         </button>
         <button
           class={`pin-btn${course.isMine === true ? ' pinned' : ''}`}
-          title={course.isMine === true ? '取消「我的课程」标记' : '标记为「我的课程」（排序置顶）'}
+          title={course.isMine === true ? '取消收藏标记' : '收藏这门课（排序置顶）'}
           aria-pressed={course.isMine === true}
           onClick={() => onToggleMine(course.id, course.isMine !== true)}
         >
-          {course.isMine === true ? '★' : '☆'}
+          <Star size={14} strokeWidth={1.75} fill={course.isMine === true ? 'currentColor' : 'none'} />
         </button>
       </div>
       {sub != null && <div class="course-sub">{sub}</div>}

@@ -1,5 +1,7 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { AudioLines, BookOpenCheck, CloudDownload, Download, Images, ScrollText, X } from 'lucide-preact'
+import type { LucideIcon } from 'lucide-preact'
 import type { TaskProgressInfo, TaskRowInfo } from '../../shared/bridge'
 import { humanizeTaskError } from '../../shared/errors'
 import { PIPELINE_STAGES, STAGE_LABELS, stageLabel } from '../labels'
@@ -98,6 +100,23 @@ interface TaskStatusCardProps {
   progress: TaskProgressInfo
 }
 
+/** V3 印章轴: one lucide glyph per pipeline stage (rail instrument icons). */
+const STAGE_ICONS: Record<string, LucideIcon> = {
+  fetching_course: CloudDownload,
+  downloading_video: Download,
+  extracting_audio: AudioLines,
+  transcribing: ScrollText,
+  extracting_visuals: Images,
+  summarizing: BookOpenCheck
+}
+
+/** V3 墨章: one-character status seal per task state (cancelled gets 停). */
+function sealFor(row: Pick<TaskRowInfo, 'state' | 'error_kind'>): { char: string; seal: string } {
+  if (row.state === 'succeeded') return { char: '成', seal: 'ok' }
+  if (row.state === 'failed') return row.error_kind === 'cancelled' ? { char: '停', seal: 'stop' } : { char: '败', seal: 'bad' }
+  return { char: '行', seal: 'run' }
+}
+
 function TaskStatusCard({ progress }: TaskStatusCardProps): JSX.Element {
   const failed = progress.state === 'failed'
   const succeeded = progress.state === 'succeeded'
@@ -114,9 +133,10 @@ function TaskStatusCard({ progress }: TaskStatusCardProps): JSX.Element {
       <div class="stage-rail">
         {PIPELINE_STAGES.map((stage, i) => {
           const cls = i < reached ? 'done' : i === reached ? (failed ? 'error' : 'active') : 'todo'
+          const Icon = STAGE_ICONS[stage]
           return (
             <div key={stage} class={`stage-step ${cls}`} title={STAGE_LABELS[stage]}>
-              <span class="stage-dot" />
+              <span class="stage-dot">{Icon != null ? <Icon size={11} strokeWidth={2} /> : null}</span>
               <span class="stage-name">{STAGE_LABELS[stage]}</span>
             </div>
           )
@@ -176,7 +196,14 @@ function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: 
         const meta = taskMetaLine(row)
         return (
           <div key={row.id} class="item history-row">
-            <span class={`history-state state-${row.state}`}>{stageLabel(row.state, row.failed_stage)}</span>
+            {(() => {
+              const { char, seal } = sealFor(row)
+              return (
+                <span class={`history-state seal-${seal}`} title={stageLabel(row.state, row.failed_stage)}>
+                  {char}
+                </span>
+              )
+            })()}
             <div class="history-label">
               <span class="history-lesson" title={row.lesson_id}>
                 {taskLabel(row)}
@@ -194,8 +221,8 @@ function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: 
               </button>
             )}
             {(row.state === 'succeeded' || row.state === 'failed') && (
-              <button class="btn small ghost" title="删除这条记录" onClick={() => onDelete(row.id)}>
-                ✕
+              <button class="btn small ghost" title="删除这条记录" aria-label="删除这条记录" onClick={() => onDelete(row.id)}>
+                <X size={13} strokeWidth={1.75} />
               </button>
             )}
           </div>

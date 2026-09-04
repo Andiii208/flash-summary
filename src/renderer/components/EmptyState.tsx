@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { Colonnade } from '../ui/Colonnade'
 
 export interface EmptyStateProps {
   title: string
@@ -11,6 +12,9 @@ export interface EmptyStateProps {
 export function EmptyState({ title, hint, actionLabel, onAction }: EmptyStateProps): JSX.Element {
   return (
     <div class="empty-state">
+      <div class="empty-mark" aria-hidden="true">
+        <Colonnade size={30} />
+      </div>
       <h3>{title}</h3>
       <p>{hint}</p>
       {actionLabel != null && onAction != null && (

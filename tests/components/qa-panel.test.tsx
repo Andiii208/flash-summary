@@ -8,6 +8,8 @@ describe('QaPanel', () => {
     const host = mount(<QaPanel entries={entries} busy={false} hasLesson onAsk={() => undefined} />)
     expect(host.textContent).toContain('什么是复杂度？')
     expect(host.textContent).toContain('复杂度衡量算法效率。')
+    // V5 出处着色: answers carry the AI provenance tag.
+    expect(host.querySelector('.qa-a .ai-tag')).not.toBeNull()
   })
 
   it('fires onAsk with the typed question and clears the input', () => {

@@ -36,7 +36,7 @@ function createMainWindow(): BrowserWindow {
     minHeight: 600,
     // Match the paper-and-ink tokens (style.css) so first paint never flashes
     // white on a dark system (or dark on light).
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0D110D' : '#F5F1E6',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0F1211' : '#F5F1E6',
     title: APP_TITLE,
     // The smoke probe drives the window over CDP; keep it invisible there.
     show: process.env.SEU_SMOKE !== '1',

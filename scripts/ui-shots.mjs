@@ -158,9 +158,13 @@ async function main() {
       }
     }, 20000)
 
-    // --light: pin the light theme via DOM override (auto follows a dark OS).
+    // --light / --dark: pin the theme via DOM override (auto follows the OS).
     if (process.argv.includes('--light')) {
       await cdp.eval('document.documentElement.dataset.theme = "light"')
+      await sleep(300)
+    }
+    if (process.argv.includes('--dark')) {
+      await cdp.eval('document.documentElement.dataset.theme = "dark"')
       await sleep(300)
     }
 
@@ -208,7 +212,7 @@ async function main() {
     await sleep(500)
     await cdp.shot(shotName('07-dark-settings'))
     await goTab('笔记')
-    await goNoteView('详细')
+    await goNoteView('详细笔记')
     await sleep(600)
     await cdp.shot(shotName('08-dark-note'))
     await goTab('任务')
