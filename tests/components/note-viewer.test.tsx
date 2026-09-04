@@ -116,6 +116,14 @@ describe('NoteViewer', () => {
     expect(host.querySelectorAll('.mindmap-node')).toHaveLength(2)
   })
 
+  it('exposes the active view on note-body so the mind map can break out full width (批A)', () => {
+    const host = mount(<NoteViewer note={NOTE} />)
+    expect(host.querySelector('.note-body')?.getAttribute('data-view')).toBe('detailed')
+    const mindmapTab = Array.from(host.querySelectorAll('.note-tabs button')).find((b) => b.textContent === '思维导图') ?? null
+    click(mindmapTab)
+    expect(host.querySelector('.note-body')?.getAttribute('data-view')).toBe('mindmap')
+  })
+
   it('renders markdown overview through md-lite (headings, bold, lists)', () => {
     const markdownNote: Note = {
       ...NOTE,

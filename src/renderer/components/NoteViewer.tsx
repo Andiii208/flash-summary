@@ -117,7 +117,7 @@ export function NoteViewer({
           )}
         </div>
       </div>
-      <div class="note-body">
+      <div class="note-body" data-view={view}>
         {note != null && lesson != null && (
           <header class="note-masthead">
             <h2 class="note-title">{lesson.courseName}</h2>

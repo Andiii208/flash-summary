@@ -297,6 +297,9 @@ body {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  /* 任务历史筛选切换时列表高度变化，滚动条出现/消失会挤动内容宽度——
+     预留常驻槽位（侧栏 F3 同款修法）。 */
+  scrollbar-gutter: stable;
   padding: 18px 24px 40px;
   scroll-behavior: smooth;
 }
@@ -816,7 +819,6 @@ body {
 .note-tabs button:hover { color: var(--text); }
 .note-tabs button.active { background: var(--surface); color: var(--text); font-weight: 620; box-shadow: var(--shadow-sm); }
 
-.note-body { max-width: 780px; }
 .note-section {
   border: none;
   border-bottom: 1px solid var(--border);
@@ -842,7 +844,7 @@ body {
 }
 
 /* ---- qa panel ---- */
-.qa-log { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; max-width: 780px; }
+.qa-log { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; max-width: 780px; margin-inline: auto; }
 .qa-pair { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .qa-q {
   font-weight: 600;
@@ -866,16 +868,16 @@ body {
   box-shadow: var(--shadow-sm);
 }
 .qa-a.pending { color: var(--text-muted); }
-.qa-input-row { display: flex; gap: 8px; max-width: 780px; }
+.qa-input-row { display: flex; gap: 8px; max-width: 780px; margin-inline: auto; }
 .qa-input-row .qa-input { flex: 1; }
 
 /* ---- provider panel ---- */
-.provider-form { display: flex; flex-direction: column; gap: 8px; max-width: 560px; }
+.provider-form { display: flex; flex-direction: column; gap: 8px; max-width: 560px; margin-inline: auto; }
 .provider-row { display: flex; gap: 8px; padding: 8px 10px; }
 .provider-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 
 /* ---- settings ---- */
-.settings-panel { max-width: 760px; }
+.settings-panel { max-width: 760px; margin-inline: auto; }
 .settings-block {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1124,10 +1126,13 @@ body {
    mono stamps stay brass. Label chrome restores the sans explicitly. */
 .note-body {
   max-width: 660px;
+  margin-inline: auto;
   font-family: var(--font-serif);
   font-size: 15.5px;
   line-height: 1.85;
 }
+/* 导图视图破格：吃满内容区宽度，横向大图少滚动。 */
+.note-body[data-view='mindmap'] { max-width: none; }
 .note-body .btn, .note-body .md-h, .note-body .callout-tag, .note-body .formula-tag,
 .note-body .refs-toggle, .note-body .tree-view, .note-body .thumb-origin, .note-body .msg,
 .note-body .badge, .note-body .tree-count { font-family: var(--font-ui); }
