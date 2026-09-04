@@ -105,7 +105,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
     savePersistedUi({ tab: next })
   }, [])
   const goTasks = useCallback(() => setTab('tasks'), [setTab])
-  const state = useAppState(bridge, goTasks)
+  const goNotes = useCallback(() => setTab('notes'), [setTab])
+  const goSettings = useCallback(() => setTab('settings'), [setTab])
+  const state = useAppState(bridge, goTasks, goNotes, goSettings)
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   return (
@@ -253,6 +255,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           {tab === 'tasks' && (
             <TaskPanel
               currentLesson={state.currentLesson}
+              lessonLabel={state.lessonContextOrIndex != null ? [state.lessonContextOrIndex.courseName, state.lessonContextOrIndex.lessonTitle].filter(Boolean).join(' · ') : null}
               running={state.running}
               busy={state.submitBusy}
               progress={state.progress}
@@ -263,6 +266,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onCancel={state.cancelTask}
               onDelete={state.removeTask}
               onClearFinished={state.clearFinishedTasks}
+              onOpenNote={state.openLessonNotes}
             />
           )}
           {tab === 'notes' && (
@@ -382,6 +386,9 @@ interface AppState {
   toggleMine: (courseId: string, mine: boolean) => void
   selectLesson: (lessonId: string) => void
   addManual: (courseId: string, lessonId: string) => void
+  /** A2: one click from a finished task to its note. */
+  openLessonNotes: (lessonId: string) => void
+  /** A1: create + run with a pre-flight capability check. */
   createAndRun: () => void
   retryTask: (taskId: string) => void
   cancelTask: () => void
@@ -424,6 +431,12 @@ function isActiveState(state: string): boolean {
   return state !== 'succeeded' && state !== 'failed'
 }
 
+/** A2: readable task identity (course · lesson) for toasts. */
+function taskLabelOf(row: TaskRowInfo): string {
+  const names = [row.course_name, row.lesson_title].filter((n): n is string => n != null && n !== '')
+  return names.length > 0 ? names.join(' · ') : row.lesson_id
+}
+
 /** Debounce fast-changing input values (sidebar search, M2 批 A). */
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value)
@@ -434,7 +447,7 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced
 }
 
-function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
+function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () => void, goSettings: () => void): AppState {
   const [session, setSession] = useState<SessionState>('logged_out')
   const [sessionInfo, setSessionInfo] = useState<{ savedAt: string | null; expiresAt: number | null }>({
     savedAt: null,
@@ -607,6 +620,30 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     if (res.ok && res.value != null) setQaRecent(res.value)
   }, [bridge])
 
+  const selectLesson = useCallback(
+    (lessonId: string): void => {
+      setCurrentLesson(lessonId)
+      lessonRef.current = lessonId
+      setQaEntries([])
+      setAttachments([])
+      void loadNote(lessonId)
+      void loadAttachments(lessonId)
+      void loadHistory(lessonId)
+      void loadQaHistory(lessonId)
+    },
+    [loadNote, loadAttachments, loadHistory, loadQaHistory]
+  )
+
+  /** A2: one click from a finished task to its note. */
+  const openLessonNotes = useCallback(
+    (lessonId: string): void => {
+      if (lessonId === '') return
+      selectLesson(lessonId)
+      goNotes()
+    },
+    [selectLesson, goNotes]
+  )
+
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
   useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
 
@@ -690,12 +727,22 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
       const lid = lessonRef.current
       if (p.state === 'succeeded') {
         setRunning(false)
-        toast(`任务 ${p.taskId} 完成`, 'success')
-        if (lid !== '') {
-          void loadNote(lid)
-          void loadHistory(lid)
-        }
-        void loadNoteIndex()
+        // A2: the task row carries the readable identity — toast offers a
+        // direct path to the note instead of stranding the user.
+        void (async () => {
+          const rows = await bridge.tasks.list()
+          const row = rows.ok && rows.value != null ? rows.value.find((t) => t.id === p.taskId) : undefined
+          const doneLesson = row?.lesson_id ?? lid
+          void loadNoteIndex()
+          if (doneLesson !== '') {
+            void loadNote(doneLesson)
+            void loadHistory(doneLesson)
+          }
+          toast(`${row != null ? `「${taskLabelOf(row)}」任务完成` : `任务 ${p.taskId} 完成`}`, 'success', {
+            actionLabel: '查看笔记',
+            onAction: () => openLessonNotes(doneLesson !== '' ? doneLesson : lid)
+          })
+        })()
       } else if (p.state === 'failed') {
         setRunning(false)
         toast(p.message, 'error')
@@ -706,7 +753,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, openLessonNotes, refreshTree, goTasks])
 
   // 批C: write the UI snapshot back on every change — a navigation-induced
   // reload (harvest/login) resumes exactly where the user was. Stale course
@@ -894,20 +941,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     [bridge, toast, applyLocalTree]
   )
 
-  const selectLesson = useCallback(
-    (lessonId: string): void => {
-      setCurrentLesson(lessonId)
-      lessonRef.current = lessonId
-      setQaEntries([])
-      setAttachments([])
-      void loadNote(lessonId)
-      void loadAttachments(lessonId)
-      void loadHistory(lessonId)
-      void loadQaHistory(lessonId)
-    },
-    [loadNote, loadAttachments, loadHistory, loadQaHistory]
-  )
-
   // C2: pin/unpin «my course»; re-read the local tree so the ordering applies.
   const toggleMine = useCallback(
     (courseId: string, mine: boolean): void => {
@@ -954,6 +987,19 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
 
   const createAndRun = useCallback((): void => {
     if (currentLesson === '' || running) return
+    // A1: validate capability bindings BEFORE creating the task — a missing
+    // binding used to surface only at the summarizing stage (30+ min lost).
+    const caps = new Set((providers?.bindings ?? []).map((b) => b.capability))
+    const missing: string[] = []
+    if (!caps.has('asr')) missing.push('ASR 转写')
+    if (!caps.has('multimodal')) missing.push('多模态总结')
+    if (missing.length > 0) {
+      toast(`尚未绑定${missing.join('、')}模型，任务无法完成。请先在设置中配置 Provider。`, 'error', {
+        actionLabel: '去设置',
+        onAction: goSettings
+      })
+      return
+    }
     void (async () => {
       setSubmitBusy(true)
       try {
@@ -967,7 +1013,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
         setSubmitBusy(false)
       }
     })()
-  }, [bridge, currentLesson, running, toast, launch])
+  }, [bridge, currentLesson, running, providers, toast, goSettings, launch])
 
   const retryTask = useCallback(
     (taskId: string): void => {
@@ -1315,6 +1361,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     noteIndex,
     qaRecent,
     harvestInflight,
+    openLessonNotes,
     history,
     globalHistory,
     progress,

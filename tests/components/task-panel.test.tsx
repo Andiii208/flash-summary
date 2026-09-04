@@ -42,6 +42,57 @@ describe('TaskPanel', () => {
     expect(onCreateRun).toHaveBeenCalledOnce()
   })
 
+  const ROW: TaskRowInfo = {
+    id: 't9',
+    lesson_id: 'l1',
+    state: 'succeeded',
+    failed_stage: null,
+    error_message: null,
+    created_at: '2026-09-04T00:00:00Z',
+    updated_at: '2026-09-04T00:10:00Z',
+    course_name: '数据结构',
+    lesson_title: '第1讲'
+  }
+
+  it('shows the readable lesson label instead of the raw id (批1 A3)', () => {
+    const host = mount(
+      <TaskPanel currentLesson="1690625-L4" lessonLabel="数据结构 · 第4讲" running={false} busy={false} progress={null} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    expect(host.textContent).toContain('已选课时：数据结构 · 第4讲')
+    expect(host.textContent).not.toContain('1690625-L4')
+  })
+
+  it('hints at regenerate when the lesson already has a note (批1 B6)', () => {
+    const withNote = mount(
+      <TaskPanel currentLesson="l1" running={false} busy={false} progress={null} history={[ROW]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    expect(withNote.textContent).toContain('该课时已有笔记')
+    expect(withNote.textContent).toContain('重新生成')
+    const bare = mount(
+      <TaskPanel currentLesson="l1" running={false} busy={false} progress={null} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    expect(bare.textContent).not.toContain('该课时已有笔记')
+  })
+
+  it('wires the per-row note button to onOpenNote (批1 A2)', () => {
+    const onOpenNote = vi.fn()
+    const host = mount(
+      <TaskPanel currentLesson="" running={false} busy={false} progress={null} history={[]} globalHistory={[ROW]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} onOpenNote={onOpenNote} />
+    )
+    const noteButton = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '笔记')
+    expect(noteButton).not.toBeUndefined()
+    click(noteButton ?? null)
+    expect(onOpenNote).toHaveBeenCalledWith('l1')
+  })
+
+  it('annotates the progress card with the task lesson identity (批1 C1)', () => {
+    const progress: TaskProgressInfo = { taskId: 't9', state: 'downloading_video', stage: 'downloading_video', message: '下载中', percent: 30 }
+    const host = mount(
+      <TaskPanel currentLesson="l1" running busy={false} progress={progress} history={[]} globalHistory={[ROW]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    expect(host.querySelector('.task-status-lesson')?.textContent).toBe('数据结构 · 第1讲')
+  })
+
   it('renders failed history rows with a retry button wired to onRetry', () => {
     const history: TaskRowInfo[] = [
       { id: 't1', lesson_id: 'l1', state: 'failed', failed_stage: 'transcribing', error_message: 'boom' },

@@ -206,6 +206,32 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForGone('.qa-q')
   })
 
+  it('blocks task creation until ASR+multimodal providers are bound, offering settings (批1 A1)', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    const run = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '创建并运行')
+    click(run ?? null)
+    await waitForSelector('.toast-error')
+    expect(host.textContent).toContain('尚未绑定ASR 转写、多模态总结模型')
+    expect(host.textContent).toContain('去设置')
+    expect(bridge.tasks.create).not.toHaveBeenCalled()
+  })
+
+  it('creates the task once both capabilities are bound (批1 A1)', async () => {
+    const bridge = makeBridge()
+    ;(bridge.providers.list as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok({ providers: [], bindings: [{ capability: 'asr', providerId: 'p', model: 'asr-m' }, { capability: 'multimodal', providerId: 'p', model: 'mm-m' }] })
+    )
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    const run = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '创建并运行')
+    click(run ?? null)
+    await vi.waitFor(() => {
+      expect(bridge.tasks.create).toHaveBeenCalled()
+    })
+  })
+
   it('login flips the badge and logout clears the tree and qa panel', async () => {
     const bridge = makeBridge()
     qaHistoryRows = [{ question: '问', answer: '答' }]

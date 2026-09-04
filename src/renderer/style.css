@@ -629,6 +629,8 @@ body {
 }
 .task-status.failed { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .task-status-line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.task-status-lesson { margin: -6px 0 10px; font-size: var(--font-size-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rerun-hint { color: var(--text-muted); font-size: var(--font-size-sm); border-left: 2px solid var(--border-strong); padding-left: 8px; }
 .task-id { font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text-muted); }
 .task-stage { font-weight: 650; font-size: var(--font-size-md); color: var(--accent); }
 .task-stage.done { color: var(--success); }

@@ -11,6 +11,8 @@ import { Dialog } from '../ui/Dialog'
 
 export interface TaskPanelProps {
   currentLesson: string
+  /** A3: readable «course · lesson» identity of the selection (null = raw id). */
+  lessonLabel?: string | null
   running: boolean
   busy: boolean
   progress: TaskProgressInfo | null
@@ -24,6 +26,8 @@ export interface TaskPanelProps {
   onDelete: (taskId: string) => void
   /** M1-2: clear every terminal history row. */
   onClearFinished: () => void
+  /** A2: open a finished task's note (selects the lesson + switches tab). */
+  onOpenNote?: (lessonId: string) => void
 }
 
 type HistoryFilter = 'all' | 'running' | 'succeeded' | 'failed'
@@ -55,6 +59,7 @@ function taskMetaLine(row: TaskRowInfo): string | null {
 
 export function TaskPanel({
   currentLesson,
+  lessonLabel = null,
   running,
   busy,
   progress,
@@ -64,9 +69,11 @@ export function TaskPanel({
   onRetry,
   onCancel,
   onDelete,
-  onClearFinished
+  onClearFinished,
+  onOpenNote
 }: TaskPanelProps): JSX.Element {
   const noLesson = currentLesson === ''
+  const hasNoteAlready = history.some((row) => row.state === 'succeeded')
   return (
     <section class="task-panel">
       <h2>任务</h2>
@@ -74,11 +81,18 @@ export function TaskPanel({
         <>
           <EmptyState title="先选择课时" hint="从左侧课程树点击一个课时，即可创建并运行任务。" />
           <h3 class="subheading">全部任务（最近 50 条）</h3>
-          <HistoryList history={globalHistory} onRetry={onRetry} disabled={running} onDelete={onDelete} onClearFinished={onClearFinished} />
+          <HistoryList
+            history={globalHistory}
+            onRetry={onRetry}
+            disabled={running}
+            onDelete={onDelete}
+            onClearFinished={onClearFinished}
+            onOpenNote={onOpenNote}
+          />
         </>
       ) : (
         <>
-          <p class="msg">已选课时：{currentLesson}</p>
+          <p class="msg">已选课时：{lessonLabel ?? currentLesson}</p>
           <button class="btn primary" onClick={onCreateRun} disabled={running || busy}>
             {busy ? '提交中…' : running ? '运行中…' : '创建并运行'}
           </button>
@@ -87,9 +101,24 @@ export function TaskPanel({
               取消任务
             </button>
           )}
-          {progress != null && <TaskStatusCard progress={progress} />}
+          {hasNoteAlready && !running && (
+            <p class="msg rerun-hint">该课时已有笔记：只更新内容可在「笔记」页用重新生成；重新运行将重新下载并处理整节课。</p>
+          )}
+          {progress != null && (
+            <TaskStatusCard
+              progress={progress}
+              taskRow={globalHistory.find((row) => row.id === progress.taskId)}
+            />
+          )}
           <h3 class="subheading">本课时历史任务</h3>
-          <HistoryList history={history} onRetry={onRetry} disabled={running} onDelete={onDelete} onClearFinished={onClearFinished} />
+          <HistoryList
+            history={history}
+            onRetry={onRetry}
+            disabled={running}
+            onDelete={onDelete}
+            onClearFinished={onClearFinished}
+            onOpenNote={onOpenNote}
+          />
         </>
       )}
     </section>
@@ -98,6 +127,8 @@ export function TaskPanel({
 
 interface TaskStatusCardProps {
   progress: TaskProgressInfo
+  /** C1: the task row (course · lesson identity) when resolvable. */
+  taskRow?: TaskRowInfo
 }
 
 /** V3 印章轴: one lucide glyph per pipeline stage (rail instrument icons). */
@@ -117,7 +148,7 @@ function sealFor(row: Pick<TaskRowInfo, 'state' | 'error_kind'>): { char: string
   return { char: '行', seal: 'run' }
 }
 
-function TaskStatusCard({ progress }: TaskStatusCardProps): JSX.Element {
+function TaskStatusCard({ progress, taskRow }: TaskStatusCardProps): JSX.Element {
   const failed = progress.state === 'failed'
   const succeeded = progress.state === 'succeeded'
   // Position of the furthest reached stage on the rail.
@@ -130,6 +161,11 @@ function TaskStatusCard({ progress }: TaskStatusCardProps): JSX.Element {
         <span class="task-id">任务 {progress.taskId}</span>
         <span class={`task-stage${succeeded ? ' done' : ''}`}>{stageLabel(progress.state, progress.stage)}</span>
       </div>
+      {taskRow != null && (
+        <p class="task-status-lesson" title={taskRow.lesson_id}>
+          {taskLabel(taskRow)}
+        </p>
+      )}
       <div class="stage-rail">
         {PIPELINE_STAGES.map((stage, i) => {
           const cls = i < reached ? 'done' : i === reached ? (failed ? 'error' : 'active') : 'todo'
@@ -155,9 +191,11 @@ interface HistoryListProps {
   disabled: boolean
   onDelete: (taskId: string) => void
   onClearFinished: () => void
+  /** A2: open a finished task's note. */
+  onOpenNote?: (lessonId: string) => void
 }
 
-function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: HistoryListProps): JSX.Element {
+function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished, onOpenNote }: HistoryListProps): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all')
   const [confirmClear, setConfirmClear] = useState(false)
   if (history.length === 0) return <p class="msg">暂无任务</p>
@@ -214,6 +252,11 @@ function HistoryList({ history, onRetry, disabled, onDelete, onClearFinished }: 
               <span class="history-error" title={row.error_message}>
                 {humanizeTaskError(row.error_message, row.error_kind)}
               </span>
+            )}
+            {row.state === 'succeeded' && onOpenNote != null && (
+              <button class="btn small" onClick={() => onOpenNote(row.lesson_id)} title="查看这节课的笔记">
+                笔记
+              </button>
             )}
             {row.state === 'failed' && (
               <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled}>
