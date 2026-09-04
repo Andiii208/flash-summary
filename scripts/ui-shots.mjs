@@ -92,9 +92,6 @@ function findFreePort(start) {
   })
 }
 
-/** Click the nth element matching a selector (preact handlers run on .click()). */
-const clickNth = (sel, n = 0) => `(() => { const el = document.querySelectorAll(${JSON.stringify(sel)})[${n}]; if (el == null) return false; el.click(); return true })()`
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function main() {
