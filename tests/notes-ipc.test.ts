@@ -225,3 +225,57 @@ describe('notes:regenerate (2026-09-04)', () => {
     expect(res.error).toContain('运行中')
   })
 })
+
+describe('notes:list / qa:recent (批B, 2026-09-04)', () => {
+  it('notes:list returns one row per lesson with course/teacher, newest first', async () => {
+    const ctx = makeCtx()
+    db.prepare(
+      "INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '第2节课', '2026-09-04T00:00:00Z')"
+    ).run()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-04T01:00:00Z')"
+    ).run(VALID_NOTE)
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n2', 'l2', 3, ?, 'p', 'm', '2026-09-04T02:00:00Z')"
+    ).run(VALID_NOTE)
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n3', 'l2', 2, ?, 'p', 'm', '2026-09-04T00:30:00Z')"
+    ).run(VALID_NOTE)
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('notes:list')) as {
+      ok: boolean
+      value?: Array<{ lessonId: string; version: number; courseName: string | null; teacher: string | null; lessonTitle: string | null }>
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value).toHaveLength(2)
+    expect(res.value?.[0]).toMatchObject({ lessonId: 'l2', version: 3, courseName: '课程', teacher: null, lessonTitle: '第2节课' })
+    expect(res.value?.[1]).toMatchObject({ lessonId: 'l1', version: 1, courseName: '课程', lessonTitle: '课时' })
+  })
+
+  it('notes:list returns an empty list on an empty library', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('notes:list')) as { ok: boolean; value?: unknown[] }
+    expect(res.ok).toBe(true)
+    expect(res.value).toEqual([])
+  })
+
+  it('qa:recent returns exchanges with lesson/course identity, newest first', async () => {
+    const ctx = makeCtx()
+    db.prepare(
+      "INSERT INTO qa (id, lesson_id, question, answer, created_at) VALUES ('q1', 'l1', '第一问', '答一', '2026-09-04T01:00:00Z')"
+    ).run()
+    db.prepare(
+      "INSERT INTO qa (id, lesson_id, question, answer, created_at) VALUES ('q2', 'l1', '第二问', '答二', '2026-09-04T02:00:00Z')"
+    ).run()
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('qa:recent')) as {
+      ok: boolean
+      value?: Array<{ lessonId: string; question: string; courseName: string | null; lessonTitle: string | null }>
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value).toHaveLength(2)
+    expect(res.value?.[0]).toMatchObject({ lessonId: 'l1', question: '第二问', courseName: '课程', lessonTitle: '课时' })
+    expect(res.value?.[1]).toMatchObject({ question: '第一问' })
+  })
+})

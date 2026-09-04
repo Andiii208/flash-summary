@@ -39,4 +39,24 @@ describe('QaPanel', () => {
     click(host.querySelector('button'))
     expect(onAsk).not.toHaveBeenCalled()
   })
+
+  it('shows recent cross-lesson exchanges when no lesson is selected (批B)', () => {
+    const onOpenLesson = vi.fn()
+    const recent = [
+      { lessonId: 'l1', question: '什么是复杂度？', answer: '略', createdAt: '2026-09-04T01:00:00Z', courseName: '算法', lessonTitle: '第1节' }
+    ]
+    const host = mount(<QaPanel entries={[]} busy={false} hasLesson={false} onAsk={() => undefined} recent={recent} onOpenLesson={onOpenLesson} />)
+    const row = host.querySelector('[data-testid="qa-recent-row"]')
+    expect(row).not.toBeNull()
+    expect(row?.textContent).toContain('算法 · 第1节')
+    expect(row?.textContent).toContain('什么是复杂度？')
+    click(row)
+    expect(onOpenLesson).toHaveBeenCalledWith('l1')
+  })
+
+  it('keeps the plain hint when no lesson is selected and there is no recent QA', () => {
+    const host = mount(<QaPanel entries={[]} busy={false} hasLesson={false} onAsk={() => undefined} recent={[]} onOpenLesson={() => undefined} />)
+    expect(host.querySelector('[data-testid="qa-recent"]')).toBeNull()
+    expect(host.textContent).toContain('选择课时后')
+  })
 })

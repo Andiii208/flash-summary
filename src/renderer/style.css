@@ -786,6 +786,33 @@ body {
 .history-row .btn.small.ghost { color: var(--text-muted); }
 
 /* ---- note viewer ---- */
+/* 批B: cross-lesson note library (notes tab empty state) + recent Q&A rows. */
+.note-library, .qa-recent { display: flex; flex-direction: column; gap: 6px; margin-inline: auto; max-width: 780px; }
+.note-library-row, .qa-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--text);
+}
+.note-library-row:hover, .qa-recent-row:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.note-library-course, .qa-recent-where {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+.qa-recent-where { flex: 0 0 220px; color: var(--text-secondary); }
+.qa-recent-q { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.note-library-meta, .qa-recent-time { flex-shrink: 0; display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: var(--font-size-xs); }
+
 .note-toolbar {
   display: flex;
   justify-content: space-between;

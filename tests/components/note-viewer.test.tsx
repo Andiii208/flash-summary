@@ -205,4 +205,24 @@ describe('NoteViewer', () => {
     const uncited = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
     expect(uncited.querySelector('.note-actions .badge')).toBeNull()
   })
+
+  it('shows the cross-lesson note library instead of the dead empty state (批B)', () => {
+    const onOpenLesson = vi.fn()
+    const library = [
+      { lessonId: 'l2', version: 3, createdAt: '2026-09-04T02:00:00Z', courseName: '算法导论', teacher: '汪海', lessonTitle: '第2节课' }
+    ]
+    const host = mount(<NoteViewer note={null} library={library} onOpenLesson={onOpenLesson} />)
+    const row = host.querySelector('[data-testid="note-library-row"]')
+    expect(row).not.toBeNull()
+    expect(row?.textContent).toContain('算法导论 · 汪海 — 第2节课')
+    expect(row?.textContent).toContain('v3')
+    click(row)
+    expect(onOpenLesson).toHaveBeenCalledWith('l2')
+  })
+
+  it('keeps the plain empty hint when the library is empty', () => {
+    const host = mount(<NoteViewer note={null} library={[]} onOpenLesson={() => undefined} />)
+    expect(host.querySelector('[data-testid="note-library"]')).toBeNull()
+    expect(host.textContent).toContain('尚无笔记')
+  })
 })

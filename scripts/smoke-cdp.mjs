@@ -120,8 +120,8 @@ const EXPECTED_BRIDGE = {
   school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'netCheck', 'setMine'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'run', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
-  notes: ['latest', 'exportMarkdown', 'exportAnki', 'attachments', 'regenerate', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
-  qa: ['ask', 'history'],
+  notes: ['latest', 'list', 'exportMarkdown', 'exportAnki', 'attachments', 'regenerate', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
+  qa: ['ask', 'history', 'recent'],
   settings: ['get', 'setCacheDir', 'setTheme', 'chooseLibrary', 'openPath'],
   log: ['rendererError']
 }
@@ -137,6 +137,8 @@ const PROBES = [
   ['tasks:list', 's.tasks.list()', (r) => r.ok === true && Array.isArray(r.value)],
   ['tasks:cancel (missing)', "s.tasks.cancel('smoke-none')", (r) => r.ok === true && r.value?.cancelled === true],
   ['notes:latest (missing)', "s.notes.latest('smoke-none')", (r) => r.ok === true && r.value === null],
+  ['notes:list', 's.notes.list()', (r) => r.ok === true && Array.isArray(r.value)],
+  ['qa:recent', 's.qa.recent()', (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:history (missing)', "s.qa.history('smoke-none')", (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:ask (no binding)', "s.qa.ask('smoke-none', 'probe')", (r) => r.ok === false && typeof r.error === 'string'],
   ['providers:bind (bad capability)', "s.providers.bind('bogus', 'p', 'm')", (r) => r.ok === false && typeof r.error === 'string'],
@@ -179,7 +181,10 @@ async function main() {
       async () => {
         try {
           const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
-          return { ok: true, value: list.find((t) => t.type === 'page' && t.title.includes(APP_TITLE)) }
+          // find() miss must read as "not yet" — {ok:true, value:undefined}
+          // would short-circuit waitFor and crash on the WebSocket line.
+          const hit = list.find((t) => t.type === 'page' && t.title.includes(APP_TITLE))
+          return hit != null ? { ok: true, value: hit } : { ok: false }
         } catch {
           return { ok: false }
         }

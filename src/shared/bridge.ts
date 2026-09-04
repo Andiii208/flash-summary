@@ -149,8 +149,30 @@ export interface NoteAttachmentInfo {
   dataUrl: string
 }
 
+/** 批B: one cross-lesson note library entry (notes:list, newest first). */
+export interface NoteIndexInfo {
+  lessonId: string
+  version: number
+  createdAt: string
+  courseName: string | null
+  teacher: string | null
+  lessonTitle: string | null
+}
+
+/** 批B: one recent Q&A exchange across lessons (qa:recent, newest first). */
+export interface QaRecentInfo {
+  lessonId: string
+  question: string
+  answer: string
+  createdAt: string
+  courseName: string | null
+  lessonTitle: string | null
+}
+
 export interface NotesBridge {
   latest(lessonId: string): Promise<ApiResult<unknown>>
+  /** 批B: every generated note across lessons (library list, newest first). */
+  list(): Promise<ApiResult<NoteIndexInfo[]>>
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   /** 2026-09-04 roadmap 2.2: Anki TSV decks (concepts + quiz), one file per deck. */
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
@@ -189,6 +211,8 @@ export interface LogBridge {
 export interface QaBridge {
   ask(lessonId: string, question: string): Promise<ApiResult<{ id: string; answer: string }>>
   history(lessonId: string): Promise<ApiResult<Array<{ question: string; answer: string; created_at: string }>>>
+  /** 批B: recent exchanges across lessons (qa tab empty state, newest first). */
+  recent(): Promise<ApiResult<QaRecentInfo[]>>
 }
 
 export interface SeuSummaryBridge {

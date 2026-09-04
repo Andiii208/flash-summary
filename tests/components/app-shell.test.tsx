@@ -56,6 +56,7 @@ function makeBridge(): SeuSummaryBridge {
     },
     notes: {
       latest: vi.fn(async () => ok(null)),
+      list: vi.fn(async () => ok([])),
       exportMarkdown: vi.fn(async () => ok({ canceled: true })),
       exportAnki: vi.fn(async () => ok({ canceled: true, paths: [] })),
       attachments: vi.fn(async () => ok([])),
@@ -66,7 +67,8 @@ function makeBridge(): SeuSummaryBridge {
     },
     qa: {
       ask: vi.fn(async () => ok({ id: 'q1', answer: '回答' })),
-      history: vi.fn(async () => ok(qaHistoryRows))
+      history: vi.fn(async () => ok(qaHistoryRows)),
+      recent: vi.fn(async () => ok([]))
     },
     settings: {
       get: vi.fn(async (): Promise<ApiResult<AppSettingsInfo>> => ok({ libraryRoot: 'L', cacheDir: 'C', theme: 'auto' })),

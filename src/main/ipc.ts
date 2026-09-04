@@ -665,6 +665,35 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+
+  // 批B: cross-lesson note library — lets the notes tab show every generated
+  // note before any lesson is selected. Read-only, newest first.
+  ipc.handle('notes:list', () => {
+    try {
+      const rows = ctx.db
+        .prepare(
+          `SELECT n.lesson_id AS lessonId, MAX(n.version) AS version, MAX(n.created_at) AS createdAt,
+                  l.title AS lessonTitle, c.name AS courseName, c.teacher
+           FROM notes n
+           JOIN lessons l ON l.id = n.lesson_id
+           LEFT JOIN courses c ON c.id = l.course_id
+           GROUP BY n.lesson_id
+           ORDER BY createdAt DESC
+           LIMIT 200`
+        )
+        .all() as Array<{
+        lessonId: string
+        version: number
+        createdAt: string
+        lessonTitle: string | null
+        courseName: string | null
+        teacher: string | null
+      }>
+      return ok(rows)
+    } catch (e) {
+      return err(e)
+    }
+  })
   // Export the latest note as Markdown via the system save dialog (U3).
   ipc.handle('notes:exportMarkdown', async (_e, lessonId: unknown) => {
     try {
@@ -839,6 +868,34 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const rows = ctx.db
         .prepare('SELECT question, answer, created_at FROM qa WHERE lesson_id = ? ORDER BY created_at DESC LIMIT 50')
         .all(str(lessonId, 'lessonId')) as Array<{ question: string; answer: string; created_at: string }>
+      return ok(rows)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 批B: recent Q&A across lessons — the qa tab empty state so previous
+  // exchanges (and their lessons) are reachable without picking a course.
+  ipc.handle('qa:recent', () => {
+    try {
+      const rows = ctx.db
+        .prepare(
+          `SELECT q.lesson_id AS lessonId, q.question, q.answer, q.created_at AS createdAt,
+                  l.title AS lessonTitle, c.name AS courseName
+           FROM qa q
+           JOIN lessons l ON l.id = q.lesson_id
+           LEFT JOIN courses c ON c.id = l.course_id
+           ORDER BY q.created_at DESC
+           LIMIT 50`
+        )
+        .all() as Array<{
+        lessonId: string
+        question: string
+        answer: string
+        createdAt: string
+        lessonTitle: string | null
+        courseName: string | null
+      }>
       return ok(rows)
     } catch (e) {
       return err(e)

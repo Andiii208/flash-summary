@@ -7,7 +7,9 @@ import type {
   TaskRowInfo,
   TaskProgressInfo,
   AppSettingsInfo,
-  NoteAttachmentInfo
+  NoteAttachmentInfo,
+  NoteIndexInfo,
+  QaRecentInfo
 } from '../shared/bridge'
 import type { SessionStateValue } from '../shared/types'
 
@@ -72,6 +74,7 @@ const api: SeuSummaryBridge = {
   },
   notes: {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
+    list: (): Promise<ApiResult<NoteIndexInfo[]>> => ipcRenderer.invoke('notes:list'),
     exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportMarkdown', lessonId),
     exportAnki: (lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>> =>
@@ -90,7 +93,8 @@ const api: SeuSummaryBridge = {
     ask: (lessonId: string, question: string): Promise<ApiResult<{ id: string; answer: string }>> =>
       ipcRenderer.invoke('qa:ask', lessonId, question),
     history: (lessonId: string): Promise<ApiResult<Array<{ question: string; answer: string; created_at: string }>>> =>
-      ipcRenderer.invoke('qa:history', lessonId)
+      ipcRenderer.invoke('qa:history', lessonId),
+    recent: (): Promise<ApiResult<QaRecentInfo[]>> => ipcRenderer.invoke('qa:recent')
   },
   settings: {
     get: (): Promise<ApiResult<AppSettingsInfo>> => ipcRenderer.invoke('settings:get'),

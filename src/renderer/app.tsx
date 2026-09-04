@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight } from 'lucide-preact'
 import { render } from 'preact'
-import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, ProvidersListResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
@@ -213,7 +213,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             <NoteViewer
               note={state.note}
               attachments={state.attachments}
-              lesson={state.lessonContext}
+              lesson={state.lessonContextOrIndex}
+              library={state.noteIndex}
+              onOpenLesson={state.selectLesson}
               regenBusy={state.noteRegenBusy}
               pdfBusy={state.pdfBusy}
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
@@ -223,7 +225,16 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onCopy={state.copyNote}
             />
           )}
-          {tab === 'qa' && <QaPanel entries={state.qaEntries} busy={state.qaBusy} hasLesson={state.currentLesson !== ''} onAsk={state.ask} />}
+          {tab === 'qa' && (
+            <QaPanel
+              entries={state.qaEntries}
+              busy={state.qaBusy}
+              hasLesson={state.currentLesson !== ''}
+              onAsk={state.ask}
+              recent={state.qaRecent}
+              onOpenLesson={state.selectLesson}
+            />
+          )}
           {tab === 'settings' && (
             <SettingsPanel
               settings={state.settings}
@@ -277,6 +288,8 @@ interface AppState {
   mineCourses: CourseTreeInfo[]
   /** V4 试卷头: identity of the selected lesson (course/teacher/lesson title). */
   lessonContext: LessonContext | null
+  /** 批B: same as lessonContext but falls back to the note library entry. */
+  lessonContextOrIndex: LessonContext | null
   extractedCourses: CourseTreeInfo[]
   sameCourses: CourseTreeInfo[]
   allCoursesOpen: boolean
@@ -284,6 +297,10 @@ interface AppState {
   visibleCourses: number
   showMoreCourses: () => void
   note: Note | null
+  /** 批B: cross-lesson note library (notes tab empty state). */
+  noteIndex: NoteIndexInfo[]
+  /** 批B: recent Q&A across lessons (qa tab empty state). */
+  qaRecent: QaRecentInfo[]
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (serial queue visibility). */
   globalHistory: TaskRowInfo[]
@@ -382,6 +399,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
   const [allCoursesOpen, setAllCoursesOpen] = useState(false)
   const [currentLesson, setCurrentLesson] = useState('')
   const [note, setNote] = useState<Note | null>(null)
+  /** 批B: cross-lesson note library + recent Q&A (tab empty states). */
+  const [noteIndex, setNoteIndex] = useState<NoteIndexInfo[]>([])
+  const [qaRecent, setQaRecent] = useState<QaRecentInfo[]>([])
   /** 2026-09-04: lesson attachments (keyframes/PPT) for the note views. */
   const [attachments, setAttachments] = useState<NoteAttachmentInfo[]>([])
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
@@ -513,6 +533,17 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     if (res.ok && res.value != null) setGlobalHistory(res.value)
   }, [bridge])
 
+  /** 批B: cross-lesson library + recent Q&A feed the tab empty states. */
+  const loadNoteIndex = useCallback(async (): Promise<void> => {
+    const res = await bridge.notes.list()
+    if (res.ok && res.value != null) setNoteIndex(res.value)
+  }, [bridge])
+
+  const loadQaRecent = useCallback(async (): Promise<void> => {
+    const res = await bridge.qa.recent()
+    if (res.ok && res.value != null) setQaRecent(res.value)
+  }, [bridge])
+
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
   useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
 
@@ -559,6 +590,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     void refreshProviders()
     void refreshSettings()
     void loadGlobalHistory()
+    void loadNoteIndex()
+    void loadQaRecent()
     // The renderer unloads during in-window navigations (harvest/未来登录) —
     // an in-flight task keeps running in main; restore its live state here.
     void (async () => {
@@ -588,6 +621,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
           void loadNote(lid)
           void loadHistory(lid)
         }
+        void loadNoteIndex()
       } else if (p.state === 'failed') {
         setRunning(false)
         toast(p.message, 'error')
@@ -598,7 +632,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
       disposed = true
       off()
     }
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory, refreshTree, goTasks])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
 
   const login = useCallback((): void => {
     if (sessionBusy) return // one login at a time (stacked windows field case 2026-09-01)
@@ -673,6 +707,20 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     }
     return null
   }, [tree, currentLesson])
+
+  // 批B: when the tree can't resolve the selected lesson (e.g. opened from the
+  // note library with that course collapsed), fall back to the library entry.
+  const lessonContextOrIndex = useMemo<LessonContext | null>(() => {
+    if (lessonContext != null) return lessonContext
+    if (currentLesson === '') return null
+    const entry = noteIndex.find((e) => e.lessonId === currentLesson)
+    if (entry == null) return null
+    return {
+      courseName: entry.courseName ?? entry.lessonId,
+      teacher: entry.teacher ?? undefined,
+      lessonTitle: entry.lessonTitle ?? entry.lessonId
+    }
+  }, [lessonContext, noteIndex, currentLesson])
 
   const filteredTree = useMemo<CourseTreeInfo[]>(() => {
     const q = debouncedQuery.trim().toLowerCase()
@@ -862,12 +910,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
             ? { question, answer: (res.value as { answer: string }).answer }
             : { question, answer: `失败：${res.error ?? '未知错误'}` }
           setQaEntries((es) => [...es, entry])
+          if (res.ok) void loadQaRecent()
         } finally {
           setQaBusy(false)
         }
       })()
     },
-    [bridge, qaBusy]
+    [bridge, qaBusy, loadQaRecent]
   )
 
   const saveProvider = useCallback(
@@ -982,12 +1031,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
           const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
           toast(`已生成第 ${result.version} 版笔记${hitSuffix}`, 'success')
           await loadNote(lessonId)
+          await loadNoteIndex()
         } finally {
           setNoteRegenBusy(false)
         }
       })()
     },
-    [bridge, toast, loadNote]
+    [bridge, toast, loadNote, loadNoteIndex]
   )
 
   /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
@@ -1136,6 +1186,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     sameCourseIds: orderedTree.sameCourseIds,
     mineCourses,
     lessonContext,
+    lessonContextOrIndex,
     extractedCourses,
     sameCourses,
     allCoursesOpen,
@@ -1143,6 +1194,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void): AppState {
     visibleCourses,
     showMoreCourses,
     note,
+    noteIndex,
+    qaRecent,
     history,
     globalHistory,
     progress,

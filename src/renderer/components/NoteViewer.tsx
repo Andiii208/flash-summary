@@ -1,11 +1,13 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
+import type { NoteIndexInfo } from '../../shared/bridge'
 import { evidenceHitRate, type AttachmentLike } from '../../shared/notes/evidence'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
 import type { NoteAttachmentInfo } from '../../shared/bridge'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
+import { NoteLibrary } from './NoteLibrary'
 import { MindMap } from './MindMap'
 
 /** 试卷头 (V4): the lesson's identity line — course · teacher · lesson. */
@@ -21,6 +23,10 @@ export interface NoteViewerProps {
   attachments?: NoteAttachmentInfo[]
   /** Lesson identity for the exam-paper masthead (V4). */
   lesson?: LessonContext | null
+  /** 批B: cross-lesson library shown instead of the dead empty state. */
+  library?: NoteIndexInfo[]
+  /** 批B: open a library entry = select that lesson globally. */
+  onOpenLesson?: (lessonId: string) => void
   /** Regenerate in flight (button busy state). */
   regenBusy?: boolean
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
@@ -40,6 +46,8 @@ export function NoteViewer({
   note,
   attachments = [],
   lesson = null,
+  library = [],
+  onOpenLesson,
   regenBusy = false,
   onRegenerate,
   pdfBusy = false,
@@ -125,7 +133,11 @@ export function NoteViewer({
           </header>
         )}
         {note == null ? (
-          <p class="msg">尚无笔记 — 运行任务生成后自动显示</p>
+          library.length > 0 && onOpenLesson != null ? (
+            <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
+          ) : (
+            <p class="msg">尚无笔记 — 运行任务生成后自动显示</p>
+          )
         ) : view === 'mindmap' ? (
           <MindMap tree={note.knowledgeTree} />
         ) : (
