@@ -11,6 +11,7 @@ import { NoteLibrary } from './NoteLibrary'
 import { MindMap } from './MindMap'
 import { PageHeader } from './PageHeader'
 import { LessonChip, type LessonChipLesson } from './LessonChip'
+import { EmptyState } from './EmptyState'
 
 /** 试卷头 (V4): the lesson's identity line — course · teacher · lesson. */
 export interface LessonContext {
@@ -193,13 +194,15 @@ export function NoteViewer({
         {note == null ? (
           <>
             {/* A7: when a lesson IS selected, say so — the library must not
-                mask «this lesson has no note yet». */}
+                mask «this lesson has no note yet». 批E: card empty state. */}
             {lesson != null && onGoTasks != null && (
               <div class="note-empty-current" data-testid="note-empty-current">
-                <p class="msg">「{lesson.lessonTitle}」尚无笔记 — 先运行任务生成。</p>
-                <button class="btn primary" onClick={onGoTasks}>
-                  去创建任务
-                </button>
+                <EmptyState
+                  title={`「${lesson.lessonTitle}」尚无笔记`}
+                  hint="运行任务生成后，这节课的五视图笔记会显示在这里。"
+                  actionLabel="去创建任务"
+                  onAction={onGoTasks}
+                />
               </div>
             )}
             {library.length > 0 && onOpenLesson != null ? (
@@ -208,7 +211,7 @@ export function NoteViewer({
                 <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
               </>
             ) : lesson == null ? (
-              <p class="msg">尚无笔记 — 运行任务生成后自动显示</p>
+              <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
             ) : null}
           </>
         ) : view === 'mindmap' ? (

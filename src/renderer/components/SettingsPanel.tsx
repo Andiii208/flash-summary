@@ -115,6 +115,8 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
           <button class="btn small" onClick={() => props.onOpenPath('exports')}>
             打开导出目录
           </button>
+        </div>
+        <div class="settings-row">
           <span class="settings-label">日志</span>
           <button class="btn small" onClick={() => props.onOpenPath('logs')}>
             打开日志目录

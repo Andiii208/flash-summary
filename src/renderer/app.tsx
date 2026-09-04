@@ -1424,7 +1424,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           return
         }
         if (res.value?.canceled) return
-        toast(`已导出：${res.value?.path ?? ''}`, 'success')
+        // 批E: close the loop — the exports folder is one click away.
+        const filePath = res.value?.path ?? ''
+        toast(`已导出：${filePath}`, 'success', {
+          actionLabel: '打开所在文件夹',
+          onAction: () => {
+            void bridge.notes.revealFile(filePath)
+          }
+        })
       })()
     },
     [bridge, toast]
