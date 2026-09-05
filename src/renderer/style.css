@@ -1337,6 +1337,21 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
   .mindmap-node, .mindmap-edge { transition: none; animation: none; }
 }
 
+/* M1.2 (map expansion 2026-09-05): in-view toolbar — depth controls + search.
+   Search highlight = accent stroke (visual discipline: stroke-level accents
+   only); non-hits dim instead of disappearing. */
+.mindmap-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.mindmap-toolbar-spacer { flex: 1; }
+.mindmap-search {
+  font: inherit; font-size: var(--font-size-sm); color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 3px 10px; width: 180px;
+}
+.mindmap-search:focus { outline: none; border-color: var(--accent); }
+.mindmap-search::placeholder { color: var(--text-muted); }
+.mindmap-node.search-hit .mindmap-box { stroke: var(--accent); stroke-width: 2; }
+.mindmap-node.search-dim { opacity: 0.3; }
+
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .evidence-fig { position: relative; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }

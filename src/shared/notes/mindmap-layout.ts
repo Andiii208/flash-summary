@@ -177,3 +177,19 @@ function edgePath(parent: LayoutNode, child: LayoutNode): string {
   const mid = (x1 + x2) / 2
   return `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
 }
+
+/**
+ * M1.2 (map expansion): collapse set that keeps the map expanded down to
+ * `maxDepth` levels — every branchable node at depth ≥ maxDepth is folded.
+ * maxDepth 1 ≡ «collapse all» (only the first tier shows); an empty set
+ * (maxDepth ≥ tree height) ≡ «expand all».
+ */
+export function collapsedSetForMaxDepth(root: TreeNode, maxDepth: number): Set<string> {
+  const collapsed = new Set<string>()
+  const walk = (node: TreeNode, depth: number, path: string): void => {
+    if (depth >= maxDepth && node.children.length > 0) collapsed.add(path)
+    node.children.forEach((child, i) => walk(child, depth + 1, `${path}/${i}`))
+  }
+  walk(root, 0, '0')
+  return collapsed
+}

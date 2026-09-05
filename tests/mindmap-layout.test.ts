@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeMindMapLayout, LEVEL_WIDTH, NODE_HEIGHT, PADDING } from '../src/shared/notes/mindmap-layout'
+import { collapsedSetForMaxDepth, computeMindMapLayout, LEVEL_WIDTH, NODE_HEIGHT, PADDING } from '../src/shared/notes/mindmap-layout'
 import type { TreeNode } from '../src/shared/notes/schema'
 
 const TREE: TreeNode = {
@@ -112,5 +112,34 @@ describe('computeMindMapLayout', () => {
     const lines = layout.nodes[0]!.lines
     expect(lines.join('')).toBe('数据选择器（MUX）')
     for (const line of lines) expect(NO_LINE_START_LIKE.test(line)).toBe(false)
+  })
+})
+
+describe('collapsedSetForMaxDepth (M1.2 层级控制)', () => {
+  const DEEP: TreeNode = {
+    title: '根',
+    children: [
+      {
+        title: '甲',
+        children: [{ title: '甲一', children: [{ title: '甲一一', children: [{ title: '底', children: [] }] }] }]
+      },
+      { title: '乙', children: [] }
+    ]
+  }
+
+  it('maxDepth 1 ≡ 全部收起：所有有子代的节点都进折叠集', () => {
+    const set = collapsedSetForMaxDepth(DEEP, 1)
+    // 甲(0/0)、甲一(0/0/0)、甲一一(0/0/0/0) branchable; 乙 and leaves are not.
+    expect(set).toEqual(new Set(['0/0', '0/0/0', '0/0/0/0']))
+  })
+
+  it('maxDepth 2 keeps tier 2 visible, folds deeper branchable nodes', () => {
+    expect(collapsedSetForMaxDepth(DEEP, 2)).toEqual(new Set(['0/0/0', '0/0/0/0']))
+    expect(collapsedSetForMaxDepth(DEEP, 3)).toEqual(new Set(['0/0/0/0']))
+  })
+
+  it('a shallow tree with maxDepth beyond its height yields the empty set', () => {
+    expect(collapsedSetForMaxDepth(DEEP, 9)).toEqual(new Set())
+    expect(collapsedSetForMaxDepth({ title: '独', children: [] }, 1)).toEqual(new Set())
   })
 })
