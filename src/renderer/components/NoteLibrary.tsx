@@ -24,11 +24,12 @@ function entryLabel(entry: NoteIndexInfo): { title: string; meta: string | null 
  * 批B: cross-lesson note library — the notes tab empty state. Every generated
  * note is reachable without first picking a course in the sidebar; opening a
  * row selects that lesson so QA/exports/regenerate work immediately.
+ * 2026-09-05: pure rows — the section heading lives with the caller, which
+ * mirrors the tasks tab (EmptyState card → subheading → list).
  */
 export function NoteLibrary({ entries, onOpenLesson }: NoteLibraryProps): JSX.Element {
   return (
     <div class="note-library" data-testid="note-library">
-      <p class="msg">全部笔记（最近 200 条）— 点击一条即可查看与追问</p>
       {entries.map((entry) => {
         const label = entryLabel(entry)
         return (

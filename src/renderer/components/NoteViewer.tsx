@@ -215,13 +215,23 @@ export function NoteViewer({
                 />
               </div>
             )}
-            {library.length > 0 && onOpenLesson != null ? (
+            {lesson == null ? (
+              // 2026-09-05: home view mirrors the tasks tab — guide card,
+              // then the library under its own subheading.
               <>
-                {lesson != null && <p class="msg">或打开其他笔记：</p>}
+                <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
+                {library.length > 0 && onOpenLesson != null && (
+                  <>
+                    <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
+                    <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
+                  </>
+                )}
+              </>
+            ) : library.length > 0 && onOpenLesson != null ? (
+              <>
+                <p class="msg">或打开其他笔记：</p>
                 <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
               </>
-            ) : lesson == null ? (
-              <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
             ) : null}
           </>
         ) : view === 'mindmap' ? (

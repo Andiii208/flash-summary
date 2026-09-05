@@ -255,6 +255,10 @@ describe('NoteViewer', () => {
       { lessonId: 'l2', version: 3, createdAt: '2026-09-04T02:00:00Z', courseName: '算法导论', teacher: '汪海', lessonTitle: '第2节课' }
     ]
     const host = mount(<NoteViewer note={null} library={library} onOpenLesson={onOpenLesson} />)
+    // 2026-09-05: home empty state mirrors the tasks tab — guide card, then
+    // the library under its own subheading (the bare .msg line is gone).
+    expect(host.querySelector('.note-body .empty-state')).not.toBeNull()
+    expect(host.querySelector('.subheading')?.textContent).toContain('全部笔记')
     const row = host.querySelector('[data-testid="note-library-row"]')
     expect(row).not.toBeNull()
     expect(row?.textContent).toContain('算法导论 · 汪海 — 第2节课')
@@ -266,6 +270,7 @@ describe('NoteViewer', () => {
   it('keeps the plain empty hint when the library is empty', () => {
     const host = mount(<NoteViewer note={null} library={[]} onOpenLesson={() => undefined} />)
     expect(host.querySelector('[data-testid="note-library"]')).toBeNull()
+    expect(host.querySelector('.subheading')).toBeNull()
     expect(host.textContent).toContain('尚无笔记')
   })
 })
