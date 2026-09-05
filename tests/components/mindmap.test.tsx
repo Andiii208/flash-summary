@@ -412,3 +412,61 @@ describe('MindMap M3.1 跨节点关联线', () => {
     expect(plain.querySelectorAll('.mindmap-crosslink')).toHaveLength(0)
   })
 })
+
+describe('MindMap M3.2 焦点模式', () => {
+  const dblClickNode = (host: HTMLElement, labelPrefix: string): void => {
+    const node = Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node')).find((g) =>
+      g.getAttribute('aria-label')?.startsWith(labelPrefix)
+    )
+    act(() => {
+      node?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    })
+  }
+
+  it('double-click re-roots the layout onto the subtree with a breadcrumb', () => {
+    const host = mountMindMap(TREE)
+    dblClickNode(host, '第一章')
+    const rootLabel = host.querySelector('.mindmap-node.root text')?.textContent
+    expect(rootLabel).toBe('第一章')
+    const crumbs = host.querySelectorAll<HTMLButtonElement>('.mindmap-crumbs button')
+    expect(Array.from(crumbs).map((b) => b.textContent)).toEqual(['全图', '第一章'])
+    expect(crumbs[1]?.disabled).toBe(true)
+  })
+
+  it('collapse state keeps its meaning across focus (全部收起 then drill in)', () => {
+    const host = mountMindMap(TREE)
+    clickButtonM(host, '全部收起')
+    dblClickNode(host, '第一章')
+    // In the focus view the root (第一章) itself stays folded → one node only.
+    expect(host.querySelectorAll('.mindmap-node')).toHaveLength(1)
+    expect(
+      Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node'))
+        .find((g) => g.getAttribute('aria-label')?.startsWith('第一章'))
+        ?.getAttribute('aria-expanded')
+    ).toBe('false')
+  })
+
+  it('clicking 全图 returns to the whole map with the fold state preserved', () => {
+    const host = mountMindMap(TREE)
+    clickButtonM(host, '全部收起')
+    dblClickNode(host, '第一章')
+    const whole = Array.from(host.querySelectorAll('.mindmap-crumbs button')).find((b) => b.textContent === '全图')
+    act(() => {
+      whole?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(host.querySelector('.mindmap-node.root text')?.textContent).toBe('根')
+    // 第一章 still folded from the pre-focus state.
+    expect(
+      Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node[role="button"]'))
+        .find((g) => g.getAttribute('aria-label')?.startsWith('第一章'))
+        ?.getAttribute('aria-expanded')
+    ).toBe('false')
+  })
+})
+
+function clickButtonM(host: HTMLElement, label: string): void {
+  const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === label)
+  act(() => {
+    button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
+}

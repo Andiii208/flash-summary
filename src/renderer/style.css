@@ -1387,6 +1387,10 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .mindmap-link-label-box { fill: var(--surface); stroke: var(--border); }
 .mindmap-link-label { font-size: 10px; font-weight: 600; fill: var(--accent); }
 
+/* M3.2 (map expansion): focus breadcrumb. */
+.mindmap-crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; }
+.mindmap-crumbs .btn:disabled { opacity: 1; color: var(--accent); cursor: default; }
+
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .evidence-fig { position: relative; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }

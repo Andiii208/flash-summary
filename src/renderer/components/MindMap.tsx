@@ -35,6 +35,44 @@ function allRecallPaths(root: TreeNode): Set<string> {
   return paths
 }
 
+/** M3.2: the subtree rooted at a full path (null when the path leaves the tree). */
+function subtreeAt(root: TreeNode, path: string): TreeNode | null {
+  let node: TreeNode | null = root
+  for (const step of path.split('/').slice(1)) {
+    if (node == null) return null
+    node = node.children[Number(step)] ?? null
+  }
+  return node
+}
+
+/** M3.2: full-space path → subtree-relative ('0'…), null when outside the focus. */
+function fullToRel(full: string, focusPath: string): string | null {
+  if (focusPath === '') return full
+  if (full === focusPath) return '0'
+  if (full.startsWith(`${focusPath}/`)) return `0${full.slice(focusPath.length)}`
+  return null
+}
+
+/** M3.2: subtree-relative path → full-space path. */
+function relToFull(rel: string, focusPath: string): string {
+  if (focusPath === '') return rel
+  return rel === '0' ? focusPath : `${focusPath}${rel.slice(1)}`
+}
+
+/** M3.2: breadcrumb entries for the current focus (root excluded — 全图 covers it). */
+function crumbsFor(tree: TreeNode, focusPath: string): Array<{ path: string; title: string }> {
+  const crumbs: Array<{ path: string; title: string }> = []
+  let node: TreeNode | null = tree
+  let acc = '0'
+  for (const step of focusPath.split('/').slice(1)) {
+    node = node?.children[Number(step)] ?? null
+    acc = `${acc}/${step}`
+    if (node == null) break
+    crumbs.push({ path: acc, title: node.title })
+  }
+  return crumbs
+}
+
 /**
  * Interactive SVG mind map over the note's knowledgeTree (2026-09-04).
  * Nodes with children collapse on click; the layout is a pure shared
@@ -74,7 +112,6 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
   const [view, setView] = useState<View>(IDENTITY_VIEW)
   const [panning, setPanning] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const layout = useMemo(() => computeMindMapLayout(tree, collapsed, { links: conceptLinks }), [tree, collapsed, conceptLinks])
   const rootRef = useRef<SVGSVGElement>(null)
   /** FLIP bookkeeping: previous y per node path (x is depth-fixed). */
   const prevYRef = useRef<Map<string, number>>(new Map())
@@ -85,18 +122,33 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
   /** M2.3 recall mode: masked titles revealed one click at a time. */
   const [recall, setRecall] = useState(false)
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set())
+  /** M3.2 focus: full path of the subtree shown as the map root ('' = whole map). */
+  const [focusPath, setFocusPath] = useState('')
 
-  // M2.2: node terms keyed by layout path (screen layout keeps subline empty,
-  // so the anchor map walks the tree in parallel with the path convention).
+  // M3.2: the layout root — the focused subtree, or the whole tree.
+  const focusTree = useMemo(() => (focusPath === '' ? tree : (subtreeAt(tree, focusPath) ?? tree)), [tree, focusPath])
+
+  const layout = useMemo(() => {
+    if (focusPath === '') return computeMindMapLayout(tree, collapsed, { links: conceptLinks })
+    // Collapse set lives in full-path space; translate into subtree-relative.
+    const focusCollapsed = new Set<string>()
+    for (const full of collapsed) {
+      const rel = fullToRel(full, focusPath)
+      if (rel != null) focusCollapsed.add(rel)
+    }
+    return computeMindMapLayout(focusTree, focusCollapsed, { links: conceptLinks })
+  }, [tree, collapsed, focusPath, conceptLinks, focusTree])
+
+  // M2.2/M3.2: node terms keyed by LAYOUT path (relative to the focus root).
   const termsByPath = useMemo(() => {
     const map = new Map<string, string[]>()
     const walk = (node: TreeNode, path: string): void => {
       if (node.terms != null && node.terms.length > 0) map.set(path, node.terms)
       node.children.forEach((child, i) => walk(child, `${path}/${i}`))
     }
-    walk(tree, '0')
+    walk(focusTree, '0')
     return map
-  }, [tree])
+  }, [focusTree])
 
   // M2.2: term → concept lookup powering popover content.
   const conceptByTerm = useMemo(() => new Map(concepts.map((c) => [c.term, c])), [concepts])
@@ -115,17 +167,21 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
     setPopoverPath(null)
   }, [view])
 
-  const toggle = (path: string): void => {
+  // M3.2: collapse state lives in FULL-path space; a toggle arriving from the
+  // layout (subtree-relative) is translated before it lands in the set.
+  const toggle = (relPath: string): void => {
+    const fullPath = relToFull(relPath, focusPath)
     setCollapsed((prev) => {
       const next = new Set(prev)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
+      if (next.has(fullPath)) next.delete(fullPath)
+      else next.add(fullPath)
       return next
     })
   }
 
-  // M1.2: search matches over the WHOLE tree — hits inside folded branches
-  // become visible because the effect below unfolds their ancestors.
+  // M1.2/M3.2: search matches over the LAYOUT ROOT (focused subtree or whole
+  // tree) in that root's relative paths — hits inside folded branches become
+  // visible because the effect below unfolds their ancestors.
   const matched = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const hits = new Set<string>()
@@ -134,13 +190,13 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
         if (node.title.toLowerCase().includes(needle)) hits.add(path)
         node.children.forEach((child, i) => walk(child, `${path}/${i}`))
       }
-      walk(tree, '0')
+      walk(focusTree, '0')
     }
     return hits
-  }, [tree, query])
+  }, [focusTree, query])
 
-  // M1.2: unfold every ancestor of a hit (write-back into the collapse set;
-  // no snapshot restore — the simpler trade-off recorded in the plan).
+  // M1.2: unfold every ancestor of a hit (write-back into the full-space
+  // collapse set; no snapshot restore — the simpler plan trade-off).
   useLayoutEffect(() => {
     if (matched.size === 0) return
     setCollapsed((prev) => {
@@ -149,12 +205,13 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
       for (const hitPath of matched) {
         const segments = hitPath.split('/')
         for (let end = 1; end < segments.length; end++) {
-          if (next.delete(segments.slice(0, end).join('/'))) changed = true
+          const ancestorFull = relToFull(segments.slice(0, end).join('/'), focusPath)
+          if (next.delete(ancestorFull)) changed = true
         }
       }
       return changed ? next : prev
     })
-  }, [matched])
+  }, [matched, focusPath])
 
   // M1.2: keep the first hit in view after each re-layout while searching.
   useEffect(() => {
@@ -254,6 +311,16 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
 
   const depthById = useMemo(() => new Map(layout.nodes.map((n) => [n.id, n.depth])), [layout])
 
+  /** M3.2 (决策点 D5): double-click drills into the node's subtree; every
+   *  focus move resets reveal state and FLIP bookkeeping (paths renumber). */
+  const focusAt = (fullPath: string): void => {
+    setFocusPath(fullPath)
+    setRevealed(new Set())
+    setPopoverPath(null)
+    prevYRef.current = new Map()
+  }
+  const focusSubtree = (relPath: string): void => focusAt(relToFull(relPath, focusPath))
+
   /** Keyboard collapse/expand for a node with children (批D: parameterized). */
   const keyToggler = (path: string) => (e: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -302,7 +369,7 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
           回忆模式
         </button>
         {recall && (
-          <button class="btn small" onClick={() => setRevealed(allRecallPaths(tree))}>
+          <button class="btn small" onClick={() => setRevealed(allRecallPaths(focusTree))}>
             全部揭示
           </button>
         )}
@@ -319,6 +386,19 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
       </div>
+      {/* M3.2: breadcrumb back out of a focused subtree (全图 = the whole map). */}
+      {focusPath !== '' && (
+        <nav class="mindmap-crumbs" aria-label="焦点分支路径">
+          <button class="btn small ghost" onClick={() => focusAt('')}>
+            全图
+          </button>
+          {crumbsFor(tree, focusPath).map((crumb, index, all) => (
+            <button key={crumb.path} class="btn small ghost" disabled={index === all.length - 1} onClick={() => focusAt(crumb.path)}>
+              {crumb.title}
+            </button>
+          ))}
+        </nav>
+      )}
       <div
         class={`mindmap-scroll${panning ? ' panning' : ''}`}
         ref={scrollRef}
@@ -364,7 +444,7 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
         {layout.nodes.map((node) => {
           const isRoot = node.depth === 0
           const hasChildren = node.hasChildren
-          const descendants = hasChildren ? childCount(tree, node.path) : 0
+          const descendants = hasChildren ? childCount(focusTree, node.path) : 0
           const pillWidth = Math.max(16, String(descendants).length * 8 + 10)
           const isHit = searching && matched.has(node.path)
           const searchClass = isHit ? ' search-hit' : searching ? ' search-dim' : ''
@@ -379,6 +459,7 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
               data-x={node.x}
               data-y={node.y}
               onClick={hasChildren ? () => toggle(node.path) : undefined}
+              onDblClick={hasChildren ? () => focusSubtree(node.path) : undefined}
               onKeyDown={hasChildren ? keyToggler(node.path) : undefined}
               tabIndex={hasChildren ? 0 : undefined}
               role={hasChildren ? 'button' : undefined}
