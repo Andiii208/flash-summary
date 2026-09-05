@@ -1029,12 +1029,48 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .evidence-zoom-btn { display: block; padding: 0; border: none; background: none; cursor: zoom-in; width: 100%; }
 
 /* ---- provider panel ---- */
+/* 2026-09-05 批4 redesign: legend → configured list → collapsed add form. */
+.provider-cap-notes {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+.provider-cap-notes b { color: var(--text-secondary); font-weight: 600; }
+.provider-add summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  padding: 6px 0;
+  user-select: none;
+}
+.provider-add summary:hover { color: var(--text); }
+.provider-add[open] summary { margin-bottom: 8px; }
 .provider-form { display: flex; flex-direction: column; gap: 8px; }
-.provider-row { display: flex; gap: 8px; padding: 8px 10px; }
-.provider-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.provider-row { display: flex; gap: 8px; padding: 8px 10px; align-items: flex-start; }
+.provider-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.provider-row-name { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--font-size-md); }
+.badge.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); background: var(--warning-soft); }
+.provider-row-url {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-row-bindings { display: flex; flex-wrap: wrap; gap: 4px; font-size: var(--font-size-xs); color: var(--text-secondary); }
+.capability-models { display: flex; flex-direction: column; gap: 6px; }
+.capability-model-row { display: flex; align-items: center; gap: 8px; }
+.capability-model-row label { flex: 0 0 92px; font-size: var(--font-size-sm); color: var(--text-muted); }
+.provider-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; margin-bottom: 12px; }
 /* .empty-state margins are container-owned (2026-09-05); the panel gives its
    empty card the same breathing room the list has. */
-.provider-panel .empty-state { margin-top: 12px; }
+.provider-panel .empty-state { margin-top: 12px; margin-bottom: 12px; }
 
 /* ---- settings ---- */
 .settings-panel { max-width: var(--content-max); }

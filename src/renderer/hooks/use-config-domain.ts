@@ -22,7 +22,9 @@ export interface ConfigDomain {
   migrationProgress: { copied: number; total: number } | null
   refreshProviders: () => Promise<void>
   refreshSettings: () => Promise<void>
-  saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capabilities: string[]; model: string }) => void
+  /** 2026-09-05 批4: one model PER capability — the UI no longer binds every
+   *  checked capability to a single shared model string. */
+  saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => void
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   setCacheDir: (dir: string) => void
@@ -52,25 +54,27 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   }, [bridge])
 
   const saveProvider = useCallback(
-    (input: { name: string; baseUrl: string; apiKey: string; capabilities: string[]; model: string }): void => {
+    (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }): void => {
       void (async () => {
         setProviderBusy(true)
         try {
-          // B3: one key entry, N capability bindings in a loop.
-          const saved = await bridge.providers.save({ name: input.name, baseUrl: input.baseUrl, apiKey: input.apiKey })
+          // B3: one key entry, N capability bindings in a loop — each with its
+          // own model (2026-09-05 批4). The id keeps an edit in place instead
+          // of forking a second provider row on rename.
+          const saved = await bridge.providers.save({ id: input.id, name: input.name, baseUrl: input.baseUrl, apiKey: input.apiKey })
           if (!saved.ok) {
             toast(saved.error ?? '保存失败', 'error')
             return
           }
           const providerId = (saved.value as { id: string }).id
           for (const capability of input.capabilities) {
-            const bound = await bridge.providers.bind(capability, providerId, input.model)
+            const bound = await bridge.providers.bind(capability, providerId, (input.models[capability] ?? '').trim())
             if (!bound.ok) {
               toast(bound.error ?? `绑定 ${capability} 失败`, 'error')
               return
             }
           }
-          toast(`已绑定 ${input.capabilities.length} 项能力 → ${input.name}/${input.model}`, 'success')
+          toast(`已绑定 ${input.capabilities.length} 项能力 → ${input.name}`, 'success')
           await refreshProviders()
         } finally {
           setProviderBusy(false)

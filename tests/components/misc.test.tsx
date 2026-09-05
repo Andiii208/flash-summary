@@ -123,30 +123,83 @@ describe('TopBar', () => {
   })
 
 
-  it('ProviderPanel binds several capabilities from one key entry (批4 B3)', () => {
+  it('ProviderPanel saves one model PER capability from per-field inputs (2026-09-05 批4)', () => {
     const onSave = vi.fn()
-    const host = mount(
-      <ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />
-    )
-    // Check all three capability boxes, fill the required fields, submit.
+    const host = mount(<ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />)
+    // Check all three capability boxes; per-capability model inputs appear.
     const boxes = host.querySelectorAll('.capability-check input[type="checkbox"]')
     expect(boxes).toHaveLength(3)
     for (const box of boxes) if (!(box as HTMLInputElement).checked) click(box)
-    const inputs = host.querySelectorAll('.provider-form input.qa-input')
-    input(inputs[0] as HTMLInputElement, 'DeepSeek')
-    input(inputs[1] as HTMLInputElement, 'https://api.deepseek.com/v1')
-    input(inputs[2] as HTMLInputElement, 'sk-test')
-    input(inputs[3] as HTMLInputElement, 'deepseek-chat')
+    const modelInput = (label: string): HTMLInputElement => host.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement
+    expect(modelInput('ASR 转写模型')!.placeholder).toContain('whisper-1')
+    expect(modelInput('ASR 转写模型')!.value).toBe('')
+    expect(modelInput('多模态总结模型')!.value).toBe('gpt-4o')
+    input(modelInput('ASR 转写模型'), 'whisper-1')
+    input(host.querySelector('input[type="password"]') as HTMLInputElement, 'sk-test')
     const submit = Array.from(host.querySelectorAll('button')).find((b) => b.textContent!.includes('保存并绑定'))
     expect(submit?.textContent).toContain('3 项能力')
     click(submit ?? null)
     expect(onSave).toHaveBeenCalledWith({
-      name: 'DeepSeek',
-      baseUrl: 'https://api.deepseek.com/v1',
+      name: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
       capabilities: ['asr', 'multimodal', 'text'],
-      model: 'deepseek-chat'
+      models: { asr: 'whisper-1', multimodal: 'gpt-4o', text: 'gpt-4o' }
     })
+  })
+
+  it('ProviderPanel blocks save until every bound capability has a model (2026-09-05 批4)', () => {
+    const onSave = vi.fn()
+    const host = mount(<ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />)
+    // Default state: ASR checked with an EMPTY model on purpose — the trap
+    // this redesign removes; save must stay disabled until it is filled.
+    const submit = Array.from(host.querySelectorAll('button')).find((b) => b.textContent!.includes('保存并绑定')) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    input(host.querySelector('input[aria-label="ASR 转写模型"]') as HTMLInputElement, 'mimo-v2.5-asr')
+    expect(submit.disabled).toBe(true) // still no API key for a first provider
+    input(host.querySelector('input[type="password"]') as HTMLInputElement, 'sk-test')
+    expect(submit.disabled).toBe(false)
+    click(submit)
+    expect(onSave).toHaveBeenCalledTimes(1)
+  })
+
+  it('ProviderPanel disables «测试连接» until the API key is filled (P7)', () => {
+    const onTest = vi.fn()
+    const host = mount(<ProviderPanel providers={null} busy={false} onSave={() => undefined} onRemove={() => undefined} onTest={onTest} />)
+    const test = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '测试连接') as HTMLButtonElement
+    expect(test.disabled).toBe(true)
+    input(host.querySelector('input[type="password"]') as HTMLInputElement, 'sk-test')
+    input(host.querySelector('input[aria-label="ASR 转写模型"]') as HTMLInputElement, 'mimo-v2.5-asr')
+    expect(test.disabled).toBe(false)
+    click(test)
+    expect(onTest).toHaveBeenCalledWith({ baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test', model: 'mimo-v2.5-asr' })
+  })
+
+  it('ProviderPanel edit refills identity + per-capability bindings in place (2026-09-05 批4)', () => {
+    const onSave = vi.fn()
+    const providers = {
+      providers: [{ id: 'p1', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', hasKey: true }],
+      bindings: [{ capability: 'asr', providerId: 'p1', model: 'mimo-v2.5-asr' }]
+    }
+    const host = mount(<ProviderPanel providers={providers} busy={false} onSave={onSave} onRemove={() => undefined} />)
+    // The list leads; the form is collapsed until «编辑».
+    expect(host.querySelector('.provider-row .provider-row-name')?.textContent).toContain('DeepSeek')
+    expect(host.querySelector('.provider-row-bindings')?.textContent).toContain('ASR 转写: mimo-v2.5-asr')
+    const details = host.querySelector('details.provider-add') as HTMLDetailsElement
+    expect(details.open).toBe(false)
+    click(Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '编辑') ?? null)
+    // key={editingId} re-mounts the details so «编辑» opens it — re-query.
+    const reopened = host.querySelector('details.provider-add') as HTMLDetailsElement
+    expect(reopened.open).toBe(true)
+    expect((reopened.querySelector('input[placeholder^="Base URL"]') as HTMLInputElement).value).toBe('https://api.deepseek.com/v1')
+    expect(reopened.querySelector('input[aria-label="ASR 转写模型"]') !== null).toBe(true)
+    expect((reopened.querySelector('input[aria-label="ASR 转写模型"]') as HTMLInputElement).value).toBe('mimo-v2.5-asr')
+    // Saving an edit keeps the provider id and lets the key stay empty.
+    input(reopened.querySelector('input[aria-label="ASR 转写模型"]') as HTMLInputElement, 'whisper-1')
+    click(Array.from(reopened.querySelectorAll('button')).find((b) => b.textContent === '保存修改') ?? null)
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'p1', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', apiKey: '', models: { asr: 'whisper-1' } })
+    )
   })
   it('marks an expired session and offers re-login instead of logout', () => {
     const onLogin = vi.fn()

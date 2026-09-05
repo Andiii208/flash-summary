@@ -532,7 +532,7 @@ interface AppState {
   removeTask: (taskId: string) => void
   clearFinishedTasks: () => void
   ask: (question: string) => void
-  saveProvider: (input: { name: string; baseUrl: string; apiKey: string; capabilities: string[]; model: string }) => void
+  saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => void
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   providerTest: { ok: boolean; text: string } | null
