@@ -14,6 +14,7 @@ import './style.css'
 import './print.css'
 import type { SeuSummaryBridge } from '../shared/bridge'
 import { App } from './app'
+import { ErrorBoundary } from './ui/ErrorBoundary'
 
 const root = document.getElementById('app')
 if (root == null) throw new Error('missing #app mount point')
@@ -24,4 +25,9 @@ if (bridge == null) {
   throw new Error('preload bridge unavailable')
 }
 
-render(<App bridge={bridge} />, root)
+render(
+  <ErrorBoundary area="app">
+    <App bridge={bridge} />
+  </ErrorBoundary>,
+  root
+)

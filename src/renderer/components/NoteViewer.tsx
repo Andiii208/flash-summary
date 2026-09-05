@@ -6,6 +6,7 @@ import { evidenceHitRate } from '../../shared/notes/evidence'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
+import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { NoteLibrary } from './NoteLibrary'
 import { MindMap } from './MindMap'
 import { PageHeader } from './PageHeader'
@@ -223,16 +224,20 @@ export function NoteViewer({
           <MindMap tree={note.knowledgeTree} />
         ) : (
           projectNoteBlocks(note, view).map((section) => (
+            <ErrorBoundary key={section.heading} area="note-view">
             <section key={section.heading} class="note-section">
               <h3>{section.heading}</h3>
               <NoteBlocks blocks={section.blocks} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
-            </section>
+              </section>
+            </ErrorBoundary>
           ))
         )}
         {note != null && view === 'detailed' && (
           <section class="note-section">
             <h3>课堂画面</h3>
-            <EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
+            <ErrorBoundary area="note-gallery">
+              <EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
+            </ErrorBoundary>
           </section>
         )}
       </div>

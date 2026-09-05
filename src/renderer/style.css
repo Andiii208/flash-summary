@@ -1364,3 +1364,14 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .settings-block h3 { font-family: var(--font-display); font-weight: 400; font-size: 16px; letter-spacing: 0.5px; }
 .settings-footer { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--text-muted); font-family: var(--font-display); font-size: 13.5px; letter-spacing: 3px; }
 .settings-footer svg { opacity: 0.8; }
+/* G2 (review): render-error recovery card (ErrorBoundary). */
+.error-boundary {
+  max-width: var(--content-max, 860px);
+  margin: 48px 0;
+  padding: 32px;
+  border: 1px solid var(--border, #d8d2c4);
+  border-radius: 12px;
+  background: var(--surface, #fffdf7);
+}
+.error-boundary h3 { margin: 0 0 8px; }
+.error-boundary p { color: var(--text-muted, #667085); margin: 0 0 16px; }

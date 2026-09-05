@@ -15,11 +15,13 @@ import { NoteViewer, type LessonContext } from './components/NoteViewer'
 import { PrintHandout } from './components/PrintHandout'
 import { QaPanel, type QaEntry } from './components/QaPanel'
 import { TopBar, type SessionState } from './components/TopBar'
-import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
+import { ToastArea, type ToastItem } from './components/ToastArea'
 import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
+import { useToasts } from './hooks/use-toasts'
+import { useConfigDomain } from './hooks/use-config-domain'
 import { SettingsPanel } from './components/SettingsPanel'
 
 /** 2026-09-04: wait for every <img> in the print handout to decode before
@@ -627,9 +629,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [attachmentVersion, setAttachmentVersion] = useState(0)
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
-  /** C3: library migration in flight (busy button + progress line). */
-  const [libraryBusy, setLibraryBusy] = useState(false)
-  const [migrationProgress, setMigrationProgress] = useState<{ copied: number; total: number } | null>(null)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
   const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
@@ -637,13 +636,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [submitBusy, setSubmitBusy] = useState(false)
   const [qaEntries, setQaEntries] = useState<QaEntry[]>([])
   const [qaBusy, setQaBusy] = useState(false)
-  const [providers, setProviders] = useState<ProvidersListResult | null>(null)
-  const [providerBusy, setProviderBusy] = useState(false)
-  const [settings, setSettings] = useState<AppSettingsInfo | null>(null)
-  /** C10: path picked via the folder dialog, for the draft input. */
-  const [chosenCacheDir, setChosenCacheDir] = useState<string | null>(null)
-  const [toasts, setToasts] = useState<ToastItem[]>([])
-  const toastId = useRef(0)
+  // G1 (review): toasts + the config/provider domain live in dedicated hooks.
+  const { toasts, toast } = useToasts()
+  const config = useConfigDomain(bridge, toast)
   const lessonRef = useRef('')
   /** 批5: identity-stable indirection for callbacks used inside long-lived
    *  subscriptions (see the note at openLessonNotesRef). */
@@ -653,6 +648,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
+  const { providers, providerBusy, providerTest, settings, chosenCacheDir, libraryBusy, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
+
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
   useEffect(() => {
@@ -660,16 +657,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     if (settings == null || settings.theme === 'auto') delete root.dataset.theme
     else root.dataset.theme = settings.theme
   }, [settings])
-
-  const toast = useCallback(
-    (message: string, kind: ToastKind = 'info', action?: { actionLabel: string; onAction: () => void }): void => {
-      const id = ++toastId.current
-      setToasts((ts) => [...ts, { id, message, kind, ...(action ?? {}) }])
-      const ms = action != null ? 8000 : kind === 'error' ? 6500 : 3500
-      window.setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), ms)
-    },
-    []
-  )
 
   const applyLocalTree = useCallback(async (): Promise<void> => {
     const res = await bridge.school.courseTree()
@@ -720,16 +707,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setRefreshBusy(false)
     }
   }, [bridge, toast, applyLocalTree, refreshBusy, ensureCampusNet])
-
-  const refreshProviders = useCallback(async (): Promise<void> => {
-    const res = await bridge.providers.list()
-    if (res.ok && res.value != null) setProviders(res.value)
-  }, [bridge])
-
-  const refreshSettings = useCallback(async (): Promise<void> => {
-    const res = await bridge.settings.get()
-    if (res.ok && res.value != null) setSettings(res.value)
-  }, [bridge])
 
   // All three lesson-scoped loaders guard on lessonRef: a slow response for
   // a previously selected lesson must not overwrite the current one's panel.
@@ -892,8 +869,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
   useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
-  // C3: live library-migration progress (same subscription discipline).
-  useEffect(() => bridge.settings.onMigrateProgress((p) => setMigrationProgress(p)), [bridge])
 
   useEffect(() => {
     let disposed = false
@@ -1454,67 +1429,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, qaBusy, note, toast, loadQaRecent]
   )
 
-  const saveProvider = useCallback(
-    (input: { name: string; baseUrl: string; apiKey: string; capabilities: string[]; model: string }): void => {
-      void (async () => {
-        setProviderBusy(true)
-        try {
-          // B3: one key entry, N capability bindings in a loop.
-          const saved = await bridge.providers.save({ name: input.name, baseUrl: input.baseUrl, apiKey: input.apiKey })
-          if (!saved.ok) {
-            toast(saved.error ?? '保存失败', 'error')
-            return
-          }
-          const providerId = (saved.value as { id: string }).id
-          for (const capability of input.capabilities) {
-            const bound = await bridge.providers.bind(capability, providerId, input.model)
-            if (!bound.ok) {
-              toast(bound.error ?? `绑定 ${capability} 失败`, 'error')
-              return
-            }
-          }
-          toast(`已绑定 ${input.capabilities.length} 项能力 → ${input.name}/${input.model}`, 'success')
-          await refreshProviders()
-        } finally {
-          setProviderBusy(false)
-        }
-      })()
-    },
-    [bridge, toast, refreshProviders]
-  )
-
-  const removeProvider = useCallback(
-    (id: string): void => {
-      void (async () => {
-        const res = await bridge.providers.remove(id)
-        if (!res.ok) {
-          toast(res.error ?? '删除失败', 'error')
-          return
-        }
-        toast('已删除 Provider', 'success')
-        await refreshProviders()
-      })()
-    },
-    [bridge, toast, refreshProviders]
-  )
-
-  // M3 批 D: probe the form values against the endpoint (in-memory only).
-  const [providerTest, setProviderTest] = useState<{ ok: boolean; text: string } | null>(null)
-  const testProvider = useCallback(
-    (input: { baseUrl: string; apiKey: string; model: string }): void => {
-      void (async () => {
-        setProviderTest({ ok: true, text: '测试中…' })
-        const res = await bridge.providers.test(input)
-        if (res.ok && res.value != null) {
-          setProviderTest({ ok: true, text: `连接成功（${res.value.latencyMs}ms）` })
-        } else {
-          setProviderTest({ ok: false, text: `连接失败：${res.error ?? '未知错误'}` })
-        }
-      })()
-    },
-    [bridge]
-  )
-
   const exportNote = useCallback(
     (lessonId: string): void => {
       void (async () => {
@@ -1656,34 +1570,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       .catch(() => toast('复制失败', 'error'))
   }, [note, tree, currentLesson, toast])
 
-  const setCacheDir = useCallback(
-    (dir: string): void => {
-      void (async () => {
-        const res = await bridge.settings.setCacheDir(dir)
-        if (!res.ok) {
-          toast(res.error ?? '设置失败', 'error')
-          return
-        }
-        toast('缓存目录已更新，新任务将写入新位置', 'success')
-        await refreshSettings()
-      })()
-    },
-    [bridge, toast, refreshSettings]
-  )
-
-  /** C10: folder picker — returns the chosen path for the draft input. */
-  const chooseCacheDir = useCallback((): void => {
-    void (async () => {
-      const res = await bridge.settings.chooseCacheDir()
-      if (!res.ok) {
-        toast(res.error ?? '选择失败', 'error')
-        return
-      }
-      if (res.value?.canceled || res.value?.path == null) return
-      setChosenCacheDir(res.value.path)
-    })()
-  }, [bridge, toast])
-
   /** C6: remove an empty (never-processed) course from the sidebar. */
   const removeCourse = useCallback(
     (courseId: string): void => {
@@ -1698,49 +1584,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       })()
     },
     [bridge, toast, applyLocalTree]
-  )
-
-  const setTheme = useCallback(
-    (theme: 'auto' | 'light' | 'dark'): void => {
-      void (async () => {
-        const res = await bridge.settings.setTheme(theme)
-        if (!res.ok) {
-          toast(res.error ?? '设置失败', 'error')
-          return
-        }
-        await refreshSettings()
-      })()
-    },
-    [bridge, toast, refreshSettings]
-  )
-
-  const chooseLibrary = useCallback((): void => {
-    if (libraryBusy) return
-    void (async () => {
-      // C3 (review): the migration is a long copy — the button stays
-      // disabled and the progress line reports attachment entries.
-      setLibraryBusy(true)
-      try {
-        const res = await bridge.settings.chooseLibrary()
-        if (!res.ok) {
-          toast(res.error ?? '迁移失败', 'error')
-          return
-        }
-        if (res.value?.canceled) return
-        toast('资料库已迁移，重启应用后生效', 'success')
-        await refreshSettings()
-      } finally {
-        setLibraryBusy(false)
-        setMigrationProgress(null)
-      }
-    })()
-  }, [bridge, toast, refreshSettings, libraryBusy])
-
-  const openPath = useCallback(
-    (kind: 'library' | 'cache' | 'exports' | 'logs'): void => {
-      void bridge.settings.openPath(kind)
-    },
-    [bridge]
   )
 
   // Renderer errors reach the same redacted file log (U5).
