@@ -1032,6 +1032,9 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .provider-form { display: flex; flex-direction: column; gap: 8px; }
 .provider-row { display: flex; gap: 8px; padding: 8px 10px; }
 .provider-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+/* .empty-state margins are container-owned (2026-09-05); the panel gives its
+   empty card the same breathing room the list has. */
+.provider-panel .empty-state { margin-top: 12px; }
 
 /* ---- settings ---- */
 .settings-panel { max-width: var(--content-max); }
@@ -1108,17 +1111,22 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 }
 
 /* ---- empty states / onboarding ---- */
+/* 2026-09-05: vertical spacing belongs to the container (.page-head bottom
+   margin above, .qa-log gap / .subheading top margin below) — a margin on
+   .empty-state itself merged away in block flow but survived inside flex
+   (.qa-log), which is why the qa card sat 10px lower than the tasks card. */
 .empty-state, .welcome-guide {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 26px 22px;
-  margin: 10px 0 16px;
   text-align: center;
   background:
     radial-gradient(120% 90% at 50% 0%, var(--accent-soft) 0%, transparent 55%),
     var(--surface);
   box-shadow: var(--shadow-sm);
 }
+.empty-state { margin: 0; }
+.welcome-guide { margin: 10px 0 16px; }
 .empty-mark { color: var(--brass); opacity: 0.85; margin-bottom: 6px; display: flex; justify-content: center; }
 .empty-state h3, .welcome-guide h2 { margin: 0 0 8px; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
 .empty-state p, .welcome-guide p { color: var(--text-muted); margin: 0 0 14px; font-size: var(--font-size-md); }
@@ -1134,9 +1142,11 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .guide-actions { display: flex; gap: 10px; justify-content: center; }
 
 /* ---- manual fallback ---- */
+/* 2026-09-05: 2px side padding aligns the summary onto the sidebar text axis
+   (.sidebar-head/.tree-meta both sit at 14px; this was the lone 12px strayer). */
 .manual-fallback {
   margin-top: auto;
-  padding-top: 12px;
+  padding: 12px 2px 0;
   border-top: 1px solid var(--border);
 }
 .manual-fallback summary { cursor: pointer; color: var(--text-muted); font-size: var(--font-size-sm); margin-bottom: 6px; }
