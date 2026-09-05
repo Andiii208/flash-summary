@@ -59,6 +59,13 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
   useEffect(() => {
     if (props.chosenCacheDir != null) setCacheDraft(props.chosenCacheDir)
   }, [props.chosenCacheDir])
+  // P6 (2026-09-05): settings load async after the first paint — with the
+  // settings tab restored as the initial tab the draft would stay blank and
+  // read as «no cache dir configured». Refreshes only fire after a settings
+  // write, so overwriting the draft here never races active editing.
+  useEffect(() => {
+    if (props.settings?.cacheDir != null) setCacheDraft(props.settings.cacheDir)
+  }, [props.settings?.cacheDir])
   // C4: logout needs a confirmation — it clears the whole working context.
   const [pendingLogout, setPendingLogout] = useState(false)
   return (

@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
+import { render } from 'preact'
+import { act } from 'preact/test-utils'
 import { ToastArea } from '../../src/renderer/components/ToastArea'
 import { ProgressBar } from '../../src/renderer/components/ProgressBar'
 import { EmptyState } from '../../src/renderer/components/EmptyState'
 import { WelcomeGuide } from '../../src/renderer/components/WelcomeGuide'
 import { ProviderPanel } from '../../src/renderer/components/ProviderPanel'
+import { SettingsPanel } from '../../src/renderer/components/SettingsPanel'
 import { TopBar } from '../../src/renderer/components/TopBar'
 import { ManualAdd } from '../../src/renderer/components/ManualAdd'
 import { mount, click, input } from '../helpers/preact'
@@ -242,5 +245,35 @@ describe('ToastArea inline action (M1-3)', () => {
   it('renders no action button when none is provided', () => {
     const host = mount(<ToastArea toasts={[{ id: 1, message: '普通提示', kind: 'info' }]} />)
     expect(host.querySelector('.toast-action')).toBeNull()
+  })
+})
+
+describe('SettingsPanel cache-dir draft (P6, 2026-09-05)', () => {
+  const baseProps = {
+    session: 'logged_out' as const,
+    sessionInfo: { savedAt: null, expiresAt: null },
+    sessionBusy: false,
+    onLogin: () => undefined,
+    onLogout: () => undefined,
+    providers: null,
+    providerBusy: false,
+    onSaveProvider: () => undefined,
+    onRemoveProvider: () => undefined,
+    onSetCacheDir: () => undefined,
+    onSetTheme: () => undefined,
+    onChooseLibrary: () => undefined,
+    onOpenPath: () => undefined
+  }
+
+  it('refills the cache draft when settings arrive after mount', () => {
+    const host = mount(<SettingsPanel {...baseProps} settings={null} />)
+    const draft = (): HTMLInputElement => host.querySelector('.settings-row input.qa-input') as HTMLInputElement
+    expect(draft().value).toBe('')
+    // Settings load async (settings tab restored as the initial tab): the
+    // configured dir must reach the input instead of leaving it blank.
+    act(() => {
+      render(<SettingsPanel {...baseProps} settings={{ libraryRoot: 'L', cacheDir: 'C:\\lib\\cache', theme: 'auto' }} />, host)
+    })
+    expect(draft().value).toBe('C:\\lib\\cache')
   })
 })
