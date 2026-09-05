@@ -2,6 +2,42 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] — 2026-09-05 · 全面设计审查整改（方案 2026-09-05-design-review-remediation 已批准）
+
+v0.4.0 全面设计审查（管线/数据/安全三路深查 + 渲染层走读）发现 4 P0/20+ P1/15+ P2，八批全部落地，提交 90fc441…59c5943。测试 463 → 525（+62），smoke 22/22。
+
+### 安全（红线级）
+
+- **JWT 加密落盘**（A1）：session.bin 的 jwt 字段原为明文 JSON（注释却称 encrypted at rest）——现与 cookie 同走 DPAPI；旧明文格式兼容读取，下次保存自动转加密。
+- **直链不入 lessons 表**（A2/A3）：legacy JSON 路径补 sanitize；任务成功终态即清 fetching_course 直链交接（原含 auth_key 的完整直链长期滞留库内）。
+- **脱敏收口**（A4）：redact 补 Bearer 值/cookie 多对/jwt-token 三漏点；ffmpeg stderr 回显直链的错误出口（DB+IPC）统一过 redact；net-trace 过 redact+URL 只记 query key+7 天轮转。
+- **IPC 面封死**（E1）：全部 42 个 handler 经 sender 校验——学校平台页带着 preload 桥加载时，其页面 JS 再也调不动任何 IPC（「通道均只读」旧定性作废）。
+- **导航守卫**（E2）：will-navigate 白名单（应用+学校三域）、window.open 一律拒绝、权限请求一律拒绝。
+- **PDF 导出 token 化**（E3）：对话框签发一次性 5min token，写文件只认 token——渲染层指定任意路径写文件的能力移除。
+- **其余**（A5/A6/A7/A8/E4/E5）：cookie 回灌一律 HttpOnly；Provider 编辑留空=保留原 key；SchoolClient 30s 硬超时；logout 清 default+legacy 双分区并 await；revealFile 限 exports/attachments 域；Provider baseUrl 强制 https（本机调试豁免）。
+
+### 管线（P0 修复）
+
+- **续跑自动降级**（B1）：重试时校验各阶段真实输入，URL 过期（auth_key 6h 新鲜度）/音频被 24h 清理回收/换缓存目录三个死局场景自动回退到最早可重建阶段并发人话进度事件——断点续跑在最常见重试场景下不再失效。
+- **转写分片 checkpoint**（B2）：已完成分片落库，重试只传缺失分片（原第 20/23 片失败全量重传）。
+- **视频流 .ok 断点**（B3）：双流各自完成标记+单流 3 次重试——重试只重下失败的流（原 810MB 断一次全重下）。
+- **下载韧性**（B4/B6）：416=已下载完整（原会删掉完整文件）；磁盘 <5GB 人话拒绝。
+- **队列不变量**（D1/D2/D3/D5）：排队上限 3/同课去重收进主进程（原只在渲染层）；重复入队拒绝；出队跳过排队中被取消的任务；删除绕过队列的 tasks:run 死通道；取消 pending 任务不再触发 CHECK 违例（原任务从此不能取消也不能删除）；关窗确认/取消覆盖整个队列。
+- **生命周期**（D4/D6/D7/D8）：Tray 后台运行真正兑现「后台继续运行」承诺（窗口收托盘、队列排空自动恢复）；summarizing 可取消（signal 透传 provider 请求）；音频/关键帧/切分全 ffmpeg 调用统一超时+停滞检测；阶段开始事件的百分比=上一阶段完成值。
+
+### 数据与渲染
+
+- **资料库迁移重做**（C1-C4）：真源改为 userData 库外引导指针（原指针写进旧库 settings 无人回读——迁移功能实际不成立）；库内附件路径改相对+迁移时改写存量；异步分批复制+进度事件+任务守卫；启动失败弹窗+日志，永不静默白屏。
+- **数据契约**（F1/F2/F3）：quiz「无锚即弃」强制执行；入库前按真实证据集过滤捏造引用（剔除计数进 toast）；concepts/formulas 的 refs 同过 mm:ss 修复。
+- **附件按需加载**（F4）：清单+单图两条通道，渲染层 per-ref 缓存渐进出图（原几十 MB base64 一次性进 IPC/内存）；PDF 打印先全量解析再渲染。
+- **增长护栏**（F5/F6）：迁移 008 补 tasks/qa 排序与 course_id 索引；笔记版本历史上限 10 版。
+- **ErrorBoundary**（G2）：渲染异常不再白屏——App 与笔记视图双层人话恢复卡+日志上报。
+- **杂项**（C5/F7/H1/H2/H3）：settings key 收敛+主题白名单；formatTime/labelOf 三处归一；删除死代码 pipeline.ts（测试数例外已获批）；Crashpad 转储周清理；ffmpeg/ffprobe 启动指纹入日志。
+
+### 明确不做（本轮）
+
+- HTTP Range 视频下载器（.ok 断点+重试已覆盖主要代价）；electron-updater 自动更新与代码签名证书（分发规模未到，等真实需求）；关键帧 pts 精确化（fps 采样下时间戳本就精确，审查前提不成立）；repairJsonCandidate 括号深度感知。
+
 ## [0.4.0] — 2026-09-05 · v0.3.1 全面 UX 审查整改（方案 2026-09-05-ux-audit-v031 已批准）
 
 装机实测 5 主诉 + 全面审查 12 发现，六批落地（A 导航骨架/B 布局统一/C 追问闭环/E 细节/D 导图折叠/F 键盘），提交 92528bb…9050752。

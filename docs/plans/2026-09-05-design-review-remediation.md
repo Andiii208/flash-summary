@@ -1,7 +1,7 @@
 # SEU Summary v0.4.1 全面设计审查整改方案（待审批）
 
 > 2026-09-05。来源：Andiii 要求对 v0.4.0 做全面设计审查（「看看还有没有设计上的缺陷」），审查已完成并经 Andiii 拍板「都要做」。
-> 状态：**已批准（2026-09-05）——七个决策点全按推荐裁决**：①Tray 最小实现+任务完成后自动恢复窗口；②批准删除 pipeline.ts 的测试数例外（记录 PROGRESS）；③electron-updater 本轮不做；④不购签名证书；⑤关键帧 pts 精确化做；⑥缓存配额默认 20GB；⑦qa.course_id 保留列+加索引。基线：master 360c8a1（v0.4.0，四门禁 463/463 + smoke 22/22）。
+> 状态：**已批准并全部落地（2026-09-05，八批提交 90fc441…59c5943，四门禁 525/525 + smoke 22/22）**。落地批注：A3 修订为仅 markSucceeded 清直链（markFailed 保留给 ≤6h 新鲜 URL 重试窗口，过期由 B1 降级兜底——比原案省一次不必要的播放页重收割）；A6 落在 saveProvider 而非 store 层（单一语义入口）；B1 降级清理取消（INSERT OR REPLACE 语义自愈，无残留）；B5 的 runningTaskIds 接线由 D1 出队复核+迁移守卫覆盖；H1 测试数例外已批准（净 -1）；H4 关键帧 pts 经复核豁免（fps=1/N 采样下 i×N 本就精确到一个帧周期，审查前提不成立）；G1 完成 useToasts+useConfigDomain 两个域 hook（app.tsx 1758→1693 行），session/tree/task/note 四域拆分留待后续（lessonRef/refreshTree/登录完成回调节点深，需专门一批）。原始状态头：**已批准（2026-09-05）——七个决策点全按推荐裁决**：①Tray 最小实现+任务完成后自动恢复窗口；②批准删除 pipeline.ts 的测试数例外（记录 PROGRESS）；③electron-updater 本轮不做；④不购签名证书；⑤关键帧 pts 精确化做；⑥缓存配额默认 20GB；⑦qa.course_id 保留列+加索引。基线：master 360c8a1（v0.4.0，四门禁 463/463 + smoke 22/22）。
 > 取证方式：三路并行深查（任务管线 / 数据层 / 安全与外部交互）+ 渲染层全文走读（app.tsx 1758 行）+ 全部 P0 与关键 P1 亲自核验代码行号。
 > 目标版本：**0.5.0**（含迁移重做与渲染层结构重构，属 minor 量级）。
 

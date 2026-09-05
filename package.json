@@ -1,6 +1,6 @@
 {
   "name": "seu-summary",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "SEU Summary - turn SEU Kedacom course recordings into structured study notes (Windows MVP)",
   "main": "./out/main/index.cjs",
   "author": "SEU Summary contributors",

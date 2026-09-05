@@ -60,7 +60,7 @@ SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 
 ┌──────────────────────────┴──────────────────────────────┐
 │  Main (src/main)                                        │
 │  app-context —— 一次组装资料库/会话/Provider/ffmpeg/日志  │
-│  ipc —— 35 通道：school/providers/tasks/notes/qa/        │
+│  ipc —— 42 通道：school/providers/tasks/notes/qa/        │
 │         settings/log；任务经串行队列执行，可取消           │
 │  tasks/orchestrator —— 6 阶段流水线编排（ASR 分片/多模态）  │
 │  media —— ffmpeg 音频/关键帧/超时守卫 · phash 去重 ·       │
@@ -81,7 +81,7 @@ SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（463 个用例，57 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（525 个用例，62 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -91,7 +91,7 @@ src/
   preload/    类型化桥接（contextBridge）
   renderer/   Preact UI（课程树/任务/笔记/追问/设置，CSS 变量设计系统）
   shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
-tests/        57 个测试文件（含真实 HTTP 集成与六阶段端到端）
+tests/        62 个测试文件（含真实 HTTP 集成与六阶段端到端）
 scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）
 docs/
   plans/ROADMAP.md         阶段计划（8 阶段 + 验收命令）
@@ -113,7 +113,7 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 ## ✅ 当前状态
 
 - **v0.2.1 + 可用性整改**：真实课时下载管线全通（播放页收割直链+课时目录；真实单课 810MB 双流→ASR→笔记已跑通）、主窗口内嵌登录与会话过期恢复活体验证通过；2026-09-03 用户实测反馈修复：dev/安装版数据隔离、会话三态（JWT 过期本地判定）、登录失败可见反馈、校园域名代理绕行 + Fake-IP 预检、课程分页拉取（含总量/进度边界明示）、星标「我的课程」置顶 + 同课程其他老师推荐 + 课程时间/教室展示。
-- **321 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **525 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
 
