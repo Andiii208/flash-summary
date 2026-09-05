@@ -182,6 +182,8 @@ export interface NotesBridge {
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   /** 2026-09-04 roadmap 2.2: Anki TSV decks (concepts + quiz), one file per deck. */
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
+  /** M3.3 (map expansion): the knowledge tree as a standalone paper-white SVG. */
+  exportSvg(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   /** 2026-09-04: keyframe/PPT attachments for note views. */
     /** F4 (review): identity manifest — data arrives per ref via attachmentData. */
   attachments(lessonId: string): Promise<ApiResult<AttachmentManifestEntry[]>>

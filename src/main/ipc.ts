@@ -27,6 +27,7 @@ import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
 import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
+import { treeToSvg } from '../shared/notes/mindmap-svg'
 import { ankiDecks, deckToTsv } from '../shared/notes/anki'
 import { noteExportBaseName } from '../shared/notes/export-name'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
@@ -935,6 +936,50 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         written.push(target)
       })
       return ok({ canceled: false, paths: written })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // M3.3 (map expansion 2026-09-05): export the knowledge tree as a
+  // standalone paper-white SVG via the save dialog. SEU_SVG_PATH bypasses
+  // the native dialog (e2e seam, same pattern as SEU_PDF_PATH/SEU_ANKI_PATH).
+  handle(ipc, 'notes:exportSvg', async (_e, lessonId: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const row = ctx.db
+        .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
+        .get(id) as { note_json: string } | undefined
+      if (row == null) throw new Error('该课时尚无笔记')
+      const lesson = ctx.db
+        .prepare(
+          `SELECT l.title, c.name AS course_name, c.teacher
+           FROM lessons l LEFT JOIN courses c ON c.id = l.course_id WHERE l.id = ?`
+        )
+        .get(id) as { title: string; course_name: string | null; teacher: string | null } | undefined
+      const fullName = noteExportBaseName({
+        courseName: lesson?.course_name,
+        teacher: lesson?.teacher,
+        lessonTitle: lesson?.title,
+        lessonId: id
+      })
+      const note = parseNote(row.note_json)
+      const svg = treeToSvg(note.knowledgeTree, note.conceptLinks, fullName)
+      const overridePath = process.env.SEU_SVG_PATH
+      if (overridePath != null && overridePath !== '') {
+        writeFileSync(overridePath, svg, 'utf8')
+        return ok({ canceled: false, path: overridePath })
+      }
+      const win = BrowserWindow.getFocusedWindow()
+      const options: SaveDialogOptions = {
+        title: '导出思维导图为 SVG',
+        defaultPath: join(ctx.exportsDir(), `${fullName}.svg`),
+        filters: [{ name: 'SVG', extensions: ['svg'] }]
+      }
+      const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
+      if (canceled || filePath == null) return ok({ canceled: true })
+      writeFileSync(filePath, svg, 'utf8')
+      return ok({ canceled: false, path: filePath })
     } catch (e) {
       return err(e)
     }

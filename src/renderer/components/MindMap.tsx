@@ -102,11 +102,13 @@ export interface MindMapProps {
   conceptLinks?: ConceptLink[]
   /** Jump to the detailed view anchored at this concept's card. */
   onViewDetailed?: (term: string) => void
+  /** M3.3: export the whole map as a standalone paper-white SVG file. */
+  onExportSvg?: () => void
 }
 
 const EMPTY_LINKS: ConceptLink[] = []
 
-export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_LINKS, onViewDetailed }: MindMapProps): JSX.Element {
+export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_LINKS, onViewDetailed, onExportSvg }: MindMapProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
   const [view, setView] = useState<View>(IDENTITY_VIEW)
@@ -374,6 +376,11 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
           </button>
         )}
         {recall && <span class="mindmap-recall-hint">先回忆再揭示：凭记忆说出这个分支讲过什么</span>}
+        {onExportSvg != null && (
+          <button class="btn small" onClick={onExportSvg}>
+            导出 SVG
+          </button>
+        )}
         <span class="mindmap-toolbar-spacer" aria-hidden="true" />
         <input
           class="mindmap-search"

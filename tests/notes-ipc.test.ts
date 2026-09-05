@@ -331,3 +331,38 @@ describe('notes:list / qa:recent (批B, 2026-09-04)', () => {
     expect(res.value?.[1]).toMatchObject({ question: '第一问' })
   })
 })
+
+describe('notes:exportSvg (M3.3, 2026-09-05)', () => {
+  it('writes a paper-white SVG of the knowledge tree via the SEU_SVG_PATH seam', async () => {
+    const ctx = makeCtx()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-05T00:00:00Z')"
+    ).run(VALID_NOTE)
+    const target = join(dir, 'map.svg')
+    const prev = process.env.SEU_SVG_PATH
+    process.env.SEU_SVG_PATH = target
+    try {
+      registerIpc(ctx, ipc as never)
+      const res = (await invoke('notes:exportSvg', 'l1')) as { ok: boolean; value?: { canceled: boolean; path?: string } }
+      expect(res.ok).toBe(true)
+      expect(res.value?.canceled).toBe(false)
+      expect(res.value?.path).toBe(target)
+      const { readFileSync } = await import('fs')
+      const svg = readFileSync(target, 'utf8')
+      expect(svg.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true)
+      expect(svg).toContain('root')
+      expect(svg).toContain('child')
+    } finally {
+      if (prev == null) delete process.env.SEU_SVG_PATH
+      else process.env.SEU_SVG_PATH = prev
+    }
+  })
+
+  it('fails with a readable error when the lesson has no note', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:exportSvg', 'l1')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('该课时尚无笔记')
+  })
+})

@@ -56,6 +56,8 @@ export interface NoteViewerProps {
   onExport?: () => void
   /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
   onExportAnki?: () => void
+  /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
+  onExportSvg?: () => void
   /** Copy the markdown rendering to the clipboard (best-effort). */
   onCopy?: () => void
 }
@@ -81,6 +83,7 @@ export function NoteViewer({
   onExportPdf,
   onExport,
   onExportAnki,
+  onExportSvg,
   onCopy
 }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
@@ -251,7 +254,14 @@ export function NoteViewer({
             ) : null}
           </>
         ) : view === 'mindmap' ? (
-          <MindMap tree={note.knowledgeTree} concepts={note.concepts} quiz={note.quiz} conceptLinks={note.conceptLinks} onViewDetailed={jumpToConcept} />
+          <MindMap
+            tree={note.knowledgeTree}
+            concepts={note.concepts}
+            quiz={note.quiz}
+            conceptLinks={note.conceptLinks}
+            onViewDetailed={jumpToConcept}
+            onExportSvg={onExportSvg}
+          />
         ) : (
           projectNoteBlocks(note, view).map((section) => (
             <ErrorBoundary key={section.heading} area="note-view">

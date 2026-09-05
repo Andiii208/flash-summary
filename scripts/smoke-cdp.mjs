@@ -120,7 +120,7 @@ const EXPECTED_BRIDGE = {
   school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'harvestState', 'removeCourse', 'netCheck', 'setMine'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
-  notes: ['latest', 'list', 'exportMarkdown', 'exportAnki', 'attachments', 'attachmentData', 'regenerate', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
+  notes: ['latest', 'list', 'exportMarkdown', 'exportAnki', 'exportSvg', 'attachments', 'attachmentData', 'regenerate', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
   settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'onMigrateProgress'],
   log: ['rendererError']
