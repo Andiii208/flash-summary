@@ -162,8 +162,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('school:logout', () => {
-    ctx.logout()
+  ipc.handle('school:logout', async () => {
+    await ctx.logout()
     return ok({ state: ctx.sessionState() })
   })
   // justLoggedIn is the one-shot «a login flow just completed» marker: the

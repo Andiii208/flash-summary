@@ -11,6 +11,8 @@ import { defaultLibraryRoot, ensureLibraryLayout, resolveCacheDir, exportsPath }
 import { dpapiCryptor } from './auth/electron-cryptor'
 import type { Cryptor } from './auth/session-crypto'
 import { loadSession, saveSession, clearSession, jwtExpiresAt } from './auth/session-store'
+import { injectSessionCookiesIntoJar } from './auth/cookie-inject'
+import { clearBrowserSessionState } from './auth/browser-clear'
 import type { SessionStateValue } from '../shared/types'
 import { openCasLoginWindow } from './auth/cas-login'
 import { loginViaMainWindow, loginWindowFallbackRequested } from './auth/main-window-login'
@@ -39,7 +41,7 @@ export interface AppContext {
   bind: (capability: Capability, providerId: string, model: string) => void
   chatFor: (capability: Capability) => OpenAiCompatibleClient
   login: () => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   sessionState: () => SessionStateValue
   /** Local session metadata (savedAt/JWT exp) for the settings page — no network. */
   sessionMeta: () => { savedAt: string | null; expiresAt: number | null }
@@ -186,20 +188,9 @@ export function createContext(overrides: Partial<{
     } catch {
       cookieString = ''
     }
-    if (cookieString === '') return
-    const jar = win.webContents.session.cookies
-    for (const pair of cookieString.split(';')) {
-      const trimmed = pair.trim()
-      const eq = trimmed.indexOf('=')
-      if (eq <= 0) continue
-      try {
-        // Domain .seu.edu.cn so the SSO host (auth.seu.edu.cn) sees the
-        // ticket cookies during the play-page redirect chain.
-        await jar.set({ url: CAS_BASE_URL, domain: '.seu.edu.cn', name: trimmed.slice(0, eq), value: trimmed.slice(eq + 1), secure: true, path: '/' })
-      } catch {
-        // A single rejected cookie must not block the harvest.
-      }
-    }
+    // Lives in auth/cookie-inject.ts so the jar contract (httpOnly!) is
+    // unit-testable without a BrowserWindow (review 2026-09-05 A5).
+    await injectSessionCookiesIntoJar(win.webContents.session.cookies, cookieString, CAS_BASE_URL)
   }
 
   /**
@@ -247,17 +238,19 @@ export function createContext(overrides: Partial<{
   /**
    * 退出登录的浏览器侧清理（field-traced 坑：logout 只删 session.bin）：
    * cookie 罐里残留的有效 SSO cookie 会让下一次登录静默复用旧会话，平台
-   * 还把 refresh token 放在 localStorage。sessionStorage 随标签页生命周
-   * 期消亡，无需处理。defaultSession = 主窗口使用的会话（无分区）。
+   * 还把 refresh token 放在 localStorage。defaultSession = 主窗口使用的
+   * 会话；persist:seu-cas = 旧独立登录窗分区（SEU_LOGIN_WINDOW=1 回退路
+   * 径），不清它的话 legacy 登录残留同样能复活会话（review 2026-09-05 A8）。
+   * sessionStorage 随标签页生命周期消亡，无需处理。实现抽取在
+   * auth/browser-clear.ts 以便两个分区契约可测。
    */
-  const clearBrowserSessionState = async (): Promise<void> => {
-    try {
-      if (session?.defaultSession == null) return
-      await session.defaultSession.clearStorageData({ storages: ['cookies', 'localstorage'] })
-      logger.info('logout: browser cookies and storage cleared')
-    } catch (err) {
-      logger.error(`logout: clearing browser state failed: ${(err as Error).message}`)
-    }
+  const logoutBrowserCleanup = async (): Promise<void> => {
+    await clearBrowserSessionState(
+      session?.defaultSession ?? null,
+      session != null ? session.fromPartition('persist:seu-cas') : null,
+      (message) => logger.info(message),
+      (message) => logger.error(message)
+    )
   }
 
   const loginViaLegacyWindow = async (): Promise<void> => {
@@ -317,11 +310,22 @@ export function createContext(overrides: Partial<{
     school,
     providers,
     saveProvider: (input) => {
+      const id = input.id ?? input.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+      // A6 (review 2026-09-05): an empty key on edit means «keep the stored
+      // key» — re-typing the secret on every rename pushed users to keep it
+      // on the clipboard. A brand-new provider with no key is an error.
+      let apiKey = input.apiKey
+      if (apiKey === '') {
+        apiKey = providers().providers.find((p) => p.id === id)?.apiKey ?? ''
+      }
+      if (apiKey === '') {
+        throw new Error('API Key 必填：新 Provider 必须填写；编辑已有 Provider 时留空表示保留原 Key')
+      }
       const provider = validateProvider({
-        id: input.id ?? input.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-'),
+        id,
         name: input.name,
         baseUrl: input.baseUrl,
-        apiKey: input.apiKey
+        apiKey
       })
       upsertProvider(db, cryptor, provider)
       return provider
@@ -351,9 +355,11 @@ export function createContext(overrides: Partial<{
         throw err
       }
     },
-    logout: () => {
+    logout: async () => {
       clearSession(userDataDir)
-      void clearBrowserSessionState()
+      // Awaited so a fast app quit cannot skip the cookie-jar cleanup
+      // (fire-and-forget previously raced app exit — review A8).
+      await logoutBrowserCleanup()
     },
     sessionState: () => {
       try {

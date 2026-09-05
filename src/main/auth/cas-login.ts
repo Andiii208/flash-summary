@@ -11,12 +11,13 @@
  * session's cookies until the call succeeds — then harvest the cookies and
  * close. Cookie values are never logged.
  */
-import { appendFileSync, mkdirSync, writeFileSync, rmSync } from 'fs'
+import { appendFileSync, mkdirSync, writeFileSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { BrowserWindow, session, app, type Session, type Event, type RenderProcessGoneDetails, type WebContentsDidStartNavigationEventParams } from 'electron'
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
 import { directNetRequested } from '../net-diagnostics'
+import { redact } from '../logger'
 
 export interface CasLoginOptions {
   /** e.g. https://cvs.seu.edu.cn */
@@ -86,13 +87,33 @@ async function precheck(casUrl: string): Promise<void> {
  * values/cookies/tokens) of the login flow plus post-login endpoint probes,
  * to userData/logs/net-trace.log. Low volume (one login = a handful of
  * lines); helps field diagnosis of platform API differences without
- * touching secrets.
+ * touching secrets. Every line passes redact() and the file rotates on a
+ * 7-day age — the trace must not become an unredacted, unbounded log
+ * (review 2026-09-05 A4).
  */
+const TRACE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Safe URL form for tracing: origin+path, query key names only. */
+export function describeUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    return `${u.origin}${u.pathname}${u.search ? `?${[...u.searchParams.keys()].join('&')}` : ''}`
+  } catch {
+    return '[URL]'
+  }
+}
+
 function traceLine(line: string): void {
   try {
     const dir = join(app.getPath('userData'), 'logs')
     mkdirSync(dir, { recursive: true })
-    appendFileSync(join(dir, 'net-trace.log'), `${new Date().toISOString()} ${line}\n`)
+    const file = join(dir, 'net-trace.log')
+    try {
+      if (Date.now() - statSync(file).mtimeMs > TRACE_MAX_AGE_MS) rmSync(file, { force: true })
+    } catch {
+      // Absent file is the common case.
+    }
+    appendFileSync(file, `${new Date().toISOString()} ${redact(line)}\n`)
   } catch {
     // Diagnostics must never break the login flow.
   }
@@ -243,7 +264,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
   // is traced by the did-navigate handler below.)
   win.webContents.on(
     'did-start-navigation',
-    (_details: Event<WebContentsDidStartNavigationEventParams>, url: string) => traceLine(`NAV start ${url.slice(0, 60)}`)
+    (_details: Event<WebContentsDidStartNavigationEventParams>, url: string) => traceLine(`NAV start ${describeUrl(url)}`)
   )
   win.webContents.on('did-finish-load', () => traceLine('NAV finish'))
   win.webContents.on('unresponsive', () => traceLine('NAV renderer unresponsive'))
@@ -331,7 +352,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
     let platformArrived = false
     win.webContents.on('did-navigate', (_e, url) => {
       if (settled) return
-      traceLine(`NAV commit ${url.slice(0, 60)}`)
+      traceLine(`NAV commit ${describeUrl(url)}`)
       if (!platformArrived && url.startsWith(options.serviceOrigin)) {
         platformArrived = true
         traceLine('PLATFORM page committed')

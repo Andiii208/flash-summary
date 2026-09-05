@@ -38,6 +38,43 @@ describe('session crypto', () => {
     expect(sealed.toString('utf8')).not.toContain('CASTGT=ticket-xyz')
   })
 
+  it('round-trips a record that carries a platform JWT', () => {
+    const rec: SessionRecord = { ...makeRecord(), jwt: 'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjE5MDB9.sig' }
+    const sealed = encryptSession(rec, stubCryptor)
+    expect(decryptSession(sealed, stubCryptor)).toEqual(rec)
+  })
+
+  it('does not store the JWT in plaintext (encrypted at rest, red line)', () => {
+    const rec: SessionRecord = { ...makeRecord(), jwt: 'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjE5MDB9.sig' }
+    const sealed = encryptSession(rec, stubCryptor)
+    expect(sealed.toString('utf8')).not.toContain('eyJhbGciOiJIUzI1NiJ9')
+  })
+
+  it('reads a legacy plaintext-JWT record without crashing (re-sealed on next save)', () => {
+    // Pre-2026-09-05 files serialized {cookies: sealed, jwt: plaintext} —
+    // hand-build one so the migration path stays covered. The strict stub
+    // throws on unsealed input (like real DPAPI), which is what routes the
+    // plaintext JWT through the legacy fallback.
+    const strict: Cryptor = {
+      isAvailable: () => true,
+      encryptString: (plain) => Buffer.concat([Buffer.from('S1:', 'utf8'), Buffer.from(plain, 'utf8')]),
+      decryptString: (buf) => {
+        const s = buf.toString('utf8')
+        if (!s.startsWith('S1:')) throw new Error('not a sealed blob')
+        return s.slice(3)
+      }
+    }
+    const rec: SessionRecord = { ...makeRecord(), jwt: 'legacy-plaintext-jwt' }
+    const sealedCookies = strict.encryptString(rec.cookies).toString('base64')
+    const legacy = Buffer.concat([
+      Buffer.from('SEUSUM1', 'utf8'),
+      Buffer.from(JSON.stringify({ ...rec, cookies: sealedCookies, jwt: 'legacy-plaintext-jwt' }), 'utf8')
+    ])
+    const opened = decryptSession(legacy, strict)
+    expect(opened.cookies).toBe(rec.cookies)
+    expect(opened.jwt).toBe('legacy-plaintext-jwt')
+  })
+
   it('rejects corrupted input', () => {
     expect(() => decryptSession(Buffer.from('garbage-data'), stubCryptor)).toThrowError(/corrupted/)
   })

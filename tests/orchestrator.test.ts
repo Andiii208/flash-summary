@@ -87,6 +87,42 @@ describe('orchestrator stage executors', () => {
     expect(JSON.parse(lesson.stream_urls_json).teacher).toContain('teacher')
   })
 
+  it('legacy path keeps signed URLs out of the lessons table but hands them to downloading (red line)', async () => {
+    const deps = makeDeps({
+      school: {
+        lessonDetail: async () => ({
+          id: 'l1',
+          courseId: 'c1',
+          title: '第五讲',
+          teacherStreamUrl: 'https://dncvsvod.seu.edu.cn/vod4/teacher.mp4?auth_key=secret-t1',
+          screenStreamUrl: 'https://dncvsvod.seu.edu.cn/vod4/screen.mp4?auth_key=secret-t2'
+        }),
+        listPpt: async () => []
+      } as unknown as SchoolClient
+    })
+    const repo = new TaskRepository(db)
+    repo.create('t-legacy', 'l1')
+    const executors = createExecutors(deps)
+
+    const result = await executors.fetching_course({ taskId: 't-legacy', lessonId: 'l1', stage: 'fetching_course' })
+    expect(result).toEqual({ status: 'ok' })
+
+    // lessons table: sanitized paths only (no auth_key ever).
+    const lesson = db.prepare('SELECT stream_urls_json FROM lessons WHERE id = ?').get('l1') as { stream_urls_json: string }
+    const stored = JSON.parse(lesson.stream_urls_json) as { teacher: string; screen: string }
+    expect(stored.teacher).toBe('https://dncvsvod.seu.edu.cn/vod4/teacher.mp4')
+    expect(stored.screen).toBe('https://dncvsvod.seu.edu.cn/vod4/screen.mp4')
+    expect(lesson.stream_urls_json).not.toContain('auth_key')
+
+    // stage output: full signed URLs for the download stage only.
+    const row = db
+      .prepare("SELECT output_json FROM task_stage_outputs WHERE task_id = ? AND stage = 'fetching_course'")
+      .get('t-legacy') as { output_json: string }
+    const handoff = JSON.parse(row.output_json) as { teacherStreamUrl: string; screenStreamUrl: string }
+    expect(handoff.teacherStreamUrl).toContain('auth_key=secret-t1')
+    expect(handoff.screenStreamUrl).toContain('auth_key=secret-t2')
+  })
+
   it('fetching_course uses the play-page harvest when the course has tecl refs', async () => {
     db.prepare("UPDATE courses SET tecl_id = '154717', tecl_code = '202620271B080329101' WHERE id = 'c1'").run()
     const harvested: Array<{ ref: string | null }> = []

@@ -4,10 +4,24 @@ import {
   CAS_LOAD_TIMEOUT_MS,
   CAS_PRECHECK_TIMEOUT_MS,
   describeJsonShape,
+  describeUrl,
   PLATFORM_API_BASE_PATH,
   probeSaysLoggedIn,
   SESSION_PROBE_PATH
 } from '../src/main/auth/cas-login'
+
+describe('describeUrl (net-trace keeps query keys, never values)', () => {
+  it('reduces a signed playback URL to origin+path+key names', () => {
+    const out = describeUrl('https://cvs.seu.edu.cn/vod/play?auth_key=secret123-expire&jwt=abc')
+    expect(out).toBe('https://cvs.seu.edu.cn/vod/play?auth_key&jwt')
+    expect(out).not.toContain('secret123')
+    expect(out).not.toContain('abc')
+  })
+
+  it('falls back to a placeholder for unparsable input', () => {
+    expect(describeUrl('not a url')).toBe('[URL]')
+  })
+})
 
 describe('cas-load error messages (no credentials, no full URLs)', () => {
   it('precheck failure names the platform and the network hint', () => {

@@ -28,6 +28,25 @@ describe('redact (U5 安全红线)', () => {
     expect(out).not.toContain('secret123')
     expect(out).toContain('https://media.example.com/v.mp4…')
   })
+
+  it('covers the token after a Bearer scheme, not just the word (review 2026-09-05)', () => {
+    const out = redact('provider said: authorization: Bearer sk-live-abc123')
+    expect(out).not.toContain('sk-live-abc123')
+    expect(out).toContain('[REDACTED]')
+  })
+
+  it('covers every cookie pair after the header name, not just the first', () => {
+    const out = redact('harvest Cookie: JSESSIONID=aaa; CASTGT=bbb; route=ccc done')
+    expect(out).not.toContain('aaa')
+    expect(out).not.toContain('bbb')
+    expect(out).not.toContain('ccc')
+  })
+
+  it('redacts the jwt-token credential header/param', () => {
+    const out = redact('sent jwt-token=eyJhbGciO.secret to platform')
+    expect(out).not.toContain('eyJhbGciO.secret')
+    expect(out).toContain('jwt-token=[REDACTED]')
+  })
 })
 
 describe('Logger (U5)', () => {

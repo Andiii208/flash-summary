@@ -53,7 +53,7 @@ export class SchoolApiError extends Error {
 }
 
 export interface FetchLike {
-  (url: string, init?: { headers?: Record<string, string>; redirect?: 'manual' | 'follow' }): Promise<{
+  (url: string, init?: { headers?: Record<string, string>; redirect?: 'manual' | 'follow'; signal?: AbortSignal }): Promise<{
     ok: boolean
     status: number
     headers: { get(name: string): string | null }
@@ -63,6 +63,9 @@ export interface FetchLike {
   }>
 }
 
+/** Hard deadline for one school API request (review 2026-09-05 A7). */
+export const SCHOOL_TIMEOUT_MS = 30_000
+
 export class SchoolClient {
   constructor(
     /** API base, e.g. https://cvs.seu.edu.cn/jy-application-resourcemanage */
@@ -70,7 +73,9 @@ export class SchoolClient {
     private readonly getCookie: () => Promise<string>,
     private readonly fetchImpl: FetchLike,
     /** Platform JWT provider; sent as the `jwt-token` header (U: field-calibrated). */
-    private readonly getJwt?: () => Promise<string>
+    private readonly getJwt?: () => Promise<string>,
+    /** Injectable for tests; production default keeps a hung socket from pinning the UI. */
+    private readonly timeoutMs: number = SCHOOL_TIMEOUT_MS
   ) {}
 
   private async request(path: string): Promise<unknown> {
@@ -80,13 +85,27 @@ export class SchoolClient {
     if (cookie !== '') headers.Cookie = cookie
     if (jwt !== '') headers['jwt-token'] = jwt
     let res
+    // Double-guarded deadline: the AbortSignal cancels the socket when the
+    // transport honors it, and the Promise.race guarantees this call returns
+    // even when a Chromium-stack fetch ignores the signal (2026-09-04 field
+    // lesson from the ASR probe). One hung request must not pin the queue.
+    const signal = AbortSignal.timeout(this.timeoutMs)
+    let timer: NodeJS.Timeout | undefined
     try {
-      res = await this.fetchImpl(`${this.baseUrl}${path}`, {
-        headers,
-        redirect: 'manual'
-      })
+      res = await Promise.race([
+        this.fetchImpl(`${this.baseUrl}${path}`, { headers, redirect: 'manual', signal }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new SchoolApiError('network', `school API timeout after ${Math.round(this.timeoutMs / 1000)}s for ${path}`)),
+            this.timeoutMs
+          )
+        })
+      ])
     } catch (err) {
+      if (err instanceof SchoolApiError) throw err
       throw new SchoolApiError('network', `network error contacting ${this.baseUrl}: ${(err as Error).message}`)
+    } finally {
+      if (timer != null) clearTimeout(timer)
     }
 
     if (res.status >= 300 && res.status < 400) {

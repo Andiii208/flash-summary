@@ -1,4 +1,5 @@
 import type { Db } from '../db/open'
+import { redact } from '../logger'
 import { PIPELINE_STAGES, stagePercent, type Stage, type StageResult, type TaskState } from './stages'
 
 export interface StageContext {
@@ -44,16 +45,27 @@ export class TaskRepository {
       .run(stage, new Date().toISOString(), taskId)
   }
 
-  markFailed(taskId: string, stage: Stage, error: string, kind?: string): void {
+  markFailed(taskId: string, stage: Stage | null, error: string, kind?: string): void {
+    // Every error that reaches the db passes redact() — ffmpeg stderr echoes
+    // the signed input URL (auth_key) and provider errors can echo headers.
+    // The same message rides the progress channel to the renderer, so the
+    // funnel here covers both surfaces (review 2026-09-05 A4).
     this.db
       .prepare("UPDATE tasks SET state = 'failed', failed_stage = ?, error_message = ?, error_kind = ?, updated_at = ? WHERE id = ?")
-      .run(stage, error, kind ?? null, new Date().toISOString(), taskId)
+      .run(stage, redact(error), kind ?? null, new Date().toISOString(), taskId)
   }
 
   markSucceeded(taskId: string): void {
     this.db
       .prepare("UPDATE tasks SET state = 'succeeded', failed_stage = NULL, error_message = NULL, updated_at = ? WHERE id = ?")
       .run(new Date().toISOString(), taskId)
+    // Red line (design review 2026-09-05): the fetching_course handoff holds
+    // the FULL signed stream URLs (auth_key). A succeeded task never runs
+    // again, so its handoff must not sit in the db forever — clear it.
+    // Failed tasks keep theirs: a fresh-enough URL still resumes without a
+    // re-harvest, and the resume-degradation check (2026-09-05 批B) handles
+    // the stale ones.
+    this.db.prepare("DELETE FROM task_stage_outputs WHERE task_id = ? AND stage = 'fetching_course'").run(taskId)
   }
 }
 
@@ -114,7 +126,7 @@ export async function runTask(
       if (signal?.aborted || (err as Error)?.name === 'AbortError') {
         return cancelTask(repo, taskId, stage, onProgress)
       }
-      const message = `执行异常: ${(err as Error).message}`
+      const message = redact(`执行异常: ${(err as Error).message}`)
       repo.markFailed(taskId, stage, message)
       onProgress?.({ taskId, state: 'failed', stage, message, percent: stagePercent(stage) })
       return 'failed'
@@ -123,12 +135,13 @@ export async function runTask(
       return cancelTask(repo, taskId, stage, onProgress)
     }
     if (result.status === 'failed') {
-      repo.markFailed(taskId, stage, result.error, result.kind)
+      const message = redact(result.error)
+      repo.markFailed(taskId, stage, message, result.kind)
       onProgress?.({
         taskId,
         state: 'failed',
         stage,
-        message: result.error,
+        message,
         percent: stagePercent(stage),
         ...(result.kind != null ? { kind: result.kind } : {})
       })

@@ -38,13 +38,28 @@ function deserialize(buf: Buffer): SessionRecord {
 /** Encrypt a session record to bytes. Throws when no cryptor is available. */
 export function encryptSession(rec: SessionRecord, cryptor: Cryptor): Buffer {
   if (!cryptor.isAvailable()) throw new Error('DPAPI encryption is not available on this system')
+  // Both credentials are sealed: the cookie string AND the platform JWT.
+  // The JWT is the primary platform credential (jwt-token header) — leaving
+  // it in the plaintext JSON half of the file defeated "encrypted at rest"
+  // (design review 2026-09-05, red line).
   const sealed = cryptor.encryptString(rec.cookies)
-  return serialize({ ...rec, cookies: sealed.toString('base64') })
+  const sealedJwt = rec.jwt != null && rec.jwt !== '' ? cryptor.encryptString(rec.jwt).toString('base64') : rec.jwt
+  return serialize({ ...rec, cookies: sealed.toString('base64'), jwt: sealedJwt })
 }
 
 /** Decrypt session bytes back to a record. */
 export function decryptSession(buf: Buffer, cryptor: Cryptor): SessionRecord {
   const rec = deserialize(buf)
   const sealed = Buffer.from(rec.cookies, 'base64')
-  return { ...rec, cookies: cryptor.decryptString(sealed) }
+  let jwt = rec.jwt
+  if (jwt != null && jwt !== '') {
+    try {
+      jwt = cryptor.decryptString(Buffer.from(jwt, 'base64'))
+    } catch {
+      // Legacy files (pre-2026-09-05) stored the JWT as plaintext JSON —
+      // the value fails DPAPI decryption, so use it as-is; the next
+      // persistSession re-seals it. A modern file never lands here.
+    }
+  }
+  return { ...rec, cookies: cryptor.decryptString(sealed), jwt }
 }

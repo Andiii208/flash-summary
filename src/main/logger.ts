@@ -62,7 +62,14 @@ export class Logger {
  */
 export function redact(message: string): string {
   return message
-    .replace(/((?:cookie|authorization|api[_-]?key|castgt|tgt|auth_key)\s*[=:]\s*)\S+/gi, '$1[REDACTED]')
+    // Bearer scheme first: the generic name=value rule would only eat the
+    // word "Bearer" and leave the token behind (review 2026-09-05).
+    .replace(/(authorization\s*:\s*bearer\s+)\S+/gi, '$1[REDACTED]')
+    // Cookie header: every pair after the name is credential material, so
+    // redact to end of line instead of stopping at the first ';'.
+    .replace(/(cookie\s*[:=]\s*).*/gi, '$1[REDACTED]')
+    // Generic name=value credentials; the value runs to whitespace/;/quote.
+    .replace(/((?:api[_-]?key|castgt|tgt|auth_key|jwt[-_]?token)\s*[=:]\s*)(?:"[^"]*"|[^\s;"]*)/gi, '$1[REDACTED]')
     .replace(/https?:\/\/[^\s"']+/gi, (url) => {
       try {
         const parsed = new URL(url)

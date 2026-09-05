@@ -136,4 +136,36 @@ describe('SchoolClient over real fetch (local http server)', () => {
       kind: 'network'
     })
   })
+
+  it('times out a hung request instead of pinning the caller forever (review A7)', async () => {
+    // A server that accepts the connection and never responds.
+    const base = await startServer(() => undefined)
+    const client = new SchoolClient(
+      base,
+      async () => 'JSESSIONID=live',
+      (url, init) => globalThis.fetch(url, init as RequestInit),
+      async () => 'jwt-live',
+      200
+    )
+    const started = Date.now()
+    await expect(client.listCourses()).rejects.toMatchObject({
+      name: 'SchoolApiError',
+      kind: 'network'
+    })
+    // The race deadline must fire, not the vitest 5s test timeout.
+    expect(Date.now() - started).toBeLessThan(4000)
+  })
+  it('passes an AbortSignal to the transport so the socket can actually cancel (review A7)', async () => {
+    let seenSignal: unknown = null
+    const client = new SchoolClient(
+      'https://cvs.example.invalid/jy-application-resourcemanage',
+      async () => '',
+      async (_url, init) => {
+        seenSignal = (init as { signal?: AbortSignal } | undefined)?.signal ?? null
+        throw new Error('transport blew up')
+      },
+    )
+    await expect(client.listCourses()).rejects.toMatchObject({ name: 'SchoolApiError', kind: 'network' })
+    expect(seenSignal).toBeInstanceOf(AbortSignal)
+  })
 })

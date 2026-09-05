@@ -176,6 +176,36 @@ describe('ipc handlers over a real context', () => {
     expect(raw).not.toContain('sk-abc123')
   })
 
+  it('providers:save with an empty key keeps the stored key on edit and rejects a new provider (review A6)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+
+    const first = (await ipc.invoke('providers:save', { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1/', apiKey: 'sk-keep-me' })) as {
+      ok: boolean
+      value?: { id: string }
+    }
+    expect(first.ok).toBe(true)
+    const providerId = first.value?.id ?? ''
+
+    // Edit (rename) without re-typing the key: the stored key survives and
+    // stays usable (capability resolution decrypts it successfully).
+    const renamed = (await ipc.invoke('providers:save', { id: providerId, name: 'OpenAI 改', baseUrl: 'https://api.openai.com/v1/', apiKey: '' })) as {
+      ok: boolean
+    }
+    expect(renamed.ok).toBe(true)
+    const listed = (await ipc.invoke('providers:list')) as { value?: { providers: Array<{ name: string; hasKey: boolean }> } }
+    expect(listed.value?.providers[0].name).toBe('OpenAI 改')
+    expect(listed.value?.providers[0].hasKey).toBe(true)
+
+    // A brand-new provider with no key is an explicit error, not a silent empty row.
+    const fresh = (await ipc.invoke('providers:save', { name: 'NoKey Provider', baseUrl: 'https://api.nk/v1/', apiKey: '' })) as {
+      ok: boolean
+      error?: string
+    }
+    expect(fresh.ok).toBe(false)
+    expect(fresh.error).toContain('API Key')
+  })
+
   it('providers:bind validates capability names', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)

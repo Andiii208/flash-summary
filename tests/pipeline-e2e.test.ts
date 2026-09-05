@@ -187,11 +187,13 @@ describe('six-stage pipeline end to end (real http + ffmpeg + provider wire form
     ])
     expect(events[events.length - 1].percent).toBe(100)
 
-    // Task row + all six stage outputs persisted.
+    // Task row + five stage outputs persisted: the fetching_course URL
+    // handoff (full signed URLs) is cleared on success per the red line
+    // (review A3, 2026-09-05) — lessons keeps sanitized paths only.
     expect(repo.get('task-e2e')?.state).toBe('succeeded')
     const stageRows = db.prepare('SELECT stage FROM task_stage_outputs WHERE task_id = ? ORDER BY rowid').all('task-e2e') as Array<{ stage: string }>
     expect(stageRows.map((r) => r.stage)).toEqual([
-      'fetching_course', 'downloading_video', 'extracting_audio', 'transcribing', 'extracting_visuals', 'summarizing'
+      'downloading_video', 'extracting_audio', 'transcribing', 'extracting_visuals', 'summarizing'
     ])
 
       // Lesson row carries the fetched stream URLs (panorama never stored as playable).

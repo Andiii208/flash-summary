@@ -182,6 +182,10 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
 
       const detail = await deps.school.lessonDetail(ctx.lessonId, lessonRow?.course_id ?? '')
 
+      // Red line (design review 2026-09-05): the lessons table stores
+      // sanitized paths only — the full signed URLs ride the stage output
+      // exactly like the V1 harvest path above, so the download stage's
+      // fallback chain stays alive without breaking the red line.
       deps.db
         .prepare(
           `INSERT INTO lessons (id, course_id, title, started_at, duration_seconds, stream_urls_json, ppt_course_id, fetched_at)
@@ -196,11 +200,18 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
           detail.title,
           detail.startedAt ?? null,
           detail.durationSeconds ?? null,
-          JSON.stringify({ teacher: detail.teacherStreamUrl, screen: detail.screenStreamUrl }),
+          JSON.stringify({
+            teacher: detail.teacherStreamUrl != null ? sanitizeStreamUrl(detail.teacherStreamUrl) : undefined,
+            screen: detail.screenStreamUrl != null ? sanitizeStreamUrl(detail.screenStreamUrl) : undefined
+          }),
           detail.pptCourseId ?? null,
           nowIso(deps)
         )
-      recordStage(deps, ctx.taskId, ctx.stage, { lessonId: detail.id })
+      recordStage(deps, ctx.taskId, ctx.stage, {
+        lessonId: detail.id,
+        teacherStreamUrl: detail.teacherStreamUrl,
+        screenStreamUrl: detail.screenStreamUrl
+      })
       return { status: 'ok' }
     } catch (err) {
       if (isCancelled(ctx, err)) return cancelResult()

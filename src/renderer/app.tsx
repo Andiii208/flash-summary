@@ -1040,15 +1040,19 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   }, [bridge, toast, refreshTree, sessionBusy, ensureCampusNet, confirmPlatformJump])
 
   const logout = useCallback((): void => {
-    void bridge.school.logout()
-    setSession('logged_out')
-    setTree([])
-    setCurrentLesson('')
-    setNote(null)
-    setAttachments([])
-    setHistory([])
-    setQaEntries([])
-    toast('已退出登录', 'info')
+    void (async () => {
+      // Awaited: local state clears only after main actually wiped the
+      // cookie jars (fire-and-forget raced the cleanup — review A8).
+      await bridge.school.logout()
+      setSession('logged_out')
+      setTree([])
+      setCurrentLesson('')
+      setNote(null)
+      setAttachments([])
+      setHistory([])
+      setQaEntries([])
+      toast('已退出登录', 'info')
+    })()
   }, [bridge, toast])
 
   const toggleCourse = useCallback((courseId: string): void => {

@@ -165,4 +165,40 @@ describe('U1: progress events and stage percent', () => {
     const result = await runTask(repo, 'p3', executors, 'fetching_course')
     expect(result).toBe('succeeded')
   })
+
+  it('markFailed redacts credential-bearing error text before it reaches the db (review A4)', () => {
+    const repo = new TaskRepository(db)
+    repo.create('p4', 'l1')
+    repo.markFailed(
+      'p4',
+      'downloading_video',
+      '下载视频失败: ffmpeg Input https://dncvsvod/t.mp4?auth_key=SECRET9 failed',
+      'network'
+    )
+    const row = repo.get('p4')
+    expect(row?.error_message).not.toContain('SECRET9')
+  })
+
+  it('markSucceeded clears the fetching_course URL handoff; markFailed keeps it for resume (review A3)', () => {
+    const repo = new TaskRepository(db)
+    const handoff = JSON.stringify({ lessonId: 'l1', teacherStreamUrl: 'https://vod/t.mp4?auth_key=live' })
+    // Task row first: task_stage_outputs.task_id is an FK to tasks.id.
+    repo.create('s1', 'l1')
+    db.prepare("INSERT INTO task_stage_outputs (task_id, stage, output_json) VALUES ('s1', 'fetching_course', ?)").run(handoff)
+    repo.markSucceeded('s1')
+    const cleared = db
+      .prepare("SELECT COUNT(*) AS n FROM task_stage_outputs WHERE task_id = 's1' AND stage = 'fetching_course'")
+      .get() as { n: number }
+    expect(cleared.n).toBe(0)
+
+    // A failed task is meant to be retried — the URL handoff survives so a
+    // fresh-enough signed URL resumes without a re-harvest.
+    repo.create('f1', 'l1')
+    db.prepare("INSERT INTO task_stage_outputs (task_id, stage, output_json) VALUES ('f1', 'fetching_course', ?)").run(handoff)
+    repo.markFailed('f1', 'downloading_video', '网络中断')
+    const kept = db
+      .prepare("SELECT COUNT(*) AS n FROM task_stage_outputs WHERE task_id = 'f1' AND stage = 'fetching_course'")
+      .get() as { n: number }
+    expect(kept.n).toBe(1)
+  })
 })
