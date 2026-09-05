@@ -5,6 +5,7 @@
  */
 import type { ApiResult } from './api-result'
 import type { SessionStateValue } from './types'
+import type { TreeNode } from './notes/schema'
 
 export interface CourseSummaryInfo {
   id: string
@@ -184,6 +185,8 @@ export interface NotesBridge {
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
   /** M3.3 (map expansion): the knowledge tree as a standalone paper-white SVG. */
   exportSvg(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
+  /** M4.1 (map expansion): course-level map aggregated from every lesson's latest tree. */
+  courseTree(courseId: string): Promise<ApiResult<{ tree: TreeNode; lessons: number; skipped: number }>>
   /** 2026-09-04: keyframe/PPT attachments for note views. */
     /** F4 (review): identity manifest — data arrives per ref via attachmentData. */
   attachments(lessonId: string): Promise<ApiResult<AttachmentManifestEntry[]>>

@@ -11,6 +11,7 @@ import type {
   NoteIndexInfo,
   QaRecentInfo
 } from '../shared/bridge'
+import type { TreeNode } from '../shared/notes/schema'
 import type { SessionStateValue } from '../shared/types'
 
 /**
@@ -83,6 +84,8 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('notes:exportAnki', lessonId),
     exportSvg: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportSvg', lessonId),
+    courseTree: (courseId: string): Promise<ApiResult<{ tree: TreeNode; lessons: number; skipped: number }>> =>
+      ipcRenderer.invoke('notes:courseTree', courseId),
     attachments: (lessonId: string): Promise<ApiResult<AttachmentManifestEntry[]>> =>
       ipcRenderer.invoke('notes:attachments', lessonId),
     attachmentData: (lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>> =>

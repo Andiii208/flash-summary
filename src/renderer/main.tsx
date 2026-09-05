@@ -13,7 +13,7 @@ import './app.css'
 import './style.css'
 import './print.css'
 import type { SeuSummaryBridge } from '../shared/bridge'
-import { App } from './app'
+import { App } from './App'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 
 const root = document.getElementById('app')

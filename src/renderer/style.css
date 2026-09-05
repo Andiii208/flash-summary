@@ -1391,6 +1391,24 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .mindmap-crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; }
 .mindmap-crumbs .btn:disabled { opacity: 1; color: var(--accent); cursor: default; }
 
+/* M4.1 (map expansion): course-level mind map dialog. */
+.course-map-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(18, 22, 20, 0.5);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.course-map-card {
+  width: min(1100px, 96vw); max-height: 92vh;
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px;
+}
+.course-map-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.course-map-head h2 { margin: 0; font-size: var(--font-size-md); }
+.course-map-meta { margin: 2px 0 0; font-size: var(--font-size-sm); color: var(--text-muted); }
+.course-map-card .mindmap-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.course-map-card .mindmap-wrap .mindmap-scroll { flex: 1; min-height: 0; }
+
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .evidence-fig { position: relative; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }

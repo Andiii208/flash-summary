@@ -366,3 +366,47 @@ describe('notes:exportSvg (M3.3, 2026-09-05)', () => {
     expect(res.error).toContain('该课时尚无笔记')
   })
 })
+
+describe('notes:courseTree (M4.1, 2026-09-05)', () => {
+  it('aggregates every lesson\'s latest tree in «第N节» order, skipping corrupt notes', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '第2节课 进阶', '2026-09-05T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l3', 'c1', '第1节课 基础', '2026-09-05T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l4', 'c1', '第4节课 坏档', '2026-09-05T00:00:00Z')").run()
+    const note = (tree: object) =>
+      JSON.stringify({ overview: 'o', knowledgeTree: tree, methodology: 'm', examCues: [], questionsAndGaps: [] })
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-05T00:00:00Z')"
+    ).run(note({ title: '旧版', children: [] }))
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n2', 'l1', 2, ?, 'p', 'm', '2026-09-05T00:00:00Z')"
+    ).run(note({ title: '课时主题', children: [{ title: '分支A', children: [] }] }))
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n3', 'l2', 1, ?, 'p', 'm', '2026-09-05T00:00:00Z')"
+    ).run(note({ title: '进阶', children: [{ title: '分支B', children: [] }] }))
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n4', 'l3', 1, ?, 'p', 'm', '2026-09-05T00:00:00Z')"
+    ).run(note({ title: '基础', children: [] }))
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n5', 'l4', 1, ?, 'p', 'm', '2026-09-05T00:00:00Z')"
+    ).run('{broken json')
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:courseTree', 'c1')) as { ok: boolean; value?: { tree: { title: string; children: Array<{ title: string; children: unknown[] }> }; lessons: number; skipped: number } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.lessons).toBe(3)
+    expect(res.value?.skipped).toBe(1)
+    // «第N节» ascending; the unnumbered lesson tails. Only the LATEST
+    // version per lesson feeds the map.
+    expect(res.value?.tree.title).toBe('课程')
+    expect(res.value?.tree.children.map((lesson) => lesson.title)).toEqual(['第1节课 基础', '第2节课 进阶', '课时'])
+    expect(res.value?.tree.children[2]!.children).toHaveLength(1)
+  })
+
+  it('fails with a readable error for a missing course', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:courseTree', 'nope')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('课程不存在')
+  })
+})

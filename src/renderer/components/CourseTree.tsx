@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { ChevronDown, ChevronRight, Star, Trash2 } from 'lucide-preact'
+import { ChevronDown, ChevronRight, GitBranch, Star, Trash2 } from 'lucide-preact'
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { subjectInk } from '../../shared/subject-ink'
@@ -18,6 +18,8 @@ export interface CourseTreeProps {
   harvestInflight?: ReadonlySet<string>
   /** C6: remove an empty (never-processed) course. */
   onRemoveCourse?: (courseId: string) => void
+  /** M4.1: open the course-level mind map dialog (决策点 D7 entry). */
+  onCourseMap?: (courseId: string) => void
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -33,6 +35,7 @@ export function CourseTree({
   sameCourseIds,
   harvestInflight,
   onRemoveCourse,
+  onCourseMap,
   onToggle,
   onSelect,
   onHarvestLessons,
@@ -52,6 +55,7 @@ export function CourseTree({
           sameCourse={sameCourseIds.has(course.id)}
           inflight={harvestInflight?.has(course.id) ?? false}
           onRemoveCourse={onRemoveCourse}
+          onCourseMap={onCourseMap}
           onToggle={onToggle}
           onSelect={onSelect}
           onHarvestLessons={onHarvestLessons}
@@ -71,6 +75,7 @@ interface CourseRowProps {
   inflight: boolean
   /** C6: remove an empty course (propagated from CourseTree). */
   onRemoveCourse?: (courseId: string) => void
+  onCourseMap?: (courseId: string) => void
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -85,7 +90,7 @@ function courseSubLine(course: CourseTreeInfo): string | null {
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onRemoveCourse, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
+function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onRemoveCourse, onCourseMap, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
   const sub = courseSubLine(course)
   // C6: only never-processed courses are deletable (cascade protection).
   const deletable = course.lessons.length === 0 && course.noteCount === 0 && onRemoveCourse != null
@@ -105,6 +110,16 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onR
         {deletable && (
           <button class="pin-btn" title="删除这门课（未产生过笔记/任务）" aria-label={`删除课程 ${course.name}`} onClick={() => setPendingDelete(true)}>
             <Trash2 size={13} strokeWidth={1.75} />
+          </button>
+        )}
+        {onCourseMap != null && (
+          <button
+            class="pin-btn"
+            title={`查看「${course.name}」的课程导图`}
+            aria-label={`查看课程导图 ${course.name}`}
+            onClick={() => onCourseMap(course.id)}
+          >
+            <GitBranch size={13} strokeWidth={1.75} />
           </button>
         )}
         <button

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { App } from '../../src/renderer/app'
+import { App } from '../../src/renderer/App'
 import { render } from 'preact'
 import { mount, click } from '../helpers/preact'
 import type { SeuSummaryBridge, CourseTreeInfo, TaskRowInfo, ProvidersListResult, AppSettingsInfo } from '../../src/shared/bridge'

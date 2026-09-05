@@ -28,6 +28,7 @@ import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { treeToSvg } from '../shared/notes/mindmap-svg'
+import { mergeCourseTree } from '../shared/notes/course-tree'
 import { ankiDecks, deckToTsv } from '../shared/notes/anki'
 import { noteExportBaseName } from '../shared/notes/export-name'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
@@ -980,6 +981,38 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (canceled || filePath == null) return ok({ canceled: true })
       writeFileSync(filePath, svg, 'utf8')
       return ok({ canceled: false, path: filePath })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // M4.1 (map expansion 2026-09-05): course-level mind map — aggregate every
+  // lesson's latest knowledgeTree into one tree (pure merge, zero new model
+  // calls). A corrupt note JSON skips that lesson instead of failing the map.
+  handle(ipc, 'notes:courseTree', (_e, courseId: unknown) => {
+    try {
+      const id = str(courseId, 'courseId')
+      const course = ctx.db.prepare('SELECT name FROM courses WHERE id = ?').get(id) as { name: string } | undefined
+      if (course == null) throw new Error('课程不存在')
+      const rows = ctx.db
+        .prepare(
+          `SELECT l.title AS lessonTitle, n.note_json
+           FROM lessons l
+           JOIN notes n ON n.lesson_id = l.id
+             AND n.version = (SELECT MAX(version) FROM notes WHERE lesson_id = l.id)
+           WHERE l.course_id = ?`
+        )
+        .all(id) as Array<{ lessonTitle: string; note_json: string }>
+      const entries: Array<{ lessonTitle: string; tree: Note['knowledgeTree'] }> = []
+      let skipped = 0
+      for (const row of rows) {
+        try {
+          entries.push({ lessonTitle: row.lessonTitle, tree: parseNote(row.note_json).knowledgeTree })
+        } catch {
+          skipped += 1
+        }
+      }
+      return ok({ tree: mergeCourseTree(course.name, entries), lessons: entries.length, skipped })
     } catch (e) {
       return err(e)
     }

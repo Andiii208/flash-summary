@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { tabForHotkey } from '../../src/renderer/app'
+import { tabForHotkey } from '../../src/renderer/App'
 
 describe('tab hotkeys (批F Ctrl+1..4)', () => {
   it('maps Ctrl+1..4 to the four tabs in order', () => {
