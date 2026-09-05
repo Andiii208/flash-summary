@@ -81,7 +81,7 @@ describe('MindMap M1.2 工具栏', () => {
     const toolbar = host.querySelector('[data-testid="mindmap-toolbar"]')
     expect(toolbar).not.toBeNull()
     const labels = Array.from(toolbar!.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '重置视图'])
+    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '重置视图', '回忆模式'])
     expect(toolbar!.querySelector('.mindmap-search')).not.toBeNull()
   })
 
@@ -325,5 +325,67 @@ describe('MindMap M2.2 节点信息浮层', () => {
       host.querySelector('.mindmap-popover-backdrop')!.dispatchEvent(new MouseEvent('click', { bubbles: false }))
     })
     expect(host.querySelector('[data-testid="mindmap-popover"]')).toBeNull()
+  })
+})
+
+describe('MindMap M2.3 回忆模式', () => {
+  const clickButton = (host: HTMLElement, label: string): void => {
+    const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === label)
+    act(() => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+  }
+
+  it('masks tier-2+ nodes with covers; tier 0/1 stay visible', () => {
+    const host = mountMindMap(TREE)
+    clickButton(host, '回忆模式')
+    // TREE: two leaves sit at depth 2 (1.1/1.2); 第二章 is depth 1.
+    expect(host.querySelectorAll('.recall-cover')).toHaveLength(2)
+    clickButton(host, '回忆模式')
+    expect(host.querySelectorAll('.recall-cover')).toHaveLength(0)
+  })
+
+  it('clicking a cover reveals just that node', () => {
+    const host = mountMindMap(TREE)
+    clickButton(host, '回忆模式')
+    const covers = Array.from(host.querySelectorAll<SVGRectElement>('.recall-cover'))
+    act(() => {
+      covers[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(host.querySelectorAll('.recall-cover')).toHaveLength(1)
+  })
+
+  it('全部揭示 clears every cover', () => {
+    const host = mountMindMap(TREE)
+    clickButton(host, '回忆模式')
+    clickButton(host, '全部揭示')
+    expect(host.querySelectorAll('.recall-cover')).toHaveLength(0)
+  })
+
+  it('is mutually exclusive with search: entering recall clears the query and disables the input', () => {
+    const host = mountMindMap(TREE)
+    const input = host.querySelector<HTMLInputElement>('.mindmap-search')!
+    act(() => {
+      input.value = '1.1'
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(host.querySelectorAll('.mindmap-node.search-hit')).toHaveLength(1)
+    clickButton(host, '回忆模式')
+    expect(host.querySelectorAll('.mindmap-node.search-hit')).toHaveLength(0)
+    expect(input.value).toBe('')
+    expect(input.disabled).toBe(true)
+  })
+
+  it('leaving recall resets the reveal set (re-entering masks everything again)', () => {
+    const host = mountMindMap(TREE)
+    clickButton(host, '回忆模式')
+    const cover = host.querySelector('.recall-cover')!
+    act(() => {
+      cover.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(host.querySelectorAll('.recall-cover')).toHaveLength(1)
+    clickButton(host, '回忆模式')
+    clickButton(host, '回忆模式')
+    expect(host.querySelectorAll('.recall-cover')).toHaveLength(2)
   })
 })

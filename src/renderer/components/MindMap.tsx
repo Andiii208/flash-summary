@@ -24,6 +24,17 @@ function zoomAt(view: View, nextScale: number, fx: number, fy: number, layoutWid
   return { scale, x: anchorX - fx * (layoutWidth / scale), y: anchorY - fy * (layoutHeight / scale) }
 }
 
+/** M2.3: all paths at depth ≥ 2 — the nodes the recall mode masks. */
+function allRecallPaths(root: TreeNode): Set<string> {
+  const paths = new Set<string>()
+  const walk = (node: TreeNode, depth: number, path: string): void => {
+    if (depth >= 2) paths.add(path)
+    node.children.forEach((child, i) => walk(child, depth + 1, `${path}/${i}`))
+  }
+  walk(root, 0, '0')
+  return paths
+}
+
 /**
  * Interactive SVG mind map over the note's knowledgeTree (2026-09-04).
  * Nodes with children collapse on click; the layout is a pure shared
@@ -67,6 +78,9 @@ export function MindMap({ tree, concepts = [], quiz = [], onViewDetailed }: Mind
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: View } | null>(null)
   /** M2.2 path of the node whose popover is open (null = closed). */
   const [popoverPath, setPopoverPath] = useState<string | null>(null)
+  /** M2.3 recall mode: masked titles revealed one click at a time. */
+  const [recall, setRecall] = useState(false)
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set())
 
   // M2.2: node terms keyed by layout path (screen layout keeps subline empty,
   // so the anchor map walks the tree in parallel with the path convention).
@@ -265,6 +279,30 @@ export function MindMap({ tree, concepts = [], quiz = [], onViewDetailed }: Mind
         <button class="btn small" onClick={() => setView(IDENTITY_VIEW)}>
           重置视图
         </button>
+        {/* M2.3: recall mode — masks tier-2+ titles for retrieval practice
+            (Karpicke & Blunt 2011); mutually exclusive with search. */}
+        <button
+          class={`btn small${recall ? ' primary' : ''}`}
+          aria-pressed={recall}
+          onClick={() => {
+            if (recall) {
+              setRecall(false)
+              setRevealed(new Set())
+            } else {
+              setRecall(true)
+              setQuery('')
+              setRevealed(new Set())
+            }
+          }}
+        >
+          回忆模式
+        </button>
+        {recall && (
+          <button class="btn small" onClick={() => setRevealed(allRecallPaths(tree))}>
+            全部揭示
+          </button>
+        )}
+        {recall && <span class="mindmap-recall-hint">先回忆再揭示：凭记忆说出这个分支讲过什么</span>}
         <span class="mindmap-toolbar-spacer" aria-hidden="true" />
         <input
           class="mindmap-search"
@@ -272,6 +310,8 @@ export function MindMap({ tree, concepts = [], quiz = [], onViewDetailed }: Mind
           placeholder="搜索节点…"
           aria-label="搜索节点"
           value={query}
+          disabled={recall}
+          title={recall ? '回忆模式下暂停搜索' : undefined}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
       </div>
@@ -376,6 +416,30 @@ export function MindMap({ tree, concepts = [], quiz = [], onViewDetailed }: Mind
                     i
                   </text>
                 </g>
+              )}
+              {/* M2.3: recall cover — a same-surface block painted over the
+                  title; one click reveals (stopPropagation keeps collapse idle). */}
+              {recall && node.depth >= 2 && !revealed.has(node.path) && (
+                <rect
+                  class="recall-cover"
+                  width={node.width}
+                  height={node.height}
+                  rx={8}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`揭示「${node.title}」`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setRevealed((prev) => new Set(prev).add(node.path))
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setRevealed((prev) => new Set(prev).add(node.path))
+                    }
+                  }}
+                />
               )}
             </g>
           )

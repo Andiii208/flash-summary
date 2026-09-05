@@ -1375,6 +1375,12 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .mindmap-popover .quiz-list { margin: 0; }
 .mindmap-popover .btn.primary { margin-top: 10px; }
 
+/* M2.3 (map expansion): recall mode — the cover reads as «just another node
+   box» so titles stay visually hidden; hover hints revealability. */
+.mindmap-recall-hint { font-size: var(--font-size-sm); color: var(--text-muted); }
+.mindmap-node .recall-cover { fill: var(--surface-2); stroke: var(--border); cursor: pointer; }
+.mindmap-node .recall-cover:hover, .mindmap-node .recall-cover:focus-visible { stroke: var(--accent); stroke-dasharray: 4 3; }
+
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .evidence-fig { position: relative; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
