@@ -16,6 +16,7 @@ const NOTE: Note = {
   examCues: ['必考：复杂度计算'],
   questionsAndGaps: ['如何分析递归复杂度？'],
   quiz: [],
+  conceptLinks: [],
   transcriptRefs: [],
   evidence: []
 }

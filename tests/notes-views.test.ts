@@ -28,6 +28,7 @@ const sampleNote: Note = {
   examCues: ['ε-δ 语言证明题几乎每年必考'],
   questionsAndGaps: ['一致收敛与逐点收敛的区别尚未讲清'],
   quiz: [],
+  conceptLinks: [],
   transcriptRefs: [{ at: 5, text: '上节课我们讲到' }],
   evidence: [{ kind: 'ppt', ref: '3' }]
 }

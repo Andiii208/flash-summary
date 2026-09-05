@@ -1,5 +1,5 @@
 import type { JSX } from 'preact'
-import type { Note, TreeNode } from '../../shared/notes/schema'
+import type { ConceptLink, Note, TreeNode } from '../../shared/notes/schema'
 import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
 import { bindTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime } from '../../shared/notes/evidence'
 import { computeMindMapLayout, sublineFirstBaseline, sublineLinesOf, titleBaseline } from '../../shared/notes/mindmap-layout'
@@ -39,7 +39,7 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
 
       <section class="ph-section ph-mindmap-page">
         <h2>知识导图</h2>
-        <StaticMindMap tree={note.knowledgeTree} />
+        <StaticMindMap tree={note.knowledgeTree} links={note.conceptLinks} />
       </section>
 
       <section class="ph-section">
@@ -176,10 +176,10 @@ function PrintTimelineCard({ entry, attachments }: { entry: Note['timeline'][num
 }
 
 /** Non-interactive mind map (always fully expanded) sized for one A4 page. */
-function StaticMindMap({ tree }: { tree: TreeNode }): JSX.Element {
-  // M2.1: the handout opts into concept-term sub-lines (决策点 D4 — the
-  // shared geometry renders them for free); screen popover handles the rest.
-  const layout = computeMindMapLayout(tree, new Set(), { showTerms: true })
+function StaticMindMap({ tree, links = [] }: { tree: TreeNode; links?: ConceptLink[] }): JSX.Element {
+  // M2.1/M3.1: the handout opts into concept-term sub-lines and cross-links
+  // (决策点 D4 — the shared geometry renders both); screen popover handles the rest.
+  const layout = computeMindMapLayout(tree, new Set(), { showTerms: true, links })
   const maxPageWidth = 730
   const maxPageHeight = 900
   // 批E: multi-line nodes grow tall — scale to fit both page dimensions.
@@ -194,6 +194,20 @@ function StaticMindMap({ tree }: { tree: TreeNode }): JSX.Element {
     >
       {layout.edges.map((edge) => (
         <path key={`${edge.from}-${edge.to}`} d={edge.d} fill="none" stroke="#b9c4ea" stroke-width={1.8} />
+      ))}
+      {/* M3.1: dashed cross-links, visually distinct from hierarchical edges. */}
+      {layout.links.map((link) => (
+        <g key={`ph-link-${link.fromId}-${link.toId}`}>
+          <path d={link.d} fill="none" stroke="#9aa6d8" stroke-width={1.4} stroke-dasharray="5 4" />
+          {link.label !== '' && (
+            <g transform={`translate(${link.lx}, ${link.ly})`}>
+              <rect x={-(link.label.length * 6.5 + 10) / 2} y={-9} width={link.label.length * 6.5 + 10} height={18} rx={9} fill="#f4f5fa" stroke="#dfe3ee" />
+              <text text-anchor="middle" y={3.5} font-size={10} fill="#6a7286">
+                {link.label}
+              </text>
+            </g>
+          )}
+        </g>
       ))}
       {layout.nodes.map((node) => (
         <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>

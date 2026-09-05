@@ -20,6 +20,7 @@ const NOTE: Note = {
   examCues: ['必考：复杂度计算'],
   questionsAndGaps: ['递归复杂度如何分析？'],
   quiz: [],
+  conceptLinks: [],
   transcriptRefs: [],
   evidence: []
 }
@@ -153,5 +154,23 @@ describe('PrintHandout concept-term sub-lines (M2.1, 2026-09-05)', () => {
     const texts = Array.from(host.querySelectorAll('.ph-mindmap-page svg text'))
     expect(texts.every((t) => (t.textContent ?? '').trim() !== '')).toBe(true)
     expect(texts.some((t) => (t.textContent ?? '').includes('大O'))).toBe(false)
+  })
+})
+
+describe('PrintHandout cross-links (M3.1, 2026-09-05)', () => {
+  it('prints dashed cross-links and labels on the handout map', () => {
+    const host = document.createElement('div')
+    render(
+      <PrintHandout
+        note={{ ...NOTE, conceptLinks: [{ from: 'O(n)', to: '复杂度', label: '前提' }] }}
+        attachments={ATTACHMENTS}
+        courseName="课程"
+        lessonTitle="第1节课"
+        generatedAt="2026/9/5 12:00:00"
+      />,
+      host
+    )
+    const texts = Array.from(host.querySelectorAll('.ph-mindmap-page svg text')).map((t) => t.textContent ?? '')
+    expect(texts.some((t) => t.includes('前提'))).toBe(true)
   })
 })

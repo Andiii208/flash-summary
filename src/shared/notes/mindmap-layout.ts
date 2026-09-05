@@ -38,9 +38,30 @@ export interface LayoutNode {
   collapsed: boolean
 }
 
+/** M3.1: input shape of a cross-link (structural — no schema coupling). */
+export interface MindMapLinkInput {
+  from: string
+  to: string
+  label?: string
+}
+
+/** M3.1: a resolved cross-link rendered as a dashed connector + label. */
+export interface LayoutLink {
+  fromId: number
+  toId: number
+  label: string
+  d: string
+  /** Label anchor (midpoint of the connector). */
+  lx: number
+  ly: number
+}
+
 /** M2.1: optional layout behaviour — sub-line only when explicitly enabled. */
 export interface MindMapLayoutOptions {
   showTerms?: boolean
+  /** M3.1: cross-links resolved against node terms/titles; unresolvable or
+   *  collapsed-endpoint links are dropped (never rendered dangling). */
+  links?: MindMapLinkInput[]
 }
 
 export interface LayoutEdge {
@@ -53,6 +74,8 @@ export interface LayoutEdge {
 export interface MindMapLayout {
   nodes: LayoutNode[]
   edges: LayoutEdge[]
+  /** M3.1: resolvable cross-links between VISIBLE nodes only. */
+  links: LayoutLink[]
   width: number
   height: number
 }
@@ -139,6 +162,10 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
   const nodes: LayoutNode[] = []
   const edges: LayoutEdge[] = []
   let nextId = 0
+  // M3.1: first-match endpoint indexes over the whole tree (visibility is
+  // applied later — a collapsed endpoint drops the link entirely).
+  const termIndex = new Map<string, string>()
+  const titleIndex = new Map<string, string>()
 
   const measure = (node: TreeNode, depth: number, path: string): TreeSlice => {
     const id = nextId++
@@ -163,6 +190,8 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
       collapsed: isCollapsed
     }
     nodes.push(layout)
+    if (!titleIndex.has(node.title)) titleIndex.set(node.title, path)
+    if (node.terms != null) for (const term of node.terms) if (!termIndex.has(term)) termIndex.set(term, path)
     const children = isCollapsed ? [] : node.children.map((child, i) => measure(child, depth + 1, `${path}/${i}`))
     return { node: layout, children }
   }
@@ -196,9 +225,42 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
     for (const child of children) edges.push({ from: parent.id, to: child.id, d: edgePath(parent, child) })
   }
 
+  // M3.1: resolve cross-links — term first, then title, first match wins.
+  // A link whose endpoint node is not laid out (collapsed away) is dropped.
+  const byPath = new Map(nodes.map((node) => [node.path, node]))
+  const links: LayoutLink[] = []
+  for (const link of options.links ?? []) {
+    const fromPath = termIndex.get(link.from) ?? titleIndex.get(link.from)
+    const toPath = termIndex.get(link.to) ?? titleIndex.get(link.to)
+    if (fromPath == null || toPath == null || fromPath === toPath) continue
+    const from = byPath.get(fromPath)
+    const to = byPath.get(toPath)
+    if (from == null || to == null) continue
+    const path = linkPath(from, to)
+    links.push({ fromId: from.id, toId: to.id, label: link.label ?? '', d: path.d, lx: path.lx, ly: path.ly })
+  }
+
   const width = Math.max(...nodes.map((n) => n.x + n.width)) + PADDING
   const height = Math.max(...nodes.map((n) => n.y + n.height)) + PADDING
-  return { nodes, edges, width, height }
+  return { nodes, edges, links, width, height }
+}
+
+/** M3.1: dashed connector between two sibling-independent node boxes plus
+ *  its label anchor. Horizontally separated boxes use the hierarchical
+ *  bezier shape; overlapping columns fall back to a center-to-center line. */
+function linkPath(a: LayoutNode, b: LayoutNode): { d: string; lx: number; ly: number } {
+  const aRight = a.x + a.width
+  const bRight = b.x + b.width
+  if (aRight <= b.x || bRight <= a.x) {
+    const [left, right] = aRight <= b.x ? [a, b] : [b, a]
+    const d = edgePath(left, right)
+    return { d, lx: (left.x + left.width + right.x) / 2, ly: (left.y + left.height / 2 + right.y + right.height / 2) / 2 }
+  }
+  const x1 = a.x + a.width / 2
+  const y1 = a.y + a.height / 2
+  const x2 = b.x + b.width / 2
+  const y2 = b.y + b.height / 2
+  return { d: `M ${x1} ${y1} L ${x2} ${y2}`, lx: (x1 + x2) / 2, ly: (y1 + y2) / 2 }
 }
 
 function edgePath(parent: LayoutNode, child: LayoutNode): string {

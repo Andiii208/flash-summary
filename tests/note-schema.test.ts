@@ -206,3 +206,45 @@ describe('parseNote knowledgeTree terms normalization (M2.1, 2026-09-05)', () =>
     expect(note.knowledgeTree.children[0]?.terms).toBeUndefined()
   })
 })
+
+describe('parseNote conceptLinks normalization (M3.1, 2026-09-05)', () => {
+  const withTree = {
+    ...base,
+    concepts: [{ term: '大O', definition: '渐进上界', refs: [] }, { term: '栈', definition: '后进先出', refs: [] }],
+    knowledgeTree: { title: 'root', children: [{ title: '甲', children: [] }] }
+  }
+
+  it('keeps links resolved by term or title and trims their labels', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...withTree,
+        conceptLinks: [
+          { from: '大O', to: '栈', label: ' 对比 ' },
+          { from: 'root', to: '甲' }
+        ]
+      })
+    )
+    expect(note.conceptLinks).toEqual([
+      { from: '大O', to: '栈', label: '对比' },
+      { from: 'root', to: '甲' }
+    ])
+  })
+
+  it('drops fabricated endpoints, self-links, and runaway labels', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...withTree,
+        conceptLinks: [
+          { from: '编造', to: '栈' },
+          { from: '大O', to: '大O' },
+          { from: '大O', to: '栈', label: '这个关系词远远超过十二个字的硬上限所以整条标签被丢弃' }
+        ]
+      })
+    )
+    expect(note.conceptLinks).toEqual([{ from: '大O', to: '栈' }])
+  })
+
+  it('defaults to an empty array for old notes', () => {
+    expect(parseNote(JSON.stringify(base)).conceptLinks).toEqual([])
+  })
+})

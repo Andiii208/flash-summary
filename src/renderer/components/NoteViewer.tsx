@@ -251,7 +251,7 @@ export function NoteViewer({
             ) : null}
           </>
         ) : view === 'mindmap' ? (
-          <MindMap tree={note.knowledgeTree} concepts={note.concepts} quiz={note.quiz} onViewDetailed={jumpToConcept} />
+          <MindMap tree={note.knowledgeTree} concepts={note.concepts} quiz={note.quiz} conceptLinks={note.conceptLinks} onViewDetailed={jumpToConcept} />
         ) : (
           projectNoteBlocks(note, view).map((section) => (
             <ErrorBoundary key={section.heading} area="note-view">

@@ -389,3 +389,26 @@ describe('MindMap M2.3 回忆模式', () => {
     expect(host.querySelectorAll('.recall-cover')).toHaveLength(2)
   })
 })
+
+describe('MindMap M3.1 跨节点关联线', () => {
+  it('renders dashed cross-links with labels; none without conceptLinks', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    act(() => {
+      render(
+        <MindMap
+          tree={TREE}
+          conceptLinks={[
+            { from: '1.1 概念', to: '第二章', label: '对比' },
+            { from: '不存在的概念', to: '第二章' }
+          ]}
+        />,
+        host
+      )
+    })
+    expect(host.querySelectorAll('.mindmap-crosslink')).toHaveLength(1)
+    expect(host.querySelector('.mindmap-link-label')?.textContent).toBe('对比')
+    const plain = mountMindMap(TREE)
+    expect(plain.querySelectorAll('.mindmap-crosslink')).toHaveLength(0)
+  })
+})

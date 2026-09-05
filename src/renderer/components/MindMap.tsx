@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import type { Concept, QuizItem, TreeNode } from '../../shared/notes/schema'
+import type { Concept, ConceptLink, QuizItem, TreeNode } from '../../shared/notes/schema'
 import { collapsedSetForMaxDepth, computeMindMapLayout, titleBaseline, type LayoutNode } from '../../shared/notes/mindmap-layout'
 import { QuizCards } from './NoteBlocks'
 
@@ -60,17 +60,21 @@ export interface MindMapProps {
   tree: TreeNode
   concepts?: Concept[]
   quiz?: QuizItem[]
+  /** M3.1: dashed cross-links resolved by term/title in the shared layout. */
+  conceptLinks?: ConceptLink[]
   /** Jump to the detailed view anchored at this concept's card. */
   onViewDetailed?: (term: string) => void
 }
 
-export function MindMap({ tree, concepts = [], quiz = [], onViewDetailed }: MindMapProps): JSX.Element {
+const EMPTY_LINKS: ConceptLink[] = []
+
+export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_LINKS, onViewDetailed }: MindMapProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
   const [view, setView] = useState<View>(IDENTITY_VIEW)
   const [panning, setPanning] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const layout = useMemo(() => computeMindMapLayout(tree, collapsed), [tree, collapsed])
+  const layout = useMemo(() => computeMindMapLayout(tree, collapsed, { links: conceptLinks }), [tree, collapsed, conceptLinks])
   const rootRef = useRef<SVGSVGElement>(null)
   /** FLIP bookkeeping: previous y per node path (x is depth-fixed). */
   const prevYRef = useRef<Map<string, number>>(new Map())
@@ -342,6 +346,20 @@ export function MindMap({ tree, concepts = [], quiz = [], onViewDetailed }: Mind
             class={`mindmap-edge edge-d${depthById.get(edge.to) ?? 1}`}
             fill="none"
           />
+        ))}
+        {/* M3.1: dashed cross-links with optional relation labels. */}
+        {layout.links.map((link, index) => (
+          <g key={`mlink-${index}`} class="mindmap-crosslink">
+            <path d={link.d} class="mindmap-link-line" fill="none" />
+            {link.label !== '' && (
+              <g transform={`translate(${link.lx}, ${link.ly})`}>
+                <rect x={-(link.label.length * 6.5 + 10) / 2} y={-9} width={link.label.length * 6.5 + 10} height={18} rx={9} class="mindmap-link-label-box" />
+                <text text-anchor="middle" y={3.5} class="mindmap-link-label">
+                  {link.label}
+                </text>
+              </g>
+            )}
+          </g>
         ))}
         {layout.nodes.map((node) => {
           const isRoot = node.depth === 0

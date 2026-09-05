@@ -179,3 +179,43 @@ describe('computeMindMapLayout terms sub-line (M2.1)', () => {
     expect(sublineFirstBaseline(node)).toBeLessThan(node.height)
   })
 })
+
+describe('computeMindMapLayout cross-links (M3.1)', () => {
+  const LINKED: TreeNode = {
+    title: '根',
+    children: [
+      { title: '甲', terms: ['递归'], children: [{ title: '甲一', children: [] }] },
+      { title: '乙', terms: ['栈'], children: [] }
+    ]
+  }
+
+  it('resolves endpoints by term first, then by title', () => {
+    const layout = computeMindMapLayout(LINKED, new Set(), {
+      links: [
+        { from: '递归', to: '栈', label: '对比' },
+        { from: '甲', to: '乙' }
+      ]
+    })
+    expect(layout.links).toHaveLength(2)
+    expect(layout.links[0]!.label).toBe('对比')
+    expect(layout.links[1]!.label).toBe('')
+    expect(layout.links[0]!.d).toMatch(/^M /)
+    expect(Number.isFinite(layout.links[0]!.lx)).toBe(true)
+  })
+
+  it('drops fabricated endpoints, self-links, and links whose endpoint is collapsed away', () => {
+    const dropped = computeMindMapLayout(LINKED, new Set(), {
+      links: [
+        { from: '编造概念', to: '栈' },
+        { from: '递归', to: '递归' }
+      ]
+    })
+    expect(dropped.links).toHaveLength(0)
+    // 甲一 lives under collapsed 甲 (path 0/0) → never laid out → link drops.
+    const hidden = computeMindMapLayout(LINKED, new Set(['0/0']), { links: [{ from: '甲一', to: '栈' }] })
+    expect(hidden.links).toHaveLength(0)
+    // The still-visible collapsed node itself keeps hosting links.
+    const kept = computeMindMapLayout(LINKED, new Set(['0/0']), { links: [{ from: '递归', to: '栈' }] })
+    expect(kept.links).toHaveLength(1)
+  })
+})

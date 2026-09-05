@@ -64,6 +64,21 @@ export const QuizItemSchema = z.object({
 
 export type QuizItem = z.infer<typeof QuizItemSchema>
 
+/**
+ * M3.1 (map expansion): a strong relation between two concepts/nodes drawn
+ * as a dashed cross-link on the map. `from`/`to` must resolve to a concept
+ * term or a node title verbatim — unresolvable links are dropped in
+ * normalization; the optional label is a ≤4-char relation word (prompt-side)
+ * with a hard 12-char guard here.
+ */
+export const ConceptLinkSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  label: z.string().optional()
+})
+
+export type ConceptLink = z.infer<typeof ConceptLinkSchema>
+
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
   z.object({
     title: z.string(),
@@ -98,6 +113,8 @@ export const NoteSchema = z.object({
   questionsAndGaps: z.array(z.string()).default([]),
   /** 自测题（问答翻转，逐题锚定概念/考点；无题时整块省略） */
   quiz: z.array(QuizItemSchema).default([]),
+  /** M3.1: 跨节点关联线（term/标题解析失败整条丢弃） */
+  conceptLinks: z.array(ConceptLinkSchema).default([]),
   transcriptRefs: z.array(TranscriptRefSchema).default([]),
   evidence: z.array(EvidenceRefSchema).default([])
 })
@@ -232,6 +249,36 @@ function normalizeTreeTerms(raw: unknown, conceptTerms: ReadonlySet<string>): un
   return out
 }
 
+/** M3.1: every title in the tree, for conceptLink endpoint resolution. */
+function collectTreeTitles(raw: unknown, into: Set<string>): void {
+  if (raw == null || typeof raw !== 'object') return
+  const node = raw as Record<string, unknown>
+  if (typeof node.title === 'string' && node.title.trim() !== '') into.add(node.title)
+  if (Array.isArray(node.children)) for (const child of node.children) collectTreeTitles(child, into)
+}
+
+const MAX_LINK_LABEL = 12
+
+/**
+ * M3.1: links must connect two resolvable endpoints (a concept term or a
+ * node title, verbatim). Anything else — fabricated endpoints, self-links,
+ * runaway labels — is dropped instead of rendering a dangling line.
+ */
+function normalizeConceptLinks(raw: unknown, conceptTerms: ReadonlySet<string>, nodeTitles: ReadonlySet<string>): unknown {
+  if (!Array.isArray(raw)) return raw
+  const resolvable = (key: unknown): key is string => typeof key === 'string' && (conceptTerms.has(key) || nodeTitles.has(key))
+  const links: unknown[] = []
+  for (const entry of raw) {
+    if (entry == null || typeof entry !== 'object') continue
+    const e = entry as Record<string, unknown>
+    if (!resolvable(e.from) || !resolvable(e.to) || e.from === e.to) continue
+    const link: Record<string, unknown> = { from: e.from, to: e.to }
+    if (typeof e.label === 'string' && e.label.trim() !== '' && e.label.length <= MAX_LINK_LABEL) link.label = e.label.trim()
+    links.push(link)
+  }
+  return links
+}
+
 function withNormalizedTimestamps(raw: unknown): unknown {
   if (raw == null || typeof raw !== 'object') return raw
   const obj = raw as Record<string, unknown>
@@ -254,18 +301,19 @@ function withNormalizedTimestamps(raw: unknown): unknown {
           }
         })
       : list
+  const conceptTerms = new Set(
+    (Array.isArray(obj.concepts) ? obj.concepts : [])
+      .map((entry) => (entry != null && typeof entry === 'object' ? (entry as Record<string, unknown>).term : null))
+      .filter((term): term is string => typeof term === 'string' && term.trim() !== '')
+  )
+  const nodeTitles = new Set<string>()
+  collectTreeTitles(obj.knowledgeTree, nodeTitles)
   return {
     ...obj,
-    // M2.1: tree term anchors must be judged against the concepts the note
-    // actually defines — collect them before normalizing the tree.
-    knowledgeTree: normalizeTreeTerms(
-      obj.knowledgeTree,
-      new Set(
-        (Array.isArray(obj.concepts) ? obj.concepts : [])
-          .map((entry) => (entry != null && typeof entry === 'object' ? (entry as Record<string, unknown>).term : null))
-          .filter((term): term is string => typeof term === 'string' && term.trim() !== '')
-      )
-    ),
+    // M2.1/M3.1: tree term anchors and concept links are judged against the
+    // concepts the note actually defines and the titles the tree carries.
+    knowledgeTree: normalizeTreeTerms(obj.knowledgeTree, conceptTerms),
+    conceptLinks: normalizeConceptLinks(obj.conceptLinks, conceptTerms, nodeTitles),
     timeline: fixList(obj.timeline),
     transcriptRefs: fixList(obj.transcriptRefs),
     evidence: normalizeEvidence(obj.evidence),
