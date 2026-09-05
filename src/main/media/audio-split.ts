@@ -52,6 +52,12 @@ export async function cutChunk(
     '-ar', '16000',
     '-f', 'wav',
     target
-  ], { signal })
+  ], {
+    signal,
+    // D7 (review): every ffmpeg call carries a deadline and a stall guard —
+    // a hung cut used to pin the single-slot serial queue forever.
+    timeoutMs: 5 * 60 * 1000,
+    stallGuard: { file: target, stallMs: 60_000 }
+  })
   return target
 }

@@ -111,7 +111,13 @@ export async function extractAudio(
     '-ar', '16000',
     '-f', 'wav',
     audioPath
-  ], { signal })
+  ], {
+    signal,
+    // D7 (review): same guard set as the download remux — a hung ffmpeg
+    // must not occupy the serial queue indefinitely.
+    timeoutMs: 30 * 60 * 1000,
+    stallGuard: { file: audioPath, stallMs: 60_000 }
+  })
   const duration = await probeDuration(audioPath)
   return { audioPath, durationSeconds: duration }
 }
@@ -142,7 +148,12 @@ export async function extractKeyframes(
     '-vf', `fps=1/${everySeconds}`,
     '-q:v', '2',
     pattern
-  ], { signal })
+  ], {
+    signal,
+    // D7 (review): a hard deadline only — the stall guard watches a single
+    // file and the keyframe pattern rotates across many files.
+    timeoutMs: 30 * 60 * 1000
+  })
   const files = readdirSync(outDir)
     .filter((f) => /^frame-\d{4}\.jpg$/.test(f))
     .sort()

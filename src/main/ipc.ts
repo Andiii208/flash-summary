@@ -18,8 +18,7 @@ import { TaskRepository, runTask, type TaskProgress } from './tasks/queue'
 import { SerialTaskQueue } from './tasks/serial-queue'
 import { createExecutors } from './tasks/orchestrator'
 import { resolveResumeStage, type ResumeDecision } from './tasks/resume'
-import type { Stage } from './tasks/stages'
-import { stagePercent } from './tasks/stages'
+import { PIPELINE_STAGES, stagePercent, type Stage } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachments } from './notes/attachments'
@@ -95,10 +94,12 @@ export interface IpcOptions {
 }
 
 export interface IpcHandle {
-  /** True while a task occupies the serial queue (close-window confirm). */
+  /** True while any task occupies the serial queue, running or queued (close-window confirm). */
   isTaskRunning: () => boolean
-  /** Abort the running task (close-window «取消任务并退出»). */
+  /** Abort/cancel every running and queued task (close-window «取消任务并退出»). */
   cancelRunning: () => void
+  /** D4: fired when the queue transitions to empty (last task finished/was cancelled). */
+  onQueueIdle: (cb: () => void) => () => void
 }
 
 export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions = {}): IpcHandle {
@@ -106,7 +107,25 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // cancellable via AbortController keyed by task id.
   const queue = new SerialTaskQueue()
   const abortControllers = new Map<string, AbortController>()
-  const abortOf = (taskId: string): AbortSignal | undefined => abortControllers.get(taskId)?.signal
+  // D1: queue cap, mirroring the renderer's B1 guard (main is the authority).
+  const MAX_QUEUED_TASKS = 3
+  // D1: ids cancelled (or otherwise killed) while waiting in the queue —
+  // the dequeue recheck must skip THESE, but not a legitimate failed-task
+  // retry whose row is also 'failed' at dequeue time.
+  const cancelledWhileQueued = new Set<string>()
+  // D4: notified when the queue drains (tray restores the window).
+  const idleListeners = new Set<() => void>()
+  const notifyIdle = (): void => {
+    if (queue.members().length === 0) {
+      for (const cb of idleListeners) {
+        try {
+          cb()
+        } catch {
+          // A listener failure must not break task execution.
+        }
+      }
+    }
+  }
 
   const sendProgress = (p: TaskProgress): void => {
     if (p.state === 'failed') {
@@ -653,24 +672,6 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('tasks:run', async (_e, taskId: unknown) => {
-    try {
-      const id = str(taskId, 'taskId')
-      const repo = new TaskRepository(ctx.db)
-      const row = repo.get(id)
-      if (row == null) throw new Error(`task ${id} not found`)
-      const executors = makeExecutors()
-      const decision = resumeDecisionFor(ctx, row, id)
-      if (decision.note !== '') {
-        ctx.logger.warn(`task ${id} resume degraded: ${decision.note}`)
-        sendProgress({ taskId: id, state: decision.stage, stage: decision.stage, message: decision.note, percent: 0 })
-      }
-      const result = await runTask(repo, id, executors, decision.stage, sendProgress, abortOf(id))
-      return ok({ result, task: repo.get(id) })
-    } catch (e) {
-      return err(e)
-    }
-  })
   // tasks:runAsync (U4): enqueued on the serial executor (at most one task
   // runs at a time); progress streams via 'tasks:progress'. Errors surface
   // as a failed progress event plus the returned envelope.
@@ -680,14 +681,31 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const repo = new TaskRepository(ctx.db)
       const row = repo.get(id)
       if (row == null) throw new Error(`task ${id} not found`)
+      // D1 (review): the queue invariants live here, not only in the
+      // renderer — bounded queue, one task per lesson, no duplicates.
+      const activeCount = queue.members().length
+      const queuedSameLesson = ctx.db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM tasks WHERE lesson_id = ? AND state NOT IN ('succeeded', 'failed') AND id != ?"
+        )
+        .get(row.lesson_id, id) as { n: number }
+      if (queuedSameLesson.n > 0) throw new Error('该课时已有任务在排队/运行中')
+      if (activeCount >= MAX_QUEUED_TASKS) throw new Error(`已有 ${MAX_QUEUED_TASKS} 个任务在排队/运行，等一个完成再排吧`)
+      if (queue.members().includes(id)) throw new Error('该任务已在队列中')
       const controller = new AbortController()
       abortControllers.set(id, controller)
       void queue
-        .enqueue(id, () => {
-          // Decide at DEQUEUE time, not enqueue: a queued wait can outlive
-          // URL freshness or see files reaped — re-read the row here.
+        .enqueue(id, async () => {
+          // D1: out-of-dequeue recheck — a task cancelled while queued
+          // must not run. A row that was already failed at ENQUEUE time is
+          // a legitimate retry and proceeds (its state is also 'failed').
+          if (cancelledWhileQueued.delete(id)) {
+            return 'failed' as const
+          }
           const current = repo.get(id)
           if (current == null) throw new Error(`task ${id} not found`)
+          // Decide at DEQUEUE time, not enqueue: a queued wait can outlive
+          // URL freshness or see files reaped — re-read the row here.
           const decision = resumeDecisionFor(ctx, current, id)
           if (decision.note !== '') {
             ctx.logger.warn(`task ${id} resume degraded: ${decision.note}`)
@@ -698,7 +716,10 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .catch((e) => {
           sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
         })
-        .finally(() => abortControllers.delete(id))
+        .finally(() => {
+          abortControllers.delete(id)
+          notifyIdle()
+        })
       return ok({ id, state: 'running' })
     } catch (e) {
       return err(e)
@@ -712,11 +733,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return
     }
     // Not currently running: mark failed(cancelled) directly so the UI state is consistent.
+    // D3 (review): 'pending' is not a pipeline stage — the CHECK on
+    // failed_stage rejects it, which used to leave a never-created task
+    // permanently un-cancellable and un-deletable. Terminal-relevant stages
+    // pass through; anything else (pending) stores a NULL failed_stage.
     const repo = new TaskRepository(ctx.db)
     const row = repo.get(id)
     if (row != null && row.state !== 'succeeded' && row.state !== 'failed') {
-      repo.markFailed(id, (row.state as Stage) ?? 'pending', '任务已取消', 'cancelled')
-      sendProgress({ taskId: id, state: 'failed', stage: row.state as Stage, message: '任务已取消', percent: 0, kind: 'cancelled' })
+      const failedStage = PIPELINE_STAGES.includes(row.state as Stage) ? (row.state as Stage) : null
+      repo.markFailed(id, failedStage, '任务已取消', 'cancelled')
+      sendProgress({ taskId: id, state: 'failed', stage: failedStage, message: '任务已取消', percent: 0, kind: 'cancelled' })
+      if (queue.members().includes(id)) cancelledWhileQueued.add(id)
     }
   }
   ipc.handle('tasks:cancel', (_e, taskId: unknown) => {
@@ -1013,11 +1040,18 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // M1-3: window-close confirm needs the queue state from main.
+  // D5 (review): both guards cover the WHOLE queue (running + queued); D4's
+  // tray listens for the drain to restore the window.
   return {
-    isTaskRunning: () => queue.current() != null,
+    isTaskRunning: () => queue.members().length > 0,
     cancelRunning: () => {
-      const id = queue.current()
-      if (id != null) cancelById(id)
+      for (const id of queue.members()) cancelById(id)
+    },
+    onQueueIdle: (cb: () => void): (() => void) => {
+      idleListeners.add(cb)
+      return () => {
+        idleListeners.delete(cb)
+      }
     }
   }
 }

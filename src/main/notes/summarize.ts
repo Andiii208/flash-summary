@@ -97,7 +97,8 @@ export async function generateNote(
   client: OpenAiCompatibleClient,
   model: string,
   transcriptText: string,
-  images: SummarizeImage[]
+  images: SummarizeImage[],
+  signal?: AbortSignal
 ): Promise<Note> {
   const system = { role: 'system', content: SYSTEM_PROMPT } as const
   let answer: string
@@ -107,7 +108,9 @@ export async function generateNote(
         system,
         { role: 'user', content: buildUserParts(transcriptText, images) }
       ],
-      model
+      model,
+      undefined,
+      signal
     )
   } catch (err) {
     // Provider rejects image input → fall back to a text-only prompt (U4).
@@ -118,7 +121,9 @@ export async function generateNote(
         system,
         { role: 'user', content: buildUserParts(transcriptText, []) }
       ],
-      model
+      model,
+      undefined,
+      signal
     )
   }
   try {
@@ -148,7 +153,8 @@ export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: str
 export async function summarizeLesson(
   db: Db,
   client: OpenAiCompatibleClient,
-  lessonId: string
+  lessonId: string,
+  signal?: AbortSignal
 ): Promise<{ version: number; images: number; hitRate: { hits: number; total: number } } | { error: string }> {
   const binding = db.prepare("SELECT model FROM capability_bindings WHERE capability = 'multimodal'").get() as
     | { model: string }
@@ -157,7 +163,7 @@ export async function summarizeLesson(
   const inputs = loadSummarizeInputs(db, lessonId)
   if ('error' in inputs) return { error: inputs.error }
   try {
-    const note = await generateNote(client, binding.model, inputs.transcriptText, inputs.images)
+    const note = await generateNote(client, binding.model, inputs.transcriptText, inputs.images, signal)
     const version = saveNoteVersion(db, lessonId, note, binding.model)
     // Citation quality signal (roadmap 1.3): refs are judged against the
     // images actually sent — the model never saw attachments beyond the cap.

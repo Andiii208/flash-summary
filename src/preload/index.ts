@@ -64,7 +64,6 @@ const api: SeuSummaryBridge = {
   tasks: {
     create: (lessonId: string): Promise<ApiResult<{ id: string }>> => ipcRenderer.invoke('tasks:create', lessonId),
     list: (lessonId?: string): Promise<ApiResult<TaskRowInfo[]>> => ipcRenderer.invoke('tasks:list', lessonId),
-    run: (taskId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('tasks:run', taskId),
     runAsync: (taskId: string): Promise<ApiResult<{ id: string; state: string }>> => ipcRenderer.invoke('tasks:runAsync', taskId),
     cancel: (taskId: string): Promise<ApiResult<{ cancelled: boolean }>> => ipcRenderer.invoke('tasks:cancel', taskId),
     remove: (taskId: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('tasks:delete', taskId),

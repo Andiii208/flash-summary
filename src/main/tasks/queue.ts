@@ -115,7 +115,11 @@ export async function runTask(
     const ctx: StageContext = { taskId, lessonId: repo.get(taskId)!.lesson_id, stage, signal }
 
     repo.markStage(taskId, stage)
-    onProgress?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: stagePercent(stage) })
+    // D8 (review): a stage-START event must not claim the stage's own
+    // completion percent — carry the previous stage's percent instead, so
+    // the bar reads «previous done, this one running».
+    const startPercent = i === 0 ? 0 : stagePercent(PIPELINE_STAGES[i - 1] as Stage)
+    onProgress?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: startPercent })
     let result: StageResult
     try {
       result = await executors[stage](ctx)

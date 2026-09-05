@@ -529,11 +529,20 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
 
     try {
       const client = deps.chat('multimodal')
-      const result = await summarizeLesson(deps.db, client, ctx.lessonId)
-      if ('error' in result) return { status: 'failed', error: result.error }
+      // D6 (review): the summarize call honors cancellation — the abort
+      // rides the provider request itself instead of waiting for a stage
+      // boundary.
+      const result = await summarizeLesson(deps.db, client, ctx.lessonId, ctx.signal)
+      if ('error' in result) {
+        // summarizeLesson catches internally — an abort surfaces as a
+        // generic error result, so re-check the signal here.
+        if (isCancelled(ctx)) return cancelResult()
+        return { status: 'failed', error: result.error }
+      }
       recordStage(deps, ctx.taskId, ctx.stage, result)
       return { status: 'ok' }
     } catch (err) {
+      if (isCancelled(ctx, err)) return cancelResult()
       return { status: 'failed', error: `笔记生成失败: ${(err as Error).message}` }
     }
   }

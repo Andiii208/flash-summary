@@ -69,6 +69,43 @@ describe('SerialTaskQueue (U4)', () => {
     expect(seenDuring).toBe('t-running')
     expect(queue.current()).toBeNull()
   })
+
+  it('rejects a duplicate id while the task is queued or running (review D1)', async () => {
+    const queue = new SerialTaskQueue()
+    let release: (() => void) | null = null
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const first = queue.enqueue('dup', () => gate.then(() => 'ok'))
+    await expect(queue.enqueue('dup', async () => 'again')).rejects.toThrowError(/已在队列中/)
+    release!()
+    await expect(first).resolves.toBe('ok')
+    // After completion the id is free again.
+    const second = queue.enqueue('dup', async () => 'second')
+    await expect(second).resolves.toBe('second')
+  })
+
+  it('members() covers running AND queued ids (review D5)', async () => {
+    const queue = new SerialTaskQueue()
+    let release: (() => void) | null = null
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const seen: string[][] = []
+    const first = queue.enqueue('running-1', async () => {
+      seen.push([...queue.members()])
+      await gate
+      return 'r1'
+    })
+    const second = queue.enqueue('queued-2', async () => 'r2')
+    // While the first runs and the second waits, both are members.
+    await new Promise((r) => setTimeout(r, 10))
+    expect(queue.members()).toEqual(['running-1', 'queued-2'])
+    release!()
+    await Promise.all([first, second])
+    expect(queue.members()).toEqual([])
+    expect(seen[0]).toEqual(['running-1', 'queued-2'])
+  })
 })
 
 describe('task cancellation (U4)', () => {

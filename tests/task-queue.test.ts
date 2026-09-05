@@ -136,6 +136,19 @@ describe('U1: progress events and stage percent', () => {
     }
   })
 
+  it('a stage-START event carries the previous stage percent, not its own (review D8)', async () => {
+    const repo = new TaskRepository(db)
+    repo.create('p5', 'l1')
+    const { executors } = executorsThatFailAt('__never__')
+    const events: TaskProgress[] = []
+    await runTask(repo, 'p5', executors, 'fetching_course', (p) => events.push(p))
+    // The first stage starts at 0 (it used to claim its own completion percent).
+    expect(events[0].percent).toBe(0)
+    for (let i = 1; i < PIPELINE_STAGES.length; i++) {
+      expect(events[i].percent).toBe(stagePercent(PIPELINE_STAGES[i - 1] as Stage))
+    }
+  })
+
   it('runTask marks a session_expired failure with kind so the UI can offer re-login', async () => {
     const repo = new TaskRepository(db)
     repo.create('p2', 'l1')

@@ -187,6 +187,27 @@ describe('makeSummarize multimodal (U4)', () => {
     db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'gpt-4o')").run()
   }
 
+  it('cancels mid-summarize through the provider request signal (review D6)', async () => {
+    seedEvidence(2)
+    const controller = new AbortController()
+    const chatJson = vi.fn(async () => {
+      controller.abort()
+      const err = new Error('The operation was aborted')
+      err.name = 'AbortError'
+      throw err
+    })
+    const deps = makeDeps({ chat: (() => ({ chatJson })) as unknown as OrchestratorDeps['chat'] })
+    // The old executor never read ctx.signal — the cancel only landed at
+    // the next stage boundary after the whole summarize request returned.
+    const result = await makeSummarize(deps)({
+      taskId: 't1',
+      lessonId: 'l1',
+      stage: 'summarizing',
+      signal: controller.signal
+    })
+    expect(result).toEqual({ status: 'failed', error: '任务已取消', kind: 'cancelled' })
+  })
+
   it('embeds real image parts as data URLs, capped at MAX_SUMMARIZE_IMAGES', async () => {
     seedEvidence(25)
     let captured: Array<{ role: string; content: unknown }> = []

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, Tray, Menu } from 'electron'
 import { join } from 'path'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
@@ -6,6 +6,81 @@ import { registerIpc, webContentsSender } from './ipc'
 import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
 
 let mainWindow: BrowserWindow | null = null
+// D4 (review): the close dialog promises «后台继续运行» — hide to tray and
+// keep executing instead of destroying the window (which killed the task
+// and contradicted the promise). The window restores itself when the queue
+// drains (decision 1b: completion must land in front of the user).
+let tray: Tray | null = null
+/** Module-level ref so the tray's «退出（取消任务）» can cancel the queue. */
+let ipcHandleRef: ReturnType<typeof registerIpc> | null = null
+
+function trayIconImage(): Electron.NativeImage {
+  const candidates = app.isPackaged
+    ? [join(process.resourcesPath ?? '', 'icon.ico')]
+    : [join(app.getAppPath(), 'build', 'icon.ico')]
+  for (const candidate of candidates) {
+    try {
+      const image = nativeImage.createFromPath(candidate)
+      if (!image.isEmpty()) return image
+    } catch {
+      // Fall through to the next candidate.
+    }
+  }
+  return nativeImage.createEmpty()
+}
+
+function destroyTray(): void {
+  if (tray != null) {
+    try {
+      tray.destroy()
+    } catch {
+      // Already gone.
+    }
+    tray = null
+  }
+}
+
+/** Hide the window and show a tray affordance while tasks run in background. */
+function enterBackgroundMode(win: BrowserWindow): void {
+  win.hide()
+  if (tray != null) return
+  tray = new Tray(trayIconImage())
+  tray.setToolTip('SEU Summary — 任务后台运行中')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: '打开主窗口',
+        click: () => {
+          if (win.isMinimized()) win.restore()
+          win.show()
+          win.focus()
+        }
+      },
+      {
+        label: '退出（取消任务）',
+        click: () => {
+          ipcHandleRef?.cancelRunning()
+          app.quit()
+        }
+      }
+    ])
+  )
+  tray.on('click', () => {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  })
+}
+
+/** D4 decision 1b: when the queue drains, bring the window back. */
+function exitBackgroundMode(win: BrowserWindow): void {
+  destroyTray()
+  if (!win.isDestroyed()) {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  }
+}
 
 // Must run before app ready. See net-diagnostics.ts for the A/B rationale.
 if (directNetRequested(process.argv, process.env.SEU_DIRECT_NET)) {
@@ -91,11 +166,13 @@ if (!gotSingleInstanceLock) {
     bindWindowLifecycle(ctx, mainWindow)
     // The main window reference lets IPC push task progress to the renderer.
     const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+    ipcHandleRef = ipcHandle
 
-    // M1-3: closing with a task running must be an informed choice — the
-    // serial task keeps executing in main either way; the user picks
-    // «后台继续» (silent) or «取消任务并退出». destroy() bypasses this
-    // handler so the choice is one-shot.
+    // M1-3 + D4: closing with a task running must be an informed choice —
+    // «后台继续运行» now actually keeps executing (hide to tray), the task
+    // finishing restores the window, and «取消任务并退出» cancels for real.
+    // destroy() bypasses this handler so the choice is one-shot.
+    let unsubscribeIdle: (() => void) | null = null
     mainWindow.on('close', (event) => {
       if (!ipcHandle.isTaskRunning()) return
       const win = mainWindow
@@ -109,15 +186,23 @@ if (!gotSingleInstanceLock) {
           cancelId: 2,
           title: '任务正在运行',
           message: '有任务正在执行，关闭窗口后任务会怎样？',
-          detail: '「后台继续运行」：窗口关闭，任务继续，下次打开自动恢复进度视图。'
+          detail: '「后台继续运行」：窗口收到系统托盘，任务继续执行，完成后窗口自动恢复。'
         })
         .then(({ response }) => {
-          if (response === 0) win.destroy()
-          else if (response === 1) {
+          if (response === 0) {
+            enterBackgroundMode(win)
+            unsubscribeIdle = ipcHandle.onQueueIdle(() => {
+              exitBackgroundMode(win)
+            })
+          } else if (response === 1) {
             ipcHandle.cancelRunning()
             win.destroy()
           }
         })
+    })
+    mainWindow.on('closed', () => {
+      if (unsubscribeIdle != null) unsubscribeIdle()
+      destroyTray()
     })
 
     app.on('activate', () => {
@@ -125,7 +210,7 @@ if (!gotSingleInstanceLock) {
         mainWindow = createMainWindow()
         ctx.setMainWindow(mainWindow)
         bindWindowLifecycle(ctx, mainWindow)
-        registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+        ipcHandleRef = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
       }
     })
   })

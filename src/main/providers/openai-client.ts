@@ -101,10 +101,13 @@ export class OpenAiCompatibleClient {
     private readonly fetchImpl: ProviderFetch = defaultFetch
   ) {}
 
-  private async request(path: string, body: unknown): Promise<unknown> {
+  private async request(path: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
     const serialized = JSON.stringify(body)
     let res
     try {
+      // D6 (review): the caller's cancellation signal joins the hard
+      // deadline — cancelling a task aborts the in-flight summarize.
+      const timeout = AbortSignal.timeout(CHAT_TIMEOUT_MS)
       res = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method: 'POST',
         headers: {
@@ -112,7 +115,7 @@ export class OpenAiCompatibleClient {
           'Content-Type': 'application/json'
         },
         body: serialized,
-        signal: AbortSignal.timeout(CHAT_TIMEOUT_MS)
+        signal: signal != null ? AbortSignal.any([timeout, signal]) : timeout
       })
     } catch (err) {
       if (err instanceof ProviderError) throw err
@@ -238,17 +241,17 @@ export class OpenAiCompatibleClient {
    * mimo-v2.5, field-checked 2026-09-02). Use for structured outputs; the
    * caller still parses defensively.
    */
-  async chatJson(messages: ChatMessage[], model: string, maxTokens?: number): Promise<string> {
+  async chatJson(messages: ChatMessage[], model: string, maxTokens?: number, signal?: AbortSignal): Promise<string> {
     return await this.complete('/chat/completions', {
       model,
       messages,
       ...(maxTokens != null ? { max_tokens: maxTokens } : {}),
       response_format: { type: 'json_object' }
-    })
+    }, signal)
   }
 
-  private async complete(path: string, payload: Record<string, unknown>): Promise<string> {
-    const response = (await this.request(path, payload)) as { choices?: Array<{ message?: { content?: string } }> }
+  private async complete(path: string, payload: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+    const response = (await this.request(path, payload, signal)) as { choices?: Array<{ message?: { content?: string } }> }
     const content = response.choices?.[0]?.message?.content
     if (typeof content !== 'string') {
       throw new ProviderError('bad_response', 'chat response missing content')

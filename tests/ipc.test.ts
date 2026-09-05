@@ -60,7 +60,7 @@ describe('ipc handlers over a real context', () => {
     for (const channel of [
       'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse', 'school:harvestLessons', 'school:netCheck',
       'providers:list', 'providers:save', 'providers:delete', 'providers:bind',
-      'tasks:create', 'tasks:run',
+      'tasks:create',
       'notes:latest',
       'qa:ask', 'qa:history'
     ]) {
@@ -212,6 +212,44 @@ describe('ipc handlers over a real context', () => {
     const res = (await ipc.invoke('providers:bind', 'voice', 'p1', 'm')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('capability')
+  })
+
+  it('cancelling a pending task stores failed_stage=NULL and stays deletable (review D3)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
+    const created = (await ipc.invoke('tasks:create', 'l1')) as { ok: boolean; value?: { id: string } }
+    const taskId = created.value!.id
+    // The old code passed state='pending' as the failed stage → CHECK violation →
+    // the task could be neither cancelled nor deleted.
+    const cancelled = (await ipc.invoke('tasks:cancel', taskId)) as { ok: boolean }
+    expect(cancelled.ok).toBe(true)
+    const row = db.prepare('SELECT state, failed_stage, error_kind FROM tasks WHERE id = ?').get(taskId) as {
+      state: string
+      failed_stage: string | null
+      error_kind: string | null
+    }
+    expect(row.state).toBe('failed')
+    expect(row.failed_stage).toBeNull()
+    expect(row.error_kind).toBe('cancelled')
+    const removed = (await ipc.invoke('tasks:delete', taskId)) as { ok: boolean }
+    expect(removed.ok).toBe(true)
+  })
+
+  it('tasks:runAsync enforces the queue invariants in main (review D1)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
+    // Another task of the same lesson is already mid-pipeline.
+    db.prepare("INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t-live', 'l1', 'transcribing', '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')").run()
+    const created = (await ipc.invoke('tasks:create', 'l1')) as { ok: boolean; value?: { id: string } }
+    const second = created.value!.id
+    const rejected = (await ipc.invoke('tasks:runAsync', second)) as { ok: boolean; error?: string }
+    expect(rejected.ok).toBe(false)
+    expect(rejected.error).toContain('该课时已有任务')
+
   })
 
   it('school:harvestLessons upserts the harvested catalog (V1.3)', async () => {
