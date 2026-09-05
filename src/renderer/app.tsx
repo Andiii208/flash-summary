@@ -244,6 +244,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 sameCourses={state.sameCourses}
                 selectedLesson={state.currentLesson}
                 expanded={state.expanded}
+                onRemoveCourse={state.removeCourse}
+                onCourseMap={state.openCourseMap}
                 onToggle={state.toggleCourse}
                 onSelect={state.selectLesson}
                 onHarvestLessons={state.harvestLessons}

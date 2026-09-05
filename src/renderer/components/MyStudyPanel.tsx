@@ -17,6 +17,8 @@ export interface MyStudyPanelProps {
   harvestInflight?: ReadonlySet<string>
   /** C6: remove an empty (never-processed) course. */
   onRemoveCourse?: (courseId: string) => void
+  /** M4.1: open the course-level mind map dialog (同主侧栏入口). */
+  onCourseMap?: (courseId: string) => void
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
@@ -71,6 +73,7 @@ function renderTree(
       sameCourseIds={sameIds}
       harvestInflight={props.harvestInflight}
       onRemoveCourse={props.onRemoveCourse}
+      onCourseMap={props.onCourseMap}
       onToggle={props.onToggle}
       onSelect={props.onSelect}
       onHarvestLessons={props.onHarvestLessons}
