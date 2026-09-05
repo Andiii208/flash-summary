@@ -133,9 +133,10 @@ function openQaTab(host: HTMLElement): void {
 describe('App shell (useAppState over a mocked bridge)', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    // 批C: the app persists its UI snapshot in localStorage — tests must not
-    // inherit each other's selections/expanded state.
-    window.localStorage.clear()
+    // 批C: the app persists its UI snapshot in sessionStorage (2026-09-05:
+    // moved from localStorage so a cold start lands on the clean home) —
+    // tests must not inherit each other's selections/expanded state.
+    window.sessionStorage.clear()
   })
 
   it('starts with an honest logged_out badge, four tabs, and the loaded tree', async () => {
@@ -152,11 +153,23 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host.textContent).toContain('我的学习')
   })
 
+  it('cold start with an empty snapshot lands on the clean home (tasks tab, no lesson)', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    await waitForSelector('.course-head')
+    const active = host.querySelector('.tabs button.active')
+    expect(active?.textContent).toBe('任务')
+    // No restored selection: no breadcrumb, no lesson-row highlighted.
+    expect(host.querySelector('.crumbs')).toBeNull()
+    expect(host.querySelector('.lesson-row.selected')).toBeNull()
+  })
+
   it('restores the persisted lesson selection after a renderer reload (批C)', async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
-    const saved = JSON.parse(window.localStorage.getItem('seu-summary.ui-state.v1') ?? '{}') as { currentLesson?: string }
+    const saved = JSON.parse(window.sessionStorage.getItem('seu-summary.ui-state.v1') ?? '{}') as { currentLesson?: string }
     expect(saved.currentLesson).toBe('l1')
     // Reload: the fresh mount resumes the note/qa/history for that lesson.
     render(null, host)
@@ -252,7 +265,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   it('lands on the tasks tab for an unprocessed lesson (批5 C9)', async () => {
     // C9 persists the tab: reset so this mount starts from a clean slate.
-    window.localStorage.clear()
+    window.sessionStorage.clear()
     const bridge = makeBridge()
     courseTreeRows = [
       { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: false }] }
@@ -267,6 +280,42 @@ describe('App shell (useAppState over a mocked bridge)', () => {
       const active = host.querySelector('.tabs button.active')
       expect(active?.textContent).toBe('任务')
     })
+  })
+
+  it('brand home click drops the stale note: notes tab shows the empty state, not the old lesson (2026-09-05)', async () => {
+    const bridge = makeBridge()
+    ;(bridge.notes.latest as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok({
+        overview: '旧笔记概览',
+        knowledgeTree: { title: '旧课', children: [] },
+        timeline: [{ at: 10, title: '旧时间线', detail: 'x', refs: [], evidence: [] }],
+        concepts: [],
+        formulasAndSteps: [],
+        methodology: '',
+        examCues: [],
+        questionsAndGaps: [],
+        quiz: [],
+        transcriptRefs: [],
+        evidence: []
+      })
+    )
+    courseTreeRows = [
+      { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] }
+    ]
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    // The note body is on screen for the selected lesson.
+    await waitForSelector('.note-section')
+    expect(host.querySelectorAll('.note-toolbar').length).toBe(1)
+
+    // Brand click = home: the note state must go with the lesson selection.
+    click(host.querySelector('.brand'))
+    const notesTab = Array.from(host.querySelectorAll('.tabs button')).find((b) => b.textContent === '笔记')
+    click(notesTab ?? null)
+    await waitForGone('.note-section')
+    expect(host.querySelector('.note-toolbar')).toBeNull()
+    expect(host.querySelector('.note-body .empty-state')).not.toBeNull()
+    expect(host.textContent).not.toContain('旧笔记概览')
   })
 
   it('login flips the badge and logout clears the tree and qa panel', async () => {

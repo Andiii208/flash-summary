@@ -33,6 +33,12 @@ describe('NoteViewer', () => {
     expect(host.textContent).toContain('尚无笔记')
   })
 
+  it('hides the five-view toolbar when there is no note to switch (2026-09-05)', () => {
+    const host = mount(<NoteViewer note={null} onExport={() => undefined} onRegenerate={() => undefined} />)
+    expect(host.querySelector('.note-toolbar')).toBeNull()
+    expect(host.querySelectorAll('.note-tabs button')).toHaveLength(0)
+  })
+
   it('renders the exam-paper masthead only with a note and lesson context (V4)', () => {
     const bare = mount(<NoteViewer note={NOTE} />)
     expect(bare.querySelector('.note-masthead')).toBeNull()

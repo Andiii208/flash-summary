@@ -103,93 +103,97 @@ export function NoteViewer({
           ) : undefined
         }
       />
-      <div class="note-toolbar">
-        <nav
-          class="note-tabs"
-          role="tablist"
-          onKeyDown={(e) => {
-            // M3-2: roving-focus arrow navigation, matching the main tabs.
-            const buttons = [...e.currentTarget.querySelectorAll('button')]
-            const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
-            if (i < 0) return
-            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-              e.preventDefault()
-              const next = buttons[(i + (e.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length]
-              next?.focus()
-              next?.click()
-            }
-          }}
-        >
-          {VIEW_IDS.map((id) => (
-            <button
-              key={id}
-              class={id === view ? 'active' : ''}
-              role="tab"
-              aria-selected={id === view}
-              tabIndex={id === view ? 0 : -1}
-              onClick={() => setView(id)}
-            >
-              {VIEW_LABELS[id]}
-            </button>
-          ))}
-        </nav>
-        <div class="note-actions">
-          {onNavigateLesson != null && (prevLesson != null || nextLesson != null) && (
-            <span class="lesson-nav">
+      {/* 2026-09-05: the toolbar only makes sense with a note on screen —
+          five-view tabs + export actions over an empty body mislead. */}
+      {note != null && (
+        <div class="note-toolbar">
+          <nav
+            class="note-tabs"
+            role="tablist"
+            onKeyDown={(e) => {
+              // M3-2: roving-focus arrow navigation, matching the main tabs.
+              const buttons = [...e.currentTarget.querySelectorAll('button')]
+              const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
+              if (i < 0) return
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault()
+                const next = buttons[(i + (e.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length]
+                next?.focus()
+                next?.click()
+              }
+            }}
+          >
+            {VIEW_IDS.map((id) => (
               <button
-                class="btn small"
-                disabled={prevLesson == null}
-                title={prevLesson?.title ?? '已是第一节'}
-                onClick={() => {
-                  if (prevLesson != null) onNavigateLesson(prevLesson.id)
-                }}
+                key={id}
+                class={id === view ? 'active' : ''}
+                role="tab"
+                aria-selected={id === view}
+                tabIndex={id === view ? 0 : -1}
+                onClick={() => setView(id)}
               >
-                ‹ 上一节
+                {VIEW_LABELS[id]}
               </button>
-              <button
-                class="btn small"
-                disabled={nextLesson == null}
-                title={nextLesson?.title ?? '已是最后一节'}
-                onClick={() => {
-                  if (nextLesson != null) onNavigateLesson(nextLesson.id)
-                }}
-              >
-                下一节 ›
+            ))}
+          </nav>
+          <div class="note-actions">
+            {onNavigateLesson != null && (prevLesson != null || nextLesson != null) && (
+              <span class="lesson-nav">
+                <button
+                  class="btn small"
+                  disabled={prevLesson == null}
+                  title={prevLesson?.title ?? '已是第一节'}
+                  onClick={() => {
+                    if (prevLesson != null) onNavigateLesson(prevLesson.id)
+                  }}
+                >
+                  ‹ 上一节
+                </button>
+                <button
+                  class="btn small"
+                  disabled={nextLesson == null}
+                  title={nextLesson?.title ?? '已是最后一节'}
+                  onClick={() => {
+                    if (nextLesson != null) onNavigateLesson(nextLesson.id)
+                  }}
+                >
+                  下一节 ›
+                </button>
+              </span>
+            )}
+            {hitRate != null && hitRate.total > 0 && (
+              <span class="badge" title={`时间线证据引用精确命中附件 ${hitRate.hits}/${hitRate.total}`}>
+                引用命中 {hitRate.hits}/{hitRate.total}
+              </span>
+            )}
+            {onExportPdf != null && (
+              <button class="btn small primary" onClick={onExportPdf} disabled={pdfBusy}>
+                {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
               </button>
-            </span>
-          )}
-          {hitRate != null && hitRate.total > 0 && (
-            <span class="badge" title={`时间线证据引用精确命中附件 ${hitRate.hits}/${hitRate.total}`}>
-              引用命中 {hitRate.hits}/{hitRate.total}
-            </span>
-          )}
-          {onExportPdf != null && (
-            <button class="btn small primary" onClick={onExportPdf} disabled={pdfBusy}>
-              {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
-            </button>
-          )}
-          {onRegenerate != null && note != null && (
-            <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
-              {regenBusy ? '生成中…' : '重新生成'}
-            </button>
-          )}
-          {onCopy != null && note != null && (
-            <button class="btn small" onClick={onCopy}>
-              复制 Markdown
-            </button>
-          )}
-          {onExportAnki != null && note != null && (
-            <button class="btn small" onClick={onExportAnki}>
-              导出 Anki
-            </button>
-          )}
-          {onExport != null && note != null && (
-            <button class="btn small" onClick={onExport}>
-              导出 Markdown
-            </button>
-          )}
+            )}
+            {onRegenerate != null && note != null && (
+              <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
+                {regenBusy ? '生成中…' : '重新生成'}
+              </button>
+            )}
+            {onCopy != null && note != null && (
+              <button class="btn small" onClick={onCopy}>
+                复制 Markdown
+              </button>
+            )}
+            {onExportAnki != null && note != null && (
+              <button class="btn small" onClick={onExportAnki}>
+                导出 Anki
+              </button>
+            )}
+            {onExport != null && note != null && (
+              <button class="btn small" onClick={onExport}>
+                导出 Markdown
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div class="note-body" data-view={view}>
         {note != null && lesson != null && (
           <header class="note-masthead">

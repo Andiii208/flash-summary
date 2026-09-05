@@ -62,7 +62,10 @@ export function tabForHotkey(key: string, modifiers: { ctrl: boolean; alt: boole
 
 /** 批C: sidebar/context persistence — the harvest and login flows navigate
  *  the main window away, which unloads this renderer; without persistence
- *  the user lands back at the top of a collapsed tree (field 2026-09-04). */
+ *  the user lands back at the top of a collapsed tree (field 2026-09-04).
+ *  sessionStorage (2026-09-05): the snapshot must survive those same-window
+ *  navigations but NOT a cold start — opening the app always lands on the
+ *  clean home view (no lesson, tasks tab), per the 2026-09-05 UX plan. */
 const UI_STATE_KEY = 'seu-summary.ui-state.v1'
 const HARVEST_SEQ_KEY = 'seu-summary.harvest-seq.v1'
 
@@ -75,7 +78,7 @@ interface PersistedUiState {
 
 function loadPersistedUi(): Partial<PersistedUiState> {
   try {
-    const raw = window.localStorage.getItem(UI_STATE_KEY)
+    const raw = window.sessionStorage.getItem(UI_STATE_KEY)
     if (raw == null) return {}
     const parsed = JSON.parse(raw) as Partial<PersistedUiState>
     return parsed != null && typeof parsed === 'object' ? parsed : {}
@@ -87,7 +90,7 @@ function loadPersistedUi(): Partial<PersistedUiState> {
 function savePersistedUi(patch: Partial<PersistedUiState>): void {
   try {
     const next = { ...loadPersistedUi(), ...patch }
-    window.localStorage.setItem(UI_STATE_KEY, JSON.stringify(next))
+    window.sessionStorage.setItem(UI_STATE_KEY, JSON.stringify(next))
   } catch {
     // Persistence is an enhancement; quota/private-mode failures stay silent.
   }
@@ -835,9 +838,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   // 批A: drop the selection without leaving the current tab (breadcrumb's
   // course crumb); panels fall back to their library/empty states.
+  // 2026-09-05: the note goes too — a stale note body under lesson=null read
+  // as «the notes tab shows some other lesson's note» on the home view.
   const clearLesson = useCallback((): void => {
     setCurrentLesson('')
     lessonRef.current = ''
+    setNote(null)
     setQaEntries([])
     setAttachmentManifest([])
     attachmentCache.current.clear()
