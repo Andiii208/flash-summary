@@ -18,6 +18,7 @@ import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem } from './components/ToastArea'
 import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
+import { CourseMapDialog, type CourseMapInfo } from './components/CourseMapDialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
 import { useToasts } from './hooks/use-toasts'
@@ -187,6 +188,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onClearLesson={state.clearLesson}
       />
       <ToastArea toasts={state.toasts} />
+      {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
       <div class="app-main">
         <aside class="sidebar" ref={sidebarRef}>
           <div class="sidebar-head">
@@ -228,6 +230,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               sameCourseIds={state.sameCourseIds}
               harvestInflight={state.harvestInflight}
               onRemoveCourse={state.removeCourse}
+              onCourseMap={state.openCourseMap}
               onToggle={state.toggleCourse}
               onSelect={state.selectLesson}
               onHarvestLessons={state.harvestLessons}
@@ -275,6 +278,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                       sameCourseIds={state.sameCourseIds}
                       harvestInflight={state.harvestInflight}
                       onRemoveCourse={state.removeCourse}
+                      onCourseMap={state.openCourseMap}
                       onToggle={state.toggleCourse}
                       onSelect={state.selectLesson}
                       onHarvestLessons={state.harvestLessons}
@@ -363,6 +367,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onExportPdf={state.currentLesson !== '' && state.note != null ? () => state.exportNotePdf(state.currentLesson) : undefined}
               onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined}
               onExportAnki={state.currentLesson !== '' && state.note != null ? () => state.exportNoteAnki(state.currentLesson) : undefined}
+              onExportSvg={state.currentLesson !== '' && state.note != null ? () => state.exportNoteSvg(state.currentLesson) : undefined}
               onCopy={state.copyNote}
             />
           )}
@@ -539,6 +544,12 @@ interface AppState {
   exportNote: (lessonId: string) => void
   /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
   exportNoteAnki: (lessonId: string) => void
+  /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
+  exportNoteSvg: (lessonId: string) => void
+  /** M4.1 (map expansion): open the course-level mind map dialog. */
+  openCourseMap: (courseId: string) => void
+  courseMap: CourseMapInfo | null
+  closeCourseMap: () => void
   copyNote: () => void
   /** 2026-09-04: regenerate + attachments + PDF handout for the note views. */
   attachmentManifest: AttachmentManifestEntry[]
@@ -632,6 +643,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [attachmentVersion, setAttachmentVersion] = useState(0)
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
+  /** M4.1: open course-level mind map (null = closed). */
+  const [courseMap, setCourseMap] = useState<CourseMapInfo | null>(null)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
   const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
@@ -1477,6 +1490,51 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast]
   )
 
+  /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
+  const exportNoteSvg = useCallback(
+    (lessonId: string): void => {
+      void (async () => {
+        const res = await bridge.notes.exportSvg(lessonId)
+        if (!res.ok) {
+          toast(res.error ?? '导出失败', 'error')
+          return
+        }
+        if (res.value?.canceled) return
+        const filePath = res.value?.path ?? ''
+        toast(`已导出：${filePath}`, 'success', {
+          actionLabel: '打开所在文件夹',
+          onAction: () => {
+            void bridge.notes.revealFile(filePath)
+          }
+        })
+      })()
+    },
+    [bridge, toast]
+  )
+
+  /** M4.1 (map expansion): aggregate the course's latest trees into one map. */
+  const openCourseMap = useCallback(
+    (courseId: string): void => {
+      void (async () => {
+        const res = await bridge.notes.courseTree(courseId)
+        if (!res.ok) {
+          toast(res.error ?? '课程导图打开失败', 'error')
+          return
+        }
+        const value = res.value
+        if (value == null) return
+        // The merged tree's root title IS the course name (filled main-side).
+        setCourseMap({
+          courseName: value.tree.title,
+          tree: value.tree,
+          lessons: value.lessons,
+          skipped: value.skipped
+        })
+      })()
+    },
+    [bridge, toast]
+  )
+
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
   const regenerateNote = useCallback(
     (lessonId: string): void => {
@@ -1678,6 +1736,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     providerTest,
     exportNote,
     exportNoteAnki,
+    exportNoteSvg,
+    openCourseMap,
+    courseMap,
+    closeCourseMap: () => setCourseMap(null),
     copyNote,
     attachmentManifest,
     getAttachment,
