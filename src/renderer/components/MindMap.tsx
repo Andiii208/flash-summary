@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import type { TreeNode } from '../../shared/notes/schema'
-import { collapsedSetForMaxDepth, computeMindMapLayout, titleBaseline } from '../../shared/notes/mindmap-layout'
+import type { Concept, QuizItem, TreeNode } from '../../shared/notes/schema'
+import { collapsedSetForMaxDepth, computeMindMapLayout, titleBaseline, type LayoutNode } from '../../shared/notes/mindmap-layout'
+import { QuizCards } from './NoteBlocks'
 
 /** M1.3 viewport transform: viewBox window over the unchanged layout geometry. */
 interface View {
@@ -41,7 +42,18 @@ function zoomAt(view: View, nextScale: number, fx: number, fy: number, layoutWid
  * drag pans, keyboard +/-/0 zoom & reset — all as viewBox transforms, the
  * layout geometry stays untouched (PDF handout shares it unchanged).
  */
-export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
+/** M2.2 node popover: linked concepts + anchored quiz + a jump into the
+ *  detailed view (决策点 D2 — the node body keeps its collapse click, the
+ *  ℹ️ button opens the card). */
+export interface MindMapProps {
+  tree: TreeNode
+  concepts?: Concept[]
+  quiz?: QuizItem[]
+  /** Jump to the detailed view anchored at this concept's card. */
+  onViewDetailed?: (term: string) => void
+}
+
+export function MindMap({ tree, concepts = [], quiz = [], onViewDetailed }: MindMapProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
   const [view, setView] = useState<View>(IDENTITY_VIEW)
@@ -53,6 +65,37 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
   const prevYRef = useRef<Map<string, number>>(new Map())
   /** M1.3 active background-drag gesture (null = not panning). */
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: View } | null>(null)
+  /** M2.2 path of the node whose popover is open (null = closed). */
+  const [popoverPath, setPopoverPath] = useState<string | null>(null)
+
+  // M2.2: node terms keyed by layout path (screen layout keeps subline empty,
+  // so the anchor map walks the tree in parallel with the path convention).
+  const termsByPath = useMemo(() => {
+    const map = new Map<string, string[]>()
+    const walk = (node: TreeNode, path: string): void => {
+      if (node.terms != null && node.terms.length > 0) map.set(path, node.terms)
+      node.children.forEach((child, i) => walk(child, `${path}/${i}`))
+    }
+    walk(tree, '0')
+    return map
+  }, [tree])
+
+  // M2.2: term → concept lookup powering popover content.
+  const conceptByTerm = useMemo(() => new Map(concepts.map((c) => [c.term, c])), [concepts])
+
+  const popoverNode: LayoutNode | null = popoverPath == null ? null : (layout.nodes.find((n) => n.path === popoverPath) ?? null)
+  const popoverTerms = popoverPath == null ? [] : (termsByPath.get(popoverPath) ?? [])
+  const linkedConcepts = popoverTerms.map((term) => conceptByTerm.get(term)).filter((c): c is Concept => c != null)
+  const linkedQuiz = useMemo(
+    () => (popoverTerms.length === 0 ? [] : quiz.filter((item) => item.term != null && popoverTerms.includes(item.term))),
+    [quiz, popoverTerms]
+  )
+
+  // Any pan/zoom move closes the popover — the HTML card cannot track the
+  // transformed SVG content.
+  useEffect(() => {
+    setPopoverPath(null)
+  }, [view])
 
   const toggle = (path: string): void => {
     setCollapsed((prev) => {
@@ -267,6 +310,8 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
           const pillWidth = Math.max(16, String(descendants).length * 8 + 10)
           const isHit = searching && matched.has(node.path)
           const searchClass = isHit ? ' search-hit' : searching ? ' search-dim' : ''
+          const nodeTerms = termsByPath.get(node.path)
+          const hasAnchor = nodeTerms != null && nodeTerms.length > 0
           return (
             <g
               key={node.id}
@@ -305,10 +350,79 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
                   )}
                 </g>
               )}
+              {/* M2.2: ℹ️ opens the linked-content popover; stopPropagation keeps
+                  the node body's collapse click (决策点 D2 hot-zone split). */}
+              {hasAnchor && (
+                <g
+                  class="mindmap-info"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`查看「${node.title}」的关联概念`}
+                  transform={`translate(${node.width - 11}, ${node.height - 11})`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPopoverPath(node.path)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setPopoverPath(node.path)
+                    }
+                  }}
+                >
+                  <circle r={7} class="info-hit" />
+                  <text y={3.5} text-anchor="middle" class="info-glyph">
+                    i
+                  </text>
+                </g>
+              )}
             </g>
           )
         })}
       </svg>
+      {/* M2.2 popover: fixed backdrop closes on any outside click; the card
+          itself lives in scroll-content coordinates (closed on pan/zoom). */}
+      {popoverNode != null && popoverTerms.length > 0 && (
+        <>
+          <div class="mindmap-popover-backdrop" onClick={() => setPopoverPath(null)} aria-hidden="true" />
+          <div class="mindmap-popover" data-testid="mindmap-popover" style={`left:${Math.max(0, Math.min(popoverNode.x + popoverNode.width + 24, layout.width - 324))}px; top:${popoverNode.y}px`}>
+            <div class="mindmap-popover-head">
+              <strong>{popoverNode.title}</strong>
+              <button class="btn small ghost" onClick={() => setPopoverPath(null)} aria-label="关闭浮层">
+                ×
+              </button>
+            </div>
+            {linkedConcepts.length > 0 && (
+              <div class="mindmap-popover-section">
+                <h4>关联概念</h4>
+                {linkedConcepts.map((concept) => (
+                  <p key={concept.term} class="mindmap-popover-concept">
+                    <strong>{concept.term}</strong>：{concept.definition}
+                  </p>
+                ))}
+              </div>
+            )}
+            {linkedQuiz.length > 0 && (
+              <div class="mindmap-popover-section">
+                <h4>相关自测</h4>
+                <QuizCards items={linkedQuiz} />
+              </div>
+            )}
+            {onViewDetailed != null && linkedConcepts.length > 0 && (
+              <button
+                class="btn small primary"
+                onClick={() => {
+                  onViewDetailed(linkedConcepts[0]!.term)
+                  setPopoverPath(null)
+                }}
+              >
+                在详细笔记中查看
+              </button>
+            )}
+          </div>
+        </>
+      )}
       </div>
     </div>
   )

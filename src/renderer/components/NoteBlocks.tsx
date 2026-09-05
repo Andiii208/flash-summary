@@ -44,7 +44,7 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
       return (
         <div class="concept-grid">
           {block.items.map((c) => (
-            <div key={c.term} class="concept-card">
+            <div key={c.term} class="concept-card" data-concept-term={c.term}>
               <span class="concept-term">{c.term}</span>
               <p class="concept-def">{c.definition}</p>
               {c.refs.length > 0 && (
@@ -89,8 +89,9 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
 }
 
 /** Self-quiz flashcards (roadmap 2.1): question first, click to flip the
- *  answer over — zero dependencies, plain Preact state. */
-function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
+ *  answer over — zero dependencies, plain Preact state.
+ *  M2.2: exported for reuse inside the mind map node popover. */
+export function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set())
   const toggle = (index: number): void => {
     setRevealed((prev) => {

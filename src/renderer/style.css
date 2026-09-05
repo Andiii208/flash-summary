@@ -1352,9 +1352,28 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .mindmap-node.search-hit .mindmap-box { stroke: var(--accent); stroke-width: 2; }
 .mindmap-node.search-dim { opacity: 0.3; }
 /* M1.3 (map expansion): pan/zoom canvas affordances. */
-.mindmap-scroll { cursor: grab; user-select: none; }
+.mindmap-scroll { cursor: grab; user-select: none; position: relative; }
 .mindmap-scroll.panning { cursor: grabbing; }
 .mindmap-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* M2.2 (map expansion): node info button + linked-content popover. */
+.mindmap-info { cursor: pointer; }
+.mindmap-info .info-hit { fill: var(--accent-soft-2); stroke: none; transition: fill var(--speed); }
+.mindmap-info .info-glyph { font-size: 9px; font-weight: 700; fill: var(--accent); font-family: var(--font-ui); font-style: italic; }
+.mindmap-info:hover .info-hit, .mindmap-info:focus-visible .info-hit { fill: var(--accent); }
+.mindmap-info:hover .info-glyph, .mindmap-info:focus-visible .info-glyph { fill: var(--surface); }
+.mindmap-popover-backdrop { position: fixed; inset: 0; z-index: 30; }
+.mindmap-popover {
+  position: absolute; z-index: 31; width: 300px; max-width: calc(100% - 24px);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: 12px 14px;
+}
+.mindmap-popover-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.mindmap-popover-head strong { font-size: var(--font-size-sm); }
+.mindmap-popover-section h4 { margin: 8px 0 4px; font-size: var(--font-size-sm); color: var(--text-muted); font-weight: 600; }
+.mindmap-popover-concept { font-size: var(--font-size-sm); margin: 4px 0; line-height: 1.5; }
+.mindmap-popover .quiz-list { margin: 0; }
+.mindmap-popover .btn.primary { margin-top: 10px; }
 
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }

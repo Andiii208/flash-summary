@@ -237,3 +237,93 @@ describe('MindMap M1.3 缩放与平移', () => {
     expect(viewBoxOf(host)[0]).toBeCloseTo(-60, 4)
   })
 })
+
+describe('MindMap M2.2 节点信息浮层', () => {
+  const CONCEPTS = [
+    { term: '递归', definition: '函数调用自身', refs: [] },
+    { term: '栈', definition: '后进先出', refs: [] }
+  ]
+  const QUIZ = [
+    { question: '递归的三要素？', answer: '基准、递推、收敛。', source: 'concept' as const, term: '递归' },
+    { question: '无关题', answer: '略。', source: 'examCue' as const }
+  ]
+  const ANCHORED_TREE: TreeNode = {
+    title: '根',
+    children: [{ title: '第一章', terms: ['递归'], children: [{ title: '1.1', children: [] }] }]
+  }
+
+  function mountAnchored(onViewDetailed?: (term: string) => void): HTMLElement {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    act(() => {
+      render(<MindMap tree={ANCHORED_TREE} concepts={CONCEPTS} quiz={QUIZ} onViewDetailed={onViewDetailed} />, host)
+    })
+    return host
+  }
+
+  it('renders the ℹ️ button only on nodes with resolvable anchors', () => {
+    const host = mountAnchored()
+    expect(host.querySelectorAll('.mindmap-info')).toHaveLength(1)
+    const plain = mountMindMap(TREE)
+    expect(plain.querySelectorAll('.mindmap-info')).toHaveLength(0)
+  })
+
+  it('popover shows the linked concept and only quiz anchored to its terms', () => {
+    const host = mountAnchored()
+    act(() => {
+      host.querySelector('.mindmap-info')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const popover = host.querySelector('[data-testid="mindmap-popover"]')
+    expect(popover).not.toBeNull()
+    expect(popover!.textContent).toContain('递归')
+    expect(popover!.textContent).toContain('函数调用自身')
+    expect(popover!.textContent).toContain('递归的三要素？')
+    expect(popover!.textContent).not.toContain('无关题')
+    // Answer is hidden until the card flips.
+    expect(popover!.textContent).not.toContain('基准、递推、收敛。')
+    act(() => {
+      popover!.querySelector('.quiz-flip')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(host.querySelector('[data-testid="mindmap-popover"]')!.textContent).toContain('基准、递推、收敛。')
+  })
+
+  it('clicking the node body still collapses — ℹ️ does not trigger the fold', () => {
+    const host = mountAnchored()
+    act(() => {
+      host.querySelector('.mindmap-info')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(host.querySelector('[data-testid="mindmap-popover"]')).not.toBeNull()
+    const chapter = Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node[role="button"]')).find((g) =>
+      g.getAttribute('aria-label')?.startsWith('第一章')
+    )
+    expect(chapter?.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('the jump button calls onViewDetailed with the anchored term', () => {
+    let jumped: string | null = null
+    const host = mountAnchored((term) => {
+      jumped = term
+    })
+    act(() => {
+      host.querySelector('.mindmap-info')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const jump = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '在详细笔记中查看')
+    act(() => {
+      jump?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(jumped).toBe('递归')
+    expect(host.querySelector('[data-testid="mindmap-popover"]')).toBeNull()
+  })
+
+  it('backdrop click closes the popover', () => {
+    const host = mountAnchored()
+    act(() => {
+      host.querySelector('.mindmap-info')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(host.querySelector('[data-testid="mindmap-popover"]')).not.toBeNull()
+    act(() => {
+      host.querySelector('.mindmap-popover-backdrop')!.dispatchEvent(new MouseEvent('click', { bubbles: false }))
+    })
+    expect(host.querySelector('[data-testid="mindmap-popover"]')).toBeNull()
+  })
+})

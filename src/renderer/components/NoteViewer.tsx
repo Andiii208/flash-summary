@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
 import type { NoteIndexInfo, NoteAttachmentInfo, AttachmentManifestEntry } from '../../shared/bridge'
@@ -84,6 +84,22 @@ export function NoteViewer({
   onCopy
 }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
+  // M2.2: concept-card anchor for the mind map popover's «view in detail» jump.
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null)
+  useEffect(() => {
+    if (view !== 'detailed' || pendingAnchor == null) return
+    // Wait a frame so the detailed projection mounts before scrolling.
+    requestAnimationFrame(() => {
+      const escaped = pendingAnchor.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const card = document.querySelector(`[data-concept-term="${escaped}"]`)
+      if (card != null && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'center' })
+      setPendingAnchor(null)
+    })
+  }, [view, pendingAnchor])
+  const jumpToConcept = (term: string): void => {
+    setView('detailed')
+    setPendingAnchor(term)
+  }
   // Citation quality signal (roadmap 1.3): share of cited evidence refs that
   // resolve to real attachments; hidden when the note cites none.
   const hitRate = note != null ? evidenceHitRate(note, attachmentManifest) : null
@@ -235,7 +251,7 @@ export function NoteViewer({
             ) : null}
           </>
         ) : view === 'mindmap' ? (
-          <MindMap tree={note.knowledgeTree} />
+          <MindMap tree={note.knowledgeTree} concepts={note.concepts} quiz={note.quiz} onViewDetailed={jumpToConcept} />
         ) : (
           projectNoteBlocks(note, view).map((section) => (
             <ErrorBoundary key={section.heading} area="note-view">

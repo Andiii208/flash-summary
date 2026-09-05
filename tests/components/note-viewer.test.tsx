@@ -274,3 +274,35 @@ describe('NoteViewer', () => {
     expect(host.textContent).toContain('尚无笔记')
   })
 })
+
+describe('NoteViewer M2.2 导图跳转', () => {
+  const ANCHORED: Note = {
+    ...NOTE,
+    knowledgeTree: { title: '复杂度', children: [{ title: '记号', terms: ['大O'], children: [] }] }
+  }
+
+  const switchTo = (host: HTMLElement, label: string): void => {
+    const tab = Array.from(host.querySelectorAll('.note-tabs button')).find((b) => b.textContent === label) ?? null
+    click(tab)
+  }
+
+  it('detailed concept cards carry the data-concept-term anchor', () => {
+    const host = mount(<NoteViewer note={ANCHORED} />)
+    const card = host.querySelector('[data-concept-term="大O"]')
+    expect(card).not.toBeNull()
+    expect(card?.classList.contains('concept-card')).toBe(true)
+  })
+
+  it('mind map ℹ️ popover jumps back to the detailed view via the tab', () => {
+    const host = mount(<NoteViewer note={ANCHORED} />)
+    switchTo(host, '思维导图')
+    expect(host.querySelector('[data-testid="mindmap"]')).not.toBeNull()
+    click(host.querySelector('.mindmap-info'))
+    expect(host.querySelector('[data-testid="mindmap-popover"]')).not.toBeNull()
+    const jump = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '在详细笔记中查看') ?? null
+    click(jump)
+    // Back on the detailed view — the anchored concept card is on screen.
+    expect(host.querySelector('.note-body')?.getAttribute('data-view')).toBe('detailed')
+    expect(host.querySelector('[data-concept-term="大O"]')).not.toBeNull()
+  })
+})
