@@ -2,29 +2,35 @@ import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight } from 'lucide-preact'
 import type { Note, TreeNode, QuizItem } from '../../shared/notes/schema'
-import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
-import { bindTimelineImages, resolveEvidenceGallery, quoteForEntry, formatTime, NEAREST_SECONDS } from '../../shared/notes/evidence'
+import type { TimelineImage, AttachmentManifestEntry } from '../../shared/notes/evidence'
+import { bindTimelineImagesLazy, resolveEvidenceGalleryLazy, quoteForEntry, NEAREST_SECONDS } from '../../shared/notes/evidence'
+import { formatTime } from '../../shared/notes/format'
+import type { NoteAttachmentInfo } from '../../shared/bridge'
 import type { ViewBlock } from '../../shared/notes/views'
 import { MdLite } from './MdLite'
 import { Dialog } from '../ui/Dialog'
 
 export interface NoteBlocksProps {
   blocks: ViewBlock[]
-  attachments: AttachmentLike[]
+  /** F4 (review): lazy attachment lookup — undefined means still loading. */
+  getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined
+  manifest: AttachmentManifestEntry[]
+  /** Bumped per resolved attachment so the tree re-renders. */
+  version: number
 }
 
 /** Dispatch one structured block to its visual component (2026-09-04). */
-export function NoteBlocks({ blocks, attachments }: NoteBlocksProps): JSX.Element {
+export function NoteBlocks({ blocks, getAttachment, manifest, version }: NoteBlocksProps): JSX.Element {
   return (
     <>
       {blocks.map((block, i) => (
-        <BlockRenderer key={i} block={block} attachments={attachments} />
+        <BlockRenderer key={i} block={block} getAttachment={getAttachment} manifest={manifest} version={version} />
       ))}
     </>
   )
 }
 
-function BlockRenderer({ block, attachments }: { block: ViewBlock; attachments: AttachmentLike[] }): JSX.Element {
+function BlockRenderer({ block, getAttachment, manifest, version }: { block: ViewBlock; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number }): JSX.Element {
   switch (block.block) {
     case 'paragraph':
       return <p class="note-para">{block.text}</p>
@@ -33,7 +39,7 @@ function BlockRenderer({ block, attachments }: { block: ViewBlock; attachments: 
     case 'tree':
       return <TreeView node={block.node} />
     case 'timeline':
-      return <TimelineCards entries={block.entries} attachments={attachments} />
+      return <TimelineCards entries={block.entries} getAttachment={getAttachment} manifest={manifest} version={version} />
     case 'concepts':
       return (
         <div class="concept-grid">
@@ -151,7 +157,8 @@ function TreeNodeRows({ node, depth }: { node: TreeNode; depth: number }): JSX.E
 /** Timeline as image-annotated cards (the heart of the detailed view).
  *  Clicking the mm:ss stamp expands every transcript quote of the entry
  *  (the collapsed card shows only the closest one). */
-function TimelineCards({ entries, attachments }: { entries: Note['timeline']; attachments: AttachmentLike[] }): JSX.Element {
+function TimelineCards({ entries, getAttachment, manifest, version: versionForRerender }: { entries: Note['timeline']; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number }): JSX.Element {
+  void versionForRerender
   const [zoom, setZoom] = useState<TimelineImage | null>(null)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
   const toggleRefs = (index: number): void => {
@@ -165,7 +172,7 @@ function TimelineCards({ entries, attachments }: { entries: Note['timeline']; at
   return (
     <div class="timeline-cards" data-testid="timeline-cards">
       {entries.map((entry, i) => {
-        const images = bindTimelineImages(entry, attachments)
+        const images = bindTimelineImagesLazy(entry, getAttachment ?? (() => null), manifest)
         const quote = quoteForEntry(entry)
         const showAllRefs = expanded.has(i)
         const refs = showAllRefs ? entry.refs : quote != null ? [quote] : []
@@ -236,9 +243,10 @@ function FormulaList({ items }: { items: Note['formulasAndSteps'] }): JSX.Elemen
 }
 
 /** The evidence gallery section (cited first, then remaining keyframes). */
-export function EvidenceGallery({ note, attachments }: { note: Note; attachments: AttachmentLike[] }): JSX.Element {
+export function EvidenceGallery({ note, getAttachment, manifest, version: versionForRerender }: { note: Note; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number }): JSX.Element {
+  void versionForRerender
   const [zoom, setZoom] = useState<TimelineImage | null>(null)
-  const gallery = resolveEvidenceGallery(note, attachments)
+  const gallery = resolveEvidenceGalleryLazy(note, getAttachment ?? (() => null), manifest)
   if (gallery.length === 0) return <p class="msg">本课时尚无可用画面素材</p>
   return (
     <div class="evidence-gallery" data-testid="evidence-gallery">

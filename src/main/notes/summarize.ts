@@ -8,7 +8,7 @@ import { readFileSync } from 'fs'
 import type { Db } from '../db/open'
 import { resolveLibraryPath } from '../library/paths'
 import { parseNote, type Note } from './schema'
-import { evidenceHitRate } from '../../shared/notes/evidence'
+import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidence'
 import type { ChatPart, OpenAiCompatibleClient } from '../providers/openai-client'
 
 /** Max images embedded in the multimodal summarize call (token guard, U4). */
@@ -157,7 +157,7 @@ export async function summarizeLesson(
   lessonId: string,
   libraryRoot: string,
   signal?: AbortSignal
-): Promise<{ version: number; images: number; hitRate: { hits: number; total: number } } | { error: string }> {
+): Promise<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs: number } | { error: string }> {
   const binding = db.prepare("SELECT model FROM capability_bindings WHERE capability = 'multimodal'").get() as
     | { model: string }
     | undefined
@@ -165,12 +165,15 @@ export async function summarizeLesson(
   const inputs = loadSummarizeInputs(db, lessonId, libraryRoot)
   if ('error' in inputs) return { error: inputs.error }
   try {
-    const note = await generateNote(client, binding.model, inputs.transcriptText, inputs.images, signal)
+    const generated = await generateNote(client, binding.model, inputs.transcriptText, inputs.images, signal)
+    // F2 (review): only refs the model actually saw may persist.
+    const validRefs = new Set(inputs.images.map((image) => image.ref))
+    const { note, dropped } = dropUnknownEvidence(generated, validRefs)
     const version = saveNoteVersion(db, lessonId, note, binding.model)
     // Citation quality signal (roadmap 1.3): refs are judged against the
     // images actually sent — the model never saw attachments beyond the cap.
     const hitRate = evidenceHitRate(note, inputs.images)
-    return { version, images: inputs.images.length, hitRate }
+    return { version, images: inputs.images.length, hitRate, droppedRefs: dropped }
   } catch (err) {
     return { error: `笔记生成失败: ${(err as Error).message}` }
   }

@@ -75,6 +75,75 @@ export function nearestKeyframe(at: number, attachments: AttachmentLike[]): Atta
 }
 
 /** Gallery for the evidence view: every cited attachment, deduped, in note order. */
+/** F4 (review): minimal per-ref shape carried by the attachment manifest. */
+export interface AttachmentManifestEntry {
+  ref: string
+  at: number | null
+}
+
+/** A lazy lookup the renderer supplies: undefined = still loading, null = resolved missing. */
+export type AttachmentGetter = (ref: string) => AttachmentLike | null | undefined
+
+/**
+ * F4 (review): lazy variants of the two binders above. Evidence-first,
+ * nearest-fallback semantics are preserved, but unresolved images are
+ * skipped instead of blocking — they pop in when their data arrives.
+ */
+function nearestFromManifest(entryAt: number, manifest: ReadonlyArray<AttachmentManifestEntry>): string | null {
+  let best: { ref: string; delta: number } | null = null
+  for (const entry of manifest) {
+    if (entry.at == null) continue
+    const delta = Math.abs(entry.at - entryAt)
+    const limit = best?.delta ?? NEAREST_SECONDS + 1
+    if (delta < limit) best = { ref: entry.ref, delta }
+  }
+  return best?.ref ?? null
+}
+
+export function bindTimelineImagesLazy(
+  entry: { at: number; evidence: EvidenceRef[] },
+  get: AttachmentGetter,
+  manifest: ReadonlyArray<AttachmentManifestEntry>
+): TimelineImage[] {
+  const bound: TimelineImage[] = []
+  const seen = new Set<string>()
+  for (const evidence of entry.evidence) {
+    const hit = get(evidence.ref)
+    if (hit == null || seen.has(hit.ref)) continue
+    seen.add(hit.ref)
+    bound.push({ ref: hit.ref, dataUrl: hit.dataUrl, origin: 'evidence' })
+  }
+  if (bound.length === 0) {
+    const nearestRef = nearestFromManifest(entry.at, manifest)
+    const nearest = nearestRef != null ? get(nearestRef) : null
+    if (nearest != null) bound.push({ ref: nearest.ref, dataUrl: nearest.dataUrl, origin: 'nearest' })
+  }
+  return bound
+}
+
+export function resolveEvidenceGalleryLazy(
+  note: Note,
+  get: AttachmentGetter,
+  manifest: ReadonlyArray<AttachmentManifestEntry>
+): TimelineImage[] {
+  const gallery: TimelineImage[] = []
+  const seen = new Set<string>()
+  const push = (ref: string): void => {
+    if (seen.has(ref)) return
+    const hit = get(ref)
+    if (hit == null) return
+    seen.add(ref)
+    gallery.push({ ref: hit.ref, dataUrl: hit.dataUrl, origin: 'evidence' })
+  }
+  for (const entry of note.timeline) for (const evidence of entry.evidence) push(evidence.ref)
+  for (const evidence of note.evidence) push(evidence.ref)
+  // Uncited keyframes still have study value — append the rest, time-ordered.
+  for (const entry of [...manifest].sort((x, y) => (x.at ?? Infinity) - (y.at ?? Infinity))) {
+    push(entry.ref)
+  }
+  return gallery
+}
+
 export function resolveEvidenceGallery(note: Note, attachments: AttachmentLike[]): TimelineImage[] {
   const byRef = refIndex(attachments)
   const gallery: TimelineImage[] = []
@@ -116,12 +185,34 @@ export function evidenceHitRate(
   return { hits, total: cited.size }
 }
 
-/** Format seconds as mm:ss (shared display helper). */
-export function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.round(seconds % 60)
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+/**
+ * F2 (review 2026-09-05): models fabricate refs in the RIGHT SHAPE (the
+ * regex only checks form). Before persisting, drop evidence refs that do
+ * not resolve against the lesson's real evidence set — the renderer's
+ * nearest-fallback then shows an honest «就近» image instead of a silently
+ * dead citation. Text content is never touched.
+ */
+export function dropUnknownEvidence(note: Note, validRefs: ReadonlySet<string>): { note: Note; dropped: number } {
+  let dropped = 0
+  const timeline = note.timeline.map((entry) => {
+    const evidence = entry.evidence.filter((e) => {
+      if (validRefs.has(e.ref)) return true
+      dropped++
+      return false
+    })
+    return evidence === entry.evidence ? entry : { ...entry, evidence }
+  })
+  const topEvidence = note.evidence.filter((e) => {
+    if (validRefs.has(e.ref)) return true
+    dropped++
+    return false
+  })
+  return { note: { ...note, timeline, evidence: topEvidence }, dropped }
 }
+
+// F7 (review): single implementation lives in ./format - re-export keeps
+// existing import paths stable.
+export { formatTime } from './format'
 
 /** Best-effort transcript quote for an entry: the ref whose at is closest. */
 export function quoteForEntry(entry: { at: number; refs: TranscriptRef[] }): TranscriptRef | null {

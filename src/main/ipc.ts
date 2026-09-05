@@ -22,7 +22,7 @@ import { resolveResumeStage, type ResumeDecision } from './tasks/resume'
 import { PIPELINE_STAGES, stagePercent, type Stage } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
-import { listAttachments } from './notes/attachments'
+import { listAttachmentManifest, readAttachmentData } from './notes/attachments'
 import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
 import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
@@ -943,7 +943,20 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // 2026-09-04: attachments (keyframes + PPT pages) as data URLs for the note views.
   handle(ipc, 'notes:attachments', (_e, lessonId: unknown) => {
     try {
-      return ok(listAttachments(ctx.db, str(lessonId, 'lessonId'), ctx.libraryRoot))
+      // F4 (review): the manifest is identity-only — data URLs stream in
+      // per ref via notes:attachmentData instead of one giant IPC message.
+      return ok(listAttachmentManifest(ctx.db, str(lessonId, 'lessonId')))
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // F4 (review): one attachment's bytes per call — renderer caches per ref.
+  handle(ipc, 'notes:attachmentData', (_e, lessonId: unknown, ref: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const attachmentRef = str(ref, 'ref')
+      return ok(readAttachmentData(ctx.db, id, attachmentRef, ctx.libraryRoot))
     } catch (e) {
       return err(e)
     }

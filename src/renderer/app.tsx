@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight } from 'lucide-preact'
 import { render } from 'preact'
-import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, AttachmentManifestEntry, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
@@ -340,7 +340,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           {tab === 'notes' && (
             <NoteViewer
               note={state.note}
-              attachments={state.attachments}
+              attachmentManifest={state.attachmentManifest}
+              getAttachment={state.getAttachment}
+              attachmentVersion={state.attachmentVersion}
               lesson={state.lessonContextOrIndex}
               lessonOptions={state.currentCourseLessons}
               currentLessonId={state.currentLesson}
@@ -534,7 +536,9 @@ interface AppState {
   exportNoteAnki: (lessonId: string) => void
   copyNote: () => void
   /** 2026-09-04: regenerate + attachments + PDF handout for the note views. */
-  attachments: NoteAttachmentInfo[]
+  attachmentManifest: AttachmentManifestEntry[]
+  getAttachment: (ref: string) => NoteAttachmentInfo | null | undefined
+  attachmentVersion: number
   noteRegenBusy: boolean
   regenerateNote: (lessonId: string) => void
   pdfBusy: boolean
@@ -616,8 +620,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [qaRecent, setQaRecent] = useState<QaRecentInfo[]>([])
   /** 批C: courses whose catalog harvest is in flight (play-page navigation). */
   const [harvestInflight, setHarvestInflight] = useState<ReadonlySet<string>>(new Set())
-  /** 2026-09-04: lesson attachments (keyframes/PPT) for the note views. */
-  const [attachments, setAttachments] = useState<NoteAttachmentInfo[]>([])
+  /** F4 (review): attachment MANIFEST (identity only) + lazily resolved data.
+  /** 2026-09-04: lesson attachment identities for the note views. */
+  const [attachmentManifest, setAttachmentManifest] = useState<AttachmentManifestEntry[]>([])
+  /** Bumped per resolved image so lazy views re-render. */
+  const [attachmentVersion, setAttachmentVersion] = useState(0)
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
   /** C3: library migration in flight (busy button + progress line). */
@@ -731,11 +738,60 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     if (res.ok && res.value != null && lessonRef.current === lessonId) setNote(res.value)
   }, [bridge])
 
-  /** 2026-09-04: attachments ride along with the note (guarded on lessonRef too). */
-  const loadAttachments = useCallback(async (lessonId: string): Promise<void> => {
-    const res = await bridge.notes.attachments(lessonId)
-    if (res.ok && res.value != null && lessonRef.current === lessonId) setAttachments(res.value)
-  }, [bridge])
+  // F4 (review): per-ref attachment cache. getAttachment returns undefined
+  // while a fetch is in flight, and the view re-renders on arrival via
+  // attachmentVersion — one small IPC per image instead of one giant one.
+  const attachmentCache = useRef(new Map<string, NoteAttachmentInfo | null>())
+  const attachmentInflight = useRef(new Set<string>())
+  const loadAttachments = useCallback(
+    async (lessonId: string): Promise<void> => {
+      const res = await bridge.notes.attachments(lessonId)
+      if (res.ok && res.value != null && lessonRef.current === lessonId) setAttachmentManifest(res.value)
+    },
+    [bridge]
+  )
+  const resolveAttachment = useCallback(
+    (lessonId: string, ref: string): void => {
+      const cacheKey = `${lessonId}:${ref}`
+      if (attachmentCache.current.has(cacheKey) || attachmentInflight.current.has(cacheKey)) return
+      attachmentInflight.current.add(cacheKey)
+      void (async () => {
+        try {
+          const res = await bridge.notes.attachmentData(lessonId, ref)
+          const value = res.ok ? (res.value ?? null) : null
+          attachmentCache.current.set(cacheKey, value)
+          if (lessonRef.current === lessonId) setAttachmentVersion((v) => v + 1)
+        } finally {
+          attachmentInflight.current.delete(cacheKey)
+        }
+      })()
+    },
+    [bridge]
+  )
+  const getAttachment = useCallback(
+    (ref: string): NoteAttachmentInfo | null | undefined => {
+      const lessonId = lessonRef.current
+      const cacheKey = `${lessonId}:${ref}`
+      const cached = attachmentCache.current.get(cacheKey)
+      if (cached !== undefined || attachmentCache.current.has(cacheKey)) return cached ?? null
+      if (lessonId !== '') resolveAttachment(lessonId, ref)
+      return undefined
+    },
+    [resolveAttachment]
+  )
+  /** PDF print needs EVERY image before rendering (waitForImages semantics). */
+  const loadAllAttachments = useCallback(
+    async (lessonId: string): Promise<NoteAttachmentInfo[]> => {
+      const results = await Promise.all(
+        attachmentManifest.map(async (entry) => {
+          const res = await bridge.notes.attachmentData(lessonId, entry.ref)
+          return res.ok ? (res.value ?? null) : null
+        })
+      )
+      return results.filter((a): a is NoteAttachmentInfo => a != null)
+    },
+    [bridge, attachmentManifest]
+  )
 
   const loadHistory = useCallback(async (lessonId: string): Promise<void> => {
     const res = await bridge.tasks.list(lessonId)
@@ -772,7 +828,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setCurrentLesson(lessonId)
       lessonRef.current = lessonId
       setQaEntries([])
-      setAttachments([])
+      setAttachmentManifest([])
+      attachmentCache.current.clear()
       void loadNote(lessonId)
       void loadAttachments(lessonId)
       void loadHistory(lessonId)
@@ -805,7 +862,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     setCurrentLesson('')
     lessonRef.current = ''
     setQaEntries([])
-    setAttachments([])
+    setAttachmentManifest([])
+    attachmentCache.current.clear()
   }, [])
 
   // 批A: the brand click — back to the start view (no lesson, tasks tab).
@@ -822,7 +880,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setCurrentLesson(lessonId)
       lessonRef.current = lessonId
       setQaEntries([])
-      setAttachments([])
+      setAttachmentManifest([])
+      attachmentCache.current.clear()
       void loadNote(lessonId)
       void loadAttachments(lessonId)
       void loadHistory(lessonId)
@@ -1058,7 +1117,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setTree([])
       setCurrentLesson('')
       setNote(null)
-      setAttachments([])
+      setAttachmentManifest([])
+      attachmentCache.current.clear()
       setHistory([])
       setQaEntries([])
       toast('已退出登录', 'info')
@@ -1515,7 +1575,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             return
           }
           const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
-          toast(`已生成第 ${result.version} 版笔记${hitSuffix}`, 'success')
+          // F2 (review): fabricated refs are dropped before persisting — say so.
+          const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
+          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${dropSuffix}`, 'success')
           await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
@@ -1544,10 +1606,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           const course = tree.find((c) => c.lessons.some((l) => l.id === lessonId))
           const lessonInfo = course?.lessons.find((l) => l.id === lessonId)
           // Render the handout, then let every image decode before printing.
+          // F4: the print path resolves the FULL manifest first.
+          const printAttachments = await loadAllAttachments(lessonId)
           render(
             <PrintHandout
               note={note}
-              attachments={attachments}
+              attachments={printAttachments}
               courseName={course?.name ?? ''}
               lessonTitle={lessonInfo?.title ?? lessonId}
               teacher={course?.teacher}
@@ -1581,7 +1645,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         }
       })()
     },
-    [bridge, toast, note, attachments, tree]
+    [bridge, toast, note, attachmentManifest, loadAllAttachments, tree]
   )
 
   const copyNote = useCallback((): void => {
@@ -1766,7 +1830,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     exportNote,
     exportNoteAnki,
     copyNote,
-    attachments,
+    attachmentManifest,
+    getAttachment,
+    attachmentVersion,
     noteRegenBusy,
     regenerateNote,
     pdfBusy,

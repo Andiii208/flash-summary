@@ -54,7 +54,7 @@ describe('NoteViewer', () => {
   })
 
   it('binds the nearest keyframe onto a timeline card without evidence refs', () => {
-    const host = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
+    const host = mount(<NoteViewer note={NOTE} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
     const card = host.querySelectorAll('.timeline-card')[1]!
     expect(card.querySelector('.timeline-thumb img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
     expect(card.querySelector('.thumb-origin')?.textContent).toBe('就近')
@@ -156,7 +156,7 @@ describe('NoteViewer', () => {
   })
 
   it('renders the evidence gallery section in the detailed view', () => {
-    const host = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
+    const host = mount(<NoteViewer note={NOTE} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
     expect(host.querySelector('[data-testid="evidence-gallery"]')).not.toBeNull()
     expect(host.querySelector('.evidence-fig img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
   })
@@ -200,9 +200,9 @@ describe('NoteViewer', () => {
         { at: 20, title: 'b', detail: 'd', refs: [], evidence: [{ kind: 'keyframe', ref: 'kf:missing.1' }] }
       ]
     }
-    const host = mount(<NoteViewer note={citedNote} attachments={[ATTACHMENT]} />)
+    const host = mount(<NoteViewer note={citedNote} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
     expect(host.querySelector('.note-actions .badge')?.textContent).toBe('引用命中 1/2')
-    const uncited = mount(<NoteViewer note={NOTE} attachments={[ATTACHMENT]} />)
+    const uncited = mount(<NoteViewer note={NOTE} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
     expect(uncited.querySelector('.note-actions .badge')).toBeNull()
   })
 

@@ -1,11 +1,6 @@
 import type { Note } from './schema'
+import { formatTime, labelOf } from './format'
 import type { EvidenceRef, TreeNode } from './schema'
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.round(seconds % 60)
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
 
 function treeLines(node: TreeNode, depth: number, out: string[]): void {
   out.push(`${'  '.repeat(depth)}- ${node.title}`)
@@ -28,7 +23,6 @@ function evidenceLabel(evidence: EvidenceRef): string {
 
 function formulaSection(note: Note): string[] {
   const lines: string[] = []
-  const labelOf = (kind: 'formula' | 'code' | 'operation'): string => (kind === 'formula' ? '公式' : kind === 'code' ? '代码' : '操作')
   for (const item of note.formulasAndSteps) {
     const suffix = item.explanation ? ` — ${item.explanation}` : ''
     if (item.kind === 'code') {

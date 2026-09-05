@@ -90,7 +90,7 @@ function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
 }
 
 describe('notes:attachments (2026-09-04)', () => {
-  it('returns keyframes and ppt pages as data URLs with refs and timestamps', async () => {
+  it('returns the identity manifest (no bytes) with refs and timestamps (review F4)', async () => {
     const ctx = makeCtx()
     seedKeyframe()
     const pptFile = join(dir, 'page-000.png')
@@ -105,25 +105,48 @@ describe('notes:attachments (2026-09-04)', () => {
     registerIpc(ctx, ipc as never)
     const res = (await invoke('notes:attachments', 'l1')) as {
       ok: boolean
-      value?: Array<{ ref: string; kind: string; at: number | null; dataUrl: string }>
+      value?: Array<{ ref: string; kind: string; at: number | null; dataUrl?: string }>
     }
     expect(res.ok).toBe(true)
     expect(res.value).toHaveLength(2)
     expect(res.value?.[0]).toMatchObject({ ref: 'ppt:0', kind: 'ppt', at: null })
     expect(res.value?.[1]).toMatchObject({ ref: 'kf:1690625-kf-1'.replace('1690625-', ''), kind: 'keyframe', at: 120 })
-    expect(res.value?.every((a) => a.dataUrl.startsWith('data:image/jpeg;base64,'))).toBe(true)
+    // Manifest carries NO payload — data streams per ref.
+    expect(res.value?.some((a) => 'dataUrl' in a)).toBe(false)
   })
 
-  it('missing files are skipped, empty lesson returns empty list', async () => {
+  it('attachmentData streams one image per ref; missing files resolve null (review F4)', async () => {
     const ctx = makeCtx()
-    db.prepare('INSERT INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
-      'kf-gone',
+    seedKeyframe()
+    const pptFile = join(dir, 'page-000.png')
+    writeFileSync(pptFile, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 9]))
+    db.prepare('INSERT INTO ppt_pages (id, lesson_id, page_index, file_path, created_at) VALUES (?, ?, ?, ?, ?)').run(
+      'ppt-0',
       'l1',
-      60,
-      join(dir, 'missing.jpg'),
-      'hash',
+      0,
+      pptFile,
       '2026-09-04T00:00:00Z'
     )
+    registerIpc(ctx, ipc as never)
+    const ppt = (await invoke('notes:attachmentData', 'l1', 'ppt:0')) as { ok: boolean; value?: { dataUrl: string } | null }
+    expect(ppt.ok).toBe(true)
+    // The helper labels every image jpeg (the browser sniffs the real bytes).
+    expect(ppt.value?.dataUrl.startsWith('data:image/jpeg;base64,')).toBe(true)
+
+    const kf = (await invoke('notes:attachmentData', 'l1', 'kf:kf-1')) as { ok: boolean; value?: { ref: string } | null }
+    expect(kf.value?.ref).toBe('kf:kf-1')
+
+    const gone = (await invoke('notes:attachmentData', 'l1', 'kf:kf-gone')) as { ok: boolean; value?: unknown }
+    expect(gone.ok).toBe(true)
+    expect(gone.value).toBeNull()
+
+    const bogus = (await invoke('notes:attachmentData', 'l1', 'not-a-ref')) as { ok: boolean; value?: unknown }
+    expect(bogus.ok).toBe(true)
+    expect(bogus.value).toBeNull()
+  })
+
+  it('empty lesson returns empty manifest', async () => {
+    const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     const res = (await invoke('notes:attachments', 'l1')) as { ok: boolean; value?: unknown[] }
     expect(res.ok).toBe(true)
@@ -204,7 +227,7 @@ describe('notes:regenerate (2026-09-04)', () => {
     }
     expect(res.ok).toBe(true)
     // Roadmap 1.3: the cited evidence ref resolves against the sent images.
-    expect(res.value).toEqual({ version: 1, images: 1, hitRate: { hits: 1, total: 1 } })
+    expect(res.value).toEqual({ version: 1, images: 1, hitRate: { hits: 1, total: 1 }, droppedRefs: 0 })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
     expect(row).toEqual({ version: 1, model: 'mimo-v2.5' })
   })

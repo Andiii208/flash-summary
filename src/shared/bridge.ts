@@ -151,6 +151,10 @@ export interface NoteAttachmentInfo {
   dataUrl: string
 }
 
+/** F4: identity-only attachment manifest entry. */
+import type { AttachmentManifestEntry } from './notes/evidence'
+export type { AttachmentManifestEntry }
+
 /** 批B: one cross-lesson note library entry (notes:list, newest first). */
 export interface NoteIndexInfo {
   lessonId: string
@@ -179,9 +183,11 @@ export interface NotesBridge {
   /** 2026-09-04 roadmap 2.2: Anki TSV decks (concepts + quiz), one file per deck. */
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
   /** 2026-09-04: keyframe/PPT attachments for note views. */
-  attachments(lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>>
+    /** F4 (review): identity manifest — data arrives per ref via attachmentData. */
+  attachments(lessonId: string): Promise<ApiResult<AttachmentManifestEntry[]>>
+  attachmentData(lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>>
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */
-  regenerate(lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number } }>>
+  regenerate(lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>>
   /** 2026-09-04: PDF handout step 1 — system save dialog for the target file. */
   exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>>
   /** 2026-09-04: PDF handout step 2 — print the main window (handout already

@@ -7,7 +7,7 @@ import type {
   TaskRowInfo,
   TaskProgressInfo,
   AppSettingsInfo,
-  NoteAttachmentInfo,
+  NoteAttachmentInfo, AttachmentManifestEntry,
   NoteIndexInfo,
   QaRecentInfo
 } from '../shared/bridge'
@@ -81,9 +81,11 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('notes:exportMarkdown', lessonId),
     exportAnki: (lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>> =>
       ipcRenderer.invoke('notes:exportAnki', lessonId),
-    attachments: (lessonId: string): Promise<ApiResult<NoteAttachmentInfo[]>> =>
+    attachments: (lessonId: string): Promise<ApiResult<AttachmentManifestEntry[]>> =>
       ipcRenderer.invoke('notes:attachments', lessonId),
-    regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number } }>> =>
+    attachmentData: (lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>> =>
+      ipcRenderer.invoke('notes:attachmentData', lessonId, ref),
+    regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>> =>
       ipcRenderer.invoke('notes:regenerate', lessonId),
     exportPdfDialog: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>> =>
       ipcRenderer.invoke('notes:exportPdfDialog', lessonId),

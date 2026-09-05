@@ -153,6 +153,10 @@ function normalizeQuiz(raw: unknown): unknown {
     if (typeof q.question !== 'string' || q.question.trim() === '') continue
     if (typeof q.answer !== 'string' || q.answer.trim() === '') continue
     if (q.source !== 'concept' && q.source !== 'examCue') continue
+    // F1 (review): the contract above says «every item must cite its anchor
+    // or it is dropped» — enforce it here instead of letting an unanchored
+    // concept question leak into UI/export as 「概念 · 」.
+    if (q.source === 'concept' && !(typeof q.term === 'string' && q.term.trim() !== '')) continue
     const item: Record<string, unknown> = { question: q.question, answer: q.answer, source: q.source }
     if (typeof q.term === 'string' && q.term.trim() !== '') item.term = q.term
     items.push(item)
@@ -225,7 +229,11 @@ function withNormalizedTimestamps(raw: unknown): unknown {
     timeline: fixList(obj.timeline),
     transcriptRefs: fixList(obj.transcriptRefs),
     evidence: normalizeEvidence(obj.evidence),
-    formulasAndSteps: normalizeFormulaKinds(obj.formulasAndSteps),
+    // F3 (review): concepts/formulas refs carry `at` too — the same mm:ss
+    // repair must apply, or one field breaks the whole note while another
+    // silently heals.
+    concepts: fixList(obj.concepts),
+    formulasAndSteps: fixList(normalizeFormulaKinds(obj.formulasAndSteps)),
     examCues: normalizeStringList(obj.examCues),
     questionsAndGaps: normalizeStringList(obj.questionsAndGaps),
     quiz: normalizeQuiz(obj.quiz)

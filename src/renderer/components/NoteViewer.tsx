@@ -1,11 +1,10 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
-import type { NoteIndexInfo } from '../../shared/bridge'
-import { evidenceHitRate, type AttachmentLike } from '../../shared/notes/evidence'
+import type { NoteIndexInfo, NoteAttachmentInfo, AttachmentManifestEntry } from '../../shared/bridge'
+import { evidenceHitRate } from '../../shared/notes/evidence'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
-import type { NoteAttachmentInfo } from '../../shared/bridge'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
 import { NoteLibrary } from './NoteLibrary'
 import { MindMap } from './MindMap'
@@ -22,8 +21,12 @@ export interface LessonContext {
 
 export interface NoteViewerProps {
   note: Note | null
-  /** 2026-09-04: lesson keyframes/PPT images (data URLs). */
-  attachments?: NoteAttachmentInfo[]
+  /** F4 (review): identity manifest + lazy per-ref lookup (undefined = loading).
+  /** 2026-09-04: lesson keyframes/PPT images, resolved per ref on demand. */
+  attachmentManifest?: AttachmentManifestEntry[]
+  getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined
+  /** Bumped whenever a new attachment resolves so the view re-renders. */
+  attachmentVersion?: number
   /** Lesson identity for the exam-paper masthead (V4). */
   lesson?: LessonContext | null
   /** 批A: sibling lessons for the header chip's quick-switch dropdown. */
@@ -59,7 +62,9 @@ export interface NoteViewerProps {
 /** Five-view note reader: one note JSON, five projections (2026-09-04). */
 export function NoteViewer({
   note,
-  attachments = [],
+  attachmentManifest = [],
+  getAttachment,
+  attachmentVersion = 0,
   lesson = null,
   lessonOptions,
   currentLessonId,
@@ -80,7 +85,7 @@ export function NoteViewer({
   const [view, setView] = useState<ViewId>('detailed')
   // Citation quality signal (roadmap 1.3): share of cited evidence refs that
   // resolve to real attachments; hidden when the note cites none.
-  const hitRate = note != null ? evidenceHitRate(note, attachments) : null
+  const hitRate = note != null ? evidenceHitRate(note, attachmentManifest) : null
   return (
     <div class="note-viewer">
       <PageHeader
@@ -220,14 +225,14 @@ export function NoteViewer({
           projectNoteBlocks(note, view).map((section) => (
             <section key={section.heading} class="note-section">
               <h3>{section.heading}</h3>
-              <NoteBlocks blocks={section.blocks} attachments={attachments as AttachmentLike[]} />
+              <NoteBlocks blocks={section.blocks} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
             </section>
           ))
         )}
         {note != null && view === 'detailed' && (
           <section class="note-section">
             <h3>课堂画面</h3>
-            <EvidenceGallery note={note} attachments={attachments as AttachmentLike[]} />
+            <EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
           </section>
         )}
       </div>

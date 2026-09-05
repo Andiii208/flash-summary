@@ -8,6 +8,7 @@
  *     renderer's five views (four reading tabs + mindmap). Pure functions.
  */
 import type { Note, TimelineEntry, Concept, FormulaOrStep, TreeNode, QuizItem } from './schema'
+import { formatTime, labelOf } from './format'
 
 export type ViewId = 'detailed' | 'standard' | 'key_points' | 'methodology' | 'mindmap'
 
@@ -124,22 +125,6 @@ function flattenTree(node: { title: string; children: unknown[] }, depth = 0): s
   return lines
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.round(seconds % 60)
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-function labelOf(kind: 'formula' | 'code' | 'operation'): string {
-  switch (kind) {
-    case 'formula':
-      return '公式'
-    case 'code':
-      return '代码'
-    case 'operation':
-      return '操作'
-  }
-}
 
 // ---------------- structured block projections ----------------
 
