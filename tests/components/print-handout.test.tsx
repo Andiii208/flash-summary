@@ -130,3 +130,28 @@ describe('PrintHandout (PDF 讲义, 2026-09-04)', () => {
     expect(text).toContain('课堂画面')
   })
 })
+
+describe('PrintHandout concept-term sub-lines (M2.1, 2026-09-05)', () => {
+  it('prints anchored terms as a muted sub-line inside mindmap nodes', () => {
+    const host = document.createElement('div')
+    render(
+      <PrintHandout
+        note={{ ...NOTE, knowledgeTree: { title: '复杂度', terms: ['大O'], children: [{ title: 'O(n)', children: [] }] } }}
+        attachments={ATTACHMENTS}
+        courseName="课程"
+        lessonTitle="第1节课"
+        generatedAt="2026/9/5 12:00:00"
+      />,
+      host
+    )
+    const texts = Array.from(host.querySelectorAll('.ph-mindmap-page svg text')).map((t) => t.textContent ?? '')
+    expect(texts.some((t) => t.includes('大O'))).toBe(true)
+  })
+
+  it('nodes without terms print exactly as before (no empty sub-line)', () => {
+    const host = mountHandout()
+    const texts = Array.from(host.querySelectorAll('.ph-mindmap-page svg text'))
+    expect(texts.every((t) => (t.textContent ?? '').trim() !== '')).toBe(true)
+    expect(texts.some((t) => (t.textContent ?? '').includes('大O'))).toBe(false)
+  })
+})

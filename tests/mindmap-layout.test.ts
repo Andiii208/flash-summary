@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { collapsedSetForMaxDepth, computeMindMapLayout, LEVEL_WIDTH, NODE_HEIGHT, PADDING } from '../src/shared/notes/mindmap-layout'
+import {
+  collapsedSetForMaxDepth,
+  computeMindMapLayout,
+  LEVEL_WIDTH,
+  NODE_HEIGHT,
+  PADDING,
+  SUBLINE_HEIGHT,
+  sublineFirstBaseline,
+  sublineLinesOf,
+  titleBaseline
+} from '../src/shared/notes/mindmap-layout'
 import type { TreeNode } from '../src/shared/notes/schema'
 
 const TREE: TreeNode = {
@@ -141,5 +151,31 @@ describe('collapsedSetForMaxDepth (M1.2 层级控制)', () => {
   it('a shallow tree with maxDepth beyond its height yields the empty set', () => {
     expect(collapsedSetForMaxDepth(DEEP, 9)).toEqual(new Set())
     expect(collapsedSetForMaxDepth({ title: '独', children: [] }, 1)).toEqual(new Set())
+  })
+})
+
+describe('computeMindMapLayout terms sub-line (M2.1)', () => {
+  const ANCHORED: TreeNode = {
+    title: '定义',
+    terms: ['极限', '收敛'],
+    children: []
+  }
+
+  it('default layout leaves subline empty and geometry unchanged', () => {
+    const plain = computeMindMapLayout(ANCHORED, new Set())
+    expect(plain.nodes[0]!.subline).toBe('')
+    const sameTitle = computeMindMapLayout({ title: '定义', children: [] }, new Set())
+    expect(plain.nodes[0]!.height).toBe(sameTitle.nodes[0]!.height)
+  })
+
+  it('showTerms renders a sub-line that grows the node and keeps titles centered', () => {
+    const layout = computeMindMapLayout(ANCHORED, new Set(), { showTerms: true })
+    const node = layout.nodes[0]!
+    expect(node.subline).toBe('极限、收敛')
+    expect(node.height).toBeGreaterThan(computeMindMapLayout({ title: '定义', children: [] }, new Set()).nodes[0]!.height)
+    // Title block centers within the area above the sub-line.
+    const sublineCount = sublineLinesOf(node).length
+    expect(titleBaseline(node) + sublineCount * SUBLINE_HEIGHT).toBeLessThan(node.height)
+    expect(sublineFirstBaseline(node)).toBeLessThan(node.height)
   })
 })

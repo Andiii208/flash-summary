@@ -15,6 +15,8 @@ export const NODE_GAP = 14
 export const LEVEL_WIDTH = 230
 export const PADDING = 24
 export const NODE_MAX_WIDTH = LEVEL_WIDTH - 30
+/** M2.1: per-line advance of the concept-terms sub-line inside a node. */
+export const SUBLINE_HEIGHT = 14
 
 export interface LayoutNode {
   id: number
@@ -30,8 +32,15 @@ export interface LayoutNode {
   height: number
   /** 批E: the title wrapped into lines the renderer prints verbatim (no ellipsis). */
   lines: string[]
+  /** M2.1: anchored concept terms joined for a small sub-line ('' = none). */
+  subline: string
   hasChildren: boolean
   collapsed: boolean
+}
+
+/** M2.1: optional layout behaviour — sub-line only when explicitly enabled. */
+export interface MindMapLayoutOptions {
+  showTerms?: boolean
 }
 
 export interface LayoutEdge {
@@ -92,13 +101,32 @@ export function wrapTitleLines(title: string, boxWidth: number): string[] {
 }
 
 /** Node box height for the wrapped lines (single line keeps NODE_HEIGHT). */
-function nodeHeight(lines: string[]): number {
-  return Math.max(NODE_HEIGHT, lines.length * LINE_HEIGHT + TEXT_PAD_Y)
+function nodeHeight(lines: string[], sublineLines: number): number {
+  const base = Math.max(NODE_HEIGHT, lines.length * LINE_HEIGHT + TEXT_PAD_Y)
+  return base + sublineLines * SUBLINE_HEIGHT
 }
 
 /** Baseline of the first text line inside a box of the given height. */
 export function firstLineBaseline(nodeHeightPx: number, lineCount: number): number {
   return (nodeHeightPx - lineCount * LINE_HEIGHT) / 2 + 13
+}
+
+/** Wrapped lines of a node's sub-line (empty when the node has no terms). */
+export function sublineLinesOf(node: Pick<LayoutNode, 'subline' | 'width'>): string[] {
+  return node.subline === '' ? [] : wrapTitleLines(node.subline, node.width)
+}
+
+/** Baseline of the title text inside a laid-out node (subline-aware). */
+export function titleBaseline(node: Pick<LayoutNode, 'height' | 'lines' | 'subline' | 'width'>): number {
+  const sublineHeight = sublineLinesOf(node).length * SUBLINE_HEIGHT
+  return firstLineBaseline(node.height - sublineHeight, node.lines.length)
+}
+
+/** Baseline of the FIRST sub-line (terms block sits at the node's bottom). */
+export function sublineFirstBaseline(node: Pick<LayoutNode, 'height' | 'subline' | 'width'>): number {
+  const lines = sublineLinesOf(node)
+  if (lines.length === 0) return 0
+  return node.height - (lines.length - 1) * SUBLINE_HEIGHT - 6
 }
 
 interface TreeSlice {
@@ -107,7 +135,7 @@ interface TreeSlice {
 }
 
 /** Build the layout for the tree with the given collapsed path set. */
-export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<string>): MindMapLayout {
+export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<string>, options: MindMapLayoutOptions = {}): MindMapLayout {
   const nodes: LayoutNode[] = []
   const edges: LayoutEdge[] = []
   let nextId = 0
@@ -117,6 +145,9 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
     const isCollapsed = collapsed.has(path)
     const width = nodeWidth(node.title)
     const lines = wrapTitleLines(node.title, width)
+    // M2.1: terms render as a small sub-line only when opted in (PDF); the
+    // screen map shows them in the popover instead, keeping geometry stable.
+    const subline = options.showTerms === true && node.terms != null && node.terms.length > 0 ? node.terms.join('、') : ''
     const layout: LayoutNode = {
       id,
       path,
@@ -125,8 +156,9 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
       x: 0,
       y: 0,
       width,
-      height: nodeHeight(lines),
+      height: nodeHeight(lines, sublineLinesOf({ subline, width }).length),
       lines,
+      subline,
       hasChildren: node.children.length > 0,
       collapsed: isCollapsed
     }

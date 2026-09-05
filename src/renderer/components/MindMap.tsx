@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { TreeNode } from '../../shared/notes/schema'
-import { collapsedSetForMaxDepth, computeMindMapLayout, firstLineBaseline } from '../../shared/notes/mindmap-layout'
+import { collapsedSetForMaxDepth, computeMindMapLayout, titleBaseline } from '../../shared/notes/mindmap-layout'
 
 /** M1.3 viewport transform: viewBox window over the unchanged layout geometry. */
 interface View {
@@ -284,7 +284,7 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
             >
               <rect width={node.width} height={node.height} rx={8} class="mindmap-box" />
               {/* 批E: wrapped tspans — long titles are fully shown, no ellipsis. */}
-              <text x={12} y={firstLineBaseline(node.height, node.lines.length)} class="mindmap-label">
+              <text x={12} y={titleBaseline(node)} class="mindmap-label">
                 {node.lines.map((line, i) => (
                   <tspan key={i} x={12} dy={i === 0 ? 0 : 18}>
                     {line}

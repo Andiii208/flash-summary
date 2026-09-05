@@ -59,3 +59,31 @@ describe('noteToMarkdown export', () => {
     expect(bare).not.toContain('## 自测题')
   })
 })
+
+describe('outline concept annotations (M2.1, 2026-09-05)', () => {
+  it('appends anchored concept terms to tree outline lines', () => {
+    const note = parseNote(
+      JSON.stringify({
+        overview: '概览',
+        knowledgeTree: {
+          title: 'root',
+          terms: ['大O'],
+          children: [{ title: 'child', children: [], terms: ['递归', '大O'] }]
+        },
+        concepts: [
+          { term: '大O', definition: '渐进上界', refs: [] },
+          { term: '递归', definition: '自调用', refs: [] }
+        ],
+        methodology: '方法'
+      })
+    )
+    const md = noteToMarkdown(note, '标题')
+    expect(md).toContain('- root（概念：大O）')
+    expect(md).toContain('  - child（概念：递归、大O）')
+  })
+
+  it('outline lines stay plain when nodes carry no terms', () => {
+    const note = parseNote(json)
+    expect(noteToMarkdown(note, '第五讲 极限')).toContain('  - 定义\n')
+  })
+})

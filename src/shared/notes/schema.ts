@@ -67,13 +67,21 @@ export type QuizItem = z.infer<typeof QuizItemSchema>
 export const TreeNodeSchema: z.ZodType<TreeNode> = z.lazy(() =>
   z.object({
     title: z.string(),
-    children: z.array(TreeNodeSchema).default([])
+    children: z.array(TreeNodeSchema).default([]),
+    /**
+     * M2.1 (map expansion): concepts anchored to this node's branch, each
+     * matching `concepts[].term` verbatim (same anchoring discipline as
+     * quiz). Unresolvable terms are dropped in normalization; the field is
+     * optional so pre-M2.1 notes load unchanged.
+     */
+    terms: z.array(z.string()).optional()
   })
 )
 
 export interface TreeNode {
   title: string
   children: TreeNode[]
+  terms?: string[]
 }
 
 export const NoteSchema = z.object({
@@ -202,6 +210,28 @@ function normalizeStringList(raw: unknown): unknown {
     .filter((s): s is string => typeof s === 'string')
 }
 
+/**
+ * M2.1: knowledgeTree nodes may anchor concepts via `terms`. The tree sits
+ * BEFORE concepts in the JSON, so the model can emit terms it never defined —
+ * normalize against the actual concepts term set and drop every unresolvable
+ * entry (evidence-ref discipline applied to tree anchors). A node left with
+ * no valid terms loses the field entirely.
+ */
+function normalizeTreeTerms(raw: unknown, conceptTerms: ReadonlySet<string>): unknown {
+  if (raw == null || typeof raw !== 'object') return raw
+  const node = raw as Record<string, unknown>
+  const children = Array.isArray(node.children) ? node.children.map((child) => normalizeTreeTerms(child, conceptTerms)) : node.children
+  const out: Record<string, unknown> = { ...node, children }
+  if (Array.isArray(node.terms)) {
+    const valid = node.terms.filter((term): term is string => typeof term === 'string' && conceptTerms.has(term))
+    if (valid.length > 0) out.terms = Array.from(new Set(valid))
+    else delete out.terms
+  } else {
+    delete out.terms
+  }
+  return out
+}
+
 function withNormalizedTimestamps(raw: unknown): unknown {
   if (raw == null || typeof raw !== 'object') return raw
   const obj = raw as Record<string, unknown>
@@ -226,6 +256,16 @@ function withNormalizedTimestamps(raw: unknown): unknown {
       : list
   return {
     ...obj,
+    // M2.1: tree term anchors must be judged against the concepts the note
+    // actually defines — collect them before normalizing the tree.
+    knowledgeTree: normalizeTreeTerms(
+      obj.knowledgeTree,
+      new Set(
+        (Array.isArray(obj.concepts) ? obj.concepts : [])
+          .map((entry) => (entry != null && typeof entry === 'object' ? (entry as Record<string, unknown>).term : null))
+          .filter((term): term is string => typeof term === 'string' && term.trim() !== '')
+      )
+    ),
     timeline: fixList(obj.timeline),
     transcriptRefs: fixList(obj.transcriptRefs),
     evidence: normalizeEvidence(obj.evidence),

@@ -166,3 +166,43 @@ describe('parseNote repair pass', () => {
     expect(note.overview).toBe('概览')
   })
 })
+
+describe('parseNote knowledgeTree terms normalization (M2.1, 2026-09-05)', () => {
+  const withConcepts = {
+    ...base,
+    concepts: [{ term: '大O', definition: '渐进上界', refs: [] }, { term: '递归', definition: '自调用', refs: [] }]
+  }
+
+  it('keeps terms that resolve to concepts, deduplicated, across the whole tree', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...withConcepts,
+        knowledgeTree: {
+          title: 'root',
+          terms: ['大O', '不存在的概念', '大O', 42],
+          children: [{ title: 'child', terms: ['递归'], children: [] }]
+        }
+      })
+    )
+    expect(note.knowledgeTree.terms).toEqual(['大O'])
+    expect(note.knowledgeTree.children[0]?.terms).toEqual(['递归'])
+  })
+
+  it('drops the field entirely when no term resolves (前向引用容错)', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...withConcepts,
+        knowledgeTree: { title: 'root', terms: ['编造甲', '编造乙'], children: [] }
+      })
+    )
+    expect(note.knowledgeTree.terms).toBeUndefined()
+  })
+
+  it('old notes without terms load unchanged', () => {
+    const note = parseNote(
+      JSON.stringify({ ...base, knowledgeTree: { title: 'root', children: [{ title: 'leaf', children: [] }] } })
+    )
+    expect(note.knowledgeTree.terms).toBeUndefined()
+    expect(note.knowledgeTree.children[0]?.terms).toBeUndefined()
+  })
+})

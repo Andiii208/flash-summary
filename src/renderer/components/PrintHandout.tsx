@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import type { Note, TreeNode } from '../../shared/notes/schema'
 import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
 import { bindTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime } from '../../shared/notes/evidence'
-import { computeMindMapLayout, firstLineBaseline } from '../../shared/notes/mindmap-layout'
+import { computeMindMapLayout, sublineFirstBaseline, sublineLinesOf, titleBaseline } from '../../shared/notes/mindmap-layout'
 import { MdLite } from './MdLite'
 
 export interface PrintHandoutData {
@@ -177,7 +177,9 @@ function PrintTimelineCard({ entry, attachments }: { entry: Note['timeline'][num
 
 /** Non-interactive mind map (always fully expanded) sized for one A4 page. */
 function StaticMindMap({ tree }: { tree: TreeNode }): JSX.Element {
-  const layout = computeMindMapLayout(tree, new Set())
+  // M2.1: the handout opts into concept-term sub-lines (决策点 D4 — the
+  // shared geometry renders them for free); screen popover handles the rest.
+  const layout = computeMindMapLayout(tree, new Set(), { showTerms: true })
   const maxPageWidth = 730
   const maxPageHeight = 900
   // 批E: multi-line nodes grow tall — scale to fit both page dimensions.
@@ -203,13 +205,23 @@ function StaticMindMap({ tree }: { tree: TreeNode }): JSX.Element {
             stroke={node.depth === 0 ? 'none' : '#e3e6ee'}
           />
           {/* 批E: wrapped tspans — titles print in full, never truncated. */}
-          <text x={12} y={firstLineBaseline(node.height, node.lines.length)} font-size={13} fill="#1f2430" font-weight={node.depth === 0 ? 700 : 400}>
+          <text x={12} y={titleBaseline(node)} font-size={13} fill="#1f2430" font-weight={node.depth === 0 ? 700 : 400}>
             {node.lines.map((line, i) => (
               <tspan key={i} x={12} dy={i === 0 ? 0 : 18}>
                 {line}
               </tspan>
             ))}
           </text>
+          {/* M2.1: anchored concept terms as a muted sub-line. */}
+          {node.subline !== '' && (
+            <text x={12} y={sublineFirstBaseline(node)} font-size={11} fill="#6a7286">
+              {sublineLinesOf(node).map((line, i) => (
+                <tspan key={i} x={12} dy={i === 0 ? 0 : 14}>
+                  {line}
+                </tspan>
+              ))}
+            </text>
+          )}
         </g>
       ))}
     </svg>

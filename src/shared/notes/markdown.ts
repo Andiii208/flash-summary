@@ -3,7 +3,10 @@ import { formatTime, labelOf } from './format'
 import type { EvidenceRef, TreeNode } from './schema'
 
 function treeLines(node: TreeNode, depth: number, out: string[]): void {
-  out.push(`${'  '.repeat(depth)}- ${node.title}`)
+  // M2.1: anchored concepts ride along in the outline so the exported
+  // structure keeps the map's content linkage.
+  const terms = node.terms != null && node.terms.length > 0 ? `（概念：${node.terms.join('、')}）` : ''
+  out.push(`${'  '.repeat(depth)}- ${node.title}${terms}`)
   for (const child of node.children) treeLines(child, depth + 1, out)
 }
 
