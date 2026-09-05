@@ -1351,6 +1351,10 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .mindmap-search::placeholder { color: var(--text-muted); }
 .mindmap-node.search-hit .mindmap-box { stroke: var(--accent); stroke-width: 2; }
 .mindmap-node.search-dim { opacity: 0.3; }
+/* M1.3 (map expansion): pan/zoom canvas affordances. */
+.mindmap-scroll { cursor: grab; user-select: none; }
+.mindmap-scroll.panning { cursor: grabbing; }
+.mindmap-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }

@@ -3,6 +3,26 @@ import type { JSX } from 'preact'
 import type { TreeNode } from '../../shared/notes/schema'
 import { collapsedSetForMaxDepth, computeMindMapLayout, firstLineBaseline } from '../../shared/notes/mindmap-layout'
 
+/** M1.3 viewport transform: viewBox window over the unchanged layout geometry. */
+interface View {
+  scale: number
+  x: number
+  y: number
+}
+
+const MIN_SCALE = 0.4
+const MAX_SCALE = 3
+const IDENTITY_VIEW: View = Object.freeze({ scale: 1, x: 0, y: 0 })
+
+/** Zoom to `nextScale` keeping the layout point at viewport fractions fx/fy fixed. */
+function zoomAt(view: View, nextScale: number, fx: number, fy: number, layoutWidth: number, layoutHeight: number): View {
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale))
+  if (scale === view.scale) return view
+  const anchorX = view.x + fx * (layoutWidth / view.scale)
+  const anchorY = view.y + fy * (layoutHeight / view.scale)
+  return { scale, x: anchorX - fx * (layoutWidth / scale), y: anchorY - fy * (layoutHeight / scale) }
+}
+
 /**
  * Interactive SVG mind map over the note's knowledgeTree (2026-09-04).
  * Nodes with children collapse on click; the layout is a pure shared
@@ -16,15 +36,23 @@ import { collapsedSetForMaxDepth, computeMindMapLayout, firstLineBaseline } from
  * controls (collapse set = pure shared function) and a title search that
  * highlights hits, dims the rest, unfolds hit ancestors and scrolls the
  * first hit into view.
+ *
+ * M1.3 (map expansion): Ctrl/⌘+wheel zooms around the pointer, background
+ * drag pans, keyboard +/-/0 zoom & reset — all as viewBox transforms, the
+ * layout geometry stays untouched (PDF handout shares it unchanged).
  */
 export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
+  const [view, setView] = useState<View>(IDENTITY_VIEW)
+  const [panning, setPanning] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const layout = useMemo(() => computeMindMapLayout(tree, collapsed), [tree, collapsed])
   const rootRef = useRef<SVGSVGElement>(null)
   /** FLIP bookkeeping: previous y per node path (x is depth-fixed). */
   const prevYRef = useRef<Map<string, number>>(new Map())
+  /** M1.3 active background-drag gesture (null = not panning). */
+  const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: View } | null>(null)
 
   const toggle = (path: string): void => {
     setCollapsed((prev) => {
@@ -75,6 +103,68 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
     const el = scrollRef.current?.querySelector(`[data-path="${first}"]`)
     if (el != null && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [layout, matched])
+
+  // M1.3: Ctrl/⌘+wheel zooms around the pointer — a native non-passive
+  // listener so preventDefault beats the browser page-zoom; a plain wheel
+  // (no modifier) falls through to native scrolling.
+  useEffect(() => {
+    const container = scrollRef.current
+    if (container == null) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const rect = (rootRef.current ?? container).getBoundingClientRect()
+      const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5
+      const fy = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5
+      setView((prev) => zoomAt(prev, prev.scale * Math.exp(-e.deltaY * 0.002), fx, fy, layout.width, layout.height))
+    }
+    container.addEventListener('wheel', onWheel, { passive: false })
+    return () => container.removeEventListener('wheel', onWheel)
+  }, [layout.width, layout.height])
+
+  // M1.3: background drag pans via the viewBox offset. A drag starting on a
+  // node stays a click so collapse keeps its single-click semantics.
+  const onPointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+    if ((e.target as Element).closest?.('.mindmap-node') != null) return
+    panRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, origin: view }
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // Capture unavailable (env without active-pointer tracking): panning
+      // still works while the pointer stays over the canvas.
+    }
+    setPanning(true)
+  }
+
+  const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+    const pan = panRef.current
+    if (pan == null || e.pointerId !== pan.pointerId) return
+    setView({
+      scale: pan.origin.scale,
+      x: pan.origin.x - (e.clientX - pan.startX) / pan.origin.scale,
+      y: pan.origin.y - (e.clientY - pan.startY) / pan.origin.scale
+    })
+  }
+
+  const endPan = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+    if (panRef.current == null || e.pointerId !== panRef.current.pointerId) return
+    panRef.current = null
+    setPanning(false)
+  }
+
+  /** M1.3 keyboard: +/-/=/0 zoom and reset while the canvas holds focus. */
+  const canvasKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault()
+      setView((prev) => zoomAt(prev, prev.scale * 1.2, 0.5, 0.5, layout.width, layout.height))
+    } else if (e.key === '-') {
+      e.preventDefault()
+      setView((prev) => zoomAt(prev, prev.scale / 1.2, 0.5, 0.5, layout.width, layout.height))
+    } else if (e.key === '0') {
+      e.preventDefault()
+      setView(IDENTITY_VIEW)
+    }
+  }
 
   // 批D FLIP: after each re-layout, every surviving node starts from its
   // previous y (no transition), then CSS-transitions to the new position.
@@ -129,6 +219,9 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
         <button class="btn small" onClick={() => setCollapsed(new Set())}>
           全部展开
         </button>
+        <button class="btn small" onClick={() => setView(IDENTITY_VIEW)}>
+          重置视图
+        </button>
         <span class="mindmap-toolbar-spacer" aria-hidden="true" />
         <input
           class="mindmap-search"
@@ -139,12 +232,22 @@ export function MindMap({ tree }: { tree: TreeNode }): JSX.Element {
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
       </div>
-      <div class="mindmap-scroll" ref={scrollRef}>
+      <div
+        class={`mindmap-scroll${panning ? ' panning' : ''}`}
+        ref={scrollRef}
+        tabIndex={0}
+        aria-label={`导图画布：Ctrl+滚轮缩放，按住拖拽平移，+/-/0 缩放与复位`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
+        onKeyDown={canvasKeyDown}
+      >
       <svg
         ref={rootRef}
         width={layout.width}
         height={layout.height}
-        viewBox={`0 0 ${layout.width} ${layout.height}`}
+        viewBox={`${view.x} ${view.y} ${layout.width / view.scale} ${layout.height / view.scale}`}
         role="img"
         aria-label={`知识导图：${tree.title}`}
       >

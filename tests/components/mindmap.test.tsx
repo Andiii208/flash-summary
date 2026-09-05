@@ -81,7 +81,7 @@ describe('MindMap M1.2 工具栏', () => {
     const toolbar = host.querySelector('[data-testid="mindmap-toolbar"]')
     expect(toolbar).not.toBeNull()
     const labels = Array.from(toolbar!.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开'])
+    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '重置视图'])
     expect(toolbar!.querySelector('.mindmap-search')).not.toBeNull()
   })
 
@@ -148,5 +148,92 @@ describe('MindMap M1.2 工具栏', () => {
     })
     expect(host.querySelectorAll('.mindmap-node.search-hit')).toHaveLength(0)
     expect(host.querySelectorAll('.mindmap-node.search-dim')).toHaveLength(0)
+  })
+})
+
+describe('MindMap M1.3 缩放与平移', () => {
+  const viewBoxOf = (host: HTMLElement): number[] =>
+    host.querySelector('svg')!.getAttribute('viewBox')!.split(/\s+/).map(Number)
+
+  const fireWheel = (host: HTMLElement, init: WheelEventInit): void => {
+    const container = host.querySelector('.mindmap-scroll')!
+    act(() => {
+      const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: init.deltaY })
+      // happy-dom drops the MouseEvent modifier init on WheelEvent — patch
+      // the instance so the handler sees the shape a real browser delivers.
+      Object.defineProperty(event, 'ctrlKey', { value: init.ctrlKey ?? false })
+      container.dispatchEvent(event)
+    })
+  }
+
+  it('starts at identity (scale 1, origin 0,0)', () => {
+    const host = mountMindMap(TREE)
+    const [x, y] = viewBoxOf(host)
+    expect(x).toBe(0)
+    expect(y).toBe(0)
+  })
+
+  it('Ctrl+wheel zooms in; a plain wheel leaves the view untouched', () => {
+    const host = mountMindMap(TREE)
+    const before = viewBoxOf(host)
+    fireWheel(host, { ctrlKey: true, deltaY: -120 })
+    const [, , wIn] = viewBoxOf(host)
+    expect(wIn).toBeLessThan(before[2]!)
+    // A plain wheel is native scrolling — the zoom state must not move.
+    const afterZoom = viewBoxOf(host)
+    fireWheel(host, { deltaY: 120 })
+    expect(viewBoxOf(host)).toEqual(afterZoom)
+  })
+
+  it('zoom clamps at 3x and 重置视图 restores identity', () => {
+    const host = mountMindMap(TREE)
+    const [, , w0] = viewBoxOf(host)
+    for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 })
+    expect(viewBoxOf(host)[2]).toBeCloseTo(w0! / 3, 4)
+    const reset = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '重置视图')
+    act(() => {
+      reset?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(viewBoxOf(host)[2]).toBeCloseTo(w0!, 4)
+    expect(viewBoxOf(host)[0]).toBe(0)
+  })
+
+  it('keyboard +/-/0 zooms and resets while the canvas holds focus', () => {
+    const host = mountMindMap(TREE)
+    const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
+    const [, , w0] = viewBoxOf(host)
+    act(() => {
+      container.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }))
+    })
+    expect(viewBoxOf(host)[2]).toBeLessThan(w0!)
+    act(() => {
+      container.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }))
+    })
+    expect(viewBoxOf(host)[2]).toBeCloseTo(w0!, 4)
+  })
+
+  it('background drag pans the viewBox; a drag on a node does not', () => {
+    const host = mountMindMap(TREE)
+    const svg = host.querySelector('svg')!
+    const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
+    const pointer = (type: string, target: EventTarget, init: MouseEventInit & { pointerId?: number }): void => {
+      act(() => {
+        target.dispatchEvent(new MouseEvent(type, { bubbles: true, ...init }))
+      })
+    }
+    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 1 })
+    pointer('pointermove', container, { clientX: 160, clientY: 130, pointerId: 1 })
+    pointer('pointerup', container, { clientX: 160, clientY: 130, pointerId: 1 })
+    const [x, y] = viewBoxOf(host)
+    expect(x).toBeCloseTo(-60, 4)
+    expect(y).toBeCloseTo(-30, 4)
+    // After pointerup the gesture is over — further moves change nothing.
+    pointer('pointermove', container, { clientX: 300, clientY: 300, pointerId: 1 })
+    expect(viewBoxOf(host)[0]).toBeCloseTo(-60, 4)
+    // A drag starting on a node is a click, not a pan.
+    pointer('pointerdown', host.querySelector('.mindmap-node')!, { clientX: 10, clientY: 10, pointerId: 2 })
+    pointer('pointermove', container, { clientX: 200, clientY: 200, pointerId: 2 })
+    pointer('pointerup', container, { clientX: 200, clientY: 200, pointerId: 2 })
+    expect(viewBoxOf(host)[0]).toBeCloseTo(-60, 4)
   })
 })
