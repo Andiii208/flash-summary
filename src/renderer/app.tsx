@@ -1558,7 +1558,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             printRoot!
           )
           await waitForImages(printRoot!)
-          const res = await bridge.notes.exportPdfWrite(dialog.value.path)
+          // E3 (review): the token, not the path — main decides where to write.
+          const res = await bridge.notes.exportPdfWrite(dialog.value.token ?? '')
           if (!res.ok) {
             toast(res.error ?? 'PDF 生成失败', 'error')
             return

@@ -23,7 +23,14 @@ class FakeIpc {
   async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
     const fn = this.handlers.get(channel)
     if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({}, ...args)
+    // E1 (review): handlers verify the sender frame — pose as the app UI.
+    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
+  }
+
+  async invokeFrom(url: string, channel: string, ...args: unknown[]): Promise<unknown> {
+    const fn = this.handlers.get(channel)
+    if (fn == null) throw new Error(`no handler for ${channel}`)
+    return fn({ senderFrame: { url } }, ...args)
   }
 }
 

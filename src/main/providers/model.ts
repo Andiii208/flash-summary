@@ -49,6 +49,13 @@ export function validateProvider(input: Omit<ProviderConfig, 'hasKey' | 'created
   if (id === '') throw new Error('provider id is required')
   if (name === '') throw new Error('provider name is required')
   if (!/^https?:\/\//.test(baseUrl)) throw new Error('provider base URL must start with http(s)://')
+  // E5 (review): an http:// base URL ships the API key as a plaintext
+  // Bearer header — https everywhere except explicit local debugging.
+  if (baseUrl.startsWith('http://')) {
+    const host = new URL(baseUrl).hostname
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost')
+    if (!isLocal) throw new Error('Provider 地址必须使用 https://（本机调试可用 localhost/127.0.0.1）')
+  }
   return {
     id,
     name,

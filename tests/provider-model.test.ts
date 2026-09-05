@@ -32,7 +32,7 @@ describe('capability resolution', () => {
   it('returns null for unbound capabilities or keyless providers', () => {
     expect(resolveCapability(EMPTY_SETTINGS, 'asr')).toBeNull()
     const broken: ProviderSettings = {
-      providers: [{ id: 'p2', name: 'Local', baseUrl: 'http://x/v1', apiKey: '', hasKey: false, createdAt: '2026-08-30T00:00:00Z' }],
+      providers: [{ id: 'p2', name: 'Local', baseUrl: 'https://x/v1', apiKey: '', hasKey: false, createdAt: '2026-08-30T00:00:00Z' }],
       bindings: [{ capability: 'asr', providerId: 'p2', model: 'whisper' }]
     }
     expect(resolveCapability(broken, 'asr')).toBeNull()
@@ -49,5 +49,14 @@ describe('provider validation', () => {
   it('rejects bad urls and empty ids', () => {
     expect(() => validateProvider({ id: '', name: 'x', baseUrl: 'https://a/v1', apiKey: '' })).toThrowError(/id/)
     expect(() => validateProvider({ id: 'p', name: 'x', baseUrl: 'ftp://a', apiKey: '' })).toThrowError(/base URL/)
+  })
+
+  it('rejects a non-local http:// base URL (review E5)', () => {
+    expect(() => validateProvider({ id: 'p-http', name: 'X', baseUrl: 'http://api.example.com/v1', apiKey: 'sk-x' })).toThrowError(/https/)
+  })
+
+  it('accepts http:// only for local debugging hosts (review E5)', () => {
+    expect(validateProvider({ id: 'p-loc', name: 'L', baseUrl: 'http://localhost:8000/v1', apiKey: 'sk-x' }).baseUrl).toBe('http://localhost:8000/v1')
+    expect(validateProvider({ id: 'p-loop', name: 'L', baseUrl: 'http://127.0.0.1:8000/v1', apiKey: 'sk-x' }).baseUrl).toBe('http://127.0.0.1:8000/v1')
   })
 })

@@ -19,7 +19,14 @@ class FakeIpc {
   async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
     const fn = this.handlers.get(channel)
     if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({}, ...args)
+    // E1 (review): handlers verify the sender frame — pose as the app UI.
+    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
+  }
+
+  async invokeFrom(url: string, channel: string, ...args: unknown[]): Promise<unknown> {
+    const fn = this.handlers.get(channel)
+    if (fn == null) throw new Error(`no handler for ${channel}`)
+    return fn({ senderFrame: { url } }, ...args)
   }
 }
 
@@ -212,6 +219,15 @@ describe('ipc handlers over a real context', () => {
     const res = (await ipc.invoke('providers:bind', 'voice', 'p1', 'm')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('capability')
+  })
+
+  it('refuses IPC from a non-app sender frame (review E1)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    // A school-platform page (or any hijacked page) loads WITH the preload
+    // bridge attached — its JS must not reach the IPC surface.
+    await expect(ipc.invokeFrom('https://cvs.seu.edu.cn/vod/play', 'settings:get')).rejects.toThrowError(/非法调用方/)
+    await expect(ipc.invokeFrom('https://evil.example.com/x', 'providers:save')).rejects.toThrowError(/非法调用方/)
   })
 
   it('cancelling a pending task stores failed_stage=NULL and stays deletable (review D3)', async () => {

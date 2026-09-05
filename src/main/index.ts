@@ -73,6 +73,42 @@ function enterBackgroundMode(win: BrowserWindow): void {
   })
 }
 
+/**
+ * E2 (review): the main window legitimately navigates to the school
+ * platform (login, play-page harvest) — but nothing else. Pin navigation
+ * to the app itself and the school hosts, refuse window.open popups, and
+ * deny every permission request.
+ */
+const NAV_ALLOWED_HOST_SUFFIXES = ['cvs.seu.edu.cn', 'auth.seu.edu.cn', 'ids.seu.edu.cn']
+
+function isAppOrSchoolUrl(url: string): boolean {
+  const devUrl = process.env.ELECTRON_RENDERER_URL
+  if (devUrl != null && devUrl !== '' && url.startsWith(devUrl)) return true
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'file:') return true
+    return NAV_ALLOWED_HOST_SUFFIXES.some((suffix) => parsed.hostname === suffix || parsed.hostname.endsWith('.' + suffix))
+  } catch {
+    return false
+  }
+}
+
+function attachNavigationGuards(ctx: { logger: { warn(message: string): void } }, win: BrowserWindow): void {
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isAppOrSchoolUrl(url)) return
+    event.preventDefault()
+    ctx.logger.warn(`blocked navigation to ${url.split('?')[0] ?? ''}`)
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    ctx.logger.warn(`blocked window.open to ${url.split('?')[0] ?? ''}`)
+    return { action: 'deny' }
+  })
+  win.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
+    ctx.logger.warn(`denied permission request: ${permission}`)
+    callback(false)
+  })
+}
+
 /** D4 decision 1b: when the queue drains, bring the window back. */
 function exitBackgroundMode(win: BrowserWindow): void {
   destroyTray()
@@ -171,6 +207,7 @@ if (!gotSingleInstanceLock) {
       // this window from main; recreated windows replace the reference.
       ctx.setMainWindow(mainWindow)
       bindWindowLifecycle(ctx, mainWindow)
+      attachNavigationGuards(ctx, mainWindow)
       // The main window reference lets IPC push task progress to the renderer.
       const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
       ipcHandleRef = ipcHandle
@@ -216,6 +253,7 @@ if (!gotSingleInstanceLock) {
         if (BrowserWindow.getAllWindows().length === 0) {
           mainWindow = createMainWindow()
           ctx.setMainWindow(mainWindow)
+          attachNavigationGuards(ctx, mainWindow)
           bindWindowLifecycle(ctx, mainWindow)
           ipcHandleRef = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
         }

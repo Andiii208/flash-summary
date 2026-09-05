@@ -10,7 +10,8 @@
 import { ipcMain, dialog, shell, app, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { lookup as dnsLookup } from 'dns/promises'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
-import { join, dirname } from 'path'
+import { randomUUID } from 'crypto'
+import { join, dirname, sep, resolve } from 'path'
 import type { AppContext } from './app-context'
 import type { Db } from './db/open'
 import { isFakeIpResolution } from './net-diagnostics'
@@ -31,7 +32,7 @@ import { noteExportBaseName } from '../shared/notes/export-name'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import { formatBytes, formatSpeed } from '../shared/format'
 import type { Note } from '../shared/notes/schema'
-import { resolveCacheDir } from './library/paths'
+import { resolveCacheDir, attachmentsPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
 import { getSetting } from './settings/store'
@@ -81,6 +82,33 @@ export interface ProgressSender {
   send: (channel: string, payload: object) => void
 }
 
+/** Minimal handle surface shared by ipcMain and the test doubles. */
+export interface HandleLike {
+  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void
+}
+
+/**
+ * E1 (review): every handler verifies the caller is the app's own renderer.
+ * While the main window is navigated to the school platform, its pages load
+ * WITH the preload bridge attached — without this check they could reach
+ * the full IPC surface (providers:save, settings writes, PDF export…).
+ */
+export function assertAppSender(e: unknown): void {
+  const frame = (e as { senderFrame?: { url?: string } | null } | undefined)?.senderFrame
+  const url = frame?.url ?? ''
+  const devUrl = process.env.ELECTRON_RENDERER_URL
+  if (url.startsWith('file://')) return
+  if (devUrl != null && devUrl !== '' && url.startsWith(devUrl)) return
+  throw new Error('非法调用方：该通道仅限应用自身界面调用')
+}
+
+function handle(target: HandleLike, channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
+  target.handle(channel, (e, ...args) => {
+    assertAppSender(e)
+    return fn(e, ...args)
+  })
+}
+
 export interface IpcOptions {
   /** Main window webContents; progress events go here when present. */
   sender?: ProgressSender
@@ -116,6 +144,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   const cancelledWhileQueued = new Set<string>()
   // D4: notified when the queue drains (tray restores the window).
   const idleListeners = new Set<() => void>()
+
+  // E3 (review): PDF export step 1 (dialog) hands out a one-shot token;
+  // step 2 (write) only honors a live token — the renderer can no longer
+  // ask printToPDF to write ANY path it names.
+  const pendingPdfExports = new Map<string, { filePath: string; expiresAt: number }>()
   const notifyIdle = (): void => {
     if (queue.members().length === 0) {
       for (const cb of idleListeners) {
@@ -179,7 +212,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   const newId = options.newTaskId ?? (() => `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
 
   // ---- school session ----
-  ipc.handle('school:login', async () => {
+  handle(ipc, 'school:login', async () => {
     try {
       await ctx.login()
       return ok({ state: ctx.sessionState() })
@@ -187,7 +220,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('school:logout', async () => {
+  handle(ipc, 'school:logout', async () => {
     await ctx.logout()
     return ok({ state: ctx.sessionState() })
   })
@@ -195,7 +228,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // renderer's fresh mount (after the in-window login navigation) uses it to
   // auto-refresh the course tree. savedAt/expiresAt feed the settings page
   // and the «已过期» badge (local JWT-exp judgement, no network).
-  ipc.handle('school:session', () => {
+  handle(ipc, 'school:session', () => {
     const meta = ctx.sessionMeta()
     return ok({
       state: ctx.sessionState(),
@@ -209,7 +242,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // A5 preflight: a Clash-style TUN resolver answers campus lookups with a
   // Fake-IP and the proxy then RSTs all school traffic. Detecting it before
   // a refresh/login turns «app does nothing» into an actionable message.
-  ipc.handle('school:netCheck', async () => {
+  handle(ipc, 'school:netCheck', async () => {
     try {
       const hosts = ['cvs.seu.edu.cn', 'dncvsvod.seu.edu.cn']
       const lookup = options.netLookupOverride ?? ((host: string) => dnsLookup(host, { all: true }))
@@ -230,7 +263,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // course tree (school:courseTree) has durable data even offline.
   // B1: paged refresh — progress events stream via 'school:refreshProgress'
   // and the envelope carries the loaded/total boundary for the UI.
-  ipc.handle('school:listCourses', async () => {
+  handle(ipc, 'school:listCourses', async () => {
     try {
       const page = await ctx.school.listCoursesPaged({
         maxPages: maxPagesFrom(ctx.db),
@@ -264,7 +297,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // the main window (navigates away and back). Fire-and-forget from the
   // renderer — the window unloads mid-call; the fresh mount re-reads the
   // tree and shows the harvested lessons.
-  ipc.handle('school:harvestLessons', async (_e, courseId: unknown) => {
+  handle(ipc, 'school:harvestLessons', async (_e, courseId: unknown) => {
     try {
       const cid = str(courseId, 'courseId')
       ctx.harvestRuntime.start(cid)
@@ -310,7 +343,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 批C: harvest visibility for the fresh mount — in-flight course ids plus
   // the last outcome (renderer dedupes repeat toasts via outcome.seq).
-  ipc.handle('school:harvestState', () => {
+  handle(ipc, 'school:harvestState', () => {
     try {
       return ok(ctx.harvestRuntime.state())
     } catch (e) {
@@ -321,7 +354,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // Manual fallback entry (spec §2): register a course/lesson by id when the
   // school API list is unavailable. The task's fetching_course stage will
   // pull the real detail later; here we only need durable rows to exist.
-  ipc.handle('school:addManualCourse', (_e, courseId: unknown, lessonId: unknown) => {
+  handle(ipc, 'school:addManualCourse', (_e, courseId: unknown, lessonId: unknown) => {
     try {
       const cid = str(courseId, 'courseId')
       const lid = str(lessonId, 'lessonId')
@@ -349,7 +382,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // whether a note already exists so the UI can badge processed lessons.
   // M1-4: per-course extracted aggregation («已提取») so the sidebar can
   // float the courses the user actually studied.
-  ipc.handle('school:courseTree', () => {
+  handle(ipc, 'school:courseTree', () => {
     try {
       const courses = ctx.db
         .prepare(
@@ -402,7 +435,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // C6: remove a manually mis-added course — ONLY when nothing was ever
   // processed with it (every table cascades on course delete, so a course
   // with notes/tasks must be refused to protect the data).
-  ipc.handle('school:removeCourse', (_e, courseId: unknown) => {
+  handle(ipc, 'school:removeCourse', (_e, courseId: unknown) => {
     try {
       const cid = str(courseId, 'courseId')
       const noteRow = ctx.db
@@ -428,7 +461,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // C2: pin/unpin a course as «mine». The schedule-API probe may automate
   // this later; until then the user decides, and the sidebar sorts pinned
   // courses (plus their same-subject sections) to the top.
-  ipc.handle('school:setMine', (_e, courseId: unknown, mine: unknown) => {
+  handle(ipc, 'school:setMine', (_e, courseId: unknown, mine: unknown) => {
     try {
       const cid = str(courseId, 'courseId')
       if (typeof mine !== 'boolean') throw new Error('mine must be a boolean')
@@ -442,13 +475,13 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // ---- providers ----
   // List never carries the plaintext key: renderer receives shape only
   // (spec §9 — keys are decrypted and used exclusively in main).
-  ipc.handle('providers:list', () =>
+  handle(ipc, 'providers:list', () =>
     ok({
       providers: ctx.providers().providers.map((p) => ({ id: p.id, name: p.name, baseUrl: p.baseUrl, hasKey: p.hasKey })),
       bindings: ctx.providers().bindings
     })
   )
-  ipc.handle('providers:save', (_e, input: unknown) => {
+  handle(ipc, 'providers:save', (_e, input: unknown) => {
     try {
       const i = input as { id?: string; name?: string; baseUrl?: string; apiKey?: string }
       const provider = ctx.saveProvider({
@@ -462,7 +495,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('providers:delete', (_e, id: unknown) => {
+  handle(ipc, 'providers:delete', (_e, id: unknown) => {
     try {
       ctx.removeProvider(str(id, 'id'))
       return ok(true)
@@ -470,7 +503,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('providers:bind', (_e, capability: unknown, providerId: unknown, model: unknown) => {
+  handle(ipc, 'providers:bind', (_e, capability: unknown, providerId: unknown, model: unknown) => {
     try {
       const cap = str(capability, 'capability')
       if (cap !== 'asr' && cap !== 'multimodal' && cap !== 'text') throw new Error('unknown capability')
@@ -483,7 +516,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // M3 批 D: provider connectivity probe. Values come from the form in
   // memory only — nothing is stored or logged.
-  ipc.handle('providers:test', async (_e, input: unknown) => {
+  handle(ipc, 'providers:test', async (_e, input: unknown) => {
     try {
       const i = input as { baseUrl?: string; apiKey?: string; model?: string }
       const baseUrl = str(i.baseUrl, 'baseUrl')
@@ -503,7 +536,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // ---- settings (U3) ----
-  ipc.handle('settings:get', () => {
+  handle(ipc, 'settings:get', () => {
     try {
       const s = ctx.settings()
       // C7: the UI shows the app version in the settings footer.
@@ -514,7 +547,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
   // C10: folder picker for the cache dir — hand-typing Windows paths was
   // unfriendly; the chosen path is returned (not saved) for the draft input.
-  ipc.handle('settings:chooseCacheDir', async () => {
+  handle(ipc, 'settings:chooseCacheDir', async () => {
     try {
       const win = BrowserWindow.getFocusedWindow()
       const options: OpenDialogOptions = { title: '选择任务缓存目录', properties: ['openDirectory', 'createDirectory'] }
@@ -525,7 +558,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('settings:setCacheDir', (_e, dir: unknown) => {
+  handle(ipc, 'settings:setCacheDir', (_e, dir: unknown) => {
     try {
       const d = str(dir, 'cacheDir')
       assertWritable(d)
@@ -535,7 +568,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('settings:setTheme', (_e, theme: unknown) => {
+  handle(ipc, 'settings:setTheme', (_e, theme: unknown) => {
     try {
       const t = str(theme, 'theme')
       if (t !== 'auto' && t !== 'light' && t !== 'dark') throw new Error('invalid theme (auto|light|dark)')
@@ -545,7 +578,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('settings:chooseLibrary', async () => {
+  handle(ipc, 'settings:chooseLibrary', async () => {
     try {
       // C3 (review): never migrate while the pipeline could write to either
       // library — the guard covers queued tasks AND non-terminal rows left
@@ -577,7 +610,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('settings:openPath', (_e, kind: unknown) => {
+  handle(ipc, 'settings:openPath', (_e, kind: unknown) => {
     try {
       const k = str(kind, 'kind')
       const s = ctx.settings()
@@ -597,7 +630,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // ---- logging (U5): renderer errors reach the same redacted file log ----
-  ipc.handle('log:rendererError', (_e, message: unknown) => {
+  handle(ipc, 'log:rendererError', (_e, message: unknown) => {
     try {
       ctx.logger.error(`renderer: ${str(message, 'message')}`)
       return ok(true)
@@ -607,7 +640,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // ---- tasks ----
-  ipc.handle('tasks:create', (_e, lessonId: unknown) => {
+  handle(ipc, 'tasks:create', (_e, lessonId: unknown) => {
     try {
       const id = newId()
       new TaskRepository(ctx.db).create(id, str(lessonId, 'lessonId'))
@@ -619,7 +652,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // tasks:list (U1): history so the UI can show past/failed tasks.
   // M1-2: JOIN lessons/courses so rows read as «课程名 · 课时名» — the raw
   // lesson id means nothing to a user.
-  ipc.handle('tasks:list', (_e, lessonId: unknown) => {
+  handle(ipc, 'tasks:list', (_e, lessonId: unknown) => {
     try {
       const baseSelect =
         'SELECT t.id, t.lesson_id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name, c.teacher AS teacher, c.cour_times AS courTimes, c.classroom AS classroom FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id'
@@ -650,7 +683,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // M1-2: delete one history row (and its stage evidence + cache dir).
   // A running task cannot be deleted — cancel it first.
-  ipc.handle('tasks:delete', (_e, taskId: unknown) => {
+  handle(ipc, 'tasks:delete', (_e, taskId: unknown) => {
     try {
       const id = str(taskId, 'taskId')
       const row = new TaskRepository(ctx.db).get(id)
@@ -669,7 +702,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // M1-2: clear every terminal-state row (succeeded/failed) with evidence
   // and cache cleanup. Returns the number of removed rows.
-  ipc.handle('tasks:clearFinished', () => {
+  handle(ipc, 'tasks:clearFinished', () => {
     try {
       const rows = ctx.db
         .prepare("SELECT id FROM tasks WHERE state IN ('succeeded', 'failed')")
@@ -694,7 +727,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // tasks:runAsync (U4): enqueued on the serial executor (at most one task
   // runs at a time); progress streams via 'tasks:progress'. Errors surface
   // as a failed progress event plus the returned envelope.
-  ipc.handle('tasks:runAsync', async (_e, taskId: unknown) => {
+  handle(ipc, 'tasks:runAsync', async (_e, taskId: unknown) => {
     try {
       const id = str(taskId, 'taskId')
       const repo = new TaskRepository(ctx.db)
@@ -765,7 +798,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (queue.members().includes(id)) cancelledWhileQueued.add(id)
     }
   }
-  ipc.handle('tasks:cancel', (_e, taskId: unknown) => {
+  handle(ipc, 'tasks:cancel', (_e, taskId: unknown) => {
     try {
       cancelById(str(taskId, 'taskId'))
       return ok({ cancelled: true })
@@ -775,7 +808,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // ---- notes ----
-  ipc.handle('notes:latest', (_e, lessonId: unknown) => {
+  handle(ipc, 'notes:latest', (_e, lessonId: unknown) => {
     try {
       const id = str(lessonId, 'lessonId')
       const row = ctx.db
@@ -790,7 +823,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 批B: cross-lesson note library — lets the notes tab show every generated
   // note before any lesson is selected. Read-only, newest first.
-  ipc.handle('notes:list', () => {
+  handle(ipc, 'notes:list', () => {
     try {
       const rows = ctx.db
         .prepare(
@@ -817,7 +850,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
   // Export the latest note as Markdown via the system save dialog (U3).
-  ipc.handle('notes:exportMarkdown', async (_e, lessonId: unknown) => {
+  handle(ipc, 'notes:exportMarkdown', async (_e, lessonId: unknown) => {
     try {
       const id = str(lessonId, 'lessonId')
       const row = ctx.db
@@ -857,7 +890,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // the save dialog; the first deck lands on the chosen path, additional
   // decks sit beside it with derived names. SEU_ANKI_PATH bypasses the
   // native dialog (e2e seam, same pattern as SEU_PDF_PATH).
-  ipc.handle('notes:exportAnki', async (_e, lessonId: unknown) => {
+  handle(ipc, 'notes:exportAnki', async (_e, lessonId: unknown) => {
     try {
       const id = str(lessonId, 'lessonId')
       const row = ctx.db
@@ -908,7 +941,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // 2026-09-04: attachments (keyframes + PPT pages) as data URLs for the note views.
-  ipc.handle('notes:attachments', (_e, lessonId: unknown) => {
+  handle(ipc, 'notes:attachments', (_e, lessonId: unknown) => {
     try {
       return ok(listAttachments(ctx.db, str(lessonId, 'lessonId'), ctx.libraryRoot))
     } catch (e) {
@@ -918,7 +951,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 2026-09-04: regenerate the note from stored transcripts/keyframes — no
   // re-download. Guarded: refuses while a task for this lesson is queued/running.
-  ipc.handle('notes:regenerate', async (_e, lessonId: unknown) => {
+  handle(ipc, 'notes:regenerate', async (_e, lessonId: unknown) => {
     try {
       const id = str(lessonId, 'lessonId')
       // Input checks first: a missing transcript should not masquerade as a
@@ -941,7 +974,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 2026-09-04: PDF handout export — step 1, pick the target file.
   // SEU_PDF_PATH bypasses the native dialog (e2e/test seam; dev-only env).
-  ipc.handle('notes:exportPdfDialog', async (_e, lessonId: unknown) => {
+  handle(ipc, 'notes:exportPdfDialog', async (_e, lessonId: unknown) => {
     try {
       const id = str(lessonId, 'lessonId')
       const lesson = ctx.db
@@ -958,7 +991,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         lessonId: id
       })
       const overridePath = process.env.SEU_PDF_PATH
-      if (overridePath != null && overridePath !== '') return ok({ canceled: false, path: overridePath })
+      if (overridePath != null && overridePath !== '') {
+        const token = randomUUID()
+        pendingPdfExports.set(token, { filePath: overridePath, expiresAt: Date.now() + 5 * 60 * 1000 })
+        return ok({ canceled: false, path: overridePath, token })
+      }
       const win = BrowserWindow.getFocusedWindow()
       const options: SaveDialogOptions = {
         title: '导出笔记为 PDF 讲义',
@@ -967,7 +1004,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       }
       const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
       if (canceled || filePath == null) return ok({ canceled: true })
-      return ok({ canceled: false, path: filePath })
+      const token = randomUUID()
+      pendingPdfExports.set(token, { filePath, expiresAt: Date.now() + 5 * 60 * 1000 })
+      return ok({ canceled: false, path: filePath, token })
     } catch (e) {
       return err(e)
     }
@@ -975,22 +1014,37 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 2026-09-04: PDF handout export — step 2, print the main window (renderer
   // has already rendered the handout into #print-root) and write the file.
-  ipc.handle('notes:exportPdfWrite', async (_e, filePath: unknown) => {
+  handle(ipc, 'notes:exportPdfWrite', async (_e, token: unknown) => {
     try {
-      const path = str(filePath, 'filePath')
+      // E3 (review): the write path comes from main's own dialog record,
+      // one-shot and expiring — never from the renderer.
+      const tokenValue = str(token, 'token')
+      const pending = pendingPdfExports.get(tokenValue)
+      if (pending == null) throw new Error('导出会话无效或已过期，请重新导出')
+      pendingPdfExports.delete(tokenValue)
+      if (Date.now() > pending.expiresAt) throw new Error('导出会话已过期，请重新导出')
       const win = BrowserWindow.getFocusedWindow()
       if (win == null) throw new Error('主窗口不可用，无法生成 PDF')
-      const bytes = await printToPdfFile(win.webContents, path)
-      return ok({ path, bytes })
+      const bytes = await printToPdfFile(win.webContents, pending.filePath)
+      return ok({ path: pending.filePath, bytes })
     } catch (e) {
       return err(e)
     }
   })
 
   // 2026-09-04: reveal an exported file in Explorer (toast action after export).
-  ipc.handle('notes:revealFile', (_e, filePath: unknown) => {
+  handle(ipc, 'notes:revealFile', (_e, filePath: unknown) => {
     try {
-      shell.showItemInFolder(str(filePath, 'filePath'))
+      // E4 (review): reveal only files the app itself produced — outside
+      // the exports/attachments roots the request is refused.
+      const requested = str(filePath, 'filePath')
+      const allowedRoots = [ctx.exportsDir(), attachmentsPath(ctx.libraryRoot)]
+      const allowed = allowedRoots.some((root) => {
+        const resolved = resolve(requested)
+        return resolved === root || resolved.startsWith(root + sep)
+      })
+      if (!allowed) throw new Error('只能打开导出目录或附件目录中的文件')
+      shell.showItemInFolder(requested)
       return ok(true)
     } catch (e) {
       return err(e)
@@ -998,7 +1052,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // ---- Q&A ----
-  ipc.handle('qa:ask', async (_e, lessonId: unknown, question: unknown) => {
+  handle(ipc, 'qa:ask', async (_e, lessonId: unknown, question: unknown) => {
     try {
       const id = str(lessonId, 'lessonId')
       const q = str(question, 'question')
@@ -1019,7 +1073,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  ipc.handle('qa:history', (_e, lessonId: unknown) => {
+  handle(ipc, 'qa:history', (_e, lessonId: unknown) => {
     try {
       const rows = ctx.db
         .prepare('SELECT question, answer, created_at FROM qa WHERE lesson_id = ? ORDER BY created_at DESC LIMIT 50')
@@ -1032,7 +1086,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 批B: recent Q&A across lessons — the qa tab empty state so previous
   // exchanges (and their lessons) are reachable without picking a course.
-  ipc.handle('qa:recent', () => {
+  handle(ipc, 'qa:recent', () => {
     try {
       const rows = ctx.db
         .prepare(

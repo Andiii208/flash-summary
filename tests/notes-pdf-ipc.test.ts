@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
@@ -34,7 +34,14 @@ class FakeIpc {
   async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
     const fn = this.handlers.get(channel)
     if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({}, ...args)
+    // E1 (review): handlers verify the sender frame — pose as the app UI.
+    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
+  }
+
+  async invokeFrom(url: string, channel: string, ...args: unknown[]): Promise<unknown> {
+    const fn = this.handlers.get(channel)
+    if (fn == null) throw new Error(`no handler for ${channel}`)
+    return fn({ senderFrame: { url } }, ...args)
   }
 }
 
@@ -70,13 +77,20 @@ function makeCtx(): AppContext {
 }
 
 describe('notes:exportPdfDialog (2026-09-04)', () => {
-  it('offers the exports dir with a sanitized pdf default name', async () => {
+  it('offers the exports dir with a sanitized pdf default name and a write token (E3)', async () => {
     const ctx = makeCtx()
     saveDialog.filePath = join(dir, 'out.pdf')
     registerIpc(ctx, ipc as never)
-    const res = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as { ok: boolean; value?: { canceled: boolean; path?: string } }
+    const res = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as {
+      ok: boolean
+      value?: { canceled: boolean; path?: string; token?: string }
+    }
     expect(res.ok).toBe(true)
-    expect(res.value).toEqual({ canceled: false, path: join(dir, 'out.pdf') })
+    expect(res.value?.canceled).toBe(false)
+    expect(res.value?.path).toBe(join(dir, 'out.pdf'))
+    // E3: the token is the only key that unlocks the write step.
+    expect(typeof res.value?.token).toBe('string')
+    expect(res.value?.token?.length).toBeGreaterThan(10)
   })
 
   it('cancel resolves canceled without a path', async () => {
@@ -92,10 +106,19 @@ describe('notes:revealFile (2026-09-04)', () => {
   it('reveals the exported file in Explorer', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
-    const res = (await ipc.invoke('notes:revealFile', join(dir, 'handout.pdf'))) as { ok: boolean; value?: boolean }
+    const target = join(ctx.exportsDir(), 'handout.pdf')
+    const res = (await ipc.invoke('notes:revealFile', target)) as { ok: boolean; value?: boolean }
     expect(res.ok).toBe(true)
     expect(res.value).toBe(true)
-    expect(showItemInFolder).toHaveBeenCalledWith(join(dir, 'handout.pdf'))
+    expect(showItemInFolder).toHaveBeenCalledWith(target)
+  })
+
+  it('rejects a path outside the exports/attachments roots (review E4)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('notes:revealFile', join(dir, 'secrets.txt'))) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('只能打开')
   })
 
   it('rejects a non-string path', async () => {
@@ -107,11 +130,17 @@ describe('notes:revealFile (2026-09-04)', () => {
 })
 
 describe('notes:exportPdfWrite (2026-09-04)', () => {
-  it('prints the main window and writes the returned bytes verbatim', async () => {
+  it('prints the main window and writes the dialog-confirmed path via the one-shot token (E3)', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
-    const target = join(dir, 'handout.pdf')
-    const res = (await ipc.invoke('notes:exportPdfWrite', target)) as { ok: boolean; value?: { path: string; bytes: number } }
+    const target = join(ctx.exportsDir(), 'handout.pdf')
+    saveDialog.filePath = target
+    const dialog = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as { ok: boolean; value?: { token?: string } }
+    expect(dialog.ok).toBe(true)
+    const res = (await ipc.invoke('notes:exportPdfWrite', dialog.value?.token)) as {
+      ok: boolean
+      value?: { path: string; bytes: number }
+    }
     expect(res.ok).toBe(true)
     expect(res.value).toEqual({ path: target, bytes: '%PDF-1.7 fake-handout'.length })
     expect(printToPdf).toHaveBeenCalledTimes(1)
@@ -122,13 +151,24 @@ describe('notes:exportPdfWrite (2026-09-04)', () => {
     expect(readFileSync(target, 'latin1')).toBe('%PDF-1.7 fake-handout')
   })
 
-  it('fails when no window is focused', async () => {
+  it('refuses an unknown token instead of writing an attacker-chosen path (E3)', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
-    const target = join(dir, 'no-window.pdf')
-    const res = (await ipc.invoke('notes:exportPdfWrite', target)) as { ok: boolean; error?: string }
-    // The stub always returns a window; validate the argument path instead.
-    expect(res.ok).toBe(true)
-    expect(existsSync(target)).toBe(true)
+    const res = (await ipc.invoke('notes:exportPdfWrite', 'made-up-token')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('导出会话')
+    expect(printToPdf).not.toHaveBeenCalled()
+  })
+
+  it('a token is one-shot: the second write with it is refused (E3)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const target = join(ctx.exportsDir(), 'handout.pdf')
+    saveDialog.filePath = target
+    const dialog = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as { ok: boolean; value?: { token?: string } }
+    await ipc.invoke('notes:exportPdfWrite', dialog.value?.token)
+    const second = (await ipc.invoke('notes:exportPdfWrite', dialog.value?.token)) as { ok: boolean; error?: string }
+    expect(second.ok).toBe(false)
+    expect(printToPdf).toHaveBeenCalledTimes(1)
   })
 })
