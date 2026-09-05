@@ -5,6 +5,7 @@ import { createContext } from './app-context'
 import { registerIpc, webContentsSender } from './ipc'
 import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
 import { Logger } from './logger'
+import { binaryFingerprint } from './media/binaries'
 
 let mainWindow: BrowserWindow | null = null
 // D4 (review): the close dialog promises «后台继续运行» — hide to tray and
@@ -209,6 +210,11 @@ if (!gotSingleInstanceLock) {
       bindWindowLifecycle(ctx, mainWindow)
       attachNavigationGuards(ctx, mainWindow)
       // The main window reference lets IPC push task progress to the renderer.
+      // H3 (review): audit trail for the bundled media binaries.
+      ctx.logger.info(
+        `media binaries: ffmpeg=${ctx.ffmpegPath()} (${binaryFingerprint(ctx.ffmpegPath())}), ` +
+          `ffprobe=${ctx.ffprobePath()} (${binaryFingerprint(ctx.ffprobePath())})`
+      )
       const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
       ipcHandleRef = ipcHandle
 

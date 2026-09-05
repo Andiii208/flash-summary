@@ -100,3 +100,25 @@ export function seedCacheEntry(libraryRoot: string, name: string, mtimeMs: numbe
   }
   return dir
 }
+/**
+ * H2 (review): Windows Crashpad writes minidumps under userData that can
+ * contain in-memory secrets — never uploaded (no crashReporter), but they
+ * should not sit on disk forever. Sweep at startup, keep a week.
+ */
+export function cleanStaleCrashDumps(userDataDir: string, now = Date.now(), maxAgeMs = 7 * 24 * 60 * 60 * 1000): number {
+  const reportsDir = join(userDataDir, 'Crashpad', 'reports')
+  if (!existsSync(reportsDir)) return 0
+  let removed = 0
+  for (const entry of readdirSync(reportsDir)) {
+    const full = join(reportsDir, entry)
+    try {
+      if (now - statSync(full).mtimeMs > maxAgeMs) {
+        rmSync(full, { force: true })
+        removed++
+      }
+    } catch {
+      // Vanishing mid-scan is fine for a sweep.
+    }
+  }
+  return removed
+}

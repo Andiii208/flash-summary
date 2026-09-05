@@ -24,7 +24,7 @@ import { OpenAiCompatibleClient } from './providers/openai-client'
 import { ffmpegPath, ffprobePath } from './media/binaries'
 import { decodeGrid8x8 } from './media/grid'
 import type { Grid8x8 } from './media/phash'
-import { cleanStaleCache } from './tasks/cache-clean'
+import { cleanStaleCache, cleanStaleCrashDumps } from './tasks/cache-clean'
 import { getSetting, setSetting, readSettings, SETTINGS_KEYS, type AppSettings } from './settings/store'
 import { readLibraryPointer } from './library/pointer'
 import { Logger } from './logger'
@@ -138,6 +138,14 @@ export function createContext(overrides: Partial<{
     if (removed.length > 0) logger.info(`startup cache cleanup removed ${removed.length} entries (quota ${quotaGb}GB)`)
   } catch {
     // A broken cache dir must not brick startup.
+  }
+
+  // H2 (review): crash minidumps may contain in-memory secrets — never keep them a week.
+  try {
+    const dumps = cleanStaleCrashDumps(userDataDir)
+    if (dumps > 0) logger.info(`startup sweep removed ${dumps} stale crash dumps`)
+  } catch {
+    // The sweep must never brick startup.
   }
 
   logger.info(`context created (library=${libraryRoot}${pointerRoot != null ? ', via pointer' : ', default'})`)

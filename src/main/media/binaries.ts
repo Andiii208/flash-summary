@@ -8,6 +8,7 @@
  */
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { createHash } from 'crypto'
 
 /**
  * Resolve a bundled binary: in dev it lives in node_modules; when packaged
@@ -54,4 +55,21 @@ export function ffmpegPath(): string {
 export function ffprobePath(): string {
   if (cachedFfprobe == null) cachedFfprobe = resolveFfprobePath()
   return cachedFfprobe
+}
+
+/**
+ * H3 (review): sha256 fingerprint of a resolved binary. Logged once at
+ * startup so the shipped ffmpeg/ffprobe identity is auditable per install
+ * (npm-side tampering of the static-binary packages shows up as a
+ * fingerprint change in the field logs). A hard pin lives in
+ * package-lock + release verification (scripts/release.md).
+ */
+export function binaryFingerprint(path: string): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require('fs') as { readFileSync: (p: string) => Buffer }
+    return createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 16)
+  } catch {
+    return 'unavailable'
+  }
 }

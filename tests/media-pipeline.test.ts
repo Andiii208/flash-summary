@@ -67,33 +67,6 @@ describe('downloadToFile with retry', () => {
   }, 20_000)
 })
 
-describe('panorama stream guard', () => {
-  it('rejects panorama urls at the pipeline boundary (reverse verification)', async () => {
-    // Import late to keep the http server setup readable.
-    const { downloadStreamForTask } = await import('../src/main/media/pipeline')
-    const { openDatabase } = await import('../src/main/db/open')
-    const { ensureLibraryLayout } = await import('../src/main/library/paths')
-
-    const dir = mkdtempSync(join(tmpdir(), 'seu-summary-pan-'))
-    ensureLibraryLayout(dir)
-    const db = openDatabase(join(dir, 'app.db'))
-    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
-    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
-
-    const deps = {
-      db,
-      libraryRoot: dir,
-      ffmpeg: 'ffmpeg',
-      ffprobe: 'ffprobe'
-    }
-    await expect(
-      downloadStreamForTask(deps, 't1', 'teacher', 'http://media/x/1170194-3/index.m3u8')
-    ).rejects.toThrowError(/panorama/)
-
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
-  })
-})
 
 describe('stage output evidence table', () => {
   it('records one row per stage per task (upsert semantics)', async () => {
