@@ -25,13 +25,16 @@ import { ffmpegPath, ffprobePath } from './media/binaries'
 import { decodeGrid8x8 } from './media/grid'
 import type { Grid8x8 } from './media/phash'
 import { cleanStaleCache } from './tasks/cache-clean'
-import { getSetting, setSetting, readSettings, type AppSettings } from './settings/store'
+import { getSetting, setSetting, readSettings, SETTINGS_KEYS, type AppSettings } from './settings/store'
+import { readLibraryPointer } from './library/pointer'
 import { Logger } from './logger'
 
 export const CAS_BASE_URL = 'https://cvs.seu.edu.cn'
 
 export interface AppContext {
   libraryRoot: string
+  /** userData dir — home of the library bootstrap pointer and logs. */
+  userDataDir: string
   db: Db
   cryptor: Cryptor
   school: SchoolClient
@@ -109,21 +112,26 @@ export function createContext(overrides: Partial<{
   userDataDir: string
   cryptor: Cryptor
 }> = {}): AppContext {
-  const libraryRoot = overrides.libraryRoot ?? defaultLibraryRoot()
+  const userDataDir = overrides.userDataDir ?? app.getPath('userData')
+  // C1 (review): the library root comes from the userData bootstrap pointer
+  // written by the last successful migration — never from the settings
+  // table of the db we are about to open (that pointer was unread by
+  // design). Explicit overrides (tests/smoke) win over everything.
+  const pointerRoot = readLibraryPointer(userDataDir)
+  const libraryRoot = overrides.libraryRoot ?? pointerRoot ?? defaultLibraryRoot()
   ensureLibraryLayout(libraryRoot)
   const db = openDatabase(join(libraryRoot, 'app.db'))
   const settings = (): AppSettings => readSettings(db, libraryRoot)
-  const cacheDir = (): string => resolveCacheDir(getSetting(db, 'cacheDir', ''), libraryRoot)
+  const cacheDir = (): string => resolveCacheDir(getSetting(db, SETTINGS_KEYS.cacheDir, ''), libraryRoot)
 
   const cryptor = overrides.cryptor ?? dpapiCryptor
-  const userDataDir = overrides.userDataDir ?? app.getPath('userData')
   const logger = new Logger(join(userDataDir, 'logs'))
 
   // Startup cleanup: remove cache entries older than 24h (spec §9) and
   // enforce the cache quota (review B5: default 20GB, setting cacheQuotaGb;
   // the startup sweep always sees an empty queue, and task-deletion races
   // are guarded at the queue layer — 批D).
-  const quotaGbRaw = Number(getSetting(db, 'cacheQuotaGb', ''))
+  const quotaGbRaw = Number(getSetting(db, SETTINGS_KEYS.cacheQuotaGb, ''))
   const quotaGb = Number.isFinite(quotaGbRaw) && quotaGbRaw > 0 ? Math.floor(quotaGbRaw) : 20
   try {
     const removed = cleanStaleCache(cacheDir(), Date.now(), 24 * 60 * 60 * 1000, new Set(), quotaGb * 1024 ** 3)
@@ -132,7 +140,7 @@ export function createContext(overrides: Partial<{
     // A broken cache dir must not brick startup.
   }
 
-  logger.info(`context created (library=${libraryRoot})`)
+  logger.info(`context created (library=${libraryRoot}${pointerRoot != null ? ', via pointer' : ', default'})`)
 
   const jwtOf = async (): Promise<string> => {
     try {
@@ -316,6 +324,7 @@ export function createContext(overrides: Partial<{
 
   return {
     libraryRoot,
+    userDataDir,
     db,
     cryptor,
     school,

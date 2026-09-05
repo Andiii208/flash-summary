@@ -392,6 +392,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               chosenCacheDir={state.chosenCacheDir}
               onSetTheme={state.setTheme}
               onChooseLibrary={state.chooseLibrary}
+              libraryBusy={state.libraryBusy}
+              migrationProgress={state.migrationProgress}
               onOpenPath={state.openPath}
             />
           )}
@@ -544,6 +546,9 @@ interface AppState {
   /** C6: remove an empty course from the sidebar. */
   removeCourse: (courseId: string) => void
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
+  /** C3: migration busy state + live progress for the settings page. */
+  libraryBusy: boolean
+  migrationProgress: { copied: number; total: number } | null
   chooseLibrary: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
 }
@@ -615,6 +620,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [attachments, setAttachments] = useState<NoteAttachmentInfo[]>([])
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
+  /** C3: library migration in flight (busy button + progress line). */
+  const [libraryBusy, setLibraryBusy] = useState(false)
+  const [migrationProgress, setMigrationProgress] = useState<{ copied: number; total: number } | null>(null)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
   const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
@@ -825,6 +833,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
   useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
+  // C3: live library-migration progress (same subscription discipline).
+  useEffect(() => bridge.settings.onMigrateProgress((p) => setMigrationProgress(p)), [bridge])
 
   useEffect(() => {
     let disposed = false
@@ -1640,17 +1650,26 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   const chooseLibrary = useCallback((): void => {
+    if (libraryBusy) return
     void (async () => {
-      const res = await bridge.settings.chooseLibrary()
-      if (!res.ok) {
-        toast(res.error ?? '迁移失败', 'error')
-        return
+      // C3 (review): the migration is a long copy — the button stays
+      // disabled and the progress line reports attachment entries.
+      setLibraryBusy(true)
+      try {
+        const res = await bridge.settings.chooseLibrary()
+        if (!res.ok) {
+          toast(res.error ?? '迁移失败', 'error')
+          return
+        }
+        if (res.value?.canceled) return
+        toast('资料库已迁移，重启应用后生效', 'success')
+        await refreshSettings()
+      } finally {
+        setLibraryBusy(false)
+        setMigrationProgress(null)
       }
-      if (res.value?.canceled) return
-      toast(`资料库已迁移，重启应用后生效`, 'success')
-      await refreshSettings()
     })()
-  }, [bridge, toast, refreshSettings])
+  }, [bridge, toast, refreshSettings, libraryBusy])
 
   const openPath = useCallback(
     (kind: 'library' | 'cache' | 'exports' | 'logs'): void => {
@@ -1756,6 +1775,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     chosenCacheDir,
     removeCourse,
     setTheme,
+    libraryBusy,
+    migrationProgress,
     chooseLibrary,
     openPath
   }

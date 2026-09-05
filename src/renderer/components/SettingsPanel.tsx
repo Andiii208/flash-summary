@@ -27,6 +27,9 @@ export interface SettingsPanelProps {
   /** C10: path picked in the folder dialog, for the draft input. */
   chosenCacheDir?: string | null
   onSetTheme: (theme: 'auto' | 'light' | 'dark') => void
+  /** C3: migration in flight — the button disables and shows progress. */
+  libraryBusy?: boolean
+  migrationProgress?: { copied: number; total: number } | null
   onChooseLibrary: () => void
   onOpenPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
 }
@@ -88,13 +91,18 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         <div class="settings-row">
           <span class="settings-label">资料库</span>
           <code class="settings-path" title={props.settings?.libraryRoot ?? ''}>{props.settings?.libraryRoot ?? '…'}</code>
-          <button class="btn small" onClick={props.onChooseLibrary}>
-            更改
+          <button class="btn small" onClick={props.onChooseLibrary} disabled={props.libraryBusy === true}>
+            {props.libraryBusy === true ? '迁移中…' : '更改'}
           </button>
           <button class="btn small" onClick={() => props.onOpenPath('library')}>
             打开
           </button>
         </div>
+        {props.migrationProgress != null && (
+          <p class="settings-hint">
+            正在复制附件 {props.migrationProgress.copied}/{props.migrationProgress.total} …请勿关闭应用
+          </p>
+        )}
         <div class="settings-row">
           <span class="settings-label">任务缓存</span>
           <input class="qa-input" value={cacheDraft} placeholder="留空使用默认（资料库\\cache）" onInput={(e) => setCacheDraft((e.target as HTMLInputElement).value)} />

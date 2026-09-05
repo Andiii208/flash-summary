@@ -78,7 +78,8 @@ function makeBridge(): SeuSummaryBridge {
       setCacheDir: vi.fn(async () => ok({ cacheDir: 'C' })),
       setTheme: vi.fn(async () => ok({ theme: 'dark' })),
       chooseLibrary: vi.fn(async () => ok({ canceled: true })),
-      openPath: vi.fn(async () => ok(true))
+      openPath: vi.fn(async () => ok(true)),
+      onMigrateProgress: vi.fn(() => () => undefined)
     },
     log: {
       rendererError: vi.fn(async () => ok(true))

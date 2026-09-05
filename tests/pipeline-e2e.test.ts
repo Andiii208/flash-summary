@@ -13,6 +13,7 @@ import { OpenAiCompatibleClient } from '../src/main/providers/openai-client'
 import { createExecutors } from '../src/main/tasks/orchestrator'
 import { TaskRepository, runTask, type TaskProgress } from '../src/main/tasks/queue'
 import { parseNote } from '../src/shared/notes/schema'
+import { resolveLibraryPath } from '../src/main/library/paths'
 
 /**
  * Combined audit L3 (2026-09-02): the ONLY test that runs the whole six-stage
@@ -215,7 +216,8 @@ describe('six-stage pipeline end to end (real http + ffmpeg + provider wire form
       // Keyframes deduped into the library attachments dir with real jpeg files.
       const kfRows = db.prepare('SELECT file_path FROM keyframes WHERE lesson_id = ?').all(LESSON_ID) as Array<{ file_path: string }>
       expect(kfRows.length).toBeGreaterThan(0)
-      for (const row of kfRows) expect(existsSync(row.file_path)).toBe(true)
+      // Rows store library-RELATIVE paths (review C2) - resolve them.
+      for (const row of kfRows) expect(existsSync(resolveLibraryPath(libraryDir, row.file_path))).toBe(true)
 
       // Note stored and re-parseable through the shared zod schema.
       const noteRow = db.prepare('SELECT note_json, version FROM notes WHERE lesson_id = ?').get(LESSON_ID) as { note_json: string; version: number }

@@ -32,11 +32,13 @@ describe('settings store (U3)', () => {
     expect(getSetting(db, 'cacheDir', '')).toBe('E:\\cache')
   })
 
-  it('readSettings merges stored values with the passed default root', () => {
+  it('readSettings echoes the effective root and ignores any stored libraryRoot (review C1)', () => {
     setSetting(db, 'libraryRoot', 'D:\\Lib')
     setSetting(db, 'theme', 'light')
     const s = readSettings(db, 'C:\\default')
-    expect(s.libraryRoot).toBe('D:\\Lib')
+    // C1: the effective root comes from the bootstrap pointer, echoed
+    // here - a stale settings row must never move the library.
+    expect(s.libraryRoot).toBe('C:\\default')
     expect(s.theme).toBe('light')
     expect(s.cacheDir).toBe('')
   })

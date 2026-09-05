@@ -13,6 +13,7 @@ import { dedupeKeyframes, type Grid8x8 } from '../media/phash'
 import { downloadToFile } from '../media/download'
 import { sanitizeStreamUrl } from '../school/play-harvest'
 import { streamComplete, freeDiskBytes } from './resume'
+import { storedAttachmentsPath } from '../library/paths'
 import type { StageExecutor, StageContext } from './queue'
 import type { Stage } from './stages'
 import type { SchoolClient } from '../school/client'
@@ -477,7 +478,7 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
         const dest = join(destDir, `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`)
         const { renameSync } = await import('fs')
         renameSync(frame.filePath, dest)
-        insertKf.run(`${ctx.lessonId}-kf-${i}`, ctx.lessonId, frame.timestampSeconds, dest, frame.hash, nowIso(deps))
+        insertKf.run(`${ctx.lessonId}-kf-${i}`, ctx.lessonId, frame.timestampSeconds, storedAttachmentsPath(ctx.lessonId, 'keyframes', `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`), frame.hash, nowIso(deps))
       }
       if (existsSync(dl.screenPath)) rmSync(dl.screenPath, { force: true })
       rmSync(`${dl.screenPath}.ok`, { force: true })
@@ -499,7 +500,7 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
           for (const [i, url] of urls.entries()) {
             const file = join(pptDir, `page-${String(i).padStart(3, '0')}.png`)
             await downloadToFile(url, file, 3, ctx.signal)
-            insertPpt.run(`${ctx.lessonId}-ppt-${i}`, ctx.lessonId, i, file, nowIso(deps))
+            insertPpt.run(`${ctx.lessonId}-ppt-${i}`, ctx.lessonId, i, storedAttachmentsPath(ctx.lessonId, 'ppt', `page-${String(i).padStart(3, '0')}.png`), nowIso(deps))
             pptCount++
           }
         } catch {
@@ -532,7 +533,7 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
       // D6 (review): the summarize call honors cancellation — the abort
       // rides the provider request itself instead of waiting for a stage
       // boundary.
-      const result = await summarizeLesson(deps.db, client, ctx.lessonId, ctx.signal)
+      const result = await summarizeLesson(deps.db, client, ctx.lessonId, deps.libraryRoot, ctx.signal)
       if ('error' in result) {
         // summarizeLesson catches internally — an abort surfaces as a
         // generic error result, so re-check the signal here.

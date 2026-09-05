@@ -207,6 +207,8 @@ export interface SettingsBridge {
   setTheme(theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>>
   chooseLibrary(): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>>
   openPath(kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>>
+  /** C3: live migration progress (copied/total attachment entries). */
+  onMigrateProgress(cb: (p: { copied: number; total: number }) => void): () => void
 }
 
 export interface LogBridge {

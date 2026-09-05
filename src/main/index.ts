@@ -4,6 +4,7 @@ import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
 import { registerIpc, webContentsSender } from './ipc'
 import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
+import { Logger } from './logger'
 
 let mainWindow: BrowserWindow | null = null
 // D4 (review): the close dialog promises «后台继续运行» — hide to tray and
@@ -155,64 +156,79 @@ if (!gotSingleInstanceLock) {
   })
 
   app.whenReady().then(async () => {
-    // Campus domains go direct even when a system proxy is configured (A5):
-    // the proxy bypass applies before any window/platform navigation exists.
-    await session.defaultSession.setProxy({ mode: 'system', proxyBypassRules: PROXY_BYPASS_RULES })
-    const ctx = createContext()
-    mainWindow = createMainWindow()
-    // In-window navigation flows (play-page harvest, embedded login) drive
-    // this window from main; recreated windows replace the reference.
-    ctx.setMainWindow(mainWindow)
-    bindWindowLifecycle(ctx, mainWindow)
-    // The main window reference lets IPC push task progress to the renderer.
-    const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
-    ipcHandleRef = ipcHandle
+    // C4 (review): a migration/open failure inside createContext used to
+    // escape as an unhandled rejection — no window, no dialog, zero log
+    // lines. Log first, then fail loudly with the log directory at hand.
+    const logsDir = join(app.getPath('userData'), 'logs')
+    const earlyLogger = new Logger(logsDir)
+    try {
+      // Campus domains go direct even when a system proxy is configured (A5):
+      // the proxy bypass applies before any window/platform navigation exists.
+      await session.defaultSession.setProxy({ mode: 'system', proxyBypassRules: PROXY_BYPASS_RULES })
+      const ctx = createContext()
+      mainWindow = createMainWindow()
+      // In-window navigation flows (play-page harvest, embedded login) drive
+      // this window from main; recreated windows replace the reference.
+      ctx.setMainWindow(mainWindow)
+      bindWindowLifecycle(ctx, mainWindow)
+      // The main window reference lets IPC push task progress to the renderer.
+      const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+      ipcHandleRef = ipcHandle
 
-    // M1-3 + D4: closing with a task running must be an informed choice —
-    // «后台继续运行» now actually keeps executing (hide to tray), the task
-    // finishing restores the window, and «取消任务并退出» cancels for real.
-    // destroy() bypasses this handler so the choice is one-shot.
-    let unsubscribeIdle: (() => void) | null = null
-    mainWindow.on('close', (event) => {
-      if (!ipcHandle.isTaskRunning()) return
-      const win = mainWindow
-      if (win == null || win.isDestroyed()) return
-      event.preventDefault()
-      void dialog
-        .showMessageBox(win, {
-          type: 'question',
-          buttons: ['后台继续运行', '取消任务并退出', '返回应用'],
-          defaultId: 0,
-          cancelId: 2,
-          title: '任务正在运行',
-          message: '有任务正在执行，关闭窗口后任务会怎样？',
-          detail: '「后台继续运行」：窗口收到系统托盘，任务继续执行，完成后窗口自动恢复。'
-        })
-        .then(({ response }) => {
-          if (response === 0) {
-            enterBackgroundMode(win)
-            unsubscribeIdle = ipcHandle.onQueueIdle(() => {
-              exitBackgroundMode(win)
-            })
-          } else if (response === 1) {
-            ipcHandle.cancelRunning()
-            win.destroy()
-          }
-        })
-    })
-    mainWindow.on('closed', () => {
-      if (unsubscribeIdle != null) unsubscribeIdle()
-      destroyTray()
-    })
+      // M1-3 + D4: closing with a task running must be an informed choice —
+      // «后台继续运行» now actually keeps executing (hide to tray), the task
+      // finishing restores the window, and «取消任务并退出» cancels for real.
+      // destroy() bypasses this handler so the choice is one-shot.
+      let unsubscribeIdle: (() => void) | null = null
+      mainWindow.on('close', (event) => {
+        if (!ipcHandle.isTaskRunning()) return
+        const win = mainWindow
+        if (win == null || win.isDestroyed()) return
+        event.preventDefault()
+        void dialog
+          .showMessageBox(win, {
+            type: 'question',
+            buttons: ['后台继续运行', '取消任务并退出', '返回应用'],
+            defaultId: 0,
+            cancelId: 2,
+            title: '任务正在运行',
+            message: '有任务正在执行，关闭窗口后任务会怎样？',
+            detail: '「后台继续运行」：窗口收到系统托盘，任务继续执行，完成后窗口自动恢复。'
+          })
+          .then(({ response }) => {
+            if (response === 0) {
+              enterBackgroundMode(win)
+              unsubscribeIdle = ipcHandle.onQueueIdle(() => {
+                exitBackgroundMode(win)
+              })
+            } else if (response === 1) {
+              ipcHandle.cancelRunning()
+              win.destroy()
+            }
+          })
+      })
+      mainWindow.on('closed', () => {
+        if (unsubscribeIdle != null) unsubscribeIdle()
+        destroyTray()
+      })
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        mainWindow = createMainWindow()
-        ctx.setMainWindow(mainWindow)
-        bindWindowLifecycle(ctx, mainWindow)
-        ipcHandleRef = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
-      }
-    })
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          mainWindow = createMainWindow()
+          ctx.setMainWindow(mainWindow)
+          bindWindowLifecycle(ctx, mainWindow)
+          ipcHandleRef = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+        }
+      })
+    } catch (err) {
+      const message = (err as Error).message ?? String(err)
+      earlyLogger.error(`startup failed: ${message}`)
+      void dialog.showErrorBox(
+        'SEU Summary 启动失败',
+        `资料库初始化失败：${message}\n\n日志目录：${logsDir}\n请把日志发给开发者或在安全模式下重装。`
+      )
+      app.quit()
+    }
   })
 
   app.on('window-all-closed', () => {

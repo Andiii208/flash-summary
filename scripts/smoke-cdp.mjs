@@ -122,7 +122,7 @@ const EXPECTED_BRIDGE = {
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
   notes: ['latest', 'list', 'exportMarkdown', 'exportAnki', 'attachments', 'regenerate', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
-  settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath'],
+  settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'onMigrateProgress'],
   log: ['rendererError']
 }
 

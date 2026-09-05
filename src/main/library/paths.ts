@@ -1,5 +1,5 @@
+import { isAbsolute, join } from 'path'
 import { mkdirSync } from 'fs'
-import { join } from 'path'
 import { homedir } from 'os'
 
 /**
@@ -46,4 +46,23 @@ export function ensureLibraryLayout(root: string): void {
   mkdirSync(attachmentsPath(root), { recursive: true })
   mkdirSync(cachePath(root), { recursive: true })
   mkdirSync(exportsPath(root), { recursive: true })
+}
+
+/**
+ * Resolve a path stored in the db against the CURRENT library root
+ * (review C2). Rows written since C2 store library-relative paths
+ * (`attachments/<lessonId>/...`); legacy rows hold absolute paths that
+ * keep working unchanged as long as they point where they always did.
+ */
+export function resolveLibraryPath(libraryRoot: string, stored: string): string {
+  if (stored === '') return stored
+  return isAbsolute(stored) ? stored : join(libraryRoot, stored)
+}
+
+/**
+ * The stored form for a file under the library's attachments dir:
+ * relative to the library root, so the db survives a migration.
+ */
+export function storedAttachmentsPath(lessonId: string, ...segments: string[]): string {
+  return join('attachments', lessonId, ...segments)
 }

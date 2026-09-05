@@ -1,14 +1,25 @@
 /**
  * User settings CRUD (U3). The settings table lives in the library db;
- * libraryRoot is the effective value (default or previously migrated),
  * cacheDir overrides the default cache location, theme drives the renderer.
+ * libraryRoot is NOT read from here (review C1): the effective library root
+ * comes from the userData bootstrap pointer, and readSettings only echoes
+ * the root the db was actually opened from.
  */
 import type { Db } from '../db/open'
 import { resolveCacheDir } from '../library/paths'
 
 export type ThemeSetting = 'auto' | 'light' | 'dark'
 
+/** C5 (review): settings keys in one place — no scattered string literals. */
+export const SETTINGS_KEYS = {
+  cacheDir: 'cacheDir',
+  theme: 'theme',
+  courseListMaxPages: 'courseListMaxPages',
+  cacheQuotaGb: 'cacheQuotaGb'
+} as const
+
 export interface AppSettings {
+  /** The root the db was opened from (echo only — the truth is the pointer). */
   libraryRoot: string
   cacheDir: string
   theme: ThemeSetting
@@ -28,12 +39,14 @@ export function setSetting(db: Db, key: string, value: string): void {
   ).run(key, value, new Date().toISOString())
 }
 
-/** Effective settings: libraryRoot falls back to the passed default. */
-export function readSettings(db: Db, fallbackRoot: string): AppSettings {
+/** Effective settings; theme falls back to auto on an unknown stored value. */
+export function readSettings(db: Db, effectiveRoot: string): AppSettings {
+  const themeRaw = getSetting(db, SETTINGS_KEYS.theme, DEFAULT_THEME)
+  const theme: ThemeSetting = themeRaw === 'light' || themeRaw === 'dark' ? themeRaw : DEFAULT_THEME
   return {
-    libraryRoot: getSetting(db, 'libraryRoot', fallbackRoot),
-    cacheDir: getSetting(db, 'cacheDir', ''),
-    theme: (getSetting(db, 'theme', DEFAULT_THEME) as ThemeSetting) || DEFAULT_THEME
+    libraryRoot: effectiveRoot,
+    cacheDir: getSetting(db, SETTINGS_KEYS.cacheDir, ''),
+    theme
   }
 }
 

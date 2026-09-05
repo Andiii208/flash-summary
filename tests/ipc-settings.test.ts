@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
@@ -7,6 +7,7 @@ import { createContext, type AppContext } from '../src/main/app-context'
 import { registerIpc } from '../src/main/ipc'
 import type { Cryptor } from '../src/main/auth/session-crypto'
 import { noteToMarkdown } from '../src/shared/notes/markdown'
+import { readLibraryPointer } from '../src/main/library/pointer'
 
 // Electron dialogs are user-facing; tests stub them and assert the wiring.
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
@@ -102,6 +103,44 @@ describe('settings IPC (U3)', () => {
     expect(res.value.libraryRoot).toBe(dest)
     expect(res.value.restartRequired).toBe(true)
     expect(existsSync(join(dest, 'app.db'))).toBe(true)
+  })
+
+  it('settings:chooseLibrary writes the userData pointer (review C1)', async () => {
+    const ctx = makeCtx()
+    const dest = join(dir, 'new-library')
+    openDialog.filePaths = [dest]
+    const res = await invoke(ctx, 'settings:chooseLibrary') as { ok: boolean; value?: { restartRequired: boolean } }
+    expect(res.ok).toBe(true)
+    // The next launch opens THIS root via the pointer — not a settings row
+    // buried in the old library that nobody read.
+    expect(readLibraryPointer(join(dir, 'userdata'))).toBe(dest)
+  })
+
+  it('settings:chooseLibrary refuses while tasks are running or queued (review C3)', async () => {
+    const ctx = makeCtx()
+    const dest = join(dir, 'never-library')
+    openDialog.filePaths = [dest]
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-01T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '第1讲', '2026-09-01T00:00:00Z')").run()
+    db.prepare("INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t-live', 'l1', 'transcribing', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')").run()
+    const res = await invoke(ctx, 'settings:chooseLibrary') as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('有任务')
+    expect(existsSync(dest)).toBe(false)
+  })
+
+  it('settings:chooseLibrary reports per-entry copy progress (review C3)', async () => {
+    const ctx = makeCtx()
+    const dest = join(dir, 'progress-library')
+    openDialog.filePaths = [dest]
+    mkdirSync(join(dir, 'attachments', 'l1'), { recursive: true })
+    writeFileSync(join(dir, 'attachments', 'l1', 'kf.jpg'), 'x')
+    const sent: Array<{ channel: string; payload: unknown }> = []
+    registerIpc(ctx, ipc as never, { sender: { send: (channel, payload) => sent.push({ channel, payload }) } })
+    const res = await ipc.invoke('settings:chooseLibrary') as { ok: boolean }
+    expect(res.ok).toBe(true)
+    const events = sent.filter((s) => s.channel === 'library:migrationProgress') as Array<{ payload: { copied: number; total: number } }>
+    expect(events[events.length - 1]?.payload).toEqual({ copied: 1, total: 1 })
   })
 
   it('settings:chooseLibrary returns canceled without migrating', async () => {

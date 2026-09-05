@@ -33,6 +33,7 @@ import { formatBytes, formatSpeed } from '../shared/format'
 import type { Note } from '../shared/notes/schema'
 import { resolveCacheDir } from './library/paths'
 import { migrateLibrary } from './library/migrate'
+import { writeLibraryPointer } from './library/pointer'
 import { getSetting } from './settings/store'
 
 /** User-tunable page cap (settings key courseListMaxPages); undefined → client default. */
@@ -546,13 +547,31 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
   ipc.handle('settings:chooseLibrary', async () => {
     try {
+      // C3 (review): never migrate while the pipeline could write to either
+      // library — the guard covers queued tasks AND non-terminal rows left
+      // by a crash (their resumable artifacts live in the old cache dir).
+      const unfinished = ctx.db
+        .prepare("SELECT COUNT(*) AS n FROM tasks WHERE state NOT IN ('succeeded', 'failed')")
+        .get() as { n: number }
+      if (queue.members().length > 0 || unfinished.n > 0) {
+        return err(new Error('有任务在运行、排队或未完成，请先取消或清理任务后再迁移'))
+      }
       const win = BrowserWindow.getFocusedWindow()
-      const options: OpenDialogOptions = { title: '选择新的资料库目录（需为空目录）', properties: ['openDirectory', 'createDirectory'] }
-      const result = win == null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(win, options)
+      const dialogOptions: OpenDialogOptions = { title: '选择新的资料库目录（需为空目录）', properties: ['openDirectory', 'createDirectory'] }
+      const result = win == null ? await dialog.showOpenDialog(dialogOptions) : await dialog.showOpenDialog(win, dialogOptions)
       if (result.canceled || result.filePaths.length === 0) return ok({ canceled: true })
-      const migration = await migrateLibrary(ctx.db, ctx.libraryRoot, result.filePaths[0] as string)
+      const migration = await migrateLibrary(ctx.db, ctx.libraryRoot, result.filePaths[0] as string, {
+        onProgress: (copied, total) => {
+          options.sender?.send('library:migrationProgress', { copied, total })
+        }
+      })
       if (!migration.ok) return err(new Error(migration.error))
-      ctx.setSetting('libraryRoot', migration.dest)
+      // C1 (review): the pointer lives in userData, outside the library,
+      // where the next launch actually reads it. The old code wrote the
+      // destination into the OLD library's settings table, which no startup
+      // code ever read back — the migration silently never took effect.
+      writeLibraryPointer(ctx.userDataDir, migration.dest)
+      ctx.logger.info(`library migrated to ${migration.dest} (pointer updated)`)
       return ok({ canceled: false, libraryRoot: migration.dest, restartRequired: true })
     } catch (e) {
       return err(e)
@@ -891,7 +910,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // 2026-09-04: attachments (keyframes + PPT pages) as data URLs for the note views.
   ipc.handle('notes:attachments', (_e, lessonId: unknown) => {
     try {
-      return ok(listAttachments(ctx.db, str(lessonId, 'lessonId')))
+      return ok(listAttachments(ctx.db, str(lessonId, 'lessonId'), ctx.libraryRoot))
     } catch (e) {
       return err(e)
     }
@@ -904,7 +923,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const id = str(lessonId, 'lessonId')
       // Input checks first: a missing transcript should not masquerade as a
       // provider-binding problem (chatFor throws when unbound).
-      const inputs = loadSummarizeInputs(ctx.db, id)
+      const inputs = loadSummarizeInputs(ctx.db, id, ctx.libraryRoot)
       if ('error' in inputs) return err(new Error(inputs.error))
       if (queue.current() != null) return err(new Error('任务运行中，请等待完成后再重新生成笔记'))
       const runningForLesson = ctx.db
@@ -912,7 +931,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .get(id) as { n: number }
       if (runningForLesson.n > 0) return err(new Error('该课时存在排队/运行中的任务，请等待完成后再重新生成笔记'))
       const client = ctx.chatFor('multimodal')
-      const result = await summarizeLesson(ctx.db, client, id)
+      const result = await summarizeLesson(ctx.db, client, id, ctx.libraryRoot)
       if ('error' in result) return err(new Error(result.error))
       return ok(result)
     } catch (e) {
