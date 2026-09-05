@@ -15,11 +15,12 @@ version: 1.0.0
 ```
 Note {
   overview, methodology          ← LLM 按 markdown 组织（## 小节 + - 列表）
-  knowledgeTree: TreeNode        ← 思维导图的唯一数据源
+  knowledgeTree: TreeNode        ← 思维导图的唯一数据源；节点可带 terms（锚定 concepts term，归一层丢弃编造项）
   timeline: [{at, title, detail, refs[], evidence[]}]
   concepts: [{term, definition, refs[]}]
   formulasAndSteps: [{kind: formula|code|operation, content, explanation, refs[]}]
   examCues[], questionsAndGaps[]
+  quiz[], conceptLinks[]         ← 关联线 from/to 必须解析到 term 或节点标题，否则整条丢弃
   transcriptRefs[], evidence[]
 }
 ```
@@ -61,8 +62,9 @@ Note {
 
 ## 4. 思维导图
 
-- 布局：`src/shared/notes/mindmap-layout.ts` 纯函数（左根、叶子按行、父居中、贝塞尔连线、CJK 宽度估算、折叠路径集）。**屏幕交互版（MindMap.tsx）与 PDF 静态版（PrintHandout）共用同一布局函数**——几何只有一个事实源。
-- 交互：节点点击折叠，折叠徽标显示隐藏后代数。
+- 布局：`src/shared/notes/mindmap-layout.ts` 纯函数（左根、叶子按行、父居中、贝塞尔连线、CJK 宽度估算、折叠路径集、可选 terms 副行 `showTerms`、可选跨节点关联线 `links`——折叠端点不渲染）。**屏幕交互版（MindMap.tsx）与 PDF 静态版（PrintHandout）与 SVG 导出（mindmap-svg.ts）共用同一布局函数**——几何只有一个事实源；缩放/平移是 viewBox 变换，不碰几何。
+- 交互（Map Expansion 2026-09-05）：视图内子工具栏（层级控制=collapsedSetForMaxDepth 纯函数 + 标题搜索：命中高亮/展开祖先/滚动定位，与回忆模式互斥）、Ctrl+滚轮指针锚点缩放 0.4-3x、空白拖拽平移、节点点击折叠（caret+后代计数胶囊）、ℹ️ 浮层（关联概念+锚定 quiz 翻面+跳详细笔记）、双击下钻焦点模式（面包屑返回，折叠集全路径空间 fullToRel/relToFull 映射）、回忆模式（depth≥2 同色遮罩逐个揭示——提取练习）、导出 SVG。
+- 课程级：`notes:courseTree` 聚合各课最新版树（`mergeCourseTree` 纯函数，第N节课序复用 course-order），模态 CourseMapDialog；**不跨课时概念链接、不进 PDF**。
 
 ## 5. 视觉纪律（转化自 pptx/pdf skill，违反=返工）
 
