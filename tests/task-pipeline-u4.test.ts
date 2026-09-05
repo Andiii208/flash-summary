@@ -46,7 +46,7 @@ function makeWav(seconds: number, target: string): void {
 
 function stageOutputRow(taskId: string, stage: string, output: unknown): void {
   db.prepare(
-    "INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES (?, 'l1', 'pending', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')"
+    "INSERT OR IGNORE INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES (?, 'l1', 'pending', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')"
   ).run(taskId)
   db.prepare('INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, ?, ?)').run(
     taskId,
@@ -145,6 +145,31 @@ describe('makeTranscribe chunking (U4)', () => {
     result = await makeTranscribe(silentDeps)({ taskId: 't1-silent', lessonId: 'l1', stage: 'transcribing' })
     expect(result.status).toBe('failed')
     expect((result as { error: string }).error).toContain('没有可识别的语音')
+  })
+
+  it('resumes from the transcribing checkpoint without re-uploading completed chunks (review B2)', async () => {
+    const audioPath = join(dir, 'audio-ckpt.wav')
+    makeWav(2, audioPath)
+    stageOutputRow('t1-ckpt', 'extracting_audio', { audioPath, durationSeconds: 300 })
+    // Chunks 0 (speech) and 1 (silent) already done from an earlier run.
+    stageOutputRow('t1-ckpt', 'transcribing', {
+      totalChunks: 3,
+      chunks: [
+        { index: 0, at: 0, text: '第一段语音' },
+        { index: 1, at: 120, text: '' }
+      ]
+    })
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('asr', 'p1', 'whisper-1')").run()
+    const transcribe = vi.fn(async () => '第三段语音')
+    const deps = makeDeps({ chat: (() => ({ transcribe, chat: async () => 'x' })) as unknown as OrchestratorDeps['chat'] })
+    const result = await makeTranscribe(deps)(makeCtx('t1-ckpt'))
+    expect(result.status).toBe('ok')
+    // Only the missing chunk 2 is uploaded.
+    expect(transcribe).toHaveBeenCalledTimes(1)
+    const row = db.prepare("SELECT segments_json FROM transcripts WHERE lesson_id = 'l1'").get() as { segments_json: string }
+    const segments = JSON.parse(row.segments_json) as Array<{ at: number; text: string }>
+    expect(segments.map((sg) => sg.at)).toEqual([0, 240])
+    expect(segments.map((sg) => sg.text)).toEqual(['第一段语音', '第三段语音'])
   })
 })
 

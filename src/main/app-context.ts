@@ -115,12 +115,23 @@ export function createContext(overrides: Partial<{
   const settings = (): AppSettings => readSettings(db, libraryRoot)
   const cacheDir = (): string => resolveCacheDir(getSetting(db, 'cacheDir', ''), libraryRoot)
 
-  // Startup cleanup: remove cache entries older than 24h (spec §9).
-  cleanStaleCache(cacheDir())
-
   const cryptor = overrides.cryptor ?? dpapiCryptor
   const userDataDir = overrides.userDataDir ?? app.getPath('userData')
   const logger = new Logger(join(userDataDir, 'logs'))
+
+  // Startup cleanup: remove cache entries older than 24h (spec §9) and
+  // enforce the cache quota (review B5: default 20GB, setting cacheQuotaGb;
+  // the startup sweep always sees an empty queue, and task-deletion races
+  // are guarded at the queue layer — 批D).
+  const quotaGbRaw = Number(getSetting(db, 'cacheQuotaGb', ''))
+  const quotaGb = Number.isFinite(quotaGbRaw) && quotaGbRaw > 0 ? Math.floor(quotaGbRaw) : 20
+  try {
+    const removed = cleanStaleCache(cacheDir(), Date.now(), 24 * 60 * 60 * 1000, new Set(), quotaGb * 1024 ** 3)
+    if (removed.length > 0) logger.info(`startup cache cleanup removed ${removed.length} entries (quota ${quotaGb}GB)`)
+  } catch {
+    // A broken cache dir must not brick startup.
+  }
+
   logger.info(`context created (library=${libraryRoot})`)
 
   const jwtOf = async (): Promise<string> => {

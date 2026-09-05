@@ -23,6 +23,10 @@ async function attempt(url: string, target: string, signalTimeoutMs: number, sig
   // (task cancel must interrupt an in-flight download immediately).
   const combined = signal != null ? AbortSignal.any([AbortSignal.timeout(signalTimeoutMs), signal]) : AbortSignal.timeout(signalTimeoutMs)
   const res = await fetch(url, { signal: combined, headers })
+  // 416 on a Range request means offset >= size: the file is already
+  // complete (field: a resume attempt landing exactly on the end used to
+  // delete the finished file after burning all retries — review B4).
+  if (res.status === 416 && existing > 0) return existing
   if (!res.ok || res.body == null) throw new Error(`download HTTP ${res.status}`)
 
   const append = res.status === 206

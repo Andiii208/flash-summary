@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
@@ -71,6 +71,14 @@ function realFfmpeg(): string {
 function realFfprobe(): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return (require('ffprobe-static') as { path: string }).path
+}
+
+function seedFetchingHandoff(taskId: string): void {
+  db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'fetching_course', ?)").run(taskId, JSON.stringify({
+    lessonId: 'l1',
+    teacherStreamUrl: 'https://dncvsvod/teacher.mp4?auth_key=live-token',
+    screenStreamUrl: 'https://dncvsvod/screen.mp4?auth_key=live-token'
+  }))
 }
 
 describe('orchestrator stage executors', () => {
@@ -212,6 +220,53 @@ describe('orchestrator stage executors', () => {
     const result = await executors.downloading_video({ taskId: 't-dl', lessonId: 'l1', stage: 'downloading_video' })
     expect(result).toEqual({ status: 'ok' })
     expect(seen).toEqual(['https://dncvsvod/t.mp4?auth_key=live-token', 'https://dncvsvod/s.mp4?auth_key=live-token'])
+  })
+
+  it('downloading_video skips a markered stream and only re-fetches the failed one (review B3)', async () => {
+    const fetched: string[] = []
+    const deps = makeDeps({
+      fetchStream: async (url, target) => {
+        fetched.push(url)
+        writeFileSync(target, 'stream-bytes')
+      }
+    })
+    const repo = new TaskRepository(db)
+    repo.create('t-dl2', 'l1')
+    const taskDir = join(deps.cacheDir(), 't-dl2')
+    mkdirSync(taskDir, { recursive: true })
+    // Teacher stream completed in an earlier run (file + .ok marker).
+    writeFileSync(join(taskDir, 'teacher.ts'), 'old-bytes')
+    writeFileSync(join(taskDir, 'teacher.ts.ok'), '')
+    seedFetchingHandoff('t-dl2')
+    const executors = createExecutors(deps)
+    const result = await executors.downloading_video({ taskId: 't-dl2', lessonId: 'l1', stage: 'downloading_video' })
+    expect(result).toEqual({ status: 'ok' })
+    expect(fetched).toHaveLength(1)
+    expect(fetched[0]).toContain('screen')
+    // Both markers exist after success; the screen marker is new.
+    expect(existsSync(join(taskDir, 'screen.ts.ok'))).toBe(true)
+    expect(existsSync(join(taskDir, 'teacher.ts.ok'))).toBe(true)
+  })
+
+  it('downloading_video refuses to start below the free-disk floor (review B6)', async () => {
+    const deps = makeDeps({ freeDiskOverride: () => 1024 * 1024 * 1024 })
+    const repo = new TaskRepository(db)
+    repo.create('t-disk', 'l1')
+    seedFetchingHandoff('t-disk')
+    const executors = createExecutors(deps)
+    const result = await executors.downloading_video({ taskId: 't-disk', lessonId: 'l1', stage: 'downloading_video' })
+    expect(result.status).toBe('failed')
+    expect((result as { error: string }).error).toContain('磁盘剩余空间不足')
+  })
+
+  it('downloading_video proceeds when the free-disk probe is unavailable (review B6)', async () => {
+    const deps = makeDeps({ freeDiskOverride: () => null, fetchStream: async (_url, target) => writeFileSync(target, 'x') })
+    const repo = new TaskRepository(db)
+    repo.create('t-disk2', 'l1')
+    seedFetchingHandoff('t-disk2')
+    const executors = createExecutors(deps)
+    const result = await executors.downloading_video({ taskId: 't-disk2', lessonId: 'l1', stage: 'downloading_video' })
+    expect(result.status).toBe('ok')
   })
 
   it('summarizing stores a versioned note from the model JSON', async () => {

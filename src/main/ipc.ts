@@ -17,6 +17,7 @@ import { isFakeIpResolution } from './net-diagnostics'
 import { TaskRepository, runTask, type TaskProgress } from './tasks/queue'
 import { SerialTaskQueue } from './tasks/serial-queue'
 import { createExecutors } from './tasks/orchestrator'
+import { resolveResumeStage, type ResumeDecision } from './tasks/resume'
 import type { Stage } from './tasks/stages'
 import { stagePercent } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
@@ -62,11 +63,15 @@ function assertWritable(dir: string): void {
   rmSync(probe, { force: true })
 }
 
-/** Compute the resume point for a task: pending stages start from the top,
- *  failed tasks resume from their failed stage. */
-function firstStageFor(state: string, failedStage: string | null): Parameters<typeof runTask>[3] {
-  if (state === 'failed' && failedStage != null) return failedStage as Parameters<typeof runTask>[3]
-  return 'fetching_course'
+/** Compute the resume decision for a task: failed tasks resume from their
+ *  failed stage — degraded to the earliest stage that can rebuild missing
+ *  inputs (review B1: expired URLs / reaped audio / moved cache dirs used
+ *  to dead-end in a permanent failure loop); fresh tasks start from the top. */
+function resumeDecisionFor(ctx: AppContext, row: { state: string; failed_stage: string | null }, taskId: string): ResumeDecision {
+  if (row.state === 'failed' && row.failed_stage != null) {
+    return resolveResumeStage(ctx.db, taskId, row.failed_stage as Parameters<typeof runTask>[3])
+  }
+  return { stage: 'fetching_course', note: '' }
 }
 
 /** Progress-channel interface so tests can substitute a fake sender.
@@ -655,7 +660,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const row = repo.get(id)
       if (row == null) throw new Error(`task ${id} not found`)
       const executors = makeExecutors()
-      const result = await runTask(repo, id, executors, firstStageFor(row.state, row.failed_stage), sendProgress, abortOf(id))
+      const decision = resumeDecisionFor(ctx, row, id)
+      if (decision.note !== '') {
+        ctx.logger.warn(`task ${id} resume degraded: ${decision.note}`)
+        sendProgress({ taskId: id, state: decision.stage, stage: decision.stage, message: decision.note, percent: 0 })
+      }
+      const result = await runTask(repo, id, executors, decision.stage, sendProgress, abortOf(id))
       return ok({ result, task: repo.get(id) })
     } catch (e) {
       return err(e)
@@ -672,13 +682,23 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (row == null) throw new Error(`task ${id} not found`)
       const controller = new AbortController()
       abortControllers.set(id, controller)
-      void queue.enqueue(id, () =>
-        runTask(repo, id, makeExecutors(), firstStageFor(row.state, row.failed_stage), sendProgress, controller.signal)
-          .catch((e) => {
-            sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
-          })
-          .finally(() => abortControllers.delete(id))
-      )
+      void queue
+        .enqueue(id, () => {
+          // Decide at DEQUEUE time, not enqueue: a queued wait can outlive
+          // URL freshness or see files reaped — re-read the row here.
+          const current = repo.get(id)
+          if (current == null) throw new Error(`task ${id} not found`)
+          const decision = resumeDecisionFor(ctx, current, id)
+          if (decision.note !== '') {
+            ctx.logger.warn(`task ${id} resume degraded: ${decision.note}`)
+            sendProgress({ taskId: id, state: decision.stage, stage: decision.stage, message: decision.note, percent: 0 })
+          }
+          return runTask(repo, id, makeExecutors(), decision.stage, sendProgress, controller.signal)
+        })
+        .catch((e) => {
+          sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
+        })
+        .finally(() => abortControllers.delete(id))
       return ok({ id, state: 'running' })
     } catch (e) {
       return err(e)

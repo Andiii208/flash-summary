@@ -66,6 +66,17 @@ describe('downloadToFile Range resume (U4)', () => {
           res.end(PAYLOAD)
           return
         }
+        if (req.url === '/complete') {
+          // Range-not-satisfiable: the offset is already at (or past) the end.
+          if (req.headers.range != null) {
+            res.writeHead(416, { 'content-range': `bytes */${PAYLOAD.length}` })
+            res.end()
+            return
+          }
+          res.writeHead(200, { 'content-type': 'application/octet-stream' })
+          res.end(PAYLOAD)
+          return
+        }
         res.writeHead(404)
         res.end()
       })
@@ -95,6 +106,16 @@ describe('downloadToFile Range resume (U4)', () => {
     writeFileSync(target, 'stale-partial-garbage')
     const stats = await downloadToFile(`${baseUrl}/no-range`, target, 2)
     expect(stats.bytes).toBe(PAYLOAD.length)
+    expect(readFileSync(target, 'utf8')).toBe(PAYLOAD)
+  })
+
+  it('treats a 416 on a Range request as «already complete» instead of deleting the file (review B4)', async () => {
+    const target = join(dir, 'out.bin')
+    writeFileSync(target, PAYLOAD)
+    const stats = await downloadToFile(`${baseUrl}/complete`, target, 3)
+    expect(stats.bytes).toBe(PAYLOAD.length)
+    // The finished file must survive: the old code unlinked it after the
+    // retries burned out on the same 416.
     expect(readFileSync(target, 'utf8')).toBe(PAYLOAD)
   })
 })

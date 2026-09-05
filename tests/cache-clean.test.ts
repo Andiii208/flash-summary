@@ -47,4 +47,37 @@ describe('stale cache cleanup (reverse-verified)', () => {
     expect(cleanStaleCache(cache)).toEqual([])
     rmSync(root, { recursive: true, force: true })
   })
+
+  it('enforces the quota by evicting the oldest task dirs first (review B5)', () => {
+    const root = makeLibrary()
+    const cache = join(root, 'cache')
+    const now = Date.now()
+    // Three fresh task dirs of ~10 bytes each; quota fits only two.
+    for (const name of ['task-a', 'task-b', 'task-c']) {
+      const taskDir = join(cache, name)
+      mkdirSync(taskDir, { recursive: true })
+      writeFileSync(join(taskDir, 'audio.wav'), 'x'.repeat(10))
+    }
+    // task-a is the oldest.
+    utimesSync(join(cache, 'task-a'), (now - 60_000) / 1000, (now - 60_000) / 1000)
+    const removed = cleanStaleCache(cache, now, 24 * 60 * 60 * 1000, new Set(), 25)
+    expect(removed).toEqual(['task-a'])
+    expect(existsSync(join(cache, 'task-a'))).toBe(false)
+    expect(existsSync(join(cache, 'task-b'))).toBe(true)
+    expect(existsSync(join(cache, 'task-c'))).toBe(true)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('never evicts a running task dir even over quota (review B5)', () => {
+    const root = makeLibrary()
+    const cache = join(root, 'cache')
+    const now = Date.now()
+    const runningDir = join(cache, 'task-running')
+    mkdirSync(runningDir, { recursive: true })
+    writeFileSync(join(runningDir, 'audio.wav'), 'x'.repeat(50))
+    const removed = cleanStaleCache(cache, now, 24 * 60 * 60 * 1000, new Set(['task-running']), 10)
+    expect(removed).toEqual([])
+    expect(existsSync(runningDir)).toBe(true)
+    rmSync(root, { recursive: true, force: true })
+  })
 })
