@@ -2,6 +2,34 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — B站视频源接入（2026-09-06 · 方案 2026-09-06-bilibili-source-integration 已批准「全按推荐」，M1-M5 六批落地）
+
+第二个视频源：在不动校内平台逻辑的前提下，B站视频与校内课时走同一套六阶段管线、同一份笔记五视图。测试 587 → 639（+52），smoke 22 → 23（B站六通道入桥面断言）。所有 B站 API 均为 2026-09-06 现场实测后接入。
+
+### 数据与客户端（M1/M2）
+
+- **migration 009**：courses/lessons 加 `source` 列（默认 seu，存量零迁移）+ B站元数据（bili_bvid/bili_up_mid/bili_cid/bili_page）；部分唯一索引防同视频/同 cid 重复导入；树查询按 `bili_page` 排序（SQLite NULL 优先，SEU 排序行为不变）。
+- **`src/main/bilibili/` 客户端层**：url-parse（BV/URL/b23.tv 短链/av 号明确拒）、WBI 签名（独立向量钉住）、dm_img 风控参数（照 BiliNote 实战形态，过 412）、字幕选轨（人工zh>AI zh>任意zh）、parse 纯函数、client（错误分类含 risk_control/auth_required）。
+
+### 登录与安全（M3）
+
+- **扫码登录**：passport generate/poll 状态机（86101→86090→0），应用内画二维码+1s 节流轮询；成功后 SESSDATA/bili_jct/DedeUserID 经 DPAPI 封存 `bilibili-session/session.bin`（与校内会话文件隔离）；redact 正则补 `sessdata|bili_jct`；`bilibili:login/loginStatus/logout/session` 四通道全部走 sender 校验。
+
+### 管线分叉（M4）
+
+- **字幕优先快路径**：登录后 player API 直拉字幕 → 直插 `transcripts`（provider=`bilibili-subtitle`）→ extracting_audio/transcribing 两阶段旁路，**不下载音频不调 ASR**。
+- **ASR 兜底**：无字幕视频下载 DASH 音频流（64kbps）→ 现有 MiMo 分片转写——纯字幕插件（阿哔式）做不到的路径。
+- **关键帧**：360P（qn≤32）DASH 视频流下载抽帧后即删；playurl 被风控拒绝（412）时降级为无证据笔记（合法态）而非失败。
+- **付费/充电专属视频**（`is_ugc_pay`/`is_upower_exclusive`）在 resolve/import/fetch 三处明确拒绝（合规边界，方案 §5.9）。
+- resume 分源新鲜度：B站流地址 120min 失效 → 100min 窗口内断点续传，过期自动回 fetching_course。
+- 两条 e2e：字幕快路径（ASR 零调用断言）+ 无字幕 ASR 兜底全链路，均落库出笔记。
+
+### UI（M5）
+
+- 侧栏「**B站视频导入**」面板：解析预览（标题/分P复选，URL 带 ?p=N 时只选该P）→ 未登录时内嵌二维码扫码后自动续跑导入 → 导入后自动按分P建任务排队。
+- 课程树 B站课程加「B站」徽标；`bilibili:resolve/import` 六通道入 bridge/preload/smoke 桥面断言。
+- summarize 提示词注入来源语境行（B站措辞泛化为「视频/讲者」，SEU 行为零变化）；note-craft SKILL §8 同步。
+
 ## [0.6.0] — 2026-09-06
 
 本版本包含两个已完成的迭代：思维导图拓展 Map Expansion 与首页一致性和 Provider 重设计。测试 525 → 587（+62），smoke 22 → 23。
