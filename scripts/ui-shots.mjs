@@ -167,6 +167,75 @@ async function main() {
 
     // 1. initial view (tasks tab, nothing selected)
     await sleep(400)
+
+    // --bili: dedicated Bilibili-panel shots (no library walk needed).
+    // Resolves a real public video + starts a real QR login — no account,
+    // no writes, read-only public endpoints.
+    if (process.argv.includes('--bili')) {
+      const openPanel = `(() => { const d = document.querySelector('.bili-import'); if (d == null) return false; d.open = true; return true })()`
+      if ((await cdp.eval(openPanel)) !== true) throw new Error('.bili-import panel not found in sidebar')
+      await sleep(300)
+      await cdp.shot(shotName('b1-panel-input'))
+
+      const focusInput = `(() => {
+        const input = document.querySelector('.bili-import .qa-input')
+        if (input == null) return false
+        input.focus()
+        return true
+      })()`
+      if ((await cdp.eval(focusInput)) !== true) throw new Error('bili input not found')
+      // Real browser input path — synthetic .value writes do not reach the
+      // controlled component through Preact reliably.
+      await cdp.send('Input.insertText', { text: 'BV1GJ411x7h7' })
+      await sleep(200)
+      const clickResolve = `(() => {
+        const btn = [...document.querySelectorAll('.bili-import button')].find((b) => b.textContent.trim() === '解析')
+        if (btn == null) return false
+        btn.click()
+        return true
+      })()`
+      if ((await cdp.eval(clickResolve)) !== true) throw new Error('resolve click failed')
+      await waitFor('bili preview card', async () => {
+        try {
+          return { ok: (await cdp.eval('document.querySelector(".bili-preview") != null')) === true, value: true }
+        } catch {
+          return { ok: false }
+        }
+      }, 20000)
+      await sleep(1200) // cover data URL decode
+      await cdp.eval('document.querySelector(".bili-import").scrollIntoView({ block: "start" })')
+      await sleep(300)
+      await cdp.shot(shotName('b2-preview-light'))
+
+      const startQr = `(() => {
+        const btn = document.querySelector('.bili-import .bili-import-btn')
+        if (btn == null) return false
+        btn.click()
+        return true
+      })()`
+      if ((await cdp.eval(startQr)) !== true) throw new Error('QR login click failed')
+      await waitFor('bili qr card', async () => {
+        try {
+          return { ok: (await cdp.eval('document.querySelector(".bili-qr") != null')) === true, value: true }
+        } catch {
+          return { ok: false }
+        }
+      }, 20000)
+      await sleep(1500) // QR dataURL render
+      await cdp.eval('document.querySelector(".bili-import").scrollIntoView({ block: "start" })')
+      await sleep(300)
+      await cdp.shot(shotName('b3-qr-light'))
+
+      await cdp.eval('document.documentElement.dataset.theme = "dark"')
+      await sleep(400)
+      await cdp.eval('document.querySelector(".bili-import").scrollIntoView({ block: "start" })')
+      await sleep(300)
+      await cdp.shot(shotName('b4-preview-dark'))
+      await cdp.eval('document.documentElement.dataset.theme = "light"')
+      await sleep(300)
+      return
+    }
+
     await cdp.shot(shotName('01-tasks-initial'))
 
     // 2. expand the first course that has a lesson with a note (badge.ok), select that lesson

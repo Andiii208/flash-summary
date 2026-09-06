@@ -69,6 +69,7 @@ function fakeJsonResponse(body: unknown): {
   url: string
   json: () => Promise<unknown>
   text: () => Promise<string>
+  arrayBuffer: () => Promise<ArrayBuffer>
 } {
   return {
     ok: true,
@@ -76,12 +77,14 @@ function fakeJsonResponse(body: unknown): {
     headers: { get: () => null },
     url: 'https://passport.bilibili.com/fake',
     json: async () => body,
-    text: async () => JSON.stringify(body)
+    text: async () => JSON.stringify(body),
+    arrayBuffer: async () => new ArrayBuffer(0)
   }
 }
 
 describe('ipc handlers over a real context', () => {
-  it('registers the full API surface', () => {    const ctx = makeCtx()
+  it('registers the full API surface', () => {
+    const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     for (const channel of [
       'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse', 'school:harvestLessons', 'school:netCheck',
@@ -990,18 +993,27 @@ describe('bilibili resolve/import (plan 2026-09-06 M4)', () => {
           }
         })
       }
+      if (url === 'https://i0.hdslb.com/c.jpg') {
+        return {
+          ...fakeJsonResponse(null),
+          headers: { get: (n: string) => (n === 'content-type' ? 'image/jpeg' : null) },
+          arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer
+        }
+      }
       throw new Error(`no fixture route for ${url}`)
     }
     const ctx = makeCtx(bilibiliFetch)
     registerIpc(ctx, ipc as never)
     const res = (await ipc.invoke('bilibili:resolve', 'https://www.bilibili.com/video/BV1GJ411x7h7?p=2')) as {
       ok: boolean
-      value?: { bvid: string; requestedPage: number | null; title: string; pages: Array<{ page: number }> }
+      value?: { bvid: string; requestedPage: number | null; title: string; coverDataUrl: string | null; pages: Array<{ page: number }> }
     }
     expect(res.ok).toBe(true)
     expect(res.value?.bvid).toBe('BV1GJ411x7h7')
     expect(res.value?.requestedPage).toBe(2)
     expect(res.value?.pages).toHaveLength(2)
+    // Cover rides through main as a data URL (renderer CSP is img-src 'self' data:).
+    expect(res.value?.coverDataUrl).toContain('data:image/jpeg;base64,')
     void calls
   })
 

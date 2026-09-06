@@ -54,12 +54,13 @@ async function resolveTo(bridge: SeuSummaryBridge, toast: (m: string, k?: 'info'
 }
 
 describe('BiliImport (plan 2026-09-06 M5)', () => {
-  it('resolve fills the preview; every page is preselected when there are few', async () => {
+  it('resolve fills the preview; every page chip is preselected when there are few', async () => {
     const host = await resolveTo(makeBridge(), () => undefined, () => undefined)
-    const boxes = host.querySelectorAll('.bili-page input[type=checkbox]')
-    expect(boxes).toHaveLength(2)
-    expect((boxes[0] as HTMLInputElement).checked).toBe(true)
-    expect((boxes[1] as HTMLInputElement).checked).toBe(true)
+    const chips = host.querySelectorAll('.bili-chip')
+    expect(chips).toHaveLength(2)
+    expect(chips[0]!.getAttribute('aria-pressed')).toBe('true')
+    expect(chips[1]!.getAttribute('aria-pressed')).toBe('true')
+    expect(host.textContent).toContain('共 2 个分P')
   })
 
   it('import with a logged-in session calls through with the selected pages', async () => {
@@ -67,10 +68,13 @@ describe('BiliImport (plan 2026-09-06 M5)', () => {
     const onImported = vi.fn()
     const { toast } = makeToast()
     const host = await resolveTo(bridge, toast, onImported)
-    // Deselect P2, import only P1 (click the checkbox itself — label
-    // activation is not synthesized uniformly in the test DOM).
-    click(host.querySelectorAll('.bili-page input[type=checkbox]')[1] ?? null)
-    click([...host.querySelectorAll('button')].find((b) => b.textContent === '导入并生成笔记') ?? null)
+    // Deselect P2, import only P1 (chips are toggle buttons with aria-pressed).
+    const chips = host.querySelectorAll('.bili-chip')
+    expect(chips).toHaveLength(2)
+    expect(chips[0]!.getAttribute('aria-pressed')).toBe('true')
+    click(chips[1]!)
+    expect(host.querySelectorAll('.bili-chip')[1]!.getAttribute('aria-pressed')).toBe('false')
+    click(host.querySelector('.bili-import-btn'))
     await flush()
     expect(bridge.bilibili.import).toHaveBeenCalledWith({ bvid: 'BV1GJ411x7h7', pages: [1] })
     expect(onImported).toHaveBeenCalledWith('bili-BV1GJ411x7h7', ['bili-BV1GJ411x7h7-P1'])
@@ -80,7 +84,7 @@ describe('BiliImport (plan 2026-09-06 M5)', () => {
     const bridge = makeBridge()
     const { toast } = makeToast()
     const host = await resolveTo(bridge, toast, () => undefined)
-    click([...host.querySelectorAll('button')].find((b) => b.textContent === '扫码登录后导入') ?? null)
+    click(host.querySelector('.bili-import-btn'))
     await flush()
     expect(bridge.bilibili.login).toHaveBeenCalled()
     // The panel enters the QR state and polls (status line visible); the

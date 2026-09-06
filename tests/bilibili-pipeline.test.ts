@@ -12,7 +12,8 @@ function jsonRes(body: unknown, status = 200) {
     headers: { get: () => null },
     url: 'https://api.bilibili.com/fake',
     json: async () => body,
-    text: async () => JSON.stringify(body)
+    text: async () => JSON.stringify(body),
+    arrayBuffer: async () => new ArrayBuffer(0)
   }
 }
 

@@ -28,6 +28,35 @@ function togglePage(selected: number[], page: number): number[] {
   return selected.includes(page) ? selected.filter((p) => p !== page) : [...selected, page].sort((a, b) => a - b)
 }
 
+/** Rough study-time estimate for the selected pages («约 N 分钟»). */
+function totalMinutes(preview: PreviewState): number {
+  const seconds = preview.pages
+    .filter((p) => preview.selected.includes(p.page))
+    .reduce((sum, p) => sum + p.duration, 0)
+  return Math.max(1, Math.round(seconds / 60))
+}
+
+/** Monogram fallback: first meaningful character (skip decorative punctuation like «【»). */
+function monogram(title: string): string {
+  const match = /[0-9A-Za-z\u4e00-\u9fff]/.exec(title)
+  return match?.[0] ?? title.slice(0, 1)
+}
+
+/** UP line: the real name when present, mid as fallback (names over numbers). */
+function upLabel(preview: PreviewState): string {
+  if (preview.upName != null && preview.upName !== '') return `UP ${preview.upName}`
+  if (preview.upMid != null) return `UP ${preview.upMid}`
+  return ''
+}
+
+function statusLabel(status: string): string {
+  if (status === 'confirmed') return '登录成功'
+  if (status === 'scanned') return '已扫码，请在手机上确认'
+  if (status === 'expired') return '二维码已过期，请重新点击「扫码登录」'
+  if (status === 'inactive') return '请重新点击「扫码登录」'
+  return '等待扫码…'
+}
+
 /** Sidebar «B站导入» panel (plan 2026-09-06 M5): resolve → pick pages → QR login if needed → import. */
 export function BiliImport({ bridge, onImported, toast }: BiliImportProps): JSX.Element {
   const [input, setInput] = useState('')
@@ -66,7 +95,7 @@ export function BiliImport({ bridge, onImported, toast }: BiliImportProps): JSX.
       toast(res.error ?? '导入失败', 'error')
       return
     }
-    toast(`已导入 ${res.value.lessonIds.length} 个分P`, 'success')
+    toast(`已导入 ${res.value.lessonIds.length} 个分P，任务已排队`, 'success')
     setPreview(null)
     setInput('')
     onImported(res.value.courseId, res.value.lessonIds)
@@ -89,9 +118,6 @@ export function BiliImport({ bridge, onImported, toast }: BiliImportProps): JSX.
           const pending = pendingPages.current
           pendingPages.current = null
           if (pending != null && pending.length > 0) void doImport(pending)
-        }
-        if (poll.value.status === 'expired' || poll.value.status === 'inactive') {
-          setQrStatus('二维码已过期，请重新点击「扫码登录」')
         }
       })()
     }, POLL_INTERVAL_MS)
@@ -133,6 +159,9 @@ export function BiliImport({ bridge, onImported, toast }: BiliImportProps): JSX.
     void startLoginFlow()
   }
 
+  const pageCount = preview?.pages.length ?? 0
+  const manyPages = pageCount > 5
+
   return (
     <details class="manual-fallback bili-import">
       <summary>B站视频导入</summary>
@@ -140,7 +169,7 @@ export function BiliImport({ bridge, onImported, toast }: BiliImportProps): JSX.
         <input
           class="qa-input"
           value={input}
-          placeholder="粘贴 B站视频链接或 BV 号"
+          placeholder="粘贴视频链接或 BV 号"
           onInput={(e) => setInput((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void resolve()
@@ -152,22 +181,52 @@ export function BiliImport({ bridge, onImported, toast }: BiliImportProps): JSX.
       </div>
       {preview != null && (
         <div class="bili-preview">
-          <div class="bili-title" title={preview.title}>
-            {preview.title}
+          <div class="bili-head">
+            {preview.coverDataUrl != null ? (
+              <img class="bili-cover" src={preview.coverDataUrl} alt="" width={72} height={45} />
+            ) : (
+              <div class="bili-cover bili-cover-fallback" aria-hidden="true">
+                {monogram(preview.title)}
+              </div>
+            )}
+            <div class="bili-head-text">
+              <div class="bili-title">{preview.title}</div>
+              <div class="bili-meta">
+                共 {pageCount} 个分P{upLabel(preview) !== '' ? ` · ${upLabel(preview)}` : ''}
+              </div>
+            </div>
           </div>
-          <div class="bili-pages">
-            {preview.pages.map((p) => (
-              <label key={p.page} class="bili-page">
-                <input
-                  type="checkbox"
-                  checked={preview.selected.includes(p.page)}
-                  onChange={() => setPreview({ ...preview, selected: togglePage(preview.selected, p.page) })}
-                />
-                {p.part !== '' ? p.part : `P${p.page}`}
-              </label>
-            ))}
+          <div class="bili-pages" role="group" aria-label="选择要导入的分P">
+            {preview.pages.map((p) => {
+              const active = preview.selected.includes(p.page)
+              return (
+                <button
+                  key={p.page}
+                  type="button"
+                  class={`bili-chip${active ? ' active' : ''}`}
+                  aria-pressed={active}
+                  title={p.part !== '' ? p.part : `P${p.page}`}
+                  onClick={() => setPreview({ ...preview, selected: togglePage(preview.selected, p.page) })}
+                >
+                  {p.part !== '' ? p.part : `P${p.page}`}
+                </button>
+              )
+            })}
           </div>
-          <button class="btn small" disabled={busy} onClick={onImportClick}>
+          {manyPages && (
+            <div class="bili-pages-tools">
+              <button class="btn small ghost" onClick={() => setPreview({ ...preview, selected: preview.pages.map((p) => p.page) })}>
+                全选
+              </button>
+              <button class="btn small ghost" onClick={() => setPreview({ ...preview, selected: [] })}>
+                清空
+              </button>
+              <span class="bili-meta bili-selected-note">
+                已选 {preview.selected.length}/{pageCount} · 约 {totalMinutes(preview)} 分钟
+              </span>
+            </div>
+          )}
+          <button class="btn small primary bili-import-btn" disabled={busy || preview.selected.length === 0} onClick={onImportClick}>
             {sessionState === 'logged_in' ? '导入并生成笔记' : '扫码登录后导入'}
           </button>
         </div>
@@ -175,17 +234,10 @@ export function BiliImport({ bridge, onImported, toast }: BiliImportProps): JSX.
       {loginPhase === 'qr' && (
         <div class="bili-qr">
           {qrImage != null && <img src={qrImage} alt="B站登录二维码" width={160} height={160} />}
+          <div class="bili-qr-hint">使用B站App「扫一扫」登录</div>
           <div class="bili-qr-status">{qrStatus}</div>
         </div>
       )}
     </details>
   )
-}
-
-function statusLabel(status: string): string {
-  if (status === 'confirmed') return '登录成功'
-  if (status === 'scanned') return '已扫码，请在手机上确认'
-  if (status === 'expired') return '二维码已过期'
-  if (status === 'inactive') return '请重新点击扫码登录'
-  return '等待扫码…'
 }

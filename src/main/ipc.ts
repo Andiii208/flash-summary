@@ -294,12 +294,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       }
       const view = await ctx.bilibili.viewInfo(bvid)
       if (view.paid) throw new Error('该视频为付费/充电专属内容，不支持导入（合规边界）')
+      // Cover thumbnail as a data URL — renderer CSP is img-src 'self' data:,
+      // so remote images ride through main. Best-effort: null → monogram fallback.
+      const coverDataUrl = view.coverUrl !== '' ? await ctx.bilibili.fetchImageAsDataUrl(view.coverUrl) : null
       return ok({
         bvid,
         requestedPage,
         title: view.title,
         coverUrl: view.coverUrl,
+        coverDataUrl,
         upMid: view.upMid,
+        upName: view.upName,
         pages: view.pages.map((p) => ({ page: p.page, cid: p.cid, part: p.part, duration: p.duration }))
       })
     } catch (e) {

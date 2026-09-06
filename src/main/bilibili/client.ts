@@ -55,6 +55,7 @@ export interface FetchLike {
     url: string
     json: () => Promise<unknown>
     text: () => Promise<string>
+    arrayBuffer: () => Promise<ArrayBuffer>
   }>
 }
 
@@ -151,6 +152,33 @@ export class BilibiliClient {
     const url = subtitleUrl.startsWith('//') ? `https:${subtitleUrl}` : subtitleUrl
     const payload = await this.requestEnvelope(url, true)
     return parseSubtitleBody(payload.data)
+  }
+
+  /**
+   * Cover image → data URL (import-preview thumbnail). The renderer CSP is
+   * `img-src 'self' data:` — remote images must be proxied through main as
+   * data URLs, never loaded directly. Best-effort: any failure returns null
+   * and the preview falls back to a monogram block.
+   */
+  async fetchImageAsDataUrl(url: string, maxBytes = 1024 * 1024): Promise<string | null> {
+    let res
+    try {
+      res = await this.fetchImpl(url, {
+        headers: { 'User-Agent': USER_AGENT, Referer: 'https://www.bilibili.com/' }
+      })
+    } catch {
+      return null
+    }
+    if (!res.ok) return null
+    const mime = res.headers.get('content-type') ?? ''
+    if (!mime.startsWith('image/')) return null
+    try {
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length === 0 || buf.length > maxBytes) return null
+      return `data:${mime.split(';')[0]};base64,${buf.toString('base64')}`
+    } catch {
+      return null
+    }
   }
 
   /**

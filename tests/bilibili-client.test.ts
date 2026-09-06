@@ -13,6 +13,7 @@ interface FakeResponse {
   url: string
   json: () => Promise<unknown>
   text: () => Promise<string>
+  arrayBuffer: () => Promise<ArrayBuffer>
 }
 
 function jsonResponse(body: unknown, status = 200, url = 'https://api.bilibili.com/ok', headers: Record<string, string> = {}): FakeResponse {
@@ -22,7 +23,8 @@ function jsonResponse(body: unknown, status = 200, url = 'https://api.bilibili.c
     headers: { get: (name: string) => headers[name] ?? null },
     url,
     json: async () => body,
-    text: async () => JSON.stringify(body)
+    text: async () => JSON.stringify(body),
+    arrayBuffer: async () => new ArrayBuffer(0)
   }
 }
 

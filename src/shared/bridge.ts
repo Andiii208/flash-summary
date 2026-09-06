@@ -250,7 +250,10 @@ export interface BilibiliResolveResult {
   requestedPage: number | null
   title: string
   coverUrl: string
+  /** Cover proxied through main as a data URL (CSP img-src is 'self' data:); null → monogram fallback. */
+  coverDataUrl?: string | null
   upMid: number | null
+  upName?: string | null
   pages: BilibiliPageInfo[]
 }
 

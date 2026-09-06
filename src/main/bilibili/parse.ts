@@ -15,8 +15,9 @@ export interface BiliPageInfo {
 export interface BiliViewInfo {
   bvid: string
   title: string
-  /** Uploader mid — feeds the conclusion API (unused in MVP) and logs. */
+  /** Uploader — mid feeds the conclusion API (unused in MVP); name shows in the import preview. */
   upMid: number | null
+  upName: string | null
   coverUrl: string
   pages: BiliPageInfo[]
   /** Paid/charged-exclusive videos are rejected before any download. */
@@ -54,10 +55,12 @@ export function parseViewInfo(payload: unknown): BiliViewInfo | null {
   }
   if (pages.length === 0) return null
   const upMid = (data['owner'] as { mid?: unknown } | undefined)?.mid
+  const upName = (data['owner'] as { name?: unknown } | undefined)?.name
   return {
     bvid,
     title,
     upMid: typeof upMid === 'number' ? upMid : null,
+    upName: typeof upName === 'string' ? upName : null,
     coverUrl: typeof data['pic'] === 'string' ? data['pic'] : '',
     pages,
     paid: readPaidFlag(payload)
