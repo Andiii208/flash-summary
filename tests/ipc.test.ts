@@ -1070,3 +1070,57 @@ describe('bilibili resolve/import (plan 2026-09-06 M4)', () => {
     expect(paidRes.error).toContain('付费')
   })
 })
+
+describe('bilibili course auto-chain over ipc (usability 2026-09-07)', () => {
+  const allOkExecutors: Record<Stage, StageExecutor> = {
+    fetching_course: () => ({ status: 'ok' }),
+    downloading_video: () => ({ status: 'ok' }),
+    extracting_audio: () => ({ status: 'ok' }),
+    transcribing: () => ({ status: 'ok' }),
+    extracting_visuals: () => ({ status: 'ok' }),
+    summarizing: () => ({ status: 'ok' })
+  }
+
+  it('P1 success auto-starts the pending P2 of the same bilibili course', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO courses (id, name, source, bili_bvid, fetched_at) VALUES ('b1', '课', 'bilibili', 'BV1X', '2026-09-07T00:00:00Z')").run()
+    for (const [page, cid] of [[1, '11'], [2, '22'], [3, '33']] as Array<[number, string]>) {
+      db.prepare(
+        "INSERT INTO lessons (id, course_id, title, source, bili_cid, bili_page, fetched_at) VALUES (?, 'b1', ?, 'bilibili', ?, ?, '2026-09-07T00:00:00Z')"
+      ).run(`b1-P${page}`, `P${page}`, cid, page)
+    }
+    registerIpc(ctx, ipc as never, { executorsOverride: () => allOkExecutors })
+    const t1 = (await ipc.invoke('tasks:create', 'b1-P1')) as { value?: { id: string } }
+    const t2 = (await ipc.invoke('tasks:create', 'b1-P2')) as { value?: { id: string } }
+    const t3 = (await ipc.invoke('tasks:create', 'b1-P3')) as { value?: { id: string } }
+
+    await ipc.invoke('tasks:runAsync', t1.value!.id)
+    // The chain walks P2 then P3 without any further renderer action.
+    await vi.waitFor(
+      () => {
+        const p3 = db.prepare('SELECT state FROM tasks WHERE id = ?').get(t3.value!.id) as { state: string }
+        expect(p3.state).toBe('succeeded')
+      },
+      { timeout: 5000, interval: 50 }
+    )
+    for (const id of [t1.value!.id, t2.value!.id, t3.value!.id]) {
+      const row = db.prepare('SELECT state FROM tasks WHERE id = ?').get(id) as { state: string }
+      expect(row.state).toBe('succeeded')
+    }
+  })
+
+  it('a failed P stops the chain; a seu course never chains', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课', '2026-09-07T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-09-07T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '课时二', '2026-09-07T00:00:00Z')").run()
+    registerIpc(ctx, ipc as never, { executorsOverride: () => allOkExecutors })
+    const t1 = (await ipc.invoke('tasks:create', 'l1')) as { value?: { id: string } }
+    const t2 = (await ipc.invoke('tasks:create', 'l2')) as { value?: { id: string } }
+    await ipc.invoke('tasks:runAsync', t1.value!.id)
+    await new Promise((r) => setTimeout(r, 300))
+    // SEU course: l2 stays pending — no auto-chain outside bilibili.
+    const l2 = db.prepare('SELECT state FROM tasks WHERE id = ?').get(t2.value!.id) as { state: string }
+    expect(l2.state).toBe('pending')
+  })
+})

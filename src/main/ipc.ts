@@ -39,6 +39,7 @@ import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
 import { getSetting } from './settings/store'
 import { fetchBilibiliLesson } from './bilibili/pipeline'
+import { nextPendingChainTask } from './bilibili/chain'
 import { biliCourseId, biliLessonId, parseBiliInput } from './bilibili/url-parse'
 
 /** User-tunable page cap (settings key courseListMaxPages); undefined → client default. */
@@ -844,6 +845,61 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+  // Enqueue + run one task; shared by tasks:runAsync and the bilibili chain.
+  const launchTask = (id: string, controller: AbortController, repo: TaskRepository): void => {
+    void queue
+      .enqueue(id, async () => {
+        // D1: out-of-dequeue recheck — a task cancelled while queued
+        // must not run. A row that was already failed at ENQUEUE time is
+        // a legitimate retry and proceeds (its state is also 'failed').
+        if (cancelledWhileQueued.delete(id)) {
+          return 'failed' as const
+        }
+        const current = repo.get(id)
+        if (current == null) throw new Error(`task ${id} not found`)
+        // Decide at DEQUEUE time, not enqueue: a queued wait can outlive
+        // URL freshness or see files reaped — re-read the row here.
+        const decision = resumeDecisionFor(ctx, current, id)
+        if (decision.note !== '') {
+          ctx.logger.warn(`task ${id} resume degraded: ${decision.note}`)
+          sendProgress({ taskId: id, state: decision.stage, stage: decision.stage, message: decision.note, percent: 0 })
+        }
+        return runTask(repo, id, makeExecutors(), decision.stage, sendProgress, controller.signal)
+      })
+      .then((state) => {
+        // B站课程自动续链 (usability pass 2026-09-07): after a bilibili task
+        // succeeds, the next pending row of the same course auto-starts.
+        // The import creates one pending row per selected P — the rows
+        // themselves are the chain state, visible and cancellable.
+        if (state === 'succeeded') chainNextBiliTask(id)
+        return state
+      })
+      .catch((e) => {
+        sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
+      })
+      .finally(() => {
+        abortControllers.delete(id)
+        notifyIdle()
+      })
+  }
+
+  /** Auto-start the next pending task of the finished task's bilibili course. */
+  const chainNextBiliTask = (finishedTaskId: string): void => {
+    const finished = new TaskRepository(ctx.db).get(finishedTaskId)
+    if (finished == null) return
+    const next = nextPendingChainTask(ctx.db, finished.lesson_id)
+    if (next == null) return
+    if (queue.members().length >= MAX_QUEUED_TASKS) {
+      ctx.logger.warn(`bilibili chain paused (queue full): ${next.lessonId}`)
+      return
+    }
+    const controller = new AbortController()
+    abortControllers.set(next.taskId, controller)
+    sendProgress({ taskId: next.taskId, state: 'pending', stage: null, message: '自动续跑下一分P', percent: 0 })
+    ctx.logger.info(`bilibili chain: auto-start ${next.taskId} (${next.lessonId})`)
+    launchTask(next.taskId, controller, new TaskRepository(ctx.db))
+  }
+
   // tasks:runAsync (U4): enqueued on the serial executor (at most one task
   // runs at a time); progress streams via 'tasks:progress'. Errors surface
   // as a failed progress event plus the returned envelope.
@@ -866,32 +922,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (queue.members().includes(id)) throw new Error('该任务已在队列中')
       const controller = new AbortController()
       abortControllers.set(id, controller)
-      void queue
-        .enqueue(id, async () => {
-          // D1: out-of-dequeue recheck — a task cancelled while queued
-          // must not run. A row that was already failed at ENQUEUE time is
-          // a legitimate retry and proceeds (its state is also 'failed').
-          if (cancelledWhileQueued.delete(id)) {
-            return 'failed' as const
-          }
-          const current = repo.get(id)
-          if (current == null) throw new Error(`task ${id} not found`)
-          // Decide at DEQUEUE time, not enqueue: a queued wait can outlive
-          // URL freshness or see files reaped — re-read the row here.
-          const decision = resumeDecisionFor(ctx, current, id)
-          if (decision.note !== '') {
-            ctx.logger.warn(`task ${id} resume degraded: ${decision.note}`)
-            sendProgress({ taskId: id, state: decision.stage, stage: decision.stage, message: decision.note, percent: 0 })
-          }
-          return runTask(repo, id, makeExecutors(), decision.stage, sendProgress, controller.signal)
-        })
-        .catch((e) => {
-          sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
-        })
-        .finally(() => {
-          abortControllers.delete(id)
-          notifyIdle()
-        })
+      void launchTask(id, controller, repo)
       return ok({ id, state: 'running' })
     } catch (e) {
       return err(e)

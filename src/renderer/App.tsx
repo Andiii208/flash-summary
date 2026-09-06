@@ -1361,7 +1361,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     })()
   }, [bridge, currentLesson, running, submitBusy, providers, toast, goSettings, launch, countActive, globalHistory, loadGlobalHistory])
 
-  /** B站导入落地 (plan 2026-09-06 M5): refresh tree, preflight multimodal, queue one task per P. */
+  /** B站导入落地 (plan 2026-09-06 M5 · 续链改造 2026-09-07): create one
+   *  pending task row per selected P, launch the first — the main process
+   *  auto-starts the next pending row whenever one succeeds (the queue cap
+   *  never blocks a multi-P import). */
   const biliImported = useCallback(
     (_courseId: string, lessonIds: string[]): void => {
       void (async () => {
@@ -1374,18 +1377,20 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           })
           return
         }
-        let first = true
+        const taskIds: string[] = []
         for (const lessonId of lessonIds) {
           const created = await bridge.tasks.create(lessonId)
           if (!created.ok) {
             toast(created.error ?? '创建任务失败', 'error')
             continue
           }
-          await launch((created.value as { id: string }).id, !first || running)
-          first = false
+          taskIds.push((created.value as { id: string }).id)
         }
+        if (taskIds.length === 0) return
+        await launch(taskIds[0]!, running)
         if (lessonIds[0] != null) selectLesson(lessonIds[0])
         goTasks()
+        toast(`已导入 ${lessonIds.length} 个分P：完成一个自动开始下一个`, 'success')
       })()
     },
     [bridge, providers, running, launch, refreshTree, toast, goSettings, goTasks, selectLesson]

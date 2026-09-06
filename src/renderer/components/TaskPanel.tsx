@@ -297,6 +297,11 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
                 笔记
               </button>
             )}
+            {row.state === 'pending' && (
+              <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled} title="立即开始这个任务">
+                启动
+              </button>
+            )}
             {row.state !== 'succeeded' && row.state !== 'failed' && (
               <button class="btn small danger" onClick={() => onCancel(row.id)} title="取消这个任务">
                 取消
