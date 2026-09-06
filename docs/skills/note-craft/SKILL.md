@@ -95,6 +95,7 @@ Note {
 - 本地视频已删、平台播放页无时间参数——时间戳跳转视频**明确不做**。
 - 笔记无在线编辑器；版本历史全量留存但 UI 无版本切换。
 - QA 追问暂不发图（只有证据 ID 字符串）——升级为多模态时参照本文件 §1。
+- **B站源（2026-09-06 接入）**：transcripts.provider = `bilibili-subtitle`（B站字幕直插，秒级 `at`）或 `openai-compatible`（无字幕时 ASR 兜底）；提示词经 `sourceHeader` 注入「B站视频」语境行（措辞用视频/讲者），SEU 行为零变化；证据只有 `kf:`（360P 视频流抽帧，流被风控拒绝时 evidence 可为空，属合法态）；PPT 通道不存在。方案 docs/plans/2026-09-06-bilibili-source-integration.md。
 
 ## 9. 方法论参照（GitHub 调研 2026-09-04）
 

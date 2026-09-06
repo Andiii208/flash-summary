@@ -733,6 +733,7 @@ body {
   flex-shrink: 0;
 }
 .badge.ok { color: var(--success); background: var(--success-soft); }
+.badge.bili { color: var(--accent-2); background: var(--accent-soft); }
 
 /* ---- task panel ---- */
 .task-status {
@@ -1493,3 +1494,15 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 }
 .error-boundary h3 { margin: 0 0 8px; }
 .error-boundary p { color: var(--text-muted, #667085); margin: 0 0 16px; }
+
+/* ---- B站导入面板 (plan 2026-09-06 M5) ---- */
+.bili-import .bili-row { display: flex; gap: 6px; }
+.bili-import .bili-row .qa-input { flex: 1; min-width: 0; font-size: var(--font-size-sm); }
+.bili-import .bili-row .btn { flex-shrink: 0; }
+.bili-preview { margin-top: 8px; display: grid; gap: 8px; }
+.bili-title { font-size: var(--font-size-sm); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bili-pages { display: flex; flex-wrap: wrap; gap: 4px 10px; max-height: 96px; overflow-y: auto; }
+.bili-page { display: inline-flex; align-items: center; gap: 4px; font-size: var(--font-size-xs); color: var(--text-secondary); cursor: pointer; }
+.bili-qr { margin-top: 8px; display: grid; justify-items: center; gap: 6px; }
+.bili-qr img { border-radius: 8px; border: 1px solid var(--border); }
+.bili-qr-status { font-size: var(--font-size-xs); color: var(--text-muted); }

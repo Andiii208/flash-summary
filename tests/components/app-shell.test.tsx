@@ -42,6 +42,14 @@ function makeBridge(): SeuSummaryBridge {
       setMine: vi.fn(async () => ok(true)),
       onRefreshProgress: vi.fn(() => () => undefined)
     },
+    bilibili: {
+      login: vi.fn(async () => ok({ qrUrl: 'https://passport.bilibili.com/qr' })),
+      loginStatus: vi.fn(async () => ok({ status: 'inactive' })),
+      logout: vi.fn(async () => ok({ state: 'logged_out' })),
+      session: vi.fn(async () => ok({ state: 'logged_out', savedAt: null })),
+      resolve: vi.fn(async () => ok({ bvid: 'BV1X', requestedPage: null, title: 't', coverUrl: '', upMid: 1, pages: [] })),
+      import: vi.fn(async () => ok({ courseId: 'b', lessonIds: [] }))
+    },
     providers: {
       list: vi.fn(async (): Promise<ApiResult<ProvidersListResult>> => ok({ providers: [], bindings: [] })),
       save: vi.fn(async () => ok({ id: 'p', hasKey: true })),

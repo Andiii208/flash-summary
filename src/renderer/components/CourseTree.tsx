@@ -104,6 +104,7 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onR
             {course.name.slice(0, 1)}
           </span>
           <span class="course-name">{course.name}</span>
+          {course.source === 'bilibili' && <span class="badge bili">B站</span>}
           {sameCourse && <span class="badge same">同课</span>}
           {course.lessons.length > 0 && <span class="course-count">{course.lessons.length}</span>}
         </button>

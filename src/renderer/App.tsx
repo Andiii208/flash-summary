@@ -15,12 +15,13 @@ import { NoteViewer, type LessonContext } from './components/NoteViewer'
 import { PrintHandout } from './components/PrintHandout'
 import { QaPanel, type QaEntry } from './components/QaPanel'
 import { TopBar, type SessionState } from './components/TopBar'
-import { ToastArea, type ToastItem } from './components/ToastArea'
+import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
 import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
 import { CourseMapDialog, type CourseMapInfo } from './components/CourseMapDialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
+import { BiliImport } from './components/BiliImport'
 import { useToasts } from './hooks/use-toasts'
 import { useConfigDomain } from './hooks/use-config-domain'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -296,6 +297,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               </section>
             </>
           )}
+          <BiliImport bridge={bridge} onImported={state.biliImported} toast={state.toast} />
           <ManualAdd onAdd={state.addManual} />
         </aside>
         <main class="content">
@@ -511,6 +513,8 @@ interface AppState {
   providerBusy: boolean
   settings: AppSettingsInfo | null
   toasts: ToastItem[]
+  /** Toast emitter (BiliImport and other sidebar components push here). */
+  toast: (message: string, kind?: ToastKind, action?: { actionLabel: string; onAction: () => void }) => void
   login: () => void
   logout: () => void
   refreshTree: () => void
@@ -530,6 +534,8 @@ interface AppState {
   /** 批A: sibling lessons of the selected lesson's course (chip dropdown). */
   currentCourseLessons: LessonChipLesson[]
   addManual: (courseId: string, lessonId: string) => void
+  /** B站导入落地 (plan 2026-09-06 M5): refresh + queue tasks per P. */
+  biliImported: (courseId: string, lessonIds: string[]) => void
   /** A2: one click from a finished task to its note. */
   openLessonNotes: (lessonId: string) => void
   /** A1: create + run with a pre-flight capability check. */
@@ -1355,6 +1361,36 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     })()
   }, [bridge, currentLesson, running, submitBusy, providers, toast, goSettings, launch, countActive, globalHistory, loadGlobalHistory])
 
+  /** B站导入落地 (plan 2026-09-06 M5): refresh tree, preflight multimodal, queue one task per P. */
+  const biliImported = useCallback(
+    (_courseId: string, lessonIds: string[]): void => {
+      void (async () => {
+        await refreshTree()
+        const caps = new Set((providers?.bindings ?? []).map((b) => b.capability))
+        if (!caps.has('multimodal')) {
+          toast('尚未绑定多模态模型，笔记无法生成。请先在设置中配置 Provider。', 'error', {
+            actionLabel: '去设置',
+            onAction: goSettings
+          })
+          return
+        }
+        let first = true
+        for (const lessonId of lessonIds) {
+          const created = await bridge.tasks.create(lessonId)
+          if (!created.ok) {
+            toast(created.error ?? '创建任务失败', 'error')
+            continue
+          }
+          await launch((created.value as { id: string }).id, !first || running)
+          first = false
+        }
+        if (lessonIds[0] != null) selectLesson(lessonIds[0])
+        goTasks()
+      })()
+    },
+    [bridge, providers, running, launch, refreshTree, toast, goSettings, goTasks, selectLesson]
+  )
+
   const retryTask = useCallback(
     (taskId: string): void => {
       if (running) return
@@ -1711,6 +1747,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     providerBusy,
     settings,
     toasts,
+    toast,
     login,
     logout,
     refreshTree,
@@ -1726,6 +1763,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     switchLesson,
     currentCourseLessons,
     addManual,
+    biliImported,
     createAndRun,
     retryTask,
     cancelTask,

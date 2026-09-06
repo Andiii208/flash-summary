@@ -71,6 +71,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.16.0",
+    "@types/qrcode": "^1.5.6",
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.0",
@@ -90,6 +91,7 @@
     "jpeg-js": "^0.4.4",
     "lucide-preact": "^1.40.0",
     "preact": "^10.29.8",
+    "qrcode": "^1.5.4",
     "zod": "^4.5.4"
   }
 }

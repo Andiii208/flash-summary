@@ -150,6 +150,22 @@ export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: str
   return version
 }
 
+/**
+ * Bilibili source context (plan 2026-09-06 M5): the transcript of a B站
+ * video gets a one-line provenance header so the note speaks of
+ * «视频/讲者» instead of «课堂/老师». SEU rows get no header at all —
+ * byte-identical prompts.
+ */
+function sourceHeader(db: Db, lessonId: string): string {
+  const row = db
+    .prepare('SELECT l.title AS lesson_title, c.name AS course_name, c.source AS source FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ?')
+    .get(lessonId) as { lesson_title: string | null; course_name: string | null; source: string | null } | undefined
+  if (row?.source !== 'bilibili') return ''
+  const course = row.course_name ?? 'B站视频'
+  const lesson = row.lesson_title ?? ''
+  return `【内容来源：B站视频《${course}》${lesson !== '' ? `之「${lesson}」` : ''}】措辞请用「视频」「讲者」，不要用「课堂」「老师」。\n\n`
+}
+
 /** Full regenerate flow for one lesson: inputs → client call → versioned insert. */
 export async function summarizeLesson(
   db: Db,
@@ -165,7 +181,7 @@ export async function summarizeLesson(
   const inputs = loadSummarizeInputs(db, lessonId, libraryRoot)
   if ('error' in inputs) return { error: inputs.error }
   try {
-    const generated = await generateNote(client, binding.model, inputs.transcriptText, inputs.images, signal)
+    const generated = await generateNote(client, binding.model, sourceHeader(db, lessonId) + inputs.transcriptText, inputs.images, signal)
     // F2 (review): only refs the model actually saw may persist.
     const validRefs = new Set(inputs.images.map((image) => image.ref))
     const { note, dropped } = dropUnknownEvidence(generated, validRefs)
