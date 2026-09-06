@@ -388,7 +388,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       const courses = ctx.db
         .prepare(
-          `SELECT c.id, c.name, c.term, c.teacher, c.subj_code, c.classroom, c.cour_times, c.is_mine,
+          `SELECT c.id, c.name, c.term, c.teacher, c.subj_code, c.classroom, c.cour_times, c.is_mine, c.source,
                   (SELECT COUNT(*) FROM notes n JOIN lessons nl ON n.lesson_id = nl.id WHERE nl.course_id = c.id) AS note_count,
                   (SELECT MAX(t.updated_at) FROM tasks t JOIN lessons tl ON t.lesson_id = tl.id WHERE tl.course_id = c.id) AS last_task_at
            FROM courses c ORDER BY c.fetched_at DESC`
@@ -402,6 +402,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         classroom: string | null
         cour_times: string | null
         is_mine: number
+        source: string
         note_count: number
         last_task_at: string | null
       }>
@@ -409,7 +410,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .prepare(
           `SELECT l.id, l.course_id, l.title, l.started_at,
                   (SELECT COUNT(*) FROM notes n WHERE n.lesson_id = l.id) AS note_count
-           FROM lessons l ORDER BY l.started_at, l.id`
+           FROM lessons l ORDER BY l.started_at, l.bili_page, l.id`
         )
         .all() as Array<{ id: string; course_id: string; title: string; started_at: string | null; note_count: number }>
       const tree = courses.map((c) => ({
@@ -421,6 +422,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         classroom: c.classroom ?? undefined,
         courTimes: c.cour_times ?? undefined,
         isMine: c.is_mine === 1,
+        source: c.source === 'bilibili' ? ('bilibili' as const) : ('seu' as const),
         noteCount: c.note_count,
         lastTaskAt: c.last_task_at ?? undefined,
         hasExtracted: c.note_count > 0,

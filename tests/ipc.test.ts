@@ -612,16 +612,44 @@ describe('U1: course tree and task list', () => {
 
     const res = (await ipc.invoke('school:courseTree')) as {
       ok: boolean
-      value?: Array<{ id: string; name: string; lessons: Array<{ id: string; title: string; hasNote: boolean }> }>
+      value?: Array<{ id: string; name: string; source?: string; lessons: Array<{ id: string; title: string; hasNote: boolean }> }>
     }
     expect(res.ok).toBe(true)
     expect(res.value).toHaveLength(1)
     const course = res.value![0]
     expect(course.name).toBe('高等数学')
+    expect(course.source).toBe('seu')
     expect(course.lessons).toEqual([
       { id: 'l1', title: '第一讲', hasNote: true },
       { id: 'l2', title: '第二讲', hasNote: false }
     ])
+  })
+
+  it('school:courseTree orders bilibili lessons by bili_page and reports the source (009)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    // Insert pages out of numeric order: P2 before P10 before P1 — the
+    // lexicographic id sort would get this wrong (P1 < P10 < P2).
+    db.prepare(
+      "INSERT INTO courses (id, name, source, bili_bvid, fetched_at) VALUES ('b1', '线性代数', 'bilibili', 'BV1GJ411x7h7', '2026-09-06T00:00:00Z')"
+    ).run()
+    for (const [page, cid, title] of [
+      [2, '2002', 'P2 行列式'],
+      [10, '2010', 'P10 特征值'],
+      [1, '2001', 'P1 引言']
+    ] as Array<[number, string, string]>) {
+      db.prepare(
+        "INSERT INTO lessons (id, course_id, title, source, bili_cid, bili_page, fetched_at) VALUES (?, 'b1', ?, 'bilibili', ?, ?, '2026-09-06T00:00:00Z')"
+      ).run(`b1-P${page}`, title, cid, page)
+    }
+
+    const res = (await ipc.invoke('school:courseTree')) as {
+      ok: boolean
+      value?: Array<{ id: string; source?: string; lessons: Array<{ id: string }> }>
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value![0].source).toBe('bilibili')
+    expect(res.value![0].lessons.map((l) => l.id)).toEqual(['b1-P1', 'b1-P2', 'b1-P10'])
   })
 
   it('tasks:list returns history newest first, optionally filtered by lesson', async () => {

@@ -20,14 +20,14 @@ afterEach(() => {
 
 describe('migrations', () => {
   it('applies all migrations on a fresh database', () => {
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
   })
 
   it('is idempotent when reopened', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
   })
 
   it('applies only pending migrations on an upgraded database', () => {
@@ -35,7 +35,7 @@ describe('migrations', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
   })
 
   it('adds play-page reference columns (006)', () => {
@@ -69,6 +69,54 @@ describe('migrations', () => {
 
     // The pin is a 0/1 flag, not a free counter (CHECK constraint).
     expect(() => db.prepare('UPDATE courses SET is_mine = 2 WHERE id = ?').run('c1')).toThrowError()
+  })
+
+  it('defaults every row to the seu source and stores bilibili metadata (009)', () => {
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-06T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-09-06T00:00:00Z')").run()
+
+    const seuRow = db.prepare('SELECT source FROM courses WHERE id = ?').get('c1') as { source: string }
+    const seuLesson = db.prepare('SELECT source FROM lessons WHERE id = ?').get('l1') as { source: string }
+    expect(seuRow.source).toBe('seu')
+    expect(seuLesson.source).toBe('seu')
+
+    db.prepare(
+      "INSERT INTO courses (id, name, source, bili_bvid, bili_up_mid, fetched_at) VALUES ('b1', 'B站视频', 'bilibili', 'BV1GJ411x7h7', '486906719', '2026-09-06T00:00:00Z')"
+    ).run()
+    db.prepare(
+      "INSERT INTO lessons (id, course_id, title, source, bili_cid, bili_page, fetched_at) VALUES ('b1-P1', 'b1', 'P1 开场', 'bilibili', '137649199', 1, '2026-09-06T00:00:00Z')"
+    ).run()
+    const bili = db.prepare('SELECT source, bili_bvid, bili_up_mid FROM courses WHERE id = ?').get('b1') as {
+      source: string
+      bili_bvid: string
+      bili_up_mid: string
+    }
+    expect(bili).toEqual({ source: 'bilibili', bili_bvid: 'BV1GJ411x7h7', bili_up_mid: '486906719' })
+    const biliLesson = db.prepare('SELECT bili_cid, bili_page FROM lessons WHERE id = ?').get('b1-P1') as {
+      bili_cid: string
+      bili_page: number
+    }
+    expect(biliLesson).toEqual({ bili_cid: '137649199', bili_page: 1 })
+  })
+
+  it('keeps bilibili bvid/cid unique without touching seu rows (009 partial unique)', () => {
+    db.prepare(
+      "INSERT INTO courses (id, name, source, bili_bvid, fetched_at) VALUES ('b1', '视频', 'bilibili', 'BV1GJ411x7h7', '2026-09-06T00:00:00Z')"
+    ).run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, source, bili_cid, bili_page, fetched_at) VALUES ('b1-P1', 'b1', 'P1', 'bilibili', '137649199', 1, '2026-09-06T00:00:00Z')").run()
+
+    // Same bvid / same cid → rejected (double import guard).
+    expect(() =>
+      db.prepare("INSERT INTO courses (id, name, source, bili_bvid, fetched_at) VALUES ('b2', '重复', 'bilibili', 'BV1GJ411x7h7', '2026-09-06T00:00:00Z')").run()
+    ).toThrowError(/UNIQUE/)
+    expect(() =>
+      db.prepare("INSERT INTO lessons (id, course_id, title, source, bili_cid, bili_page, fetched_at) VALUES ('b2-P1', 'b1', 'P1 重', 'bilibili', '137649199', 1, '2026-09-06T00:00:00Z')").run()
+    ).toThrowError(/UNIQUE/)
+
+    // SEU rows keep bili_* NULL — NULL never collides with the partial index.
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c2', '课程', '2026-09-06T00:00:00Z')").run()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c3', '课程', '2026-09-06T00:00:00Z')").run()
+    expect(db.prepare('SELECT COUNT(*) AS n FROM courses').get()).toEqual({ n: 3 })
   })
 })
 

@@ -17,6 +17,8 @@ export interface CourseSummaryInfo {
   teclCode?: string
   /** Subject code — shared across a subject's sections/teachers (C1). */
   subjCode?: string
+  /** Video source: the school platform (default) or Bilibili (migration 009). */
+  source?: 'seu' | 'bilibili'
   /** Classroom + meeting times as the platform shows them (C3). */
   classroom?: string
   courTimes?: string

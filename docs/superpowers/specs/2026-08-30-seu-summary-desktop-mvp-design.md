@@ -4,7 +4,9 @@
 
 SEU Summary is a Windows desktop application that turns Southeast University Kedacom course recordings into structured study notes. The application is local-first, distributable to other students, and requires no developer-owned server. Each user logs in with their own SEU CAS account and provides their own model provider credentials.
 
-The MVP focuses exclusively on `cvs.seu.edu.cn` recordings. Bilibili support, cloud sync, multi-user accounts, local ASR, macOS support, and PDF export are outside MVP scope.
+The MVP focuses exclusively on `cvs.seu.edu.cn` recordings. Cloud sync, multi-user accounts, local ASR, and macOS support are outside MVP scope.
+
+> Boundary updates (user-approved): PDF export was promoted into scope on 2026-09-04 (Note Revolution). Bilibili as a second video source was approved on 2026-09-06 — see `docs/plans/2026-09-06-bilibili-source-integration.md`.
 
 ## 2. User Experience
 
@@ -178,10 +180,10 @@ The selected application form is an Electron desktop application:
 
 ## 12. Deferred Work
 
-- Bilibili source support
+- Bilibili source support — promoted into scope 2026-09-06 (user-approved plan, see above)
 - Course-level Q&A
 - Local ASR
-- PDF export
+- PDF export — promoted into scope 2026-09-04 (user-approved, see above)
 - macOS support
 - Cloud sync
 - Automatic crash reporting
