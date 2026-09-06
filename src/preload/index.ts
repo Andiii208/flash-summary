@@ -9,7 +9,8 @@ import type {
   AppSettingsInfo,
   NoteAttachmentInfo, AttachmentManifestEntry,
   NoteIndexInfo,
-  QaRecentInfo
+  QaRecentInfo,
+  BilibiliResolveResult
 } from '../shared/bridge'
 import type { TreeNode } from '../shared/notes/schema'
 import type { SessionStateValue } from '../shared/types'
@@ -58,7 +59,10 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('bilibili:loginStatus'),
     logout: (): Promise<ApiResult<{ state: 'logged_in' | 'logged_out' }>> => ipcRenderer.invoke('bilibili:logout'),
     session: (): Promise<ApiResult<{ state: 'logged_in' | 'logged_out'; savedAt?: string | null }>> =>
-      ipcRenderer.invoke('bilibili:session')
+      ipcRenderer.invoke('bilibili:session'),
+    resolve: (input: string): Promise<ApiResult<BilibiliResolveResult>> => ipcRenderer.invoke('bilibili:resolve', input),
+    import: (payload: { bvid: string; pages: number[] }): Promise<ApiResult<{ courseId: string; lessonIds: string[] }>> =>
+      ipcRenderer.invoke('bilibili:import', payload)
   },
   providers: {
     list: (): Promise<ApiResult<ProvidersListResult>> => ipcRenderer.invoke('providers:list'),

@@ -237,7 +237,23 @@ export interface QaBridge {
   recent(): Promise<ApiResult<QaRecentInfo[]>>
 }
 
-/** Bilibili source bridge (plan 2026-09-06): QR login + session state. */
+/** Bilibili source bridge (plan 2026-09-06): QR login + import + session state. */
+export interface BilibiliPageInfo {
+  page: number
+  cid: number
+  part: string
+  duration: number
+}
+
+export interface BilibiliResolveResult {
+  bvid: string
+  requestedPage: number | null
+  title: string
+  coverUrl: string
+  upMid: number | null
+  pages: BilibiliPageInfo[]
+}
+
 export interface BilibiliBridge {
   /** Starts a QR login; `qrUrl` is the string the renderer draws as a QR image. */
   login(): Promise<ApiResult<{ qrUrl: string }>>
@@ -245,6 +261,10 @@ export interface BilibiliBridge {
   loginStatus(): Promise<ApiResult<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }>>
   logout(): Promise<ApiResult<{ state: 'logged_in' | 'logged_out' }>>
   session(): Promise<ApiResult<{ state: 'logged_in' | 'logged_out'; savedAt?: string | null }>>
+  /** BV/URL/short link → import preview (title + page list). */
+  resolve(input: string): Promise<ApiResult<BilibiliResolveResult>>
+  /** Persist the course + selected pages; returns lesson ids to queue. */
+  import(payload: { bvid: string; pages: number[] }): Promise<ApiResult<{ courseId: string; lessonIds: string[] }>>
 }
 
 export interface SeuSummaryBridge {

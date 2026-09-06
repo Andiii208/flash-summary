@@ -966,3 +966,95 @@ describe('bilibili qr login flow (plan 2026-09-06 M3)', () => {
     await expect(ipc.invokeFrom('https://cvs.seu.edu.cn/evil', 'bilibili:login')).rejects.toThrowError()
   })
 })
+
+describe('bilibili resolve/import (plan 2026-09-06 M4)', () => {
+  it('bilibili:resolve parses a BV link into an import preview', async () => {
+    let calls = 0
+    const bilibiliFetch: FetchLike = async (url) => {
+      calls++
+      if (url.includes('/x/web-interface/view?bvid=BV1GJ411x7h7')) {
+        return fakeJsonResponse({
+          code: 0,
+          data: {
+            bvid: 'BV1GJ411x7h7',
+            title: '视频标题',
+            pic: 'https://i0.hdslb.com/c.jpg',
+            cid: 1,
+            duration: 10,
+            rights: { is_ugc_pay: 0 },
+            owner: { mid: 5 },
+            pages: [
+              { page: 1, cid: 1, part: 'P1', duration: 10 },
+              { page: 2, cid: 2, part: 'P2', duration: 20 }
+            ]
+          }
+        })
+      }
+      throw new Error(`no fixture route for ${url}`)
+    }
+    const ctx = makeCtx(bilibiliFetch)
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('bilibili:resolve', 'https://www.bilibili.com/video/BV1GJ411x7h7?p=2')) as {
+      ok: boolean
+      value?: { bvid: string; requestedPage: number | null; title: string; pages: Array<{ page: number }> }
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value?.bvid).toBe('BV1GJ411x7h7')
+    expect(res.value?.requestedPage).toBe(2)
+    expect(res.value?.pages).toHaveLength(2)
+    void calls
+  })
+
+  it('bilibili:import upserts course+lessons with source columns and rejects paid videos', async () => {
+    const viewPayload = {
+      code: 0,
+      data: {
+        bvid: 'BV1GJ411x7h7',
+        title: '视频标题',
+        cid: 1,
+        duration: 10,
+        rights: { is_ugc_pay: 0 },
+        owner: { mid: 5 },
+        pages: [
+          { page: 1, cid: 11, part: 'P1', duration: 10 },
+          { page: 2, cid: 22, part: 'P2', duration: 20 }
+        ]
+      }
+    }
+    let paid = false
+    const bilibiliFetch: FetchLike = async (url) => {
+      if (url.includes('/x/web-interface/view?bvid=BV1GJ411x7h7')) {
+        return fakeJsonResponse(paid ? { ...viewPayload, data: { ...viewPayload.data, rights: { is_ugc_pay: 1 } } } : viewPayload)
+      }
+      throw new Error(`no fixture route for ${url}`)
+    }
+    const ctx = makeCtx(bilibiliFetch)
+    registerIpc(ctx, ipc as never)
+
+    const res = (await ipc.invoke('bilibili:import', { bvid: 'BV1GJ411x7h7', pages: [2, 1] })) as {
+      ok: boolean
+      value?: { courseId: string; lessonIds: string[] }
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value?.courseId).toBe('bili-BV1GJ411x7h7')
+    expect(res.value?.lessonIds).toEqual(['bili-BV1GJ411x7h7-P2', 'bili-BV1GJ411x7h7-P1'])
+    const rows = db.prepare('SELECT id, source, bili_cid, bili_page FROM lessons ORDER BY bili_page').all() as Array<{ id: string; source: string; bili_cid: string; bili_page: number }>
+    expect(rows).toEqual([
+      { id: 'bili-BV1GJ411x7h7-P1', source: 'bilibili', bili_cid: '11', bili_page: 1 },
+      { id: 'bili-BV1GJ411x7h7-P2', source: 'bilibili', bili_cid: '22', bili_page: 2 }
+    ])
+    const course = db.prepare('SELECT source, bili_bvid FROM courses WHERE id = ?').get('bili-BV1GJ411x7h7') as { source: string; bili_bvid: string }
+    expect(course).toEqual({ source: 'bilibili', bili_bvid: 'BV1GJ411x7h7' })
+
+    // Re-import is idempotent (upsert, no duplicate rows).
+    const again = (await ipc.invoke('bilibili:import', { bvid: 'BV1GJ411x7h7', pages: [1] })) as { ok: boolean }
+    expect(again.ok).toBe(true)
+    expect(db.prepare('SELECT COUNT(*) AS n FROM lessons').get()).toEqual({ n: 2 })
+
+    // Paid videos are refused at resolve/import time.
+    paid = true
+    const paidRes = (await ipc.invoke('bilibili:import', { bvid: 'BV1GJ411x7h7', pages: [1] })) as { ok: boolean; error?: string }
+    expect(paidRes.ok).toBe(false)
+    expect(paidRes.error).toContain('付费')
+  })
+})

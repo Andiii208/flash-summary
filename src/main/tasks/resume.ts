@@ -18,8 +18,11 @@ import { PIPELINE_STAGES, type Stage } from './stages'
  * after 8h). 6h is the conservative freshness window; beyond it a resume
  * re-harvests from the play page instead of downloading against a dead
  * signature. Legacy (pre-V1) URLs carry no signature and never expire.
+ * Bilibili stream URLs are documented to live 120 minutes — a 100-minute
+ * window leaves margin for a long queue.
  */
 export const STREAM_URL_FRESH_MS = 6 * 60 * 60 * 1000
+export const BILI_STREAM_FRESH_MS = 100 * 60 * 1000
 
 export interface ResumeDecision {
   stage: Stage
@@ -31,15 +34,24 @@ interface FetchHandoff {
   teacherStreamUrl?: string
   screenStreamUrl?: string
   harvestedAt?: string
+  /** Bilibili handoff (plan 2026-09-06 M4) — per-source shape below. */
+  bilibili?: boolean
+  videoStreamUrl?: string | null
+  audioStreamUrl?: string | null
+  hasSubtitle?: boolean
 }
 
 interface DownloadHandoff {
   teacherPath?: string
   screenPath?: string
+  bilibili?: boolean
+  videoPath?: string
+  audioPath?: string
 }
 
 interface AudioHandoff {
   audioPath?: string
+  skipped?: string
 }
 
 function readOutput<T>(db: Db, taskId: string, stage: Stage): T | null {
@@ -59,6 +71,17 @@ function readOutput<T>(db: Db, taskId: string, stage: Stage): T | null {
 /** True when the signed URL handoff is fresh enough to download against. */
 export function urlsAreFresh(handoff: FetchHandoff | null, now: number): boolean {
   if (handoff == null) return false
+  if (handoff.bilibili === true) {
+    // At least one usable input: any stream, or a subtitle-only run.
+    const hasStream =
+      (handoff.videoStreamUrl != null && handoff.videoStreamUrl !== '') ||
+      (handoff.audioStreamUrl != null && handoff.audioStreamUrl !== '') ||
+      handoff.hasSubtitle === true
+    if (!hasStream) return false
+    if (handoff.harvestedAt == null) return false
+    const harvested = Date.parse(handoff.harvestedAt)
+    return Number.isFinite(harvested) && now - harvested <= BILI_STREAM_FRESH_MS
+  }
   if (handoff.teacherStreamUrl == null || handoff.screenStreamUrl == null) return false
   const signed = handoff.teacherStreamUrl.includes('auth_key=') || handoff.screenStreamUrl.includes('auth_key=')
   if (!signed) return true
@@ -91,17 +114,29 @@ function degrade(db: Db, taskId: string, failedStage: Stage, now: number): Resum
         : stage === 'extracting_visuals'
           ? (() => {
               const dl = readOutput<DownloadHandoff>(db, taskId, 'downloading_video')
-              return dl != null && streamComplete(dl.screenPath)
+              if (dl == null) return false
+              if (dl.bilibili === true) {
+                // No video stream → the stage itself skips (legal no-evidence note).
+                return dl.videoPath == null || streamComplete(dl.videoPath)
+              }
+              return streamComplete(dl.screenPath)
             })()
           : stage === 'transcribing'
             ? (() => {
                 const audio = readOutput<AudioHandoff>(db, taskId, 'extracting_audio')
-                return audio?.audioPath != null && existsSync(audio.audioPath)
+                if (audio?.audioPath != null) return existsSync(audio.audioPath)
+                // Bilibili subtitle fast path: the skip marker IS the product.
+                return audio?.skipped === 'bilibili-subtitle'
               })()
             : stage === 'extracting_audio'
               ? (() => {
                   const dl = readOutput<DownloadHandoff>(db, taskId, 'downloading_video')
-                  return dl != null && (streamComplete(dl.teacherPath) || streamComplete(dl.screenPath))
+                  if (dl == null) return false
+                  if (dl.bilibili === true) {
+                    // Subtitle path needs no audio; audio path needs the m4a.
+                    return dl.audioPath == null || streamComplete(dl.audioPath)
+                  }
+                  return streamComplete(dl.teacherPath) || streamComplete(dl.screenPath)
                 })()
               : /* downloading_video */ urlsAreFresh(readOutput<FetchHandoff>(db, taskId, 'fetching_course'), now)
 

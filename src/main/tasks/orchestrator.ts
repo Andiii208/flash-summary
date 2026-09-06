@@ -18,6 +18,7 @@ import type { StageExecutor, StageContext } from './queue'
 import type { Stage } from './stages'
 import type { SchoolClient } from '../school/client'
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
+import type { BilibiliFetchResult } from '../bilibili/pipeline'
 import { summarizeLesson } from '../notes/summarize'
 
 /** B6: refuse to start a multi-GB download below this free-space floor. */
@@ -53,6 +54,12 @@ export interface OrchestratorDeps {
     screenStreamUrl?: string
     lessons?: Array<{ index: number; title: string; ref: string }>
   }>
+  /**
+   * Bilibili source fetch (plan 2026-09-06 M4): metadata + subtitle segments
+   * + DASH stream picks for one P. Signed URLs stay in the stage output —
+   * the lessons table keeps only bili_* identifiers (red line).
+   */
+  fetchBilibili?: (input: { bvid: string; page: number; signal?: AbortSignal }) => Promise<BilibiliFetchResult>
   /** Per-chunk ASR progress (U4): index and total let the UI show chunk-level progress. */
   onChunkProgress?: (ctx: StageContext, index: number, total: number) => void
   /** M1-3: download byte/speed polling so the UI shows «已下载 x · y/s». */
@@ -118,9 +125,35 @@ async function transcribeChunk(
   }
 }
 
+/** Bilibili fetching_course branch: metadata refresh + subtitle fast path + stream handoff. */
+async function fetchBilibiliCourse(deps: OrchestratorDeps, ctx: StageContext, lesson: { bvid: string; page: number }): Promise<ReturnType<StageExecutor>> {
+  if (deps.fetchBilibili == null) return { status: 'failed', error: 'B站源未接入（内部错误）' }
+  const fetched = await deps.fetchBilibili({ bvid: lesson.bvid, page: lesson.page, signal: ctx.signal })
+  deps.db
+    .prepare('UPDATE lessons SET title = ?, duration_seconds = ?, fetched_at = ? WHERE id = ?')
+    .run(fetched.title, fetched.durationSeconds, nowIso(deps), ctx.lessonId)
+  if (fetched.segments.length > 0) {
+    // Subtitle fast path: straight into transcripts — transcribing skips.
+    deps.db
+      .prepare('INSERT OR REPLACE INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(ctx.lessonId, fetched.segmentsJson, 'bilibili-subtitle', '', nowIso(deps))
+  }
+  recordStage(deps, ctx.taskId, ctx.stage, {
+    bilibili: true,
+    lessonId: ctx.lessonId,
+    videoStreamUrl: fetched.videoStreamUrl,
+    audioStreamUrl: fetched.audioStreamUrl,
+    hasSubtitle: fetched.segments.length > 0,
+    harvestedAt: nowIso(deps)
+  })
+  return { status: 'ok' }
+}
+
 /**
  * 1. fetching_course — resolve the lesson's stream URLs and upsert the lesson
- * row. Two paths:
+ * row. Three paths:
+ *  - bilibili (plan 2026-09-06): BV metadata + subtitle segments + DASH
+ *    handoff via the injected fetchBilibili dep.
  *  - play-page harvest (V1, preferred): the course row's teclId/teclCode feed
  *    the play-page route; the main window reads video.src for both streams.
  *    Full signed URLs flow to downloading_video via the stage output (never
@@ -133,15 +166,27 @@ async function transcribeChunk(
 export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
     try {
-      const lessonRow = deps.db.prepare('SELECT course_id, play_ref, title FROM lessons WHERE id = ?').get(ctx.lessonId) as
-        | { course_id: string; play_ref: string | null; title: string }
+      const lessonRow = deps.db
+        .prepare('SELECT course_id, play_ref, title, source, bili_cid, bili_page FROM lessons WHERE id = ?')
+        .get(ctx.lessonId) as
+        | { course_id: string; play_ref: string | null; title: string; source: string | null; bili_cid: string | null; bili_page: number | null }
         | undefined
       const courseRow =
         lessonRow != null
-          ? (deps.db.prepare('SELECT id, tecl_id, tecl_code FROM courses WHERE id = ?').get(lessonRow.course_id) as
-              | { id: string; tecl_id: string | null; tecl_code: string | null }
+          ? (deps.db.prepare('SELECT id, tecl_id, tecl_code, bili_bvid FROM courses WHERE id = ?').get(lessonRow.course_id) as
+              | { id: string; tecl_id: string | null; tecl_code: string | null; bili_bvid: string | null }
               | undefined)
           : undefined
+
+      // Bilibili source (plan 2026-09-06 M4): the lesson row already carries
+      // bili_cid/bili_page (written at import); the fetch resolves streams
+      // and the subtitle fast path.
+      if (lessonRow?.source === 'bilibili') {
+        if (courseRow?.bili_bvid == null || lessonRow.bili_cid == null) {
+          return { status: 'failed', error: 'B站课时缺少 bvid/cid 标识，请重新导入' }
+        }
+        return await fetchBilibiliCourse(deps, ctx, { bvid: courseRow.bili_bvid, page: lessonRow.bili_page ?? 1 })
+      }
 
       if (
         deps.harvestLesson != null &&
@@ -299,17 +344,67 @@ function startDownloadPoll(
   }
 }
 
-/** 2. downloading_video — fetch teacher + screen streams into cache (panorama never). */
+/** 2. downloading_video — SEU: teacher+screen streams; bilibili: video (+audio when ASR needed). */
 export function makeDownload(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
     // V1: the fetching stage hands over full signed URLs (auth_key time-
     // limited). Fall back to the lessons table for the legacy JSON path and
     // pre-V1 rows (their URLs carry no signature anyway).
-    const fetched = stageOutput<{ lessonId?: string; teacherStreamUrl?: string; screenStreamUrl?: string }>(
-      deps,
-      ctx.taskId,
-      'fetching_course'
-    )
+    const fetched = stageOutput<{
+      lessonId?: string
+      teacherStreamUrl?: string
+      screenStreamUrl?: string
+      bilibili?: boolean
+      videoStreamUrl?: string | null
+      audioStreamUrl?: string | null
+      hasSubtitle?: boolean
+    }>(deps, ctx.taskId, 'fetching_course')
+
+    // Bilibili branch (plan 2026-09-06 M4): single 360P video stream for
+    // keyframes, plus the audio stream only when ASR will run. Panorama/
+    // paid-quality guards are SEU concepts; the disk guard applies to both.
+    if (fetched?.bilibili === true) {
+      const streams = [
+        ...(fetched.videoStreamUrl != null ? [{ label: '视频流', url: fetched.videoStreamUrl, path: join(taskDir(deps, ctx.taskId), 'video.ts') }] : []),
+        ...(fetched.hasSubtitle !== true && fetched.audioStreamUrl != null
+          ? [{ label: '音频流', url: fetched.audioStreamUrl, path: join(taskDir(deps, ctx.taskId), 'audio.ts') }]
+          : [])
+      ]
+      if (streams.length === 0) {
+        if (fetched.hasSubtitle !== true) {
+          return { status: 'failed', error: 'B站流地址缺失（可能被风控拒绝），请稍后重试' }
+        }
+        // Subtitle fast path with no stream at all: nothing to download —
+        // the note proceeds without keyframes (legal evidence-less state).
+        recordStage(deps, ctx.taskId, ctx.stage, { bilibili: true })
+        return { status: 'ok' }
+      }
+      const free = (deps.freeDiskOverride ?? freeDiskBytes)(deps.cacheDir())
+      if (free != null && free < MIN_FREE_DISK_BYTES) {
+        return { status: 'failed', error: `磁盘剩余空间不足 5GB（当前约 ${Math.floor(free / 1024 ** 3)}GB），请清理后重试` }
+      }
+      const poll = startDownloadPoll(deps, ctx, streams.map((s) => s.path))
+      try {
+        const fetchStream = deps.fetchStream ?? ((url: string, target: string, signal?: AbortSignal) => fetchStreamDefault(deps.ffmpeg, url, target, signal))
+        for (const stream of streams) {
+          if (streamComplete(stream.path)) continue
+          await downloadStreamWithRetry(fetchStream, stream.url, stream.path, ctx.signal)
+          writeFileSync(`${stream.path}.ok`, '')
+        }
+        recordStage(deps, ctx.taskId, ctx.stage, {
+          bilibili: true,
+          videoPath: streams.find((s) => s.label === '视频流')?.path,
+          audioPath: streams.find((s) => s.label === '音频流')?.path
+        })
+        return { status: 'ok' }
+      } catch (err) {
+        if (isCancelled(ctx, err)) return cancelResult()
+        return { status: 'failed', error: `下载B站流失败: ${(err as Error).message}` }
+      } finally {
+        poll.stop()
+      }
+    }
+
     const row = deps.db.prepare('SELECT stream_urls_json FROM lessons WHERE id = ?').get(ctx.lessonId) as
       | { stream_urls_json: string | null }
       | undefined
@@ -359,13 +454,30 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
   }
 }
 
-/** 3. extracting_audio — the stream that carries audio → 16k mono wav; teacher video deleted after success. */
+/** 3. extracting_audio — SEU: audio-carrying stream → 16k mono wav; bilibili: m4a→wav or subtitle skip. */
 export function makeExtractAudio(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
-    const dl = stageOutput<{ teacherPath: string; screenPath: string }>(deps, ctx.taskId, 'downloading_video')
+    const dl = stageOutput<{ teacherPath: string; screenPath: string; bilibili?: boolean; videoPath?: string; audioPath?: string }>(
+      deps,
+      ctx.taskId,
+      'downloading_video'
+    )
     if (dl == null) return { status: 'failed', error: '下载阶段产物缺失，需要重新下载' }
     try {
       const dir = taskDir(deps, ctx.taskId)
+      // Bilibili subtitle fast path (plan 2026-09-06): no audio needed at
+      // all — the transcript was inserted at fetching_course.
+      if (dl.bilibili === true) {
+        if (dl.audioPath == null || !streamComplete(dl.audioPath)) {
+          recordStage(deps, ctx.taskId, ctx.stage, { skipped: 'bilibili-subtitle' })
+          return { status: 'ok' }
+        }
+        const converted = await extractAudio(dl.audioPath, dir, deps.ffmpeg, 'bili-audio', ctx.signal)
+        if (existsSync(dl.audioPath)) rmSync(dl.audioPath, { force: true })
+        rmSync(`${dl.audioPath}.ok`, { force: true })
+        recordStage(deps, ctx.taskId, ctx.stage, converted)
+        return { status: 'ok' }
+      }
       // Field reality (2026-09-02): the teacher stream may have no audio
       // track — the screen stream carries the classroom AAC. Probe both.
       const audioSource = await pickAudioSource(dl.teacherPath, dl.screenPath, deps.ffprobe)
@@ -387,9 +499,30 @@ interface TranscribeCheckpoint {
   chunks?: Array<{ index: number; at: number; text: string }>
 }
 
-/** 4. transcribing — audio → provider ASR, chunked to stay under the 25MB upload cap. */
+/** 4. transcribing — audio → provider ASR, chunked; bilibili subtitle path skips entirely. */
 export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
+    // Bilibili subtitle fast path (plan 2026-09-06 M4): the transcript was
+    // inserted at fetching_course — ASR would re-pay for nothing. SEU rows
+    // keep their re-transcribe semantics (INSERT OR REPLACE on rerun).
+    const lessonSource = deps.db.prepare('SELECT source FROM lessons WHERE id = ?').get(ctx.lessonId) as
+      | { source: string | null }
+      | undefined
+    if (lessonSource?.source === 'bilibili') {
+      const existing = deps.db.prepare('SELECT segments_json FROM transcripts WHERE lesson_id = ?').get(ctx.lessonId) as
+        | { segments_json: string }
+        | undefined
+      if (existing != null) {
+        const segments = JSON.parse(existing.segments_json) as Array<{ text: string }>
+        recordStage(deps, ctx.taskId, ctx.stage, {
+          chars: segments.reduce((n, s) => n + s.text.length, 0),
+          chunks: 0,
+          bypass: 'bilibili-subtitle'
+        })
+        return { status: 'ok' }
+      }
+      // No subtitle row (e.g. resume after a wiped DB): fall through to ASR.
+    }
     const audio = stageOutput<{ audioPath: string; durationSeconds: number }>(deps, ctx.taskId, 'extracting_audio')
     if (audio == null) return { status: 'failed', error: '音频产物缺失，需要重新提取' }
     const binding = deps.db
@@ -455,14 +588,46 @@ export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
   }
 }
 
-/** 5. extracting_visuals — screen video keyframes + platform PPT download. */
+/** 5. extracting_visuals — SEU: screen keyframes + PPT; bilibili: video-stream keyframes only. */
 export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
-    const dl = stageOutput<{ teacherPath: string; screenPath: string }>(deps, ctx.taskId, 'downloading_video')
+    const dl = stageOutput<{ teacherPath: string; screenPath: string; bilibili?: boolean; videoPath?: string; audioPath?: string }>(
+      deps,
+      ctx.taskId,
+      'downloading_video'
+    )
     if (dl == null) return { status: 'failed', error: '下载阶段产物缺失，需要重新下载' }
     try {
       const outDir = join(taskDir(deps, ctx.taskId), 'keyframes')
       mkdirSync(outDir, { recursive: true })
+
+      // Bilibili branch (plan 2026-09-06 M4): keyframes come from the 360P
+      // DASH video stream; no platform PPT exists. No stream (risk-control
+      // degradation at fetch time) → legal evidence-less note.
+      if (dl.bilibili === true) {
+        if (dl.videoPath == null || !streamComplete(dl.videoPath)) {
+          recordStage(deps, ctx.taskId, ctx.stage, { keyframes: 0, ppt: 0, skipped: 'no-video-stream' })
+          return { status: 'ok' }
+        }
+        const candidates = await extractKeyframes(dl.videoPath, outDir, 10, deps.ffmpeg, ctx.signal)
+        const kept = dedupeKeyframes(candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })), 5)
+        const destDir = join(attachmentsPath(deps.libraryRoot), ctx.lessonId, 'keyframes')
+        mkdirSync(destDir, { recursive: true })
+        const insertKf = deps.db.prepare(
+          'INSERT OR REPLACE INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        )
+        for (const [i, frame] of kept.entries()) {
+          const dest = join(destDir, `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`)
+          const { renameSync } = await import('fs')
+          renameSync(frame.filePath, dest)
+          insertKf.run(`${ctx.lessonId}-kf-${i}`, ctx.lessonId, frame.timestampSeconds, storedAttachmentsPath(ctx.lessonId, 'keyframes', `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`), frame.hash, nowIso(deps))
+        }
+        if (existsSync(dl.videoPath)) rmSync(dl.videoPath, { force: true })
+        rmSync(`${dl.videoPath}.ok`, { force: true })
+        recordStage(deps, ctx.taskId, ctx.stage, { keyframes: kept.length, ppt: 0 })
+        return { status: 'ok' }
+      }
+
       const candidates = await extractKeyframes(dl.screenPath, outDir, 10, deps.ffmpeg, ctx.signal)
       const kept = dedupeKeyframes(
         candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })),

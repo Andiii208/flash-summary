@@ -20,9 +20,8 @@ import { extractWbiKeys, signedPlayUrlParams, wbiSign, WBI_KEY_TTL_MS, type WbiK
 import { buildDmImgParams } from './dm-params'
 import { cookiesFromCrossDomainUrl, parseQrGenerate, qrStatusFromCode, type QrGenerateResult, type QrPollStatus } from './qr-login'
 
-const API_HOST = 'https://api.bilibili.com'
-const PASSPORT_HOST = 'https://passport.bilibili.com'
-const NAV_URL = `${API_HOST}/x/web-interface/nav`
+const DEFAULT_API_HOST = 'https://api.bilibili.com'
+const DEFAULT_PASSPORT_HOST = 'https://passport.bilibili.com'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 export const BILI_TIMEOUT_MS = 30_000
@@ -73,7 +72,10 @@ export class BilibiliClient {
     /** SESSDATA cookie string («SESSDATA=…; bili_jct=…»), empty when logged out. */
     private readonly getCookie: () => Promise<string>,
     private readonly fetchImpl: FetchLike,
-    private readonly timeoutMs: number = BILI_TIMEOUT_MS
+    private readonly timeoutMs: number = BILI_TIMEOUT_MS,
+    /** Host injectables (e2e tests point them at a local fake server). */
+    private readonly apiHost: string = DEFAULT_API_HOST,
+    private readonly passportHost: string = DEFAULT_PASSPORT_HOST
   ) {}
 
   /** One JSON API call with the envelope code mapped onto the error taxonomy. */
@@ -120,7 +122,7 @@ export class BilibiliClient {
   /** The nav endpoint answers code -101 (logged out) but still carries wbi_img. */
   async getWbiKeys(): Promise<WbiKeys> {
     if (this.wbiKeys != null && Date.now() - this.wbiKeysFetchedAt < WBI_KEY_TTL_MS) return this.wbiKeys
-    const payload = await this.requestEnvelope(NAV_URL, false, { tolerateCodes: [-101] })
+    const payload = await this.requestEnvelope(`${this.apiHost}/x/web-interface/nav`, false, { tolerateCodes: [-101] })
     const keys = extractWbiKeys(payload)
     if (keys == null) throw new BilibiliApiError('bad_response', 'bilibili nav payload missing wbi_img keys')
     this.wbiKeys = keys
@@ -129,7 +131,7 @@ export class BilibiliClient {
   }
 
   async viewInfo(bvid: string): Promise<BiliViewInfo> {
-    const payload = await this.requestEnvelope(`${API_HOST}/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, false)
+    const payload = await this.requestEnvelope(`${this.apiHost}/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, false)
     const info = parseViewInfo(payload)
     if (info == null) throw new BilibiliApiError('bad_response', `bilibili view payload unusable for ${bvid}`)
     return info
@@ -138,7 +140,7 @@ export class BilibiliClient {
   /** Subtitle tracks; empty without a login (need_login_subtitle=true). */
   async subtitleTracks(bvid: string, cid: number): Promise<{ subtitles: BiliSubtitleEntry[]; needLoginSubtitle: boolean }> {
     const params = new URLSearchParams({ bvid, cid: String(cid) }).toString()
-    const payload = await this.requestEnvelope(`${API_HOST}/x/player/wbi/v2?${params}`, true)
+    const payload = await this.requestEnvelope(`${this.apiHost}/x/player/wbi/v2?${params}`, true)
     const info = parsePlayerInfo(payload)
     if (info == null) throw new BilibiliApiError('bad_response', `bilibili player payload unusable for ${bvid}`)
     return { subtitles: info.subtitles, needLoginSubtitle: info.needLoginSubtitle }
@@ -161,7 +163,7 @@ export class BilibiliClient {
     const base = { bvid, cid: String(cid), qn: '32', fnval: '16', fourk: '0', try_look: '1' }
     const signed = signedPlayUrlParams(base, keys, buildDmImgParams(), Math.floor(Date.now() / 1000))
     const query = new URLSearchParams(signed).toString()
-    const payload = await this.requestEnvelope(`${API_HOST}/x/player/wbi/playurl?${query}`, true)
+    const payload = await this.requestEnvelope(`${this.apiHost}/x/player/wbi/playurl?${query}`, true)
     const streams = parseDashStreams(payload)
     if (streams == null) throw new BilibiliApiError('bad_response', `bilibili playurl payload unusable for ${bvid}`)
     return streams
@@ -198,7 +200,7 @@ export class BilibiliClient {
 
   /** QR login step 1: the payload whose `url` the renderer renders as a QR image. */
   async qrGenerate(): Promise<QrGenerateResult> {
-    const payload = await this.requestEnvelope(`${PASSPORT_HOST}/x/passport-login/web/qrcode/generate`, false)
+    const payload = await this.requestEnvelope(`${this.passportHost}/x/passport-login/web/qrcode/generate`, false)
     const parsed = parseQrGenerate(payload)
     if (parsed == null) throw new BilibiliApiError('bad_response', 'bilibili qr generate payload unusable')
     return parsed
@@ -211,7 +213,7 @@ export class BilibiliClient {
    */
   async qrPoll(qrcodeKey: string): Promise<{ status: QrPollStatus; cookies: string | null }> {
     const query = new URLSearchParams({ qrcode_key: qrcodeKey }).toString()
-    const payload = await this.requestEnvelope(`${PASSPORT_HOST}/x/passport-login/web/qrcode/poll?${query}`, false)
+    const payload = await this.requestEnvelope(`${this.passportHost}/x/passport-login/web/qrcode/poll?${query}`, false)
     const data = (payload.data ?? {}) as { code?: unknown; url?: unknown }
     const code = typeof data.code === 'number' ? data.code : -1
     const status = qrStatusFromCode(code)

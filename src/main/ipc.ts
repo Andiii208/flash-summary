@@ -38,6 +38,8 @@ import { resolveCacheDir, attachmentsPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
 import { getSetting } from './settings/store'
+import { fetchBilibiliLesson } from './bilibili/pipeline'
+import { biliCourseId, biliLessonId, parseBiliInput } from './bilibili/url-parse'
 
 /** User-tunable page cap (settings key courseListMaxPages); undefined → client default. */
 function maxPagesFrom(db: Db): number | undefined {
@@ -181,6 +183,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       school: ctx.school,
       chat: (capability) => ctx.chatFor(capability),
       gridDecoder: ctx.gridDecoder,
+      fetchBilibili: ({ bvid, page, signal }) => fetchBilibiliLesson(ctx.bilibili, bvid, page, signal),
       harvestLesson: (input) =>
         ctx.harvestCoursePage(
           { courseId: input.courseId, teclId: input.teclId, teclCode: input.teclCode },
@@ -265,6 +268,88 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
   handle(ipc, 'bilibili:session', () => {
     return ok({ state: ctx.bilibiliSessionState(), savedAt: ctx.bilibiliSessionMeta().savedAt })
+  })
+
+  // Import preview (plan 2026-09-06 M5): BV/URL/short link → video metadata
+  // + the page list the user picks from. Works logged out (subtitles need a
+  // login only at fetch time).
+  handle(ipc, 'bilibili:resolve', async (_e, input: unknown) => {
+    try {
+      const raw = str(input, 'input')
+      const parsed = parseBiliInput(raw)
+      if (parsed == null) throw new Error('无法识别的B站链接，请粘贴视频页链接或 BV 号')
+      let bvid: string
+      let requestedPage: number | null = null
+      if (parsed.kind === 'short_link') {
+        const resolved = await ctx.bilibili.resolveShortLink(raw)
+        const reparsed = parseBiliInput(resolved)
+        if (reparsed?.kind !== 'bvid') throw new Error('短链解析后未找到 BV 号')
+        bvid = reparsed.bvid
+        requestedPage = reparsed.page
+      } else if (parsed.kind === 'av_unsupported') {
+        throw new Error('暂不支持 av 号，请使用 BV 号或视频页链接')
+      } else {
+        bvid = parsed.bvid
+        requestedPage = parsed.page
+      }
+      const view = await ctx.bilibili.viewInfo(bvid)
+      if (view.paid) throw new Error('该视频为付费/充电专属内容，不支持导入（合规边界）')
+      return ok({
+        bvid,
+        requestedPage,
+        title: view.title,
+        coverUrl: view.coverUrl,
+        upMid: view.upMid,
+        pages: view.pages.map((p) => ({ page: p.page, cid: p.cid, part: p.part, duration: p.duration }))
+      })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // Import: upsert the course + one lesson per selected P (migration 009
+  // shape). The renderer then queues tasks per lesson like any SEU course.
+  handle(ipc, 'bilibili:import', async (_e, payload: unknown) => {
+    try {
+      const body = (payload ?? {}) as { bvid?: unknown; pages?: unknown }
+      const bvid = str(body.bvid, 'bvid')
+      if (!Array.isArray(body.pages) || body.pages.length === 0) throw new Error('请至少选择一个分P')
+      const pageNumbers = body.pages.map((p) => Number(p))
+      if (pageNumbers.some((p) => !Number.isInteger(p) || p < 1)) throw new Error('分P序号非法')
+      const view = await ctx.bilibili.viewInfo(bvid)
+      if (view.paid) throw new Error('该视频为付费/充电专属内容，不支持导入（合规边界）')
+      const now = new Date().toISOString()
+      const courseId = biliCourseId(bvid)
+      const upsertCourse = ctx.db.prepare(
+        `INSERT INTO courses (id, name, source, bili_bvid, bili_up_mid, fetched_at) VALUES (?, ?, 'bilibili', ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, bili_up_mid = excluded.bili_up_mid, fetched_at = excluded.fetched_at`
+      )
+      const upsertLesson = ctx.db.prepare(
+        `INSERT INTO lessons (id, course_id, title, source, bili_cid, bili_page, duration_seconds, fetched_at)
+         VALUES (?, ?, ?, 'bilibili', ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET title = excluded.title, bili_cid = excluded.bili_cid,
+           bili_page = excluded.bili_page, duration_seconds = excluded.duration_seconds, fetched_at = excluded.fetched_at`
+      )
+      const lessonIds: string[] = []
+      ctx.db.transaction(() => {
+        upsertCourse.run(courseId, view.title, bvid, view.upMid != null ? String(view.upMid) : null, now)
+        for (const pageNumber of pageNumbers) {
+          const page = view.pages.find((p) => p.page === pageNumber)
+          if (page == null) continue
+          const lessonId = biliLessonId(bvid, page.page)
+          upsertLesson.run(
+            lessonId, courseId, page.part !== '' ? page.part : view.title, String(page.cid),
+            page.page, page.duration > 0 ? page.duration : null, now
+          )
+          lessonIds.push(lessonId)
+        }
+      })()
+      if (lessonIds.length === 0) throw new Error('所选分P在视频中不存在')
+      ctx.logger.info(`bilibili import: ${courseId} pages=${lessonIds.length}`)
+      return ok({ courseId, lessonIds })
+    } catch (e) {
+      return err(e)
+    }
   })
 
   // A5 preflight: a Clash-style TUN resolver answers campus lookups with a
