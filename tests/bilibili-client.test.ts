@@ -169,6 +169,38 @@ describe('BilibiliClient (fixture replay)', () => {
     expect(resolved).toBe('https://www.bilibili.com/video/BV1GJ411x7h7?p=2')
   })
 
+  it('qrGenerate returns the QR content url and polling key', async () => {
+    const client = makeClient(
+      makeFetch({
+        [`${API}/x/passport-login/web/qrcode/generate`.replace('https://api.bilibili.com', 'https://passport.bilibili.com')]: jsonResponse({
+          code: 0,
+          data: { url: 'https://passport.bilibili.com/h5-app/passport/login/scan?qrcode_key=QR1', qrcode_key: 'QR1' }
+        })
+      })
+    )
+    const qr = await client.qrGenerate()
+    expect(qr).toEqual({ qrUrl: 'https://passport.bilibili.com/h5-app/passport/login/scan?qrcode_key=QR1', qrcodeKey: 'QR1' })
+  })
+
+  it('qrPoll walks waiting→scanned→confirmed and extracts the cookie string', async () => {
+    const pollResponses = [
+      jsonResponse({ code: 0, data: { code: 86101, url: '', message: '' } }),
+      jsonResponse({ code: 0, data: { code: 86090, url: '', message: '' } }),
+      jsonResponse({
+        code: 0,
+        data: { code: 0, url: 'https://passport.biligame.com/crossDomain?DedeUserID=9&SESSDATA=s1&bili_jct=t1&gourl=x', message: '' }
+      })
+    ]
+    let calls = 0
+    const client = makeClient(async (url: string) => {
+      if (url.includes('/qrcode/poll')) return pollResponses[calls++]
+      throw new Error(`no fixture route for ${url}`)
+    })
+    expect(await client.qrPoll('QR1')).toEqual({ status: 'waiting', cookies: null })
+    expect(await client.qrPoll('QR1')).toEqual({ status: 'scanned', cookies: null })
+    expect(await client.qrPoll('QR1')).toEqual({ status: 'confirmed', cookies: 'SESSDATA=s1; bili_jct=t1; DedeUserID=9' })
+  })
+
   it('rejects paid content through the view payload flag', () => {
     const paid = parseViewInfo({ code: 0, data: { ...VIEW_PAYLOAD.data, rights: { is_ugc_pay: 1 } } })
     expect(paid?.paid).toBe(true)

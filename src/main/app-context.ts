@@ -11,12 +11,14 @@ import { defaultLibraryRoot, ensureLibraryLayout, resolveCacheDir, exportsPath }
 import { dpapiCryptor } from './auth/electron-cryptor'
 import type { Cryptor } from './auth/session-crypto'
 import { loadSession, saveSession, clearSession, jwtExpiresAt } from './auth/session-store'
+import { loadBilibiliSession, saveBilibiliSession, clearBilibiliSession } from './auth/bilibili-session-store'
 import { injectSessionCookiesIntoJar } from './auth/cookie-inject'
 import { clearBrowserSessionState } from './auth/browser-clear'
 import type { SessionStateValue } from '../shared/types'
 import { openCasLoginWindow } from './auth/cas-login'
 import { loginViaMainWindow, loginWindowFallbackRequested } from './auth/main-window-login'
 import { SchoolClient } from './school/client'
+import { BilibiliClient, type FetchLike } from './bilibili/client'
 import { harvestPlayPage, type PlayHarvestResult, type PlayPageTarget } from './school/play-harvest'
 import { loadProviderSettings, upsertProvider, deleteProvider, setBinding } from './providers/store'
 import { resolveCapability, validateProvider, type ProviderSettings, type Capability, type ProviderConfig } from './providers/model'
@@ -38,6 +40,19 @@ export interface AppContext {
   db: Db
   cryptor: Cryptor
   school: SchoolClient
+  /** Bilibili web-API client (source #2, plan 2026-09-06): subtitle/playurl/QR login. */
+  bilibili: BilibiliClient
+  /** QR login step 1: render `qrUrl` as a QR image in the renderer. */
+  bilibiliLoginStart: () => Promise<{ qrUrl: string }>
+  /**
+   * QR login step 2: one throttled poll (≥1s against the passport API).
+   * `inactive` = no login session running (start one first); `confirmed`
+   * has already persisted the encrypted session by the time it is reported.
+   */
+  bilibiliLoginPoll: () => Promise<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }>
+  bilibiliLogout: () => void
+  bilibiliSessionState: () => 'logged_in' | 'logged_out'
+  bilibiliSessionMeta: () => { savedAt: string | null }
   providers: () => ProviderSettings
   saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string }) => ProviderConfig
   removeProvider: (id: string) => void
@@ -111,6 +126,7 @@ export function createContext(overrides: Partial<{
   libraryRoot: string
   userDataDir: string
   cryptor: Cryptor
+  bilibiliFetch: FetchLike
 }> = {}): AppContext {
   const userDataDir = overrides.userDataDir ?? app.getPath('userData')
   // C1 (review): the library root comes from the userData bootstrap pointer
@@ -171,6 +187,21 @@ export function createContext(overrides: Partial<{
     },
     (url, init) => globalThis.fetch(url, init as RequestInit),
     jwtOf
+  )
+
+  // Bilibili source (plan 2026-09-06): same cookie discipline as the school
+  // client — SESSDATA rides the encrypted bilibili-session file. The fetch
+  // is injectable so the IPC tests can drive the QR-login state machine
+  // against fixtures without touching the network.
+  const bilibili = new BilibiliClient(
+    async () => {
+      try {
+        return loadBilibiliSession(userDataDir, cryptor)?.cookies ?? ''
+      } catch {
+        return ''
+      }
+    },
+    overrides.bilibiliFetch ?? ((url, init) => globalThis.fetch(url, init as RequestInit))
   )
 
   const providers = (): ProviderSettings => {
@@ -307,8 +338,7 @@ export function createContext(overrides: Partial<{
     target: PlayPageTarget,
     selectLessonRef?: string | null,
     signal?: AbortSignal
-  ): Promise<PlayHarvestResult> => {
-    if (harvestInFlight != null) {
+  ): Promise<PlayHarvestResult> => {    if (harvestInFlight != null) {
       throw new Error('已有播放页抓取在进行中，请稍候')
     }
     const win = mainWindowRef
@@ -330,12 +360,70 @@ export function createContext(overrides: Partial<{
     return harvestInFlight
   }
 
+  // Bilibili QR-login state machine (plan 2026-09-06 M3). The renderer
+  // drives it: login() → render qrUrl → poll loginStatus() ~1.5s apart.
+  // Polls are cached for 1s so renderer remounts cannot hammer the
+  // passport endpoint. `confirmed` persists the DPAPI-sealed session
+  // before the status is reported; the cookie string never reaches a log.
+  let bilibiliQr: { qrcodeKey: string } | null = null
+  let bilibiliPollCache: { at: number; result: { status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' } } | null = null
+
+  const bilibiliLoginStart = async (): Promise<{ qrUrl: string }> => {
+    const qr = await bilibili.qrGenerate()
+    bilibiliQr = { qrcodeKey: qr.qrcodeKey }
+    bilibiliPollCache = null
+    logger.info('bilibili qr login started')
+    return { qrUrl: qr.qrUrl }
+  }
+
+  const bilibiliLoginPoll = async (): Promise<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }> => {
+    if (bilibiliQr == null) return { status: 'inactive' }
+    if (bilibiliPollCache != null && Date.now() - bilibiliPollCache.at < 1000) return bilibiliPollCache.result
+    const poll = await bilibili.qrPoll(bilibiliQr.qrcodeKey)
+    if (poll.status === 'confirmed' && poll.cookies != null) {
+      saveBilibiliSession(
+        userDataDir,
+        { cookies: poll.cookies, baseUrl: 'https://www.bilibili.com', savedAt: new Date().toISOString() },
+        cryptor
+      )
+      bilibiliQr = null
+      logger.info('bilibili login succeeded (session encrypted at rest)')
+    } else if (poll.status === 'expired') {
+      bilibiliQr = null
+    }
+    const result = { status: poll.status }
+    bilibiliPollCache = { at: Date.now(), result }
+    return result
+  }
+
   return {
     libraryRoot,
     userDataDir,
     db,
     cryptor,
     school,
+    bilibili,
+    bilibiliLoginStart,
+    bilibiliLoginPoll,
+    bilibiliLogout: () => {
+      clearBilibiliSession(userDataDir)
+      bilibiliQr = null
+      bilibiliPollCache = null
+    },
+    bilibiliSessionState: () => {
+      try {
+        return loadBilibiliSession(userDataDir, cryptor) != null ? 'logged_in' : 'logged_out'
+      } catch {
+        return 'logged_out'
+      }
+    },
+    bilibiliSessionMeta: () => {
+      try {
+        return { savedAt: loadBilibiliSession(userDataDir, cryptor)?.savedAt ?? null }
+      } catch {
+        return { savedAt: null }
+      }
+    },
     providers,
     saveProvider: (input) => {
       const id = input.id ?? input.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')

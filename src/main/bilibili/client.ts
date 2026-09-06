@@ -18,8 +18,10 @@ import {
 } from './parse'
 import { extractWbiKeys, signedPlayUrlParams, wbiSign, WBI_KEY_TTL_MS, type WbiKeys } from './wbi'
 import { buildDmImgParams } from './dm-params'
+import { cookiesFromCrossDomainUrl, parseQrGenerate, qrStatusFromCode, type QrGenerateResult, type QrPollStatus } from './qr-login'
 
 const API_HOST = 'https://api.bilibili.com'
+const PASSPORT_HOST = 'https://passport.bilibili.com'
 const NAV_URL = `${API_HOST}/x/web-interface/nav`
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -192,6 +194,31 @@ export class BilibiliClient {
   async signParams(params: Record<string, string>): Promise<Record<string, string>> {
     const keys = await this.getWbiKeys()
     return wbiSign(params, keys, Math.floor(Date.now() / 1000))
+  }
+
+  /** QR login step 1: the payload whose `url` the renderer renders as a QR image. */
+  async qrGenerate(): Promise<QrGenerateResult> {
+    const payload = await this.requestEnvelope(`${PASSPORT_HOST}/x/passport-login/web/qrcode/generate`, false)
+    const parsed = parseQrGenerate(payload)
+    if (parsed == null) throw new BilibiliApiError('bad_response', 'bilibili qr generate payload unusable')
+    return parsed
+  }
+
+  /**
+   * QR login step 2: one poll of the scan state. On confirmation the login
+   * cookies come out of the crossDomain handoff URL — in-memory only,
+   * returned to the caller for encrypted persistence, never logged.
+   */
+  async qrPoll(qrcodeKey: string): Promise<{ status: QrPollStatus; cookies: string | null }> {
+    const query = new URLSearchParams({ qrcode_key: qrcodeKey }).toString()
+    const payload = await this.requestEnvelope(`${PASSPORT_HOST}/x/passport-login/web/qrcode/poll?${query}`, false)
+    const data = (payload.data ?? {}) as { code?: unknown; url?: unknown }
+    const code = typeof data.code === 'number' ? data.code : -1
+    const status = qrStatusFromCode(code)
+    if (status !== 'confirmed') return { status, cookies: null }
+    const cookies = cookiesFromCrossDomainUrl(typeof data.url === 'string' ? data.url : '')
+    if (cookies == null) throw new BilibiliApiError('bad_response', 'bilibili qr poll confirmed but carried no SESSDATA')
+    return { status, cookies }
   }
 }
 

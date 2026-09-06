@@ -237,8 +237,19 @@ export interface QaBridge {
   recent(): Promise<ApiResult<QaRecentInfo[]>>
 }
 
+/** Bilibili source bridge (plan 2026-09-06): QR login + session state. */
+export interface BilibiliBridge {
+  /** Starts a QR login; `qrUrl` is the string the renderer draws as a QR image. */
+  login(): Promise<ApiResult<{ qrUrl: string }>>
+  /** One throttled poll; `confirmed` means the encrypted session is already saved. */
+  loginStatus(): Promise<ApiResult<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }>>
+  logout(): Promise<ApiResult<{ state: 'logged_in' | 'logged_out' }>>
+  session(): Promise<ApiResult<{ state: 'logged_in' | 'logged_out'; savedAt?: string | null }>>
+}
+
 export interface SeuSummaryBridge {
   school: SchoolBridge
+  bilibili: BilibiliBridge
   providers: ProvidersBridge
   tasks: TasksBridge
   notes: NotesBridge

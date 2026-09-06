@@ -241,6 +241,32 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     })
   })
 
+  // ---- bilibili (source #2, plan 2026-09-06 M3) ----
+  // QR login: start returns the QR content URL (renderer draws the image);
+  // loginStatus is polled ~1.5s apart and reports the scan state machine.
+  // Confirmed already persists the DPAPI-sealed session in the main side.
+  handle(ipc, 'bilibili:login', async () => {
+    try {
+      return ok(await ctx.bilibiliLoginStart())
+    } catch (e) {
+      return err(e)
+    }
+  })
+  handle(ipc, 'bilibili:loginStatus', async () => {
+    try {
+      return ok(await ctx.bilibiliLoginPoll())
+    } catch (e) {
+      return err(e)
+    }
+  })
+  handle(ipc, 'bilibili:logout', () => {
+    ctx.bilibiliLogout()
+    return ok({ state: ctx.bilibiliSessionState() })
+  })
+  handle(ipc, 'bilibili:session', () => {
+    return ok({ state: ctx.bilibiliSessionState(), savedAt: ctx.bilibiliSessionMeta().savedAt })
+  })
+
   // A5 preflight: a Clash-style TUN resolver answers campus lookups with a
   // Fake-IP and the proxy then RSTs all school traffic. Detecting it before
   // a refresh/login turns «app does nothing» into an actionable message.

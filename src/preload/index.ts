@@ -52,6 +52,14 @@ const api: SeuSummaryBridge = {
     setMine: (courseId: string, mine: boolean): Promise<ApiResult<boolean>> =>
       ipcRenderer.invoke('school:setMine', courseId, mine)
   },
+  bilibili: {
+    login: (): Promise<ApiResult<{ qrUrl: string }>> => ipcRenderer.invoke('bilibili:login'),
+    loginStatus: (): Promise<ApiResult<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }>> =>
+      ipcRenderer.invoke('bilibili:loginStatus'),
+    logout: (): Promise<ApiResult<{ state: 'logged_in' | 'logged_out' }>> => ipcRenderer.invoke('bilibili:logout'),
+    session: (): Promise<ApiResult<{ state: 'logged_in' | 'logged_out'; savedAt?: string | null }>> =>
+      ipcRenderer.invoke('bilibili:session')
+  },
   providers: {
     list: (): Promise<ApiResult<ProvidersListResult>> => ipcRenderer.invoke('providers:list'),
     save: (input: { id?: string; name: string; baseUrl: string; apiKey: string }): Promise<ApiResult<{ id: string; hasKey: boolean }>> =>

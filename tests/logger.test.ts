@@ -42,6 +42,13 @@ describe('redact (U5 安全红线)', () => {
     expect(out).not.toContain('ccc')
   })
 
+  it('strips bilibili SESSDATA and bili_jct values (plan 2026-09-06 M3)', () => {
+    const out = redact('bili poll SESSDATA=abc123; bili_jct=tok456 saved')
+    expect(out).not.toContain('abc123')
+    expect(out).not.toContain('tok456')
+    expect(out).toContain('[REDACTED]')
+  })
+
   it('redacts the jwt-token credential header/param', () => {
     const out = redact('sent jwt-token=eyJhbGciO.secret to platform')
     expect(out).not.toContain('eyJhbGciO.secret')

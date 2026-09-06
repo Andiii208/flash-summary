@@ -69,7 +69,7 @@ export function redact(message: string): string {
     // redact to end of line instead of stopping at the first ';'.
     .replace(/(cookie\s*[:=]\s*).*/gi, '$1[REDACTED]')
     // Generic name=value credentials; the value runs to whitespace/;/quote.
-    .replace(/((?:api[_-]?key|castgt|tgt|auth_key|jwt[-_]?token)\s*[=:]\s*)(?:"[^"]*"|[^\s;"]*)/gi, '$1[REDACTED]')
+    .replace(/((?:api[_-]?key|castgt|tgt|auth_key|jwt[-_]?token|sessdata|bili_jct)\s*[=:]\s*)(?:"[^"]*"|[^\s;"]*)/gi, '$1[REDACTED]')
     .replace(/https?:\/\/[^\s"']+/gi, (url) => {
       try {
         const parsed = new URL(url)

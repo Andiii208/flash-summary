@@ -1,11 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
 import { createContext, type AppContext } from '../src/main/app-context'
 import { registerIpc } from '../src/main/ipc'
 import { TaskRepository } from '../src/main/tasks/queue'
+import type { FetchLike } from '../src/main/bilibili/client'
 import type { Stage } from '../src/main/tasks/stages'
 import type { StageExecutor } from '../src/main/tasks/queue'
 import type { Cryptor } from '../src/main/auth/session-crypto'
@@ -50,22 +51,41 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-function makeCtx(): AppContext {
+function makeCtx(bilibiliFetch?: FetchLike): AppContext {
   const ctx = createContext({
     libraryRoot: dir,
     userDataDir: join(dir, 'userdata'),
-    cryptor: stubCryptor
+    cryptor: stubCryptor,
+    ...(bilibiliFetch != null ? { bilibiliFetch } : {})
   })
   db = ctx.db
   return ctx
 }
 
+function fakeJsonResponse(body: unknown): {
+  ok: boolean
+  status: number
+  headers: { get(name: string): string | null }
+  url: string
+  json: () => Promise<unknown>
+  text: () => Promise<string>
+} {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    url: 'https://passport.bilibili.com/fake',
+    json: async () => body,
+    text: async () => JSON.stringify(body)
+  }
+}
+
 describe('ipc handlers over a real context', () => {
-  it('registers the full API surface', () => {
-    const ctx = makeCtx()
+  it('registers the full API surface', () => {    const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     for (const channel of [
       'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse', 'school:harvestLessons', 'school:netCheck',
+      'bilibili:login', 'bilibili:loginStatus', 'bilibili:logout', 'bilibili:session',
       'providers:list', 'providers:save', 'providers:delete', 'providers:bind',
       'tasks:create',
       'notes:latest',
@@ -873,5 +893,76 @@ describe('registerIpc handle API (M1-3: close-window confirm)', () => {
       expect(row.error_kind).toBe('cancelled')
     })
     await vi.waitFor(() => expect(handle.isTaskRunning()).toBe(false))
+  })
+})
+
+describe('bilibili qr login flow (plan 2026-09-06 M3)', () => {
+  it('reports inactive before any login and logged_out session without a file', async () => {
+    const ctx = makeCtx(async () => {
+      throw new Error('no network expected')
+    })
+    registerIpc(ctx, ipc as never)
+    const idle = (await ipc.invoke('bilibili:loginStatus')) as { ok: boolean; value?: { status: string } }
+    expect(idle.value?.status).toBe('inactive')
+    const session = (await ipc.invoke('bilibili:session')) as { ok: boolean; value?: { state: string; savedAt: string | null } }
+    expect(session.value?.state).toBe('logged_out')
+    expect(session.value?.savedAt).toBeNull()
+  })
+
+  it('walks waiting→scanned→confirmed, persists an encrypted session, logout clears', async () => {
+    const pollPayloads = [
+      { code: 0, data: { code: 86101, url: '', message: '' } },
+      { code: 0, data: { code: 86090, url: '', message: '' } },
+      {
+        code: 0,
+        data: { code: 0, url: 'https://passport.biligame.com/crossDomain?DedeUserID=9&SESSDATA=s1&bili_jct=t1&gourl=x', message: '' }
+      }
+    ]
+    let pollCalls = 0
+    const bilibiliFetch: FetchLike = async (url: string) => {
+      if (url.includes('/qrcode/generate')) {
+        return fakeJsonResponse({ code: 0, data: { url: 'https://passport.bilibili.com/h5-app/passport/login/scan?qrcode_key=QR1', qrcode_key: 'QR1' } })
+      }
+      if (url.includes('/qrcode/poll')) return fakeJsonResponse(pollPayloads[Math.min(pollCalls++, pollPayloads.length - 1)])
+      throw new Error(`no fixture route for ${url}`)
+    }
+    const ctx = makeCtx(bilibiliFetch)
+    registerIpc(ctx, ipc as never)
+
+    const login = (await ipc.invoke('bilibili:login')) as { ok: boolean; value?: { qrUrl: string } }
+    expect(login.ok).toBe(true)
+    expect(login.value?.qrUrl).toContain('qrcode_key=QR1')
+
+    const waiting = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
+    expect(waiting.value?.status).toBe('waiting')
+    await new Promise((r) => setTimeout(r, 1050))
+    const scanned = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
+    expect(scanned.value?.status).toBe('scanned')
+    await new Promise((r) => setTimeout(r, 1050))
+    const confirmed = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
+    expect(confirmed.value?.status).toBe('confirmed')
+
+    // Encrypted at rest: the raw session file must not contain the plaintext
+    // SESSDATA (stubCryptor XORs, so the ciphertext differs from plaintext).
+    const raw = readFileSync(join(dir, 'userdata', 'bilibili-session', 'session.bin'), 'utf8')
+    expect(raw).not.toContain('SESSDATA=s1')
+    const session = (await ipc.invoke('bilibili:session')) as { value?: { state: string; savedAt: string | null } }
+    expect(session.value?.state).toBe('logged_in')
+    expect(session.value?.savedAt).not.toBeNull()
+
+    const logout = (await ipc.invoke('bilibili:logout')) as { value?: { state: string } }
+    expect(logout.value?.state).toBe('logged_out')
+    const after = (await ipc.invoke('bilibili:session')) as { value?: { state: string } }
+    expect(after.value?.state).toBe('logged_out')
+    const next = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
+    expect(next.value?.status).toBe('inactive')
+  })
+
+  it('refuses a non-app sender frame (E1 sender validation covers bilibili channels)', async () => {
+    const ctx = makeCtx(async () => {
+      throw new Error('no network expected')
+    })
+    registerIpc(ctx, ipc as never)
+    await expect(ipc.invokeFrom('https://cvs.seu.edu.cn/evil', 'bilibili:login')).rejects.toThrowError()
   })
 })
