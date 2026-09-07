@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
 import { TaskRepository, runTask } from '../src/main/tasks/queue'
-import { createExecutors, type OrchestratorDeps } from '../src/main/tasks/orchestrator'
+import { createExecutors, streamFetchArgs, type OrchestratorDeps } from '../src/main/tasks/orchestrator'
 import type { SchoolClient } from '../src/main/school/client'
 import type { OpenAiCompatibleClient } from '../src/main/providers/openai-client'
 import type { Grid8x8 } from '../src/main/media/phash'
@@ -507,5 +507,19 @@ describe('download progress polling (M1-3)', () => {
     await executors.downloading_video({ taskId: 'tp1', lessonId: 'l1', stage: 'downloading_video' })
     expect(progress.length).toBeGreaterThanOrEqual(1)
     expect(progress[0]!.bytes).toBeGreaterThan(0)
+  })
+})
+
+describe('streamFetchArgs (bilibili CDN referer-auth, real-acceptance 2026-09-07)', () => {
+  it('sends browser Referer + UA headers — ffmpeg sends neither by default', () => {
+    const args = streamFetchArgs('https://cdn.bilivideo.com/x.m4s', join(dir, 'video.ts'))
+    const headersIndex = args.indexOf('-headers')
+    expect(headersIndex).toBeGreaterThanOrEqual(0)
+    const headers = args[headersIndex + 1] ?? ''
+    expect(headers).toContain('Referer: https://www.bilibili.com/')
+    expect(headers).toContain('User-Agent: Mozilla/5.0')
+    expect(args.indexOf('-i')).toBeGreaterThan(headersIndex)
+    expect(args).toContain('-c')
+    expect(args).toContain('copy')
   })
 })

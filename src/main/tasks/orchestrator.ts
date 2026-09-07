@@ -279,9 +279,28 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
   }
 }
 
+/**
+ * Browser-ish HTTP headers for stream remux: the Bilibili CDN answers
+ * requests without a Referer with 403 (referer-authenticated streams,
+ * plan §2.3) and ffmpeg sends no Referer of its own. Generic Chrome
+ * headers are harmless to the school CDN (extra headers are ignored).
+ */
+export function streamFetchArgs(url: string, target: string): string[] {
+  return [
+    '-y',
+    '-headers',
+    'Referer: https://www.bilibili.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\r\n',
+    '-i',
+    url,
+    '-c',
+    'copy',
+    target
+  ]
+}
+
 /** Default stream fetch: remux via ffmpeg (stream copy, no re-encode). */
 async function fetchStreamDefault(ffmpeg: string, url: string, target: string, signal?: AbortSignal): Promise<void> {
-  await runProcess(ffmpeg, ['-y', '-i', url, '-c', 'copy', target], {
+  await runProcess(ffmpeg, streamFetchArgs(url, target), {
     timeoutMs: 30 * 60 * 1000,
     stallGuard: { file: target, stallMs: 60_000 },
     signal
