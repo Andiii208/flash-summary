@@ -28,7 +28,7 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
   return (
     <div class="ph-doc" id="print-root-inner">
       <section class="ph-cover">
-        <div class="ph-kicker">SEU SUMMARY · 课堂讲义</div>
+        <div class="ph-kicker">FLASH SUMMARY · 课堂讲义</div>
         <h1>{lessonTitle}</h1>
         <div class="ph-meta">
           {meta}
@@ -158,7 +158,7 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
         </section>
       )}
 
-      <div class="ph-footer">SEU Summary 生成 · 依据课堂转写与关键帧画面整理</div>
+      <div class="ph-footer">Flash Summary 生成 · 依据课堂转写与关键帧画面整理</div>
     </div>
   )
 }

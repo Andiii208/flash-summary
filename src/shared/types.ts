@@ -1,7 +1,7 @@
 /**
  * Shared types between main, preload, and renderer processes.
  */
-export const APP_TITLE = 'SEU Summary'
+export const APP_TITLE = 'Flash Summary'
 
 /**
  * Session lifecycle as the renderer should display it. «expired» is a local

@@ -47,7 +47,7 @@ function enterBackgroundMode(win: BrowserWindow): void {
   win.hide()
   if (tray != null) return
   tray = new Tray(trayIconImage())
-  tray.setToolTip('SEU Summary — 任务后台运行中')
+  tray.setToolTip('Flash Summary — 任务后台运行中')
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -268,7 +268,7 @@ if (!gotSingleInstanceLock) {
       const message = (err as Error).message ?? String(err)
       earlyLogger.error(`startup failed: ${message}`)
       void dialog.showErrorBox(
-        'SEU Summary 启动失败',
+        'Flash Summary 启动失败',
         `资料库初始化失败：${message}\n\n日志目录：${logsDir}\n请把日志发给开发者或在安全模式下重装。`
       )
       app.quit()

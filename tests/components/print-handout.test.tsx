@@ -50,7 +50,7 @@ describe('PrintHandout (PDF 讲义, 2026-09-04)', () => {
     const host = mountHandout()
     const text = host.textContent ?? ''
     expect(host.querySelector('.ph-cover h1')?.textContent).toBe('第9节课')
-    expect(text).toContain('SEU SUMMARY · 课堂讲义')
+    expect(text).toContain('FLASH SUMMARY · 课堂讲义')
     expect(text).toContain('Python语言设计 4')
     expect(text).toContain('高旺')
     expect(text).toContain('2026/9/4')

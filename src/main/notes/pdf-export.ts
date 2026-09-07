@@ -11,7 +11,7 @@ import type { WebContents } from 'electron'
 /** Page-number footer shown on every printed page. */
 const FOOTER_TEMPLATE =
   '<div style="font-size:9px; width:100%; text-align:center; color:#9aa0ad;">' +
-  '第 <span class="pageNumber"></span> 页 / 共 <span class="totalPages"></span> 页 · SEU Summary</div>'
+  '第 <span class="pageNumber"></span> 页 / 共 <span class="totalPages"></span> 页 · Flash Summary</div>'
 
 export interface PdfPrintOptions {
   /** Target file path (already validated writable by the caller). */

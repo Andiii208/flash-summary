@@ -27,7 +27,7 @@ import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 const ROOT = join(import.meta.dirname, '..')
-const APP_TITLE = 'SEU Summary'
+const APP_TITLE = 'Flash Summary'
 const PROBE_LOG_LINE = 'renderer: smoke-probe-line'
 
 /** @returns {Array<{name: string, pass: boolean, detail: string}>} */

@@ -8,6 +8,10 @@ import { homedir } from 'os'
  *
  * Uses the Windows Known Folder via the registry-free USERPROFILE shortcut.
  * On non-Windows (CI/dev on other OS) falls back to the home directory.
+ *
+ * 2026-09-07 品牌改名 Flash Summary 时特意保留此目录名：真实用户的资料库
+ * 已迁移到这里（userData 里的指针指向它），改目录名等于丢数据；品牌名只
+ * 改用户可见字符串（窗口标题/托盘/安装包名/PDF 页脚等）。
  */
 export function defaultLibraryRoot(): string {
   const home = homedir()

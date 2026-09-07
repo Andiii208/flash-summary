@@ -1,4 +1,4 @@
-# SEU Summary
+# Flash Summary
 
 > 把东南大学科达录播课程变成结构化学习笔记的 Windows 桌面应用。
 
@@ -8,7 +8,7 @@
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Electron](https://img.shields.io/badge/Electron-44-47848F)
 
-SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 SEU CAS 账号登录，把科达录播课程（教师流 + 屏幕/PPT 流 + 平台 PPT）自动加工成**多模态结构化笔记**，并支持**当前课时追问**。
+Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 SEU CAS 账号登录，把科达录播课程（教师流 + 屏幕/PPT 流 + 平台 PPT）自动加工成**多模态结构化笔记**，并支持**当前课时追问**。
 
 - 没有开发者自有服务器——音频、文字、图片只发给**你自己配置**的 ASR / LLM Provider（OpenAI 兼容接口）。
 - 你的资料库、转写、关键帧、笔记全部保存在本地。
@@ -35,7 +35,7 @@ SEU Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 
 ## 🚀 安装
 
 从 [GitHub Releases](https://github.com/Andiii208/seu-summary/releases) 下载最新的
-`SEU Summary Setup <version>.exe`，双击安装即可。
+`Flash Summary Setup <version>.exe`，双击安装即可。
 
 - 需要 **Windows 10/11 x64**。
 - **无需**安装 ffmpeg——安装包已内置 ffmpeg/ffprobe。

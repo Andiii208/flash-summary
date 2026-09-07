@@ -19,7 +19,7 @@ import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 const ROOT = join(import.meta.dirname, '..')
-const APP_TITLE = 'SEU Summary'
+const APP_TITLE = 'Flash Summary'
 const REAL_LIBRARY = join(homedir(), 'Documents', 'SEU Summary', 'Library')
 
 /** Await a predicate with a deadline; throws with the last observation. */

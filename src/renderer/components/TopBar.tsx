@@ -55,7 +55,7 @@ export function TopBar({ session, biliSession, busy, running, onLogin, onLogout,
           <span class="brand-mark" aria-hidden="true">
             <Colonnade size={17} />
           </span>
-          <h1>SEU Summary</h1>
+          <h1>Flash Summary</h1>
         </button>
         {breadcrumb != null && (
           <nav class="crumbs" aria-label="当前位置">
