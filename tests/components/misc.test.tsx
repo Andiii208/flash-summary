@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'preact'
 import { act } from 'preact/test-utils'
-import { ToastArea } from '../../src/renderer/components/ToastArea'
+import { ToastArea, type ToastItem } from '../../src/renderer/components/ToastArea'
 import { ProgressBar } from '../../src/renderer/components/ProgressBar'
 import { EmptyState } from '../../src/renderer/components/EmptyState'
 import { WelcomeGuide } from '../../src/renderer/components/WelcomeGuide'
@@ -9,7 +9,7 @@ import { ProviderPanel } from '../../src/renderer/components/ProviderPanel'
 import { SettingsPanel } from '../../src/renderer/components/SettingsPanel'
 import { TopBar } from '../../src/renderer/components/TopBar'
 import { ManualAdd } from '../../src/renderer/components/ManualAdd'
-import { useToasts } from '../../src/renderer/hooks/use-toasts'
+import { useToasts, mergeToast } from '../../src/renderer/hooks/use-toasts'
 import { mount, click, input } from '../helpers/preact'
 
 describe('ToastArea', () => {
@@ -460,6 +460,75 @@ describe('useToasts 批4 (error persistent + cap 3 + manual close)', () => {
       h.current.toast('四', 'error')
     })
     expect(h.current.toasts.map((t) => t.message)).toEqual(['二', '三', '四'])
+  })
+})
+
+describe('useToasts D1 合并去重 (same kind+message merges with a count)', () => {
+  function harness(): { current: ReturnType<typeof useToasts> } {
+    const ref: { current: ReturnType<typeof useToasts> } = { current: null as unknown as ReturnType<typeof useToasts> }
+    mount(<ToastHarness onState={(s) => (ref.current = s)} />)
+    return ref
+  }
+
+  const entry = (id: number, message: string, kind: 'success' | 'error' | 'info' = 'error'): ToastItem => ({
+    id,
+    message,
+    kind
+  })
+
+  it('a recurring identical error merges into one toast with an incremented count', () => {
+    const merged = mergeToast([entry(1, '检测到代理接管了校园域名解析')], entry(2, '检测到代理接管了校园域名解析'))
+    expect(merged).toHaveLength(1)
+    expect(merged[0]!.count).toBe(2)
+    expect(merged[0]!.id).toBe(1)
+  })
+
+  it('the merged toast moves to the end — recency decides what the FIFO cap evicts', () => {
+    const list = [entry(1, '旧'), entry(2, '中'), entry(3, '新'), entry(4, '最新')]
+    const merged = mergeToast(list, entry(5, '旧'))
+    expect(merged.map((t) => t.message)).toEqual(['中', '新', '最新', '旧'])
+    expect(merged[3]!.id).toBe(1)
+    expect(merged[3]!.count).toBe(2)
+  })
+
+  it('different messages or kinds still enqueue separately', () => {
+    const list = [entry(1, '同一句')]
+    expect(mergeToast(list, entry(2, '另一句'))).toHaveLength(2)
+    expect(mergeToast(list, entry(2, '同一句', 'info'))).toHaveLength(2)
+  })
+
+  it('a fresh entry beyond the cap still evicts the oldest', () => {
+    const list = [entry(1, '一'), entry(2, '二'), entry(3, '三')]
+    expect(mergeToast(list, entry(4, '四')).map((t) => t.message)).toEqual(['二', '三', '四'])
+  })
+
+  it('the hook routes repeats through the merge path', () => {
+    const h = harness()
+    act(() => {
+      h.current.toast('检测到代理接管了校园域名解析', 'error')
+      h.current.toast('检测到代理接管了校园域名解析', 'error')
+      h.current.toast('检测到代理接管了校园域名解析', 'error')
+    })
+    expect(h.current.toasts).toHaveLength(1)
+    expect(h.current.toasts[0]!.count).toBe(3)
+  })
+})
+
+describe('ToastArea D1 (recurrence count badge)', () => {
+  it('shows the ×N badge only when a toast repeated', () => {
+    const host = mount(
+      <ToastArea
+        toasts={[{ id: 1, message: '失败', kind: 'error', count: 3 }, { id: 2, message: '单次', kind: 'info' }]}
+      />
+    )
+    const counts = host.querySelectorAll('.toast-count')
+    expect(counts).toHaveLength(1)
+    expect(counts[0]!.textContent).toBe('×3')
+  })
+
+  it('the count badge explains itself on hover', () => {
+    const host = mount(<ToastArea toasts={[{ id: 1, message: '失败', kind: 'error', count: 2 }]} />)
+    expect(host.querySelector('.toast-count')?.getAttribute('title')).toBe('同样的提示出现了 2 次')
   })
 })
 

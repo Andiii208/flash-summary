@@ -8,6 +8,8 @@ export interface ToastItem {
   id: number
   message: string
   kind: ToastKind
+  /** D1: recurring identical toasts merge — how many times this message fired. */
+  count?: number
   /** M1-3: optional inline action («查看笔记» / «去任务页»). */
   actionLabel?: string
   onAction?: () => void
@@ -45,6 +47,11 @@ export function ToastArea({ toasts, onDismiss }: ToastAreaProps): JSX.Element {
               >
                 {t.actionLabel}
               </button>
+            )}
+            {(t.count ?? 1) > 1 && (
+              <span class="toast-count" title={`同样的提示出现了 ${t.count} 次`}>
+                ×{t.count}
+              </span>
             )}
             {onDismiss != null && (
               <button class="toast-close" aria-label="关闭这条通知" title="关闭" onClick={() => onDismiss(t.id)}>
