@@ -1,8 +1,9 @@
 import type { JSX } from 'preact'
 import { parseMdLite, type MdInline } from '../../shared/notes/md-lite'
 
-/** Render one inline span list (**bold** / `code`) as Preact children. */
-function Inline({ spans }: { spans: MdInline[] }): JSX.Element {
+/** Render one inline span list (**bold** / `code`) as Preact children.
+ *  批4: exported — InlineText reuses it for single-line note fields. */
+export function Inline({ spans }: { spans: MdInline[] }): JSX.Element {
   return (
     <>
       {spans.map((span, i) => {

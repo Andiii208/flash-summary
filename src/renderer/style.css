@@ -1315,6 +1315,17 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .md-lite .md-list li::marker { color: var(--accent); }
 .md-lite .md-quote { margin: 4px 0; padding: 6px 12px; border-left: 2px solid var(--accent-soft-2); color: var(--text-muted); font-size: var(--font-size-sm); background: var(--surface-2); border-radius: 0 var(--radius) var(--radius) 0; }
 .md-lite code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
+/* 批4: InlineText 的裸 code 出现在 md-lite 之外的字段（定义/步骤解释/考点/自测/时间线）
+   ——共享同一份行内码样式；md-lite 与 pre 代码块有自己的样式。 */
+.concept-def code, .formula-explain code, .callout-item code,
+.quiz-question code, .quiz-answer code, .timeline-detail code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--accent);
+}
 
 /* ---- 知识树（阅读态） ---- */
 .tree-view { display: flex; flex-direction: column; gap: 3px; }
@@ -1369,7 +1380,12 @@ button.concept-ref:hover { color: var(--accent); }
 .formula-tag { align-self: flex-start; font-size: var(--font-size-xs); font-weight: 600; padding: 1px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .formula-item.kind-code .formula-tag { background: var(--success-soft); color: var(--success); }
 .formula-item.kind-operation .formula-tag { background: var(--warning-soft); color: var(--warning); }
-.formula-content { margin: 0; font-family: var(--font-mono); font-size: var(--font-size-md); color: var(--text); }
+/* 批4: formula-content 从等宽单行 p 变 MdLite 容器——公式一行/操作多步列表
+   均由 .md-lite 排版，不再用等宽字体硬塞。 */
+.formula-content { margin: 0; color: var(--text); }
+.formula-content .md-para { margin: 0; }
+.formula-content .md-list { margin: 0; padding-left: 20px; }
+.formula-content .md-list li { margin-bottom: 3px; }
 .formula-code { margin: 0; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
 .formula-code code { font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text); }
 .formula-explain { margin: 0; font-size: var(--font-size-sm); color: var(--text-muted); line-height: 1.6; }
@@ -1388,7 +1404,10 @@ button.concept-ref:hover { color: var(--accent); }
 .step-item { display: flex; gap: 12px; align-items: flex-start; }
 .step-index { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: var(--font-size-sm); display: flex; align-items: center; justify-content: center; margin-top: 2px; }
 .step-body { display: flex; flex-direction: column; gap: 3px; }
-.step-content { margin: 0; font-size: var(--font-size-md); font-weight: 600; color: var(--text); }
+/* 批4: step-content 从单行 p 变 MdLite 容器（操作步骤有序列表化）——去加粗、
+   让 .md-lite 接管排版；步骤解释沿用 InlineText 行内样式。 */
+.step-content { margin: 0; font-size: var(--font-size-md); color: var(--text); }
+.step-content .md-para { margin: 0; }
 .step-explain { margin: 0; font-size: var(--font-size-sm); color: var(--text-muted); line-height: 1.6; }
 
 /* ---- 自测题（问答翻转卡） ---- */

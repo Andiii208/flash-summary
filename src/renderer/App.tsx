@@ -1699,6 +1699,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         if (note == null) return
         setPdfBusy(true)
         const printRoot = document.getElementById('print-root')
+        const previousTitle = document.title
         try {
           const dialog = await bridge.notes.exportPdfDialog(lessonId)
           if (!dialog.ok) {
@@ -1726,6 +1727,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             printRoot!
           )
           await waitForImages(printRoot!)
+          // 批4: the per-page print header reads the document title — lend it
+          // the course·lesson identity for the print, then hand it back.
+          document.title = `${course?.name ?? ''} · ${lessonInfo?.title ?? lessonId}`
           // E3 (review): the token, not the path — main decides where to write.
           const res = await bridge.notes.exportPdfWrite(dialog.value.token ?? '')
           if (!res.ok) {
@@ -1744,6 +1748,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             }
           )
         } finally {
+          document.title = previousTitle
           render(null, printRoot!)
           setPdfBusy(false)
         }

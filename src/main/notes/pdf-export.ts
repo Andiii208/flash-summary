@@ -13,6 +13,11 @@ const FOOTER_TEMPLATE =
   '<div style="font-size:9px; width:100%; text-align:center; color:#9aa0ad;">' +
   '第 <span class="pageNumber"></span> 页 / 共 <span class="totalPages"></span> 页 · Flash Summary</div>'
 
+/** 批4: per-page header — the renderer lends document.title the course·lesson identity. */
+const HEADER_TEMPLATE =
+  '<div style="font-size:8px; width:100%; text-align:center; color:#b3b8c2;' +
+  'white-space:nowrap; overflow:hidden;"><span class="title"></span></div>'
+
 export interface PdfPrintOptions {
   /** Target file path (already validated writable by the caller). */
   filePath: string
@@ -24,10 +29,11 @@ export async function printToPdfFile(webContents: WebContents, filePath: string)
     printBackground: true,
     pageSize: 'A4',
     displayHeaderFooter: true,
-    headerTemplate: '<div></div>',
+    headerTemplate: HEADER_TEMPLATE,
     footerTemplate: FOOTER_TEMPLATE,
-    // ~15mm top/bottom (footer), 12mm sides — inches per the Electron API.
-    margins: { top: 0.59, bottom: 0.59, left: 0.47, right: 0.47 }
+    // 批4 版式重做: wider margins kill the edge-to-edge wall of text —
+    // ~17.8mm top (header strip), ~16.5mm bottom (footer), 17.8mm sides.
+    margins: { top: 0.7, bottom: 0.65, left: 0.7, right: 0.7 }
   })
   writeFileSync(filePath, buffer)
   return buffer.byteLength

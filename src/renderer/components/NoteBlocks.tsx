@@ -8,6 +8,7 @@ import { formatTime } from '../../shared/notes/format'
 import type { NoteAttachmentInfo } from '../../shared/bridge'
 import type { ViewBlock } from '../../shared/notes/views'
 import { MdLite } from './MdLite'
+import { InlineText } from './InlineText'
 import { Dialog } from '../ui/Dialog'
 
 export interface NoteBlocksProps {
@@ -46,7 +47,10 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
           {block.items.map((c) => (
             <div key={c.term} class="concept-card" data-concept-term={c.term}>
               <span class="concept-term">{c.term}</span>
-              <p class="concept-def">{c.definition}</p>
+              {/* 批4: 定义里的 ** 加粗照模型本意渲染（与 PDF 同待遇） */}
+              <p class="concept-def">
+                <InlineText text={c.definition} />
+              </p>
               {c.refs.length > 0 && (
                 <button
                   class="concept-ref"
@@ -73,7 +77,9 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
           {block.items.map((item, i) => (
             <li key={i} class="callout-item">
               <span class="callout-tag">{block.tone === 'exam' ? '考点' : '待解决'}</span>
-              <span>{item}</span>
+              <span>
+                <InlineText text={item} />
+              </span>
             </li>
           ))}
         </ul>
@@ -85,8 +91,15 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
             <li key={i} class="step-item">
               <span class="step-index">{i + 1}</span>
               <div class="step-body">
-                <p class="step-content">{step.content}</p>
-                {step.explanation !== '' && <p class="step-explain">{step.explanation}</p>}
+                {/* 批4: 步骤正文可能含「1. **xx**」式 markdown——解析渲染 */}
+                <div class="step-content">
+                  <InlineText text={step.content} />
+                </div>
+                {step.explanation !== '' && (
+                  <p class="step-explain">
+                    <InlineText text={step.explanation} />
+                  </p>
+                )}
               </div>
             </li>
           ))}
@@ -122,10 +135,14 @@ export function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
           <article key={key} class={`quiz-card${open ? ' revealed' : ''}`}>
             <span class="quiz-tag">{anchor}</span>
             <button class="quiz-flip" onClick={() => toggle(key)} aria-expanded={open}>
-              <p class="quiz-question">{item.question}</p>
+              <p class="quiz-question">
+                <InlineText text={item.question} />
+              </p>
               {open ? (
                 <>
-                  <p class="quiz-answer">{item.answer}</p>
+                  <p class="quiz-answer">
+                    <InlineText text={item.answer} />
+                  </p>
                   <span class="quiz-hint quiz-collapse-hint">再点一次收起</span>
                 </>
               ) : (
@@ -225,7 +242,9 @@ function TimelineCards({ entries, getAttachment, manifest, version: versionForRe
               )}
               <h4 class="timeline-title">{entry.title}</h4>
             </header>
-            <p class="timeline-detail">{entry.detail}</p>
+            <p class="timeline-detail">
+              <InlineText text={entry.detail} />
+            </p>
             {refs.map((ref, j) => (
               <blockquote key={j} class={`timeline-quote${j === 0 && !showAllRefs ? ' best' : ''}`}>
                 「{ref.text}」<span class="quote-at">{formatTime(ref.at)}</span>
@@ -282,9 +301,16 @@ function FormulaList({ items }: { items: Note['formulasAndSteps'] }): JSX.Elemen
               <code>{item.content}</code>
             </pre>
           ) : (
-            <p class="formula-content">{item.content}</p>
+            /* 批4: 公式/操作正文走 MdLite——操作多步渲染成有序列表而非一长行 */
+            <div class="formula-content">
+              <MdLite text={item.content} />
+            </div>
           )}
-          {item.explanation !== '' && <p class="formula-explain">{item.explanation}</p>}
+          {item.explanation !== '' && (
+            <p class="formula-explain">
+              <InlineText text={item.explanation} />
+            </p>
+          )}
         </div>
       ))}
     </div>

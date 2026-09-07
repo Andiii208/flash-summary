@@ -6,8 +6,10 @@
  * over with paper-white colors regardless of the app theme (dark included).
  *
  * Page geometry: A4; printable margins come from the printToPDF options
- * (~15mm top/bottom for the page-number footer, 12mm sides). @page margin
- * stays 0 so the two margin systems never stack.
+ * (批4 版式重做: ~17.8mm top for the course·lesson header strip, ~16.5mm
+ * bottom for the page-number footer, 17.8mm sides). @page margin stays 0
+ * so the two margin systems never stack. The document itself caps at
+ * 165mm and centers — a full 174mm text measure reads as a wall of text.
  */
 
 @page {
@@ -38,8 +40,11 @@
   background: #ffffff;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
-  font-size: 10.5pt;
-  line-height: 1.75;
+  font-size: 11pt;
+  line-height: 1.85;
+  max-width: 165mm;
+  margin: 0 auto;
+  padding: 0 2mm;
 }
 
 .ph-doc * {
@@ -85,13 +90,13 @@
 
 /* ---- sections ---- */
 .ph-section {
-  margin-top: 8mm;
+  margin-top: 10mm;
 }
 .ph-section > h2 {
-  font-size: 15pt;
+  font-size: 16pt;
   font-weight: 700;
   color: #14161f;
-  margin: 0 0 4mm;
+  margin: 0 0 5mm;
   break-after: avoid;
 }
 .ph-section > h2::before {
@@ -113,12 +118,15 @@
 }
 
 /* ---- overview markdown ---- */
-.ph-doc .md-lite .md-para { margin: 0 0 2.5mm; color: #262b36; }
-.ph-doc .md-lite .md-h { margin: 4mm 0 1.5mm; color: #14161f; font-size: 11.5pt; font-weight: 650; }
-.ph-doc .md-lite .md-list { margin: 0 0 2mm; padding-left: 6mm; }
-.ph-doc .md-lite .md-list li { margin-bottom: 0.8mm; color: #262b36; }
+.ph-doc .md-lite .md-para { margin: 0 0 3mm; color: #262b36; }
+.ph-doc .md-lite .md-h { margin: 4.5mm 0 2mm; color: #14161f; font-size: 12pt; font-weight: 650; }
+.ph-doc .md-lite .md-list { margin: 0 0 2.5mm; padding-left: 6mm; }
+.ph-doc .md-lite .md-list li { margin-bottom: 1mm; color: #262b36; }
 .ph-doc .md-lite .md-quote { margin: 1.5mm 0; padding: 1.5mm 3mm; border-left: 2px solid #c9d2f5; color: #5a616e; background: #f6f7fb; }
-.ph-doc .md-lite code { font-family: Consolas, ui-monospace, monospace; background: #f0f2f8; padding: 0 1mm; border-radius: 1mm; color: #2f3fd0; font-size: 9.5pt; }
+/* 批4: bare inline `code` now appears outside .md-lite too (InlineText in
+   callouts/quiz/definitions) — style it document-wide, reset inside pre. */
+.ph-doc code { font-family: Consolas, ui-monospace, monospace; background: #f0f2f8; padding: 0 1mm; border-radius: 1mm; color: #2f3fd0; font-size: 9.5pt; }
+.ph-doc pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 .ph-doc .md-lite strong { font-weight: 700; color: #14161f; }
 
 /* ---- knowledge tree (indented list) ---- */
@@ -185,7 +193,17 @@
 }
 .ph-formula.kind-code .ph-formula-tag { background: #e8f5ec; color: #2b8a3e; }
 .ph-formula.kind-operation .ph-formula-tag { background: #fdf3e3; color: #b06f0b; }
-.ph-formula-content { font-family: Consolas, ui-monospace, monospace; display: inline; color: #1f2430; }
+/* 批4: 公式/操作正文改走 MdLite（原 .ph-formula-content 等宽 inline 已废——
+   多步操作曾折成一长行）。浅底块承载，公式单行/操作有序列表都在其中。 */
+.ph-formula .md-lite {
+  margin: 1.5mm 0 0;
+  background: #f6f7fb;
+  border-radius: 1.5mm;
+  padding: 2.5mm 3.5mm;
+}
+.ph-formula .md-lite .md-para { margin: 0; }
+.ph-formula .md-lite .md-list { margin: 0; padding-left: 6mm; }
+.ph-formula .md-lite .md-list li { margin-bottom: 1mm; }
 .ph-formula pre {
   margin: 1.5mm 0 0;
   background: #f4f5fa;
@@ -194,7 +212,7 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
-.ph-formula-explain { margin: 1mm 0 0; color: #6a7180; font-size: 9.5pt; }
+.ph-formula-explain { margin: 1.5mm 0 0; color: #6a7180; font-size: 10pt; }
 
 /* ---- callouts ---- */
 .ph-callout { break-inside: avoid; border-radius: 2mm; padding: 2.5mm 4mm; margin-bottom: 2mm; }

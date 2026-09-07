@@ -4,6 +4,7 @@ import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
 import { bindTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime } from '../../shared/notes/evidence'
 import { computeMindMapLayout, sublineFirstBaseline, sublineLinesOf, titleBaseline } from '../../shared/notes/mindmap-layout'
 import { MdLite } from './MdLite'
+import { InlineText } from './InlineText'
 
 export interface PrintHandoutData {
   note: Note
@@ -66,7 +67,10 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
             {note.concepts.map((c) => (
               <div key={c.term} class="ph-concept">
                 <span class="ph-concept-term">{c.term}</span>
-                <span class="ph-concept-def">{c.definition}</span>
+                {/* 批4: definition 解析内联 markdown（旧笔记的 ** 不再印成字面量） */}
+                <span class="ph-concept-def">
+                  <InlineText text={c.definition} />
+                </span>
               </div>
             ))}
           </div>
@@ -84,9 +88,15 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
                   <code>{item.content}</code>
                 </pre>
               ) : (
-                <span class="ph-formula-content">{item.content}</span>
+                /* 批4: 公式/操作走 MdLite——操作步骤里的「1. **xx**：…」渲染成
+                   有序列表+加粗，多步不再折成一长行（与屏幕端同待遇）。 */
+                <MdLite text={item.content} />
               )}
-              {item.explanation !== '' && <p class="ph-formula-explain">{item.explanation}</p>}
+              {item.explanation !== '' && (
+                <p class="ph-formula-explain">
+                  <InlineText text={item.explanation} />
+                </p>
+              )}
             </div>
           ))}
         </section>
@@ -105,13 +115,13 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
           {note.examCues.map((cue, i) => (
             <div key={`e${i}`} class="ph-callout exam">
               <span class="ph-callout-tag">考点</span>
-              {cue}
+              <InlineText text={cue} />
             </div>
           ))}
           {note.questionsAndGaps.map((gap, i) => (
             <div key={`g${i}`} class="ph-callout gap">
               <span class="ph-callout-tag">待解决</span>
-              {gap}
+              <InlineText text={gap} />
             </div>
           ))}
         </section>
@@ -128,7 +138,9 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
                 <div class="ph-quiz-q">
                   <span class="ph-quiz-num">{i + 1}</span>
                   <span class="ph-quiz-tag">{item.source === 'concept' ? `概念 · ${item.term ?? ''}` : '考点'}</span>
-                  <span class="ph-quiz-question">{item.question}</span>
+                  <span class="ph-quiz-question">
+                    <InlineText text={item.question} />
+                  </span>
                 </div>
               </div>
             ))}
@@ -137,7 +149,7 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
             <h2>自测题答案</h2>
             {note.quiz.map((item, i) => (
               <p key={i} class="ph-quiz-answer">
-                <span class="ph-quiz-num">{i + 1}</span> {item.answer}
+                <span class="ph-quiz-num">{i + 1}</span> <InlineText text={item.answer} />
               </p>
             ))}
           </section>
@@ -178,7 +190,9 @@ function PrintTimelineCard({ entry, attachments }: { entry: Note['timeline'][num
         <span class="ph-timeline-stamp">{formatTime(entry.at)}</span>
         <h3>{entry.title}</h3>
       </div>
-      <p class="ph-timeline-detail">{entry.detail}</p>
+      <p class="ph-timeline-detail">
+        <InlineText text={entry.detail} />
+      </p>
       {quote != null && (
         <blockquote class="ph-timeline-quote">
           「{quote.text}」（{formatTime(quote.at)}）
