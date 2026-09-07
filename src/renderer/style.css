@@ -1257,6 +1257,8 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 
 /* ---- 知识树（阅读态） ---- */
 .tree-view { display: flex; flex-direction: column; gap: 3px; }
+/* 批3: 阅读视图树的批量展开/收起工具行。 */
+.tree-view-tools { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 2px; }
 .tree-row-wrap { display: flex; flex-direction: column; }
 .tree-toggle { display: flex; align-items: center; gap: 6px; width: fit-content; background: none; border: none; cursor: pointer; padding: 3px 6px; border-radius: 6px; color: var(--text); font-size: var(--font-size-md); text-align: left; }
 .tree-toggle:hover { background: var(--accent-soft); }
@@ -1356,8 +1358,10 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
    cramped corner badge and the «…» suffix). */
 .mindmap-node { transition: transform 180ms ease-out; }
 .mindmap-caret .caret-hit { fill: transparent; }
-.mindmap-caret .caret-tri { fill: var(--text-muted); transition: fill var(--speed); }
-.mindmap-node:hover .caret-tri, .mindmap-caret.collapsed .caret-tri { fill: var(--accent); }
+/* 批3: 圆点语言——折叠=实心圆点，展开=空心圆环（替换 ▸/▾ 三角）。 */
+.mindmap-caret .caret-dot { fill: var(--accent); transition: fill var(--speed); }
+.mindmap-caret .caret-ring { fill: none; stroke: var(--text-muted); stroke-width: 1.5; transition: stroke var(--speed); }
+.mindmap-node:hover .caret-ring { stroke: var(--accent); }
 .mindmap-caret .caret-count-box { fill: var(--accent-soft-2); stroke: none; }
 .mindmap-caret .caret-count { font-size: 10px; font-weight: 700; fill: var(--accent); font-family: var(--font-ui); }
 /* Freshly mounted nodes/edges fade in (existing ones are reused by preact). */
@@ -1371,6 +1375,7 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
    Search highlight = accent stroke (visual discipline: stroke-level accents
    only); non-hits dim instead of disappearing. */
 .mindmap-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.mindmap-toolbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 .mindmap-toolbar-spacer { flex: 1; }
 .mindmap-search {
   font: inherit; font-size: var(--font-size-sm); color: var(--text);
@@ -1420,6 +1425,7 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 /* M3.2 (map expansion): focus breadcrumb. */
 .mindmap-crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; }
 .mindmap-crumbs .btn:disabled { opacity: 1; color: var(--accent); cursor: default; }
+.mindmap-crumbs-hint { font-size: var(--font-size-xs); color: var(--text-muted); }
 
 /* M4.1 (map expansion): course-level mind map dialog. */
 .course-map-overlay {
@@ -1438,6 +1444,13 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .course-map-meta { margin: 2px 0 0; font-size: var(--font-size-sm); color: var(--text-muted); }
 .course-map-card .mindmap-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .course-map-card .mindmap-wrap .mindmap-scroll { flex: 1; min-height: 0; }
+/* 批3: 课程下暂无任何可用笔记时的空态（替代"空画布+全套工具栏"）。 */
+.course-map-empty {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 200px;
+  color: var(--text-muted); font-size: var(--font-size-sm);
+}
 
 /* ---- 证据图集 ---- */
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }

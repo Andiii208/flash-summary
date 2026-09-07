@@ -38,6 +38,34 @@ describe('MindMap 批D', () => {
     expect(host.querySelectorAll('.mindmap-node')).toHaveLength(5)
   })
 
+  it('批3: the caret speaks in dots — a filled dot when folded, a hollow ring when expanded', () => {
+    const host = mountMindMap(TREE)
+    // Everything starts expanded: rings only.
+    expect(host.querySelectorAll('.mindmap-caret .caret-ring')).toHaveLength(2)
+    expect(host.querySelectorAll('.mindmap-caret .caret-dot')).toHaveLength(0)
+    const collapsible = Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node[role="button"]'))
+    const chapter = collapsible.find((g) => g.getAttribute('aria-label')?.startsWith('第一章'))
+    act(() => {
+      chapter?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    // After folding 第一章: its caret is the filled dot, the root keeps the ring.
+    expect(host.querySelectorAll('.mindmap-caret .caret-dot')).toHaveLength(1)
+    expect(host.querySelectorAll('.mindmap-caret .caret-ring')).toHaveLength(1)
+    // No triangle path survives the swap.
+    expect(host.querySelectorAll('.caret-tri')).toHaveLength(0)
+  })
+
+  it('批3: branch nodes advertise 双击聚焦 and the crumbs row is always present', () => {
+    const host = mountMindMap(TREE)
+    const branch = host.querySelector('.mindmap-node[role="button"]')
+    expect(branch?.getAttribute('aria-label')).toContain('双击聚焦此分支')
+    expect(branch?.querySelector('title')?.textContent).toContain('双击聚焦此分支')
+    // Unfocused state still shows the focus mechanism (discoverability).
+    expect(host.querySelector('.mindmap-crumbs')).not.toBeNull()
+    expect(host.querySelector('.mindmap-crumbs')?.textContent).toContain('全图')
+    expect(host.querySelector('.mindmap-crumbs-hint')?.textContent).toContain('双击节点可聚焦')
+  })
+
   it('shows the folded-descendant pill and no «…» suffix when collapsed (批D)', () => {
     const host = mountMindMap(TREE)
     const collapsible = Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node[role="button"]'))

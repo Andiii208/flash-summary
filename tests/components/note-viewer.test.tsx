@@ -60,6 +60,25 @@ describe('NoteViewer', () => {
     expect(host.querySelector('.timeline-stamp')?.textContent).toBe('01:05')
   })
 
+  it('批3: the reading-view tree offers 全部展开/收起 (parity with the mind map)', () => {
+    const deep: Note = {
+      ...NOTE,
+      knowledgeTree: { title: '根', children: [{ title: '分支A', children: [{ title: '子节A1', children: [{ title: '叶子A1a', children: [] }] }] }] }
+    }
+    const host = mount(<NoteViewer note={deep} />)
+    // Default open depth is 2: 根/分支A/子节A1 visible, 叶子A1a folded away.
+    expect(host.querySelector('.tree-view')).not.toBeNull()
+    expect(host.textContent).not.toContain('叶子A1a')
+    const tool = (label: string): HTMLButtonElement =>
+      Array.from(host.querySelectorAll('.tree-view-tools button')).find((b) => b.textContent === label) as HTMLButtonElement
+    click(tool('全部展开'))
+    expect(host.textContent).toContain('叶子A1a')
+    click(tool('全部收起'))
+    expect(host.textContent).not.toContain('叶子A1a')
+    // The root row itself stays visible after a collapse-all.
+    expect(host.textContent).toContain('根')
+  })
+
   it('binds the nearest keyframe onto a timeline card without evidence refs', () => {
     const host = mount(<NoteViewer note={NOTE} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
     const card = host.querySelectorAll('.timeline-card')[1]!

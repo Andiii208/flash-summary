@@ -349,9 +349,12 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
         <button class="btn small" onClick={() => setCollapsed(new Set())}>
           全部展开
         </button>
+        {/* 批3: 工具栏分组——折叠控制 · 视图 · 模式 · 导出，分隔线让功能域可扫读。 */}
+        <span class="mindmap-toolbar-divider" aria-hidden="true" />
         <button class="btn small" onClick={() => setView(IDENTITY_VIEW)}>
           重置视图
         </button>
+        <span class="mindmap-toolbar-divider" aria-hidden="true" />
         {/* M2.3: recall mode — masks tier-2+ titles for retrieval practice
             (Karpicke & Blunt 2011); mutually exclusive with search. */}
         <button
@@ -376,6 +379,7 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
           </button>
         )}
         {recall && <span class="mindmap-recall-hint">先回忆再揭示：凭记忆说出这个分支讲过什么</span>}
+        <span class="mindmap-toolbar-divider" aria-hidden="true" />
         {onExportSvg != null && (
           <button class="btn small" onClick={onExportSvg}>
             导出 SVG
@@ -393,19 +397,22 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
       </div>
-      {/* M3.2: breadcrumb back out of a focused subtree (全图 = the whole map). */}
-      {focusPath !== '' && (
-        <nav class="mindmap-crumbs" aria-label="焦点分支路径">
-          <button class="btn small ghost" onClick={() => focusAt('')}>
-            全图
-          </button>
-          {crumbsFor(tree, focusPath).map((crumb, index, all) => (
+      {/* M3.2/批3: breadcrumb 常驻——未下钻时也展示焦点机制的存在（可发现性），
+          「全图」在焦点态下提供一键返回。 */}
+      <nav class="mindmap-crumbs" aria-label="焦点分支路径">
+        <button class="btn small ghost" disabled={focusPath === ''} onClick={() => focusAt('')}>
+          全图
+        </button>
+        {focusPath === '' ? (
+          <span class="mindmap-crumbs-hint">提示：双击节点可聚焦该分支，ℹ️ 查看关联概念</span>
+        ) : (
+          crumbsFor(tree, focusPath).map((crumb, index, all) => (
             <button key={crumb.path} class="btn small ghost" disabled={index === all.length - 1} onClick={() => focusAt(crumb.path)}>
               {crumb.title}
             </button>
-          ))}
-        </nav>
-      )}
+          ))
+        )}
+      </nav>
       <div
         class={`mindmap-scroll${panning ? ' panning' : ''}`}
         ref={scrollRef}
@@ -471,8 +478,9 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
               tabIndex={hasChildren ? 0 : undefined}
               role={hasChildren ? 'button' : undefined}
               aria-expanded={hasChildren ? !node.collapsed : undefined}
-              aria-label={hasChildren ? `${node.title}（点击${node.collapsed ? '展开' : '折叠'}）` : node.title}
+              aria-label={hasChildren ? `${node.title}（点击${node.collapsed ? '展开' : '折叠'}，双击聚焦此分支）` : node.title}
             >
+              <title>{hasChildren ? `${node.title}（点击${node.collapsed ? '展开' : '折叠'}，双击聚焦此分支）` : node.title}</title>
               <rect width={node.width} height={node.height} rx={8} class="mindmap-box" />
               {/* 批E: wrapped tspans — long titles are fully shown, no ellipsis. */}
               <text x={12} y={titleBaseline(node)} class="mindmap-label">
@@ -482,12 +490,13 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
                   </tspan>
                 ))}
               </text>
-              {/* 批D: caret on the branch direction (+ count pill when folded).
-                  The whole node stays clickable; the circle pads the hot zone. */}
+              {/* 批3: 圆点语言——折叠=实心圆点（藏着分支），展开=空心圆环（同尺寸，
+                  状态一眼可辨）；替换 ▸/▾ 三角（2026-09-07 审美反馈）。
+                  计数胶囊与热区不变。 */}
               {hasChildren && (
                 <g class={`mindmap-caret${node.collapsed ? ' collapsed' : ''}`} transform={`translate(${node.width + 8}, ${node.height / 2})`} aria-hidden="true">
                   <circle r={11} class="caret-hit" />
-                  {node.collapsed ? <path d="M -3 -5 L 5 0 L -3 5 Z" class="caret-tri" /> : <path d="M -5 -3 L 0 5 L 5 -3 Z" class="caret-tri" />}
+                  {node.collapsed ? <circle r={4.5} class="caret-dot" /> : <circle r={4.5} class="caret-ring" />}
                   {node.collapsed && <rect x={9} y={-9} width={pillWidth} height={18} rx={9} class="caret-count-box" />}
                   {node.collapsed && (
                     <text x={9 + pillWidth / 2} y={3.5} text-anchor="middle" class="caret-count">
@@ -518,6 +527,7 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
                   }}
                 >
                   <circle r={7} class="info-hit" />
+                  <title>查看关联概念与自测题</title>
                   <text y={3.5} text-anchor="middle" class="info-glyph">
                     i
                   </text>

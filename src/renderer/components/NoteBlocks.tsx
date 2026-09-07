@@ -120,17 +120,28 @@ export function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
   )
 }
 
-/** Collapsible indented tree (reading view; the interactive map is MindMap). */
+/** Collapsible indented tree (reading view; the interactive map is MindMap).
+ *  批3: 全部展开/收起——对齐 MindMap 的深度控制能力；通过 key 重挂载让
+ *  每行的本地 open 状态以新默认值重建（比逐行下发命令简单一个量级）。 */
 function TreeView({ node }: { node: TreeNode }): JSX.Element {
+  const [override, setOverride] = useState<{ open: boolean; seq: number } | null>(null)
   return (
     <div class="tree-view" role="tree">
-      <TreeNodeRows node={node} depth={0} />
+      <div class="tree-view-tools">
+        <button class="btn small ghost" onClick={() => setOverride({ open: true, seq: (override?.seq ?? 0) + 1 })}>
+          全部展开
+        </button>
+        <button class="btn small ghost" onClick={() => setOverride({ open: false, seq: (override?.seq ?? 0) + 1 })}>
+          全部收起
+        </button>
+      </div>
+      <TreeNodeRows key={override?.seq ?? 0} node={node} depth={0} defaultOpen={override?.open} />
     </div>
   )
 }
 
-function TreeNodeRows({ node, depth }: { node: TreeNode; depth: number }): JSX.Element {
-  const [open, setOpen] = useState(depth < 2)
+function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: number; defaultOpen?: boolean }): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen ?? depth < 2)
   const hasChildren = node.children.length > 0
   return (
     <div class="tree-row-wrap">
@@ -150,7 +161,7 @@ function TreeNodeRows({ node, depth }: { node: TreeNode; depth: number }): JSX.E
           </span>
         )}
       </div>
-      {open && node.children.map((child, i) => <TreeNodeRows key={i} node={child} depth={depth + 1} />)}
+      {open && node.children.map((child, i) => <TreeNodeRows key={i} node={child} depth={depth + 1} defaultOpen={defaultOpen} />)}
     </div>
   )
 }
