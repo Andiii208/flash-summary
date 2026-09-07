@@ -18,7 +18,7 @@ import {
 } from './parse'
 import { extractWbiKeys, signedPlayUrlParams, wbiSign, WBI_KEY_TTL_MS, type WbiKeys } from './wbi'
 import { buildDmImgParams } from './dm-params'
-import { cookiesFromCrossDomainUrl, parseQrGenerate, qrStatusFromCode, type QrGenerateResult, type QrPollStatus } from './qr-login'
+import { cookiesFromCrossDomainUrl, cookiesFromSetCookieHeader, parseQrGenerate, qrStatusFromCode, type QrGenerateResult, type QrPollStatus } from './qr-login'
 
 const DEFAULT_API_HOST = 'https://api.bilibili.com'
 const DEFAULT_PASSPORT_HOST = 'https://passport.bilibili.com'
@@ -254,15 +254,54 @@ export class BilibiliClient {
    * QR login step 2: one poll of the scan state. On confirmation the login
    * cookies come out of the crossDomain handoff URL — in-memory only,
    * returned to the caller for encrypted persistence, never logged.
+   *
+   * The confirm step answers in TWO shapes (doc: web端扫码登录 / 旧版):
+   * 200 JSON {data:{code:0,url}} or a legacy 302 whose Location IS the
+   * crossDomain handoff URL. redirect:'manual' + treating 3xx as an error
+   * consumed the one-shot confirm — the next poll only ever said 86038
+   * (field case 2026-09-07: log showed scanned → expired, no confirmed).
    */
   async qrPoll(qrcodeKey: string): Promise<{ status: QrPollStatus; cookies: string | null }> {
     const query = new URLSearchParams({ qrcode_key: qrcodeKey }).toString()
-    const payload = await this.requestEnvelope(
-      `${this.passportHost}/x/passport-login/web/qrcode/poll?${query}&${QR_POLL_PARAMS}`,
-      false,
-      { referer: PASSPORT_REFERER }
-    )
-    const data = (payload.data ?? {}) as { code?: unknown; url?: unknown }
+    const url = `${this.passportHost}/x/passport-login/web/qrcode/poll?${query}&${QR_POLL_PARAMS}`
+    const headers = { 'User-Agent': USER_AGENT, Referer: PASSPORT_REFERER }
+    let res
+    let timer: NodeJS.Timeout | undefined
+    try {
+      res = await Promise.race([
+        this.fetchImpl(url, { headers, redirect: 'manual' }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new BilibiliApiError('network', `bilibili qr poll timeout for ${pathOnly(url)}`)), this.timeoutMs)
+        })
+      ])
+    } catch (err) {
+      if (err instanceof BilibiliApiError) throw err
+      throw new BilibiliApiError('network', `network error polling bilibili qr: ${(err as Error).message}`)
+    } finally {
+      if (timer != null) clearTimeout(timer)
+    }
+    if (res.status === 412) {
+      throw new BilibiliApiError('risk_control', 'bilibili qr poll risk control (HTTP 412)')
+    }
+    // Legacy confirm shape: 3xx — Location or Set-Cookie carries the login.
+    if (res.status >= 300 && res.status < 400) {
+      const cookies =
+        cookiesFromCrossDomainUrl(res.headers.get('location') ?? '') ??
+        cookiesFromSetCookieHeader(res.headers.get('set-cookie') ?? '')
+      if (cookies == null) throw new BilibiliApiError('bad_response', 'bilibili qr poll redirected without SESSDATA')
+      return { status: 'confirmed', cookies }
+    }
+    if (!res.ok) {
+      throw new BilibiliApiError('bad_response', `bilibili qr poll returned ${res.status}`)
+    }
+    let payload: unknown
+    try {
+      payload = JSON.parse(await res.text())
+    } catch {
+      throw new BilibiliApiError('bad_response', 'bilibili qr poll returned non-JSON')
+    }
+    const envelope = readEnvelope(payload, [])
+    const data = (envelope.data ?? {}) as { code?: unknown; url?: unknown }
     const code = typeof data.code === 'number' ? data.code : -1
     const status = qrStatusFromCode(code)
     if (status !== 'confirmed') return { status, cookies: null }

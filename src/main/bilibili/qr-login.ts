@@ -55,3 +55,23 @@ export function cookiesFromCrossDomainUrl(url: string): string | null {
     return null
   }
 }
+
+/**
+ * Fallback for the legacy confirm shape: harvest the login cookies from a
+ * Set-Cookie header (undici joins multiple values with ', '). Returns the
+ * same `SESSDATA=…; bili_jct=…; DedeUserID=…` form or null.
+ */
+export function cookiesFromSetCookieHeader(setCookie: string): string | null {
+  const pick = (name: string): string | null => {
+    const match = new RegExp(`(?:^|,\\s*)${name}=([^;,]*)`).exec(setCookie)
+    return match != null && match[1] !== '' ? match[1] : null
+  }
+  const sessdata = pick('SESSDATA')
+  if (sessdata == null) return null
+  const biliJct = pick('bili_jct') ?? ''
+  const dedeUserId = pick('DedeUserID') ?? ''
+  const pairs = [`SESSDATA=${sessdata}`]
+  if (biliJct !== '') pairs.push(`bili_jct=${biliJct}`)
+  if (dedeUserId !== '') pairs.push(`DedeUserID=${dedeUserId}`)
+  return pairs.join('; ')
+}

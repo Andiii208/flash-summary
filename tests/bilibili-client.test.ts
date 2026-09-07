@@ -191,6 +191,31 @@ describe('BilibiliClient (fixture replay)', () => {
     expect(capture.headers[0]?.Referer).toBe('https://passport.bilibili.com/login')
   })
 
+  it('qrPoll handles the legacy 302 confirm — Location carries the cookies', async () => {
+    const client = makeClient(async (url: string) => {
+      if (url.includes('/qrcode/poll')) {
+        return jsonResponse({}, 302, 'https://passport.bilibili.com/redirect', {
+          location: 'https://passport.biligame.com/crossDomain?DedeUserID=9&SESSDATA=s9&bili_jct=t9&gourl=x'
+        })
+      }
+      throw new Error(`no fixture route for ${url}`)
+    })
+    expect(await client.qrPoll('QR1')).toEqual({ status: 'confirmed', cookies: 'SESSDATA=s9; bili_jct=t9; DedeUserID=9' })
+  })
+
+  it('qrPoll falls back to Set-Cookie when the 302 location lacks SESSDATA', async () => {
+    const client = makeClient(async (url: string) => {
+      if (url.includes('/qrcode/poll')) {
+        return jsonResponse({}, 302, 'https://passport.bilibili.com/redirect', {
+          location: 'https://passport.biligame.com/crossDomain?gourl=x',
+          'set-cookie': 'SESSDATA=ss; Path=/; HttpOnly, bili_jct=tt; Path=/, DedeUserID=7; Path=/'
+        })
+      }
+      throw new Error(`no fixture route for ${url}`)
+    })
+    expect(await client.qrPoll('QR1')).toEqual({ status: 'confirmed', cookies: 'SESSDATA=ss; bili_jct=tt; DedeUserID=7' })
+  })
+
   it('qrPoll walks waiting→scanned→confirmed and extracts the cookie string', async () => {
     const pollResponses = [
       jsonResponse({ code: 0, data: { code: 86101, url: '', message: '' } }),

@@ -381,7 +381,16 @@ export function createContext(overrides: Partial<{
   const bilibiliLoginPoll = async (): Promise<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }> => {
     if (bilibiliQr == null) return { status: 'inactive' }
     if (bilibiliPollCache != null && Date.now() - bilibiliPollCache.at < 1000) return bilibiliPollCache.result
-    const poll = await bilibili.qrPoll(bilibiliQr.qrcodeKey)
+    let poll
+    try {
+      poll = await bilibili.qrPoll(bilibiliQr.qrcodeKey)
+    } catch (err) {
+      // The confirm response is one-shot — a swallowed error here used to
+      // surface only as a later «86038 expired». Keep the qrcode alive and
+      // leave an explicit evidence line.
+      logger.error(`bilibili qr poll failed: ${(err as Error).message}`)
+      throw err
+    }
     // Status-transition log: the evidence trail when a scan misbehaves
     // (2026-09-07 field case: poll stuck at waiting through a confirmed scan).
     if (poll.status !== bilibiliLastPollStatus) {
