@@ -216,6 +216,21 @@ describe('BilibiliClient (fixture replay)', () => {
     expect(await client.qrPoll('QR1')).toEqual({ status: 'confirmed', cookies: 'SESSDATA=ss; bili_jct=tt; DedeUserID=7' })
   })
 
+  it('qrPoll harvests the login cookies from Set-Cookie when data.url is empty (field 2026-09-07)', async () => {
+    const client = makeClient(async (url: string) => {
+      if (url.includes('/qrcode/poll')) {
+        return jsonResponse(
+          { code: 0, data: { code: 0, url: '', refresh_token: 'r1', timestamp: 1 } },
+          200,
+          'https://passport.bilibili.com/redirect',
+          { 'set-cookie': 'SESSDATA=abc,def; Path=/; Domain=bilibili.com; HttpOnly; Secure, bili_jct=tok; Path=/, DedeUserID=42; Path=/' }
+        )
+      }
+      throw new Error(`no fixture route for ${url}`)
+    })
+    expect(await client.qrPoll('QR1')).toEqual({ status: 'confirmed', cookies: 'SESSDATA=abc,def; bili_jct=tok; DedeUserID=42' })
+  })
+
   it('qrPoll walks waiting→scanned→confirmed and extracts the cookie string', async () => {
     const pollResponses = [
       jsonResponse({ code: 0, data: { code: 86101, url: '', message: '' } }),

@@ -305,8 +305,20 @@ export class BilibiliClient {
     const code = typeof data.code === 'number' ? data.code : -1
     const status = qrStatusFromCode(code)
     if (status !== 'confirmed') return { status, cookies: null }
-    const cookies = cookiesFromCrossDomainUrl(typeof data.url === 'string' ? data.url : '')
-    if (cookies == null) throw new BilibiliApiError('bad_response', 'bilibili qr poll confirmed but carried no SESSDATA')
+    // Login cookies ride EITHER the crossDomain URL (data.url, doc shape) OR
+    // the response's Set-Cookie headers (field case 2026-09-07: url was empty,
+    // the poll failed with «no SESSDATA» and the one-shot confirm was lost).
+    const cookies =
+      cookiesFromCrossDomainUrl(typeof data.url === 'string' ? data.url : '') ??
+      cookiesFromSetCookieHeader(res.headers.get('set-cookie') ?? '')
+    if (cookies == null) {
+      const urlEmpty = typeof data.url !== 'string' || data.url === ''
+      const hasSetCookie = (res.headers.get('set-cookie') ?? '') !== ''
+      throw new BilibiliApiError(
+        'bad_response',
+        `bilibili qr poll confirmed but no SESSDATA extractable (urlEmpty=${urlEmpty}, setCookie=${hasSetCookie}, dataKeys=${Object.keys(data).join('|')})`
+      )
+    }
     return { status, cookies }
   }
 }

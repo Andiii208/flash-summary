@@ -62,9 +62,11 @@ export function cookiesFromCrossDomainUrl(url: string): string | null {
  * same `SESSDATA=…; bili_jct=…; DedeUserID=…` form or null.
  */
 export function cookiesFromSetCookieHeader(setCookie: string): string | null {
+  // Value capture stops at ';' only — SESSDATA carries encoded characters
+  // (e.g. %2C) and must never be split on commas.
   const pick = (name: string): string | null => {
-    const match = new RegExp(`(?:^|,\\s*)${name}=([^;,]*)`).exec(setCookie)
-    return match != null && match[1] !== '' ? match[1] : null
+    const match = new RegExp(`(?:^|,\\s*)${name}=([^;]*)`).exec(setCookie)
+    return match != null && match[1].trim() !== '' ? match[1].trim() : null
   }
   const sessdata = pick('SESSDATA')
   if (sessdata == null) return null
