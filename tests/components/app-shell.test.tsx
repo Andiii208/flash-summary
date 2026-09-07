@@ -322,7 +322,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     click(notesTab ?? null)
     await waitForGone('.note-section')
     expect(host.querySelector('.note-toolbar')).toBeNull()
-    expect(host.querySelector('.note-body .empty-state')).not.toBeNull()
+    expect(host.querySelector('.note-viewer .empty-state')).not.toBeNull()
     expect(host.textContent).not.toContain('旧笔记概览')
   })
 

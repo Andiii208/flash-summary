@@ -213,74 +213,82 @@ export function NoteViewer({
           </div>
         </div>
       )}
-      <div class="note-body" data-view={view}>
-        {note != null && lesson != null && (
-          <header class="note-masthead">
-            <h2 class="note-title">{lesson.courseName}</h2>
-            <p class="note-meta">{[lesson.teacher, lesson.lessonTitle].filter((x): x is string => x != null && x !== '').join(' · ')}</p>
-          </header>
-        )}
-        {note == null ? (
-          <>
-            {/* A7: when a lesson IS selected, say so — the library must not
-                mask «this lesson has no note yet». 批E: card empty state. */}
-            {lesson != null && onGoTasks != null && (
-              <div class="note-empty-current" data-testid="note-empty-current">
-                <EmptyState
-                  title={`「${lesson.lessonTitle}」尚无笔记`}
-                  hint="运行任务生成后，这节课的五视图笔记会显示在这里。"
-                  actionLabel="去创建任务"
-                  onAction={onGoTasks}
-                />
-              </div>
-            )}
-            {lesson == null ? (
-              // 2026-09-05: home view mirrors the tasks tab — guide card,
-              // then the library under its own subheading.
-              <>
-                <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
-                {library.length > 0 && onOpenLesson != null && (
-                  <>
-                    <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
-                    <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
-                  </>
-                )}
-              </>
-            ) : library.length > 0 && onOpenLesson != null ? (
-              <>
-                <p class="msg">或打开其他笔记：</p>
-                <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
-              </>
-            ) : null}
-          </>
-        ) : view === 'mindmap' ? (
-          <MindMap
-            tree={note.knowledgeTree}
-            concepts={note.concepts}
-            quiz={note.quiz}
-            conceptLinks={note.conceptLinks}
-            onViewDetailed={jumpToConcept}
-            onExportSvg={onExportSvg}
-          />
-        ) : (
-          projectNoteBlocks(note, view).map((section) => (
-            <ErrorBoundary key={section.heading} area="note-view">
-            <section key={section.heading} class="note-section">
-              <h3>{section.heading}</h3>
-              <NoteBlocks blocks={section.blocks} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
-              </section>
-            </ErrorBoundary>
-          ))
-        )}
-        {note != null && view === 'detailed' && (
-          <section class="note-section">
-            <h3>课堂画面</h3>
-            <ErrorBoundary area="note-gallery">
-              <EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
-            </ErrorBoundary>
-          </section>
-        )}
-      </div>
+      {/* 批3 (plan 2026-09-07 v07): masthead lives OUTSIDE .note-body so the
+          lesson title keeps one constant width (the 860 axis) in every view —
+          the mindmap breakout (max-width:none) used to drag the title full
+          width while other views wrapped it at 680. */}
+      {note != null && lesson != null && (
+        <header class="note-masthead">
+          <h2 class="note-title">{lesson.courseName}</h2>
+          <p class="note-meta">{[lesson.teacher, lesson.lessonTitle].filter((x): x is string => x != null && x !== '').join(' · ')}</p>
+        </header>
+      )}
+      {note == null ? (
+        <>
+          {/* A7: when a lesson IS selected, say so — the library must not
+              mask «this lesson has no note yet». 批E: card empty state.
+              批3: empty states render outside the 680 reading column so the
+              card width matches the tasks/qa tabs on the 860 axis. */}
+          {lesson != null && onGoTasks != null && (
+            <div class="note-empty-current" data-testid="note-empty-current">
+              <EmptyState
+                title={`「${lesson.lessonTitle}」尚无笔记`}
+                hint="运行任务生成后，这节课的五视图笔记会显示在这里。"
+                actionLabel="去创建任务"
+                onAction={onGoTasks}
+              />
+            </div>
+          )}
+          {lesson == null ? (
+            // 2026-09-05: home view mirrors the tasks tab — guide card,
+            // then the library under its own subheading.
+            <>
+              <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
+              {library.length > 0 && onOpenLesson != null && (
+                <>
+                  <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
+                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
+                </>
+              )}
+            </>
+          ) : library.length > 0 && onOpenLesson != null ? (
+            <>
+              <p class="msg">或打开其他笔记：</p>
+              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
+            </>
+          ) : null}
+        </>
+      ) : (
+        <div class="note-body" data-view={view}>
+          {view === 'mindmap' ? (
+            <MindMap
+              tree={note.knowledgeTree}
+              concepts={note.concepts}
+              quiz={note.quiz}
+              conceptLinks={note.conceptLinks}
+              onViewDetailed={jumpToConcept}
+              onExportSvg={onExportSvg}
+            />
+          ) : (
+            projectNoteBlocks(note, view).map((section) => (
+              <ErrorBoundary key={section.heading} area="note-view">
+              <section key={section.heading} class="note-section">
+                <h3>{section.heading}</h3>
+                <NoteBlocks blocks={section.blocks} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
+                </section>
+              </ErrorBoundary>
+            ))
+          )}
+          {view === 'detailed' && (
+            <section class="note-section">
+              <h3>课堂画面</h3>
+              <ErrorBoundary area="note-gallery">
+                <EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
+              </ErrorBoundary>
+            </section>
+          )}
+        </div>
+      )}
     </div>
   )
 }

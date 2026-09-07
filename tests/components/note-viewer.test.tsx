@@ -280,7 +280,7 @@ describe('NoteViewer', () => {
     const host = mount(<NoteViewer note={null} library={library} onOpenLesson={onOpenLesson} />)
     // 2026-09-05: home empty state mirrors the tasks tab — guide card, then
     // the library under its own subheading (the bare .msg line is gone).
-    expect(host.querySelector('.note-body .empty-state')).not.toBeNull()
+    expect(host.querySelector('.note-viewer .empty-state')).not.toBeNull()
     expect(host.querySelector('.subheading')?.textContent).toContain('全部笔记')
     // 批6: the course identity lives on the group head; the row carries the lesson.
     const group = host.querySelector('.note-library-group-head')

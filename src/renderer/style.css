@@ -371,8 +371,11 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 .content h2 { font-size: var(--font-size-xl); margin: 2px 0 14px; font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
 
 /* ---- 批B: single content column — one width token, one left edge ---- */
-/* 页面板与内部容器一律靠左、共用 --content-max；导图视图唯一破格全宽。 */
-.task-panel, .qa-panel { max-width: var(--content-max); }
+/* 页面板与内部容器一律靠左、共用 --content-max；导图视图唯一破格全宽。
+   批3 (plan 2026-09-07 v07): .note-viewer previously had NO width rule —
+   its page head ran full-window while empty state/library sat in the 680
+   reading column, three right edges on one tab. */
+.task-panel, .qa-panel, .note-viewer { max-width: var(--content-max); }
 
 /* ---- 批A: unified page head + lesson identity chip ---- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 14px; }
@@ -382,9 +385,9 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 440px;
+  max-width: 360px; /* 批3: 440px 帽在 860 轴上过宽，双端省略更早介入 */
   padding: 4px 11px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 55%, var(--border));
   border-radius: 999px;
   background: var(--surface);
   color: var(--text);
