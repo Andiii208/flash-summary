@@ -34,6 +34,16 @@ describe('ProgressBar', () => {
     const host = mount(<ProgressBar percent={150} active={false} />)
     expect((host.querySelector<HTMLElement>('.progress-bar')?.style.width)).toBe('100%')
   })
+
+  it('批2: 0% active renders the indeterminate slider instead of a frozen empty slot', () => {
+    const starting = mount(<ProgressBar percent={0} active />)
+    expect(starting.querySelector('.progress.indeterminate')).not.toBeNull()
+    // A real percent keeps the determinate width (no indeterminate class).
+    const midRun = mount(<ProgressBar percent={35} active />)
+    expect(midRun.querySelector('.progress.indeterminate')).toBeNull()
+    const idle = mount(<ProgressBar percent={0} active={false} />)
+    expect(idle.querySelector('.progress.indeterminate')).toBeNull()
+  })
 })
 
 describe('EmptyState', () => {
@@ -85,6 +95,7 @@ describe('TopBar (批1 双源并列: two parallel session badges)', () => {
     running: false,
     onLogout: () => undefined,
     onOpenBili: () => undefined,
+    onOpenTasks: () => undefined,
     onHome: () => undefined,
     breadcrumb: null,
     onClearLesson: () => undefined
@@ -114,6 +125,15 @@ describe('TopBar (批1 双源并列: two parallel session badges)', () => {
     const bili = host.querySelector('[data-testid="bili-session-badge"]')
     expect(bili?.className).toContain('logged_in')
     expect(bili?.textContent).toContain('B站·已登录')
+  })
+
+  it('批2: the running pill is a button that jumps to the tasks view', () => {
+    const onOpenTasks = vi.fn()
+    const host = mount(<TopBar session="logged_out" {...baseProps} running onOpenTasks={onOpenTasks} onLogin={() => undefined} />)
+    const pill = host.querySelector('[data-testid="running-pill"]')
+    expect(pill?.tagName).toBe('BUTTON')
+    click(pill)
+    expect(onOpenTasks).toHaveBeenCalledOnce()
   })
 
   it('brand click fires onHome (批A: back to the start view)', () => {

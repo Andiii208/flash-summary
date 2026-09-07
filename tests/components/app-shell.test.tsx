@@ -372,4 +372,26 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForGone('[data-testid="bili-import-dialog"]')
     expect(host.querySelector('.manual-fallback summary')?.textContent).toBe('高级：手动添加课程 ID')
   })
+
+  it('批2 钉住: a failed progress event refreshes the task lists (failed rows update in place)', async () => {
+    const bridge = makeBridge()
+    const sink: { fire?: (p: { taskId: string; state: string; stage: string | null; message: string; percent: number }) => void } = {}
+    ;(bridge.tasks.onProgress as unknown as { mockImplementation: (fn: unknown) => void }).mockImplementation((cb: (p: { taskId: string; state: string; stage: string | null; message: string; percent: number }) => void) => {
+      sink.fire = cb
+      return () => undefined
+    })
+    mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    expect(bridge.tasks.list).toHaveBeenCalled()
+    const listCalls = bridge.tasks.list as unknown as { mock: { calls: unknown[] } }
+    const callsAfterMount = listCalls.mock.calls.length
+    // The 存量 bug this pins: a terminal FAILURE used to leave the history
+    // rows stale (old active state + a cancel button that then errored).
+    sink.fire!({ taskId: 't-fail', state: 'failed', stage: 'downloading_video', message: '网络中断', percent: 30 })
+    await vi.waitFor(() => {
+      expect(listCalls.mock.calls.length).toBeGreaterThan(callsAfterMount)
+    })
+    // 批2: the failed card is visible in the global (no-lesson) view too.
+    await waitForSelector('[data-testid="task-status"]')
+  })
 })

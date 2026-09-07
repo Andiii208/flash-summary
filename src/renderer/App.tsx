@@ -183,6 +183,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onLogin={state.login}
         onLogout={state.logout}
         onOpenBili={state.openBili}
+        onOpenTasks={goTasks}
         onHome={() => {
           state.goHome()
           sidebarRef.current?.scrollTo({ top: 0 })
@@ -716,6 +717,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   }, [bridge, toast])
   const config = useConfigDomain(bridge, toast)
   const lessonRef = useRef('')
+  /** 批2: last seen «taskId:state:stage» — history rows refetch only when it changes. */
+  const lastProgressKeyRef = useRef('')
   /** 批5: identity-stable indirection for callbacks used inside long-lived
    *  subscriptions (see the note at openLessonNotesRef). */
   const openLessonNotesRef = useRef<(lessonId: string) => void>(() => undefined)
@@ -1028,9 +1031,17 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         })
       }
     })()
+    // 批2: 历史行实时刷新——state/stage 每次变化都重拉任务列表（本地 SQLite，
+    // 开销可忽略；下载字节数等高频事件不触发）。修存量 bug：failed 后历史行
+    // 仍显示旧的活动状态+可点「取消」，运行中行全程停留在旧状态。
     const off = bridge.tasks.onProgress((p) => {
       setProgress(p)
-      if (p.state === 'succeeded' || p.state === 'failed') void loadGlobalHistory()
+      const progressKey = `${p.taskId}:${p.state}:${p.stage ?? ''}`
+      if (lastProgressKeyRef.current !== progressKey) {
+        lastProgressKeyRef.current = progressKey
+        void loadGlobalHistory()
+        if (lessonRef.current !== '') void loadHistory(lessonRef.current)
+      }
       const lid = lessonRef.current
       if (p.state === 'succeeded') {
         // B1: other tasks may still be queued — recompute from the fresh rows.

@@ -260,6 +260,9 @@ body {
   border-radius: 999px;
   font-weight: 550;
 }
+/* 批2: the pill is a button (jump to the tasks view). */
+button.running-pill { cursor: pointer; font-family: inherit; }
+button.running-pill:hover { border-color: var(--accent); }
 .pulse-dot {
   width: 7px;
   height: 7px;
@@ -854,9 +857,23 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
   from { background-position: 0% 0; }
   to { background-position: -200% 0; }
 }
+/* 批2: indeterminate——0% 起步阶段的往复滑块，替代被宽度裁剪成静止的流光。 */
+.progress.indeterminate .progress-bar {
+  width: 30%;
+  transition: none;
+  animation: progress-slide 1.4s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(380%); }
+}
 
 .dialog-check { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-sm); color: var(--text-secondary); margin: 4px 0 2px; }
 .task-status .btn.small { margin-top: 10px; }
+/* 批2: 进度条 + 百分比读数同行。 */
+.task-progress-row { display: flex; align-items: center; gap: 10px; }
+.task-progress-row .progress { flex: 1 1 auto; }
+.task-percent { flex-shrink: 0; font-size: var(--font-size-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
 
 /* History (M2 批 B: 课程名·课时名为主体的可读行) */
 .history-list { display: flex; flex-direction: column; gap: 6px; }

@@ -17,6 +17,8 @@ export interface TopBarProps {
   onLogout: () => void
   /** 批1 双源并列: open the B站 import dialog (login + import live there). */
   onOpenBili: () => void
+  /** 批2: the running pill is clickable — jump to the tasks view. */
+  onOpenTasks: () => void
   /** 批A: brand click = back to the start view (no lesson picked, tasks tab). */
   onHome: () => void
   /** 批A: «you are here» breadcrumb — present only while a lesson is picked. */
@@ -42,7 +44,7 @@ const SESSION_TITLES: Record<SessionState, string> = {
  * B站同构同级，点击即操作（登录/退出/打开导入），不再是单一 CAS 按钮加
  * 沉底的 B站小面板。
  */
-export function TopBar({ session, biliSession, busy, running, onLogin, onLogout, onOpenBili, onHome, breadcrumb, onClearLesson }: TopBarProps): JSX.Element {
+export function TopBar({ session, biliSession, busy, running, onLogin, onLogout, onOpenBili, onOpenTasks, onHome, breadcrumb, onClearLesson }: TopBarProps): JSX.Element {
   // C4: logout wipes the working context — confirm first.
   const [pendingLogout, setPendingLogout] = useState(false)
   const biliLoggedIn = biliSession === 'logged_in'
@@ -69,10 +71,10 @@ export function TopBar({ session, biliSession, busy, running, onLogin, onLogout,
       </div>
       <div class="topbar-right">
         {running && (
-          <span class="running-pill" data-testid="running-pill" title="串行队列中有任务正在执行">
+          <button class="running-pill" data-testid="running-pill" title="串行队列中有任务正在执行，点击前往任务页" onClick={onOpenTasks}>
             <span class="pulse-dot" />
             任务运行中
-          </span>
+          </button>
         )}
         <button
           class={`session-badge ${session}`}

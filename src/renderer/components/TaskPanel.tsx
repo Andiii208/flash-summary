@@ -97,7 +97,20 @@ export function TaskPanel({
       <PageHeader title="任务" chip={chip} />
       {noLesson ? (
         <>
-          <EmptyState title="先选择课时" hint="从左侧课程树点击一个课时，即可创建并运行任务。" />
+          <EmptyState
+            title="先选择课时"
+            hint="从左侧课程树点击一个课时即可创建任务；B站视频用侧栏「导入 B站视频」添加。"
+          />
+          {/* 批2: 全部任务视图同样渲染进度卡——重试/排队中的任务在任何视图都可见，
+              不再只在选中课时后才有进度（2026-09-07 用户实测实锤的断层）。 */}
+          {progress != null && (
+            <TaskStatusCard
+              progress={progress}
+              taskRow={globalHistory.find((row) => row.id === progress.taskId)}
+              onCancel={onCancel}
+              cancellable={running}
+            />
+          )}
           <h3 class="subheading">全部任务（最近 50 条）</h3>
           <HistoryList
             history={globalHistory}
@@ -206,7 +219,11 @@ function TaskStatusCard({ progress, taskRow, cancellable = false, onCancel }: Ta
           )
         })}
       </div>
-      <ProgressBar percent={progress.percent} active={!succeeded && !failed} />
+      <div class="task-progress-row">
+        <ProgressBar percent={progress.percent} active={!succeeded && !failed} />
+        {/* 批2: 百分比读数——长任务需要可量化的进度感；排队中没有意义，不显示。 */}
+        {!queued && <span class="task-percent">{Math.round(progress.percent)}%</span>}
+      </div>
       {progress.detail != null && <p class="task-detail">{progress.detail}</p>}
       {failed && <p class="task-error">{progress.message}</p>}
       {cancellable && !queued && onCancel != null && (
@@ -298,7 +315,12 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
               </button>
             )}
             {row.state === 'pending' && (
-              <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled} title="立即开始这个任务">
+              <button
+                class="btn small"
+                onClick={() => onRetry(row.id)}
+                disabled={disabled}
+                title={disabled ? '队列忙碌，轮到它会自动开始' : '立即开始这个任务'}
+              >
                 启动
               </button>
             )}

@@ -11,6 +11,43 @@ describe('TaskPanel', () => {
     expect(host.textContent).toContain('先选择课时')
   })
 
+  it('批2: the all-tasks view renders the live progress card (retry stays visible without a lesson)', () => {
+    const progress: TaskProgressInfo = { taskId: 't1', state: 'transcribing', stage: 'transcribing', message: '转写中', percent: 42 }
+    const row: TaskRowInfo = { ...ROW, id: 't1', state: 'transcribing' }
+    const host = mount(
+      <TaskPanel currentLesson="" running busy={false} progress={progress} history={[]} globalHistory={[row]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    // The exact gap the 2026-09-07 field report hit: retrying from the global
+    // list left NO progress surface anywhere.
+    expect(host.querySelector('[data-testid="task-status"]')).not.toBeNull()
+    expect(host.textContent).toContain('转写音频')
+  })
+
+  it('批2: the status card shows a percent readout, hidden while queued', () => {
+    const running: TaskProgressInfo = { taskId: 't1', state: 'downloading_video', stage: 'downloading_video', message: '', percent: 35 }
+    const queued: TaskProgressInfo = { taskId: 't2', state: 'pending', stage: null, message: '排队中', percent: 0 }
+    const withPercent = mount(
+      <TaskPanel currentLesson="" running busy={false} progress={running} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    expect(withPercent.querySelector('.task-percent')?.textContent).toBe('35%')
+    const queuedHost = mount(
+      <TaskPanel currentLesson="" running busy={false} progress={queued} history={[]} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    expect(queuedHost.querySelector('.task-percent')).toBeNull()
+  })
+
+  it('批2: a queued row explains WHY 启动 is unavailable while the queue is busy', () => {
+    const pending: TaskRowInfo = { ...ROW, id: 't-pending', state: 'pending' }
+    const host = mount(
+      <TaskPanel currentLesson="" running={false} busy={false} progress={null} history={[]} globalHistory={[pending]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    const start = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '启动') as HTMLButtonElement
+    expect(start).not.toBeNull()
+    // Nothing is running here, so the button is enabled and invites the click.
+    expect(start.disabled).toBe(false)
+    expect(start.title).toContain('立即开始')
+  })
+
   it('renders progress stage label, percent bar and error message on failure', () => {
     const progress: TaskProgressInfo = { taskId: 't1', state: 'failed', stage: 'transcribing', message: 'transcribe failed', percent: 57 }
     const host = mount(
