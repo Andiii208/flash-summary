@@ -1,7 +1,7 @@
 # 双源并列与全面 UX 审查整改方案
 
 - 日期：2026-09-07
-- 状态：待 Andiii 审阅
+- 状态：已批准（Andiii「都按照你推荐的去做」，D1=A/D2=A/D3=A/D4=A/D5=A）· 批1-6 落地（4b2afa7…d28d18b，四门禁 691/691），批7 列遗留
 - 触发：Andiii 实测反馈四问题 + 授权全量审查（「找出所有的问题来，制定详细方案，审阅通过后再做」）
 - 审查方式：全量 renderer 组件代码走读（App/TopBar/TaskPanel/MindMap/BiliImport/QaPanel/NoteViewer/CourseTree/MyStudyPanel 亲读 + 其余 18 个组件委托 Explore agent 全量扫描，58 项发现）+ 真实库 CDP 截图 13 张（`.tmp-audit-shots/`，gitignored，留档供翻阅）+ CSS 层级分析。
 

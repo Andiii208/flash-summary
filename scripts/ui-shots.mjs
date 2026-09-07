@@ -168,17 +168,31 @@ async function main() {
     // 1. initial view (tasks tab, nothing selected)
     await sleep(400)
 
-    // --bili: dedicated Bilibili-panel shots (no library walk needed).
+    // --bili: dedicated Bilibili-dialog shots (no library walk needed).
     // Resolves a real public video + starts a real QR login — no account,
     // no writes, read-only public endpoints.
     if (process.argv.includes('--bili')) {
-      const openPanel = `(() => { const d = document.querySelector('.bili-import'); if (d == null) return false; d.open = true; return true })()`
-      if ((await cdp.eval(openPanel)) !== true) throw new Error('.bili-import panel not found in sidebar')
+      // 批1 双源并列: the entry is the sidebar button next to 刷新课程; the
+      // whole flow lives in the first-class dialog now.
+      const openDialog = `(() => {
+        const btn = [...document.querySelectorAll('.sidebar-head button')].find((b) => b.textContent.trim() === '导入 B站视频')
+        if (btn == null) return false
+        btn.click()
+        return true
+      })()`
+      if ((await cdp.eval(openDialog)) !== true) throw new Error('sidebar B站 entry button not found')
+      await waitFor('bili dialog', async () => {
+        try {
+          return { ok: (await cdp.eval('document.querySelector("[data-testid=\'bili-import-dialog\']") != null')) === true, value: true }
+        } catch {
+          return { ok: false }
+        }
+      }, 20000)
       await sleep(300)
-      await cdp.shot(shotName('b1-panel-input'))
+      await cdp.shot(shotName('b1-dialog-input'))
 
       const focusInput = `(() => {
-        const input = document.querySelector('.bili-import .qa-input')
+        const input = document.querySelector('.bili-dialog-card .qa-input')
         if (input == null) return false
         input.focus()
         return true
@@ -189,7 +203,7 @@ async function main() {
       await cdp.send('Input.insertText', { text: 'BV1GJ411x7h7' })
       await sleep(200)
       const clickResolve = `(() => {
-        const btn = [...document.querySelectorAll('.bili-import button')].find((b) => b.textContent.trim() === '解析')
+        const btn = [...document.querySelectorAll('.bili-dialog-card button')].find((b) => b.textContent.trim() === '解析')
         if (btn == null) return false
         btn.click()
         return true
@@ -203,12 +217,10 @@ async function main() {
         }
       }, 20000)
       await sleep(1200) // cover data URL decode
-      await cdp.eval('document.querySelector(".bili-import").scrollIntoView({ block: "start" })')
-      await sleep(300)
       await cdp.shot(shotName('b2-preview-light'))
 
       const startQr = `(() => {
-        const btn = document.querySelector('.bili-import .bili-import-btn')
+        const btn = document.querySelector('.bili-dialog-card .bili-import-btn')
         if (btn == null) return false
         btn.click()
         return true
@@ -222,14 +234,10 @@ async function main() {
         }
       }, 20000)
       await sleep(1500) // QR dataURL render
-      await cdp.eval('document.querySelector(".bili-import").scrollIntoView({ block: "start" })')
-      await sleep(300)
       await cdp.shot(shotName('b3-qr-light'))
 
       await cdp.eval('document.documentElement.dataset.theme = "dark"')
       await sleep(400)
-      await cdp.eval('document.querySelector(".bili-import").scrollIntoView({ block: "start" })')
-      await sleep(300)
       await cdp.shot(shotName('b4-preview-dark'))
       await cdp.eval('document.documentElement.dataset.theme = "light"')
       await sleep(300)
