@@ -24,6 +24,8 @@ import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachmentManifest, readAttachmentData } from './notes/attachments'
 import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
+import { polishNote } from './notes/polish'
+import { FEEDBACK_TAGS } from '../shared/feedback-tags'
 import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
@@ -1207,6 +1209,48 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const result = await summarizeLesson(ctx.db, client, id, ctx.libraryRoot)
       if ('error' in result) return err(new Error(result.error))
       return ok(result)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 批5 (plan 2026-09-07 v07): feedback-driven polish — revise the latest note
+  // per user feedback, persisting it as version N+1. No images, no queue slot
+  // (qa:ask precedent); regenerate's two guards apply, plus an in-flight mark
+  // so double-invoking cannot race two INSERTs at the same version.
+  const polishInFlight = new Set<string>()
+  /** Tag count cap (FEEDBACK_TAGS is the vocabulary; unknown ids are dropped downstream). */
+  const FEEDBACK_TAG_LIMIT = FEEDBACK_TAGS.length
+  /** Free-text cap — polish.ts clamps again before prompting (defense in depth). */
+  const MAX_FEEDBACK_TEXT = 2_000
+  /** Validate the renderer's feedback payload — tags must be strings, text is clamped. */
+  const parseFeedback = (raw: unknown): { tags: string[]; text: string } | null => {
+    if (typeof raw !== 'object' || raw == null) return null
+    const candidate = raw as { tags?: unknown; text?: unknown }
+    const tags = Array.isArray(candidate.tags) ? candidate.tags.filter((t): t is string => typeof t === 'string' && t !== '').slice(0, FEEDBACK_TAG_LIMIT) : []
+    const text = typeof candidate.text === 'string' ? candidate.text.trim().slice(0, MAX_FEEDBACK_TEXT) : ''
+    return tags.length === 0 && text === '' ? null : { tags, text }
+  }
+  handle(ipc, 'notes:polish', async (_e, lessonId: unknown, feedback: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const parsed = parseFeedback(feedback)
+      if (parsed == null) return err(new Error('请先选择至少一个问题或填写补充说明'))
+      if (queue.current() != null) return err(new Error('任务运行中，请等待完成后再润色笔记'))
+      const runningForLesson = ctx.db
+        .prepare("SELECT COUNT(*) AS n FROM tasks WHERE lesson_id = ? AND state IN ('pending','summarizing','transcribing','extracting_visuals','extracting_audio','downloading_video','fetching_course')")
+        .get(id) as { n: number }
+      if (runningForLesson.n > 0) return err(new Error('该课时存在排队/运行中的任务，请等待完成后再润色笔记'))
+      if (polishInFlight.has(id)) return err(new Error('该课时的润色正在进行中，请稍候'))
+      polishInFlight.add(id)
+      try {
+        const client = ctx.chatFor('multimodal')
+        const result = await polishNote(ctx.db, client, id, parsed)
+        if ('error' in result) return err(new Error(result.error))
+        return ok(result)
+      } finally {
+        polishInFlight.delete(id)
+      }
     } catch (e) {
       return err(e)
     }

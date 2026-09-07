@@ -89,7 +89,8 @@ export function buildUserParts(transcriptText: string, images: SummarizeImage[])
   return parts
 }
 
-function stripFences(text: string): string {
+/** Strip a leading ```json fence (parse fallback; shared with the polish path). */
+export function stripFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
 }
 
@@ -134,7 +135,10 @@ export async function generateNote(
   }
 }
 
-/** Insert the note as a new version row; returns the version number. */
+/** Versions kept per lesson — F6 promised a cap of 10, polish makes it matter. */
+const KEEP_VERSIONS = 10
+
+/** Insert the note as a new version row (pruning beyond KEEP_VERSIONS); returns the version number. */
 export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: string): number {
   const versionRow = db.prepare('SELECT MAX(version) AS v FROM notes WHERE lesson_id = ?').get(lessonId) as { v: number | null }
   const version = (versionRow.v ?? 0) + 1
@@ -147,6 +151,9 @@ export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: str
     model,
     new Date().toISOString()
   )
+  // F6 (design-review): keep only the newest KEEP_VERSIONS rows — regeneration
+  // and polish append versions, and the table grew without bound before this.
+  db.prepare('DELETE FROM notes WHERE lesson_id = ? AND version <= ?').run(lessonId, version - KEEP_VERSIONS)
   return version
 }
 

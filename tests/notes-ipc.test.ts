@@ -410,3 +410,64 @@ describe('notes:courseTree (M4.1, 2026-09-05)', () => {
     expect(res.error).toContain('课程不存在')
   })
 })
+
+describe('notes:polish (批5, plan 2026-09-07 v07)', () => {
+  function seedTranscribedLesson(): AppContext {
+    const ctx = makeCtx()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-08T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '转写' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+    return ctx
+  }
+
+  it('rejects an empty feedback payload before touching the queue', async () => {
+    const ctx = seedTranscribedLesson()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:polish', 'l1', { tags: [], text: '   ' })) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('至少一个问题')
+  })
+
+  it('refuses while a task for the lesson is queued/running (regenerate 的同款守卫)', async () => {
+    const ctx = seedTranscribedLesson()
+    db.prepare(
+      "INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t1', 'l1', 'summarizing', '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z')"
+    ).run()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:polish', 'l1', { tags: ['too_brief'], text: '' })) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('运行中')
+  })
+
+  it('errors with a readable message when the lesson has no note to polish', async () => {
+    const ctx = seedTranscribedLesson()
+    const chatJson = vi.fn(async () => VALID_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:polish', 'l1', { tags: ['too_brief'], text: '篇幅再长一点' })) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('还没有笔记')
+    expect(chatJson).not.toHaveBeenCalled()
+  })
+
+  it('polishes into the next version and returns version + hitRate', async () => {
+    const ctx = seedTranscribedLesson()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('l1-v1', 'l1', 1, ?, 'p', 'm', '2026-09-08T00:00:00Z')"
+    ).run(VALID_NOTE)
+    const chatJson = vi.fn(async () => VALID_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:polish', 'l1', { tags: ['too_brief'], text: '' })) as {
+      ok: boolean
+      value?: { version: number; hitRate: { hits: number; total: number }; droppedRefs: number }
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value?.version).toBe(2)
+    const row = db.prepare('SELECT model FROM notes WHERE lesson_id = ? AND version = 2').get('l1') as { model: string }
+    expect(row.model).toContain('润色')
+  })
+})

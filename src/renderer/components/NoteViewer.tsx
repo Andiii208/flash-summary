@@ -12,6 +12,7 @@ import { MindMap } from './MindMap'
 import { PageHeader } from './PageHeader'
 import { LessonChip, type LessonChipLesson } from './LessonChip'
 import { EmptyState } from './EmptyState'
+import { FeedbackSection } from './FeedbackSection'
 
 /** 试卷头 (V4): the lesson's identity line — course · teacher · lesson. */
 export interface LessonContext {
@@ -60,6 +61,10 @@ export interface NoteViewerProps {
   onExportSvg?: () => void
   /** Copy the markdown rendering to the clipboard (best-effort). */
   onCopy?: () => void
+  /** 批5: feedback polish in flight (button busy state). */
+  polishBusy?: boolean
+  /** 批5: submit feedback → the model revises the latest note into version N+1. */
+  onPolish?: (feedback: { tags: string[]; text: string }) => void
 }
 
 /** Five-view note reader: one note JSON, five projections (2026-09-04). */
@@ -84,7 +89,9 @@ export function NoteViewer({
   onExport,
   onExportAnki,
   onExportSvg,
-  onCopy
+  onCopy,
+  polishBusy = false,
+  onPolish
 }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
   // M2.2: concept-card anchor for the mind map popover's «view in detail» jump.
@@ -289,6 +296,9 @@ export function NoteViewer({
           )}
         </div>
       )}
+      {/* 批5: feedback polish — end of the note, every view except the mindmap
+          (the map is a canvas, not prose to revise). */}
+      {note != null && view !== 'mindmap' && onPolish != null && <FeedbackSection busy={polishBusy} onSubmit={onPolish} />}
     </div>
   )
 }

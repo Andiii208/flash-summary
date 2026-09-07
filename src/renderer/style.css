@@ -1544,6 +1544,39 @@ button.concept-ref:hover { color: var(--accent); }
 .evidence-fig figcaption { display: flex; justify-content: space-between; align-items: center; padding: 5px 9px; font-size: var(--font-size-xs); }
 .evidence-ref { font-family: var(--font-mono); color: var(--text-muted); }
 
+/* ---- 批5: 笔记反馈润色 ---- */
+.feedback-section { display: flex; flex-direction: column; gap: 10px; }
+.feedback-hint { margin: 0; font-size: var(--font-size-sm); color: var(--text-muted); font-family: var(--font-ui); }
+.feedback-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.feedback-tag {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--speed), background var(--speed), color var(--speed);
+}
+.feedback-tag:hover { border-color: var(--accent); color: var(--text); }
+.feedback-tag.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.feedback-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.feedback-tag:disabled { opacity: 0.6; cursor: default; }
+.feedback-text {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 52px;
+}
+.feedback-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.feedback-actions { display: flex; justify-content: flex-end; }
+
 /* ============ V4 试卷纸：笔记阅读面 ============ */
 /* Reading measure: 34-38 CJK chars/line, song serif body, kai titles,
    mono stamps stay brass. Label chrome restores the sans explicitly. */

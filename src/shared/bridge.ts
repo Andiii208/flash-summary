@@ -195,6 +195,8 @@ export interface NotesBridge {
   attachmentData(lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>>
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */
   regenerate(lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>>
+  /** 批5 (plan 2026-09-07 v07): feedback-driven polish — revises the latest note into version N+1. */
+  polish(lessonId: string, feedback: { tags: string[]; text: string }): Promise<ApiResult<{ version: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>>
   /** 2026-09-04: PDF handout step 1 — system save dialog for the target file. */
   exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>>
   /** 2026-09-04: PDF handout step 2 — print the main window (handout already

@@ -391,6 +391,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onExportAnki={state.currentLesson !== '' && state.note != null ? () => state.exportNoteAnki(state.currentLesson) : undefined}
               onExportSvg={state.currentLesson !== '' && state.note != null ? () => state.exportNoteSvg(state.currentLesson) : undefined}
               onCopy={state.copyNote}
+              polishBusy={state.notePolishBusy}
+              onPolish={state.currentLesson !== '' ? (feedback) => state.polishNote(state.currentLesson, feedback) : undefined}
             />
           )}
           {tab === 'qa' && (
@@ -600,6 +602,9 @@ interface AppState {
   attachmentVersion: number
   noteRegenBusy: boolean
   regenerateNote: (lessonId: string) => void
+  /** 批5: feedback polish (busy + submit → new note version). */
+  notePolishBusy: boolean
+  polishNote: (lessonId: string, feedback: { tags: string[]; text: string }) => void
   pdfBusy: boolean
   exportNotePdf: (lessonId: string) => void
   setCacheDir: (dir: string) => void
@@ -687,6 +692,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   /** Bumped per resolved image so lazy views re-render. */
   const [attachmentVersion, setAttachmentVersion] = useState(0)
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
+  // 批5: feedback polish busy state (independent of regenerate).
+  const [notePolishBusy, setNotePolishBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
   /** M4.1: open course-level mind map (null = closed). */
   const [courseMap, setCourseMap] = useState<CourseMapInfo | null>(null)
@@ -1692,6 +1699,36 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast, loadNote, loadNoteIndex]
   )
 
+  /** 批5 (plan 2026-09-07 v07): feedback polish — send the user's feedback and
+   *  the latest note back to the model; the revision lands as version N+1. */
+  const polishNote = useCallback(
+    (lessonId: string, feedback: { tags: string[]; text: string }): void => {
+      void (async () => {
+        setNotePolishBusy(true)
+        try {
+          const res = await bridge.notes.polish(lessonId, feedback)
+          if (!res.ok) {
+            toast(res.error ?? '润色失败', 'error')
+            return
+          }
+          const result = res.value
+          if (result == null) {
+            toast('润色失败：返回数据缺失', 'error')
+            return
+          }
+          const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
+          const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
+          toast(`已生成第 ${result.version} 版润色笔记${hitSuffix}${dropSuffix}`, 'success')
+          await loadNote(lessonId)
+          await loadNoteIndex()
+        } finally {
+          setNotePolishBusy(false)
+        }
+      })()
+    },
+    [bridge, toast, loadNote, loadNoteIndex]
+  )
+
   /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
   const exportNotePdf = useCallback(
     (lessonId: string): void => {
@@ -1888,6 +1925,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     attachmentVersion,
     noteRegenBusy,
     regenerateNote,
+    notePolishBusy,
+    polishNote,
     pdfBusy,
     exportNotePdf,
     setCacheDir,
