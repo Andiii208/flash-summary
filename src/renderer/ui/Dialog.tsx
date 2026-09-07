@@ -1,5 +1,6 @@
 import type { JSX } from 'preact'
 import { useEffect } from 'preact/hooks'
+import { useModalScrollLock } from './use-modal-scroll-lock'
 
 export interface DialogProps {
   open: boolean
@@ -36,14 +37,7 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
   }, [open, onCancel])
   // 批6: the page behind an open modal must not scroll (zooming an image
   // while the note slides behind reads as the page moving).
-  useEffect(() => {
-    if (!open) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
-  }, [open])
+  useModalScrollLock(open)
   if (!open) return null
   return (
     <div

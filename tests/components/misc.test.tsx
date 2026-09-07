@@ -174,6 +174,15 @@ describe('TopBar (批1 双源并列: two parallel session badges)', () => {
     expect(onLogout).toHaveBeenCalledOnce()
   })
 
+  it('批2: the logout dialog renders OUTSIDE <header> — the topbar backdrop-filter would flatten the fixed backdrop into a strip (顶对齐+黑栏根因)', () => {
+    const host = mount(<TopBar session="logged_in" {...baseProps} onLogin={() => undefined} onLogout={() => undefined} />)
+    click(host.querySelector('[data-testid="session-badge"]'))
+    const backdrop = host.querySelector('.dialog-backdrop')
+    expect(backdrop).not.toBeNull()
+    expect(backdrop?.parentElement?.tagName.toLowerCase()).not.toBe('header')
+    expect(host.querySelector('header .dialog-backdrop')).toBeNull()
+  })
+
   it('marks an expired session; the badge click offers re-login, not logout', () => {
     const onLogin = vi.fn()
     const host = mount(<TopBar session="expired" {...baseProps} onLogin={onLogin} />)

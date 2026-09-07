@@ -49,7 +49,8 @@ export function TopBar({ session, biliSession, busy, running, onLogin, onLogout,
   const [pendingLogout, setPendingLogout] = useState(false)
   const biliLoggedIn = biliSession === 'logged_in'
   return (
-    <header class="topbar">
+    <>
+      <header class="topbar">
       <div class="topbar-left">
         <button class="brand" onClick={onHome} title="回到起始页">
           <span class="brand-mark" aria-hidden="true">
@@ -99,6 +100,11 @@ export function TopBar({ session, biliSession, busy, running, onLogin, onLogout,
           {biliLoggedIn ? 'B站·已登录' : 'B站·未登录'}
         </button>
       </div>
+      </header>
+      {/* 批2 (plan 2026-09-07 v07): the dialog must NOT live inside <header> —
+          the topbar's backdrop-filter makes it the containing block for fixed
+          descendants, flattening .dialog-backdrop (inset:0) into a 46px strip:
+          the «black bar» + top-stuck dialog. As a sibling it covers the viewport. */}
       <Dialog
         open={pendingLogout}
         title="退出东大云课堂登录？"
@@ -111,6 +117,6 @@ export function TopBar({ session, biliSession, busy, running, onLogin, onLogout,
         }}
         onCancel={() => setPendingLogout(false)}
       />
-    </header>
+    </>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import QRCode from 'qrcode'
 import type { BilibiliResolveResult, SeuSummaryBridge } from '../../shared/bridge'
+import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
 
 export interface BiliImportDialogProps {
   bridge: SeuSummaryBridge
@@ -70,6 +71,7 @@ function statusLabel(status: string): string {
  * 在对话框内完成；二维码放大到 220px，B站账号行常显登录状态。
  */
 export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh, onLogout, onImported, onClose, toast }: BiliImportDialogProps): JSX.Element | null {
+  useModalScrollLock(open)
   const [input, setInput] = useState('')
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [busy, setBusy] = useState(false)
