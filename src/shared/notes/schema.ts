@@ -141,6 +141,26 @@ function coerceAt(value: unknown): unknown {
 }
 
 /**
+ * String refs (field case 2026-09-07, B站 MV note): models sometimes emit
+ * refs as plain strings instead of {at,text} objects. A leading timestamp
+ * (mm:ss / N秒) promotes the string to a real ref; without one there is no
+ * honest anchor and the entry is dropped — the concept itself keeps its
+ * definition, so the note survives.
+ */
+function coerceStringRef(ref: string): unknown {
+  const trimmed = ref.trim()
+  if (trimmed === '') return null
+  const mmss = /^(\d{1,2}(?::\d{2})(?::\d{2})?)\s*[-—–:：)）\]]*\s*(.+)$/.exec(trimmed)
+  if (mmss != null) {
+    const at = coerceAt(mmss[1])
+    if (typeof at === 'number') return { at, text: mmss[2].trim() }
+  }
+  const seconds = /^(\d{1,4})\s*秒\s*[-—–:：)）\]]*\s*(.+)$/.exec(trimmed)
+  if (seconds != null) return { at: Number(seconds[1]), text: seconds[2].trim() }
+  return null
+}
+
+/**
  * Evidence kind must be ppt|keyframe; models leak the formulaAndSteps kinds
  * (formula/code/operation) into it (field case 2026-09-02). The ref value
  * itself is authoritative: ppt refs are `ppt:<page>`, keyframes `kf:<id>`.
@@ -292,9 +312,15 @@ function withNormalizedTimestamps(raw: unknown): unknown {
             at: coerceAt(e.at),
             ...(Array.isArray(e.refs)
               ? {
-                  refs: e.refs.map((r) =>
-                    r != null && typeof r === 'object' ? { ...(r as Record<string, unknown>), at: coerceAt((r as Record<string, unknown>).at) } : r
-                  )
+                  refs: (e.refs as unknown[])
+                    .map((r) =>
+                      typeof r === 'string'
+                        ? coerceStringRef(r)
+                        : r != null && typeof r === 'object'
+                          ? { ...(r as Record<string, unknown>), at: coerceAt((r as Record<string, unknown>).at) }
+                          : r
+                    )
+                    .filter((r) => r != null)
                 }
               : {}),
             ...(e.evidence != null ? { evidence: normalizeEvidence(e.evidence) } : {})

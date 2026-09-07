@@ -248,3 +248,43 @@ describe('parseNote conceptLinks normalization (M3.1, 2026-09-05)', () => {
     expect(parseNote(JSON.stringify(base)).conceptLinks).toEqual([])
   })
 })
+
+describe('parseNote string refs normalization (field case 2026-09-07, B站 MV note)', () => {
+  it('promotes string refs with a leading mm:ss / N秒 timestamp to {at,text}', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        concepts: [
+          { term: '承诺', definition: '歌词对爱的承诺表达。', refs: ['01:15 副歌反复强调承诺', '32秒 主歌铺垫'] }
+        ]
+      })
+    )
+    expect(note.concepts[0]?.refs).toEqual([
+      { at: 75, text: '副歌反复强调承诺' },
+      { at: 32, text: '主歌铺垫' }
+    ])
+  })
+
+  it('drops string refs without any timestamp and keeps the concept itself', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        concepts: [
+          { term: '承诺', definition: '歌词对爱的承诺表达。', refs: ['这是一段没有任何时间锚点的引用'] }
+        ]
+      })
+    )
+    expect(note.concepts[0]?.term).toBe('承诺')
+    expect(note.concepts[0]?.refs).toEqual([])
+  })
+
+  it('leaves object refs untouched (regression guard)', () => {
+    const note = parseNote(
+      JSON.stringify({
+        ...base,
+        concepts: [{ term: '极限', definition: '定义。', refs: [{ at: '02:30', text: '两句引文' }] }]
+      })
+    )
+    expect(note.concepts[0]?.refs).toEqual([{ at: 150, text: '两句引文' }])
+  })
+})
