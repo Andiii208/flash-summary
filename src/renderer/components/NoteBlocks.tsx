@@ -48,9 +48,18 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
               <span class="concept-term">{c.term}</span>
               <p class="concept-def">{c.definition}</p>
               {c.refs.length > 0 && (
-                <span class="concept-ref" title={c.refs[0]?.text}>
+                <button
+                  class="concept-ref"
+                  title="定位到时间线对应条目"
+                  onClick={() => {
+                    // 批6: the timestamp was a dead end before — now it jumps to
+                    // the matching timeline card (same view, scroll only).
+                    const target = document.querySelector(`[data-timeline-at="${c.refs[0]?.at ?? 0}"]`)
+                    if (target != null && typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'center' })
+                  }}
+                >
                   {formatTime(c.refs[0]?.at ?? 0)}
-                </span>
+                </button>
               )}
             </div>
           ))}
@@ -90,28 +99,38 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
 
 /** Self-quiz flashcards (roadmap 2.1): question first, click to flip the
  *  answer over — zero dependencies, plain Preact state.
- *  M2.2: exported for reuse inside the mind map node popover. */
+ *  M2.2: exported for reuse inside the mind map node popover.
+ *  批6: reveal state keys on the QUESTION, not the array index — a
+ *  regenerated note must not inherit «open» onto different content. */
 export function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
-  const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set())
-  const toggle = (index: number): void => {
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set())
+  const toggle = (key: string): void => {
     setRevealed((prev) => {
       const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
   return (
     <div class="quiz-list" data-testid="quiz-cards">
-      {items.map((item, i) => {
-        const open = revealed.has(i)
+      {items.map((item) => {
+        const key = item.question
+        const open = revealed.has(key)
         const anchor = item.source === 'concept' ? `概念 · ${item.term ?? ''}` : '考点'
         return (
-          <article key={i} class={`quiz-card${open ? ' revealed' : ''}`}>
+          <article key={key} class={`quiz-card${open ? ' revealed' : ''}`}>
             <span class="quiz-tag">{anchor}</span>
-            <button class="quiz-flip" onClick={() => toggle(i)} aria-expanded={open}>
+            <button class="quiz-flip" onClick={() => toggle(key)} aria-expanded={open}>
               <p class="quiz-question">{item.question}</p>
-              {open ? <p class="quiz-answer">{item.answer}</p> : <span class="quiz-hint">点击翻面看答案</span>}
+              {open ? (
+                <>
+                  <p class="quiz-answer">{item.answer}</p>
+                  <span class="quiz-hint quiz-collapse-hint">再点一次收起</span>
+                </>
+              ) : (
+                <span class="quiz-hint">点击翻面看答案</span>
+              )}
             </button>
           </article>
         )
@@ -171,34 +190,39 @@ function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: num
  *  (the collapsed card shows only the closest one). */
 function TimelineCards({ entries, getAttachment, manifest, version: versionForRerender }: { entries: Note['timeline']; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number }): JSX.Element {
   void versionForRerender
-  const [zoom, setZoom] = useState<TimelineImage | null>(null)
-  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
-  const toggleRefs = (index: number): void => {
+  const [zoom, setZoom] = useState<{ img: TimelineImage; entryTitle: string; at: number } | null>(null)
+  // 批6: expansion keys on content (at+title), not the index — regenerating
+  // the note must not leave «open» stuck onto different entries.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const entryKey = (entry: Note['timeline'][number]): string => `${entry.at}:${entry.title}`
+  const toggleRefs = (key: string): void => {
     setExpanded((prev) => {
       const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
   return (
     <div class="timeline-cards" data-testid="timeline-cards">
-      {entries.map((entry, i) => {
+      {entries.map((entry) => {
         const images = bindTimelineImagesLazy(entry, getAttachment ?? (() => null), manifest)
         const quote = quoteForEntry(entry)
-        const showAllRefs = expanded.has(i)
+        const key = entryKey(entry)
+        const showAllRefs = expanded.has(key)
         const refs = showAllRefs ? entry.refs : quote != null ? [quote] : []
         return (
-          <article key={i} class="timeline-card">
+          <article key={key} class="timeline-card" data-timeline-at={entry.at}>
             <header class="timeline-head">
-              <button
-                class={`timeline-stamp${showAllRefs ? ' active' : ''}`}
-                onClick={() => toggleRefs(i)}
-                title={entry.refs.length > 1 ? '点击展开/收起全部转写引文' : undefined}
-                aria-expanded={entry.refs.length > 1 ? showAllRefs : undefined}
-              >
-                {formatTime(entry.at)}
-              </button>
+              {/* 批6: a single-ref stamp is a label, not a button — the toggle
+                  only exists when there is more than one quote to expand. */}
+              {entry.refs.length > 1 ? (
+                <button class={`timeline-stamp${showAllRefs ? ' active' : ''}`} onClick={() => toggleRefs(key)} title="点击展开/收起全部转写引文" aria-expanded={showAllRefs}>
+                  {formatTime(entry.at)}
+                </button>
+              ) : (
+                <span class="timeline-stamp">{formatTime(entry.at)}</span>
+              )}
               <h4 class="timeline-title">{entry.title}</h4>
             </header>
             <p class="timeline-detail">{entry.detail}</p>
@@ -208,16 +232,21 @@ function TimelineCards({ entries, getAttachment, manifest, version: versionForRe
               </blockquote>
             ))}
             {entry.refs.length > 1 && (
-              <button class="refs-toggle" onClick={() => toggleRefs(i)}>
+              <button class="refs-toggle" onClick={() => toggleRefs(key)}>
                 {showAllRefs ? `收起（${entry.refs.length} 条）` : `展开全部 ${entry.refs.length} 条引文`}
               </button>
             )}
             {images.length > 0 && (
               <div class="timeline-images">
                 {images.map((img) => (
-                  <button key={img.ref} class="timeline-thumb" title={img.ref} onClick={() => setZoom(img)}>
+                  <button
+                    key={img.ref}
+                    class="timeline-thumb"
+                    title={`放大查看（${img.origin === 'evidence' ? '笔记引用的画面' : '临近关键帧'}）`}
+                    onClick={() => setZoom({ img, entryTitle: entry.title, at: entry.at })}
+                  >
                     <img src={img.dataUrl} alt={`${entry.title}的课堂画面`} loading="lazy" />
-                    <span class={`thumb-origin ${img.origin}`}>{img.origin === 'evidence' ? '引用' : '就近'}</span>
+                    <span class={`thumb-origin ${img.origin}`}>{img.origin === 'evidence' ? '引用画面' : '临近画面'}</span>
                   </button>
                 ))}
               </div>
@@ -225,8 +254,16 @@ function TimelineCards({ entries, getAttachment, manifest, version: versionForRe
           </article>
         )
       })}
-      <Dialog open={zoom != null} title={zoom?.ref ?? ''} confirmLabel="关闭" onConfirm={() => setZoom(null)} onCancel={() => setZoom(null)}>
-        {zoom != null && <img class="zoom-image" src={zoom.dataUrl} alt={zoom.ref} />}
+      {/* 批6: human title + single close action + backdrop click (view dialog). */}
+      <Dialog
+        open={zoom != null}
+        kind="view"
+        title={zoom != null ? `${zoom.entryTitle} · ${formatTime(zoom.at)}` : ''}
+        confirmLabel="关闭"
+        onConfirm={() => setZoom(null)}
+        onCancel={() => setZoom(null)}
+      >
+        {zoom != null && <img class="zoom-image" src={zoom.img.dataUrl} alt={zoom.entryTitle} />}
       </Dialog>
     </div>
   )
@@ -265,17 +302,27 @@ export function EvidenceGallery({ note, getAttachment, manifest, version: versio
       {gallery.map((img) => (
         <figure key={img.ref} class="evidence-fig">
           {/* C3: gallery figures zoom like the timeline thumbs. */}
-          <button class="evidence-zoom-btn" title={`放大 ${img.ref}`} onClick={() => setZoom(img)}>
+          <button class="evidence-zoom-btn" title={`放大查看（${img.origin === 'evidence' ? '笔记引用的画面' : '时间线画面'}）`} onClick={() => setZoom(img)}>
             <img src={img.dataUrl} alt={`课堂画面 ${img.ref}`} loading="lazy" />
           </button>
           <figcaption>
-            <span class="evidence-ref">{img.ref}</span>
+            <span class="evidence-ref" title={`画面标识：${img.ref}`}>
+              {img.ref}
+            </span>
             <span class={`thumb-origin ${img.origin}`}>{img.origin === 'evidence' ? '笔记引用' : '时间线画面'}</span>
           </figcaption>
         </figure>
       ))}
-      <Dialog open={zoom != null} title={zoom?.ref ?? ''} confirmLabel="关闭" onConfirm={() => setZoom(null)} onCancel={() => setZoom(null)}>
-        {zoom != null && <img class="zoom-image" src={zoom.dataUrl} alt={zoom.ref} />}
+      {/* 批6: view dialog — one close action, backdrop click, scroll lock. */}
+      <Dialog
+        open={zoom != null}
+        kind="view"
+        title={zoom != null ? `课堂画面 · ${zoom.ref}` : ''}
+        confirmLabel="关闭"
+        onConfirm={() => setZoom(null)}
+        onCancel={() => setZoom(null)}
+      >
+        {zoom != null && <img class="zoom-image" src={zoom.dataUrl} alt="课堂画面" />}
       </Dialog>
     </div>
   )

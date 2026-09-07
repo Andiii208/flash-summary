@@ -22,6 +22,9 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
   const meta = [courseName, teacher ?? '', [courTimes, classroom].filter((s) => s != null && s !== '').join(' · ')]
     .filter((s) => s !== '')
     .join(' ｜ ')
+  // 批6: computed once — empty sections drop out entirely (a heading with
+  // nothing under it printed as a dangling section).
+  const galleryImages = resolveEvidenceGallery(note, attachments)
   return (
     <div class="ph-doc" id="print-root-inner">
       <section class="ph-cover">
@@ -47,12 +50,14 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
         <MdLite text={note.overview} />
       </section>
 
-      <section class="ph-section">
-        <h2>时间线</h2>
-        {note.timeline.map((entry, i) => (
-          <PrintTimelineCard key={i} entry={entry} attachments={attachments} />
-        ))}
-      </section>
+      {note.timeline.length > 0 && (
+        <section class="ph-section">
+          <h2>时间线</h2>
+          {note.timeline.map((entry, i) => (
+            <PrintTimelineCard key={i} entry={entry} attachments={attachments} />
+          ))}
+        </section>
+      )}
 
       {note.concepts.length > 0 && (
         <section class="ph-section">
@@ -87,10 +92,12 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
         </section>
       )}
 
-      <section class="ph-section">
-        <h2>方法论</h2>
-        <MdLite text={note.methodology} />
-      </section>
+      {note.methodology.trim() !== '' && (
+        <section class="ph-section">
+          <h2>方法论</h2>
+          <MdLite text={note.methodology} />
+        </section>
+      )}
 
       {(note.examCues.length > 0 || note.questionsAndGaps.length > 0) && (
         <section class="ph-section">
@@ -110,33 +117,46 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
         </section>
       )}
 
+      {/* 批6: 题目与答案分离——纸面自测保留「先想后看」的交互价值，
+          答案集中在小节末尾（先做再看）。 */}
       {note.quiz.length > 0 && (
-        <section class="ph-section">
-          <h2>自测题</h2>
-          {note.quiz.map((item, i) => (
-            <div key={i} class="ph-quiz-row">
-              <div class="ph-quiz-q">
-                <span class="ph-quiz-num">{i + 1}</span>
-                <span class="ph-quiz-tag">{item.source === 'concept' ? `概念 · ${item.term ?? ''}` : '考点'}</span>
-                <span class="ph-quiz-question">{item.question}</span>
+        <>
+          <section class="ph-section">
+            <h2>自测题</h2>
+            {note.quiz.map((item, i) => (
+              <div key={i} class="ph-quiz-row">
+                <div class="ph-quiz-q">
+                  <span class="ph-quiz-num">{i + 1}</span>
+                  <span class="ph-quiz-tag">{item.source === 'concept' ? `概念 · ${item.term ?? ''}` : '考点'}</span>
+                  <span class="ph-quiz-question">{item.question}</span>
+                </div>
               </div>
-              <div class="ph-quiz-a">{item.answer}</div>
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
+          <section class="ph-section ph-quiz-answers">
+            <h2>自测题答案</h2>
+            {note.quiz.map((item, i) => (
+              <p key={i} class="ph-quiz-answer">
+                <span class="ph-quiz-num">{i + 1}</span> {item.answer}
+              </p>
+            ))}
+          </section>
+        </>
       )}
 
-      <section class="ph-section">
-        <h2>课堂画面</h2>
-        <div class="ph-gallery">
-          {resolveEvidenceGallery(note, attachments).map((img) => (
-            <figure key={img.ref}>
-              <img src={img.dataUrl} alt={`课堂画面 ${img.ref}`} />
-              <figcaption>{img.ref}</figcaption>
-            </figure>
-          ))}
-        </div>
-      </section>
+      {galleryImages.length > 0 && (
+        <section class="ph-section">
+          <h2>课堂画面</h2>
+          <div class="ph-gallery">
+            {galleryImages.map((img) => (
+              <figure key={img.ref}>
+                <img src={img.dataUrl} alt={`课堂画面 ${img.ref}`} />
+                <figcaption>{img.ref}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div class="ph-footer">SEU Summary 生成 · 依据课堂转写与关键帧画面整理</div>
     </div>

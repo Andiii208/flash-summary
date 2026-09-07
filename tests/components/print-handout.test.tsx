@@ -102,8 +102,14 @@ describe('PrintHandout (PDF 讲义, 2026-09-04)', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]!.querySelector('.ph-quiz-question')?.textContent).toBe('什么是大O？')
     expect(rows[0]!.querySelector('.ph-quiz-tag')?.textContent).toBe('概念 · 大O')
-    expect(rows[0]!.querySelector('.ph-quiz-a')?.textContent).toBe('渐进上界')
     expect(rows[1]!.querySelector('.ph-quiz-tag')?.textContent).toBe('考点')
+    // 批6: answers leave the question rows — they print in their own section
+    // at the end so the paper keeps «think first, then look».
+    expect(rows[0]!.querySelector('.ph-quiz-a')).toBeNull()
+    const answers = host.querySelector('.ph-quiz-answers')
+    expect(answers?.textContent).toContain('自测题答案')
+    expect(answers?.textContent).toContain('渐进上界')
+    expect(answers?.textContent).toContain('主定理展开')
     const bare = document.createElement('div')
     render(<PrintHandout note={NOTE} attachments={[]} courseName="c" lessonTitle="l" generatedAt="t" />, bare)
     expect((bare.textContent ?? '')).not.toContain('自测题')
@@ -126,9 +132,8 @@ describe('PrintHandout (PDF 讲义, 2026-09-04)', () => {
     const text = host.textContent ?? ''
     expect(text).not.toContain('概念与定义')
     expect(text).not.toContain('考试与作业提示')
-    expect(host.querySelector('.ph-gallery figure')).toBeNull()
-    // The gallery section itself keeps its placeholder-free heading.
-    expect(text).toContain('课堂画面')
+    // 批6: the 课堂画面 heading drops with the empty gallery — no dangling section.
+    expect(text).not.toContain('课堂画面')
   })
 })
 

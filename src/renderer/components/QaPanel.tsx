@@ -101,7 +101,8 @@ export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lesson
                 >
                   <span class="qa-recent-where">{where !== '' ? where : r.lessonId}</span>
                   <span class="qa-recent-q">{r.question}</span>
-                  <span class="qa-recent-time">{recentStamp(r.createdAt)}</span>
+                  {/* 批6: 相对时间与对话流统一（超一周由 qaTimeLabel 回退绝对时间）。 */}
+                  <span class="qa-recent-time">{qaTimeLabel(r.createdAt)}</span>
                 </button>
               )
             })}

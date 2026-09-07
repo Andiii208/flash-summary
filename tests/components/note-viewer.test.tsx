@@ -83,7 +83,9 @@ describe('NoteViewer', () => {
     const host = mount(<NoteViewer note={NOTE} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
     const card = host.querySelectorAll('.timeline-card')[1]!
     expect(card.querySelector('.timeline-thumb img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
-    expect(card.querySelector('.thumb-origin')?.textContent).toBe('就近')
+    // 批6: badge copy speaks plainly and the button title explains the origin.
+    expect(card.querySelector('.thumb-origin')?.textContent).toBe('临近画面')
+    expect(card.querySelector('.timeline-thumb')?.getAttribute('title')).toContain('临近关键帧')
     // The 引入 card (65s) is out of tolerance from the 300s keyframe.
     expect(host.querySelectorAll('.timeline-card')[0]!.querySelector('.timeline-thumb')).toBeNull()
   })
@@ -208,7 +210,8 @@ describe('NoteViewer', () => {
     expect(cards[0]!.querySelector('.quiz-hint')?.textContent).toBe('点击翻面看答案')
     click(cards[0]!.querySelector('.quiz-flip') as HTMLButtonElement)
     expect(cards[0]!.querySelector('.quiz-answer')?.textContent).toBe('渐进上界')
-    expect(cards[0]!.querySelector('.quiz-hint')).toBeNull()
+    // 批6: the revealed side advertises that clicking again collapses it.
+    expect(cards[0]!.querySelector('.quiz-collapse-hint')?.textContent).toBe('再点一次收起')
     // The other card stays question-side until clicked too.
     expect(cards[1]!.querySelector('.quiz-answer')).toBeNull()
     click(cards[1]!.querySelector('.quiz-flip') as HTMLButtonElement)
@@ -269,7 +272,7 @@ describe('NoteViewer', () => {
     const host = mount(<NoteViewer note={NOTE} />)
     expect(host.querySelector('.lesson-nav')).toBeNull()
   })
-  it('shows the cross-lesson note library instead of the dead empty state (批B)', () => {
+  it('shows the cross-lesson note library grouped by course (批B + 批6)', () => {
     const onOpenLesson = vi.fn()
     const library = [
       { lessonId: 'l2', version: 3, createdAt: '2026-09-04T02:00:00Z', courseName: '算法导论', teacher: '汪海', lessonTitle: '第2节课' }
@@ -279,10 +282,14 @@ describe('NoteViewer', () => {
     // the library under its own subheading (the bare .msg line is gone).
     expect(host.querySelector('.note-body .empty-state')).not.toBeNull()
     expect(host.querySelector('.subheading')?.textContent).toContain('全部笔记')
+    // 批6: the course identity lives on the group head; the row carries the lesson.
+    const group = host.querySelector('.note-library-group-head')
+    expect(group?.textContent).toContain('算法导论 · 汪海')
+    expect(group?.textContent).toContain('1')
     const row = host.querySelector('[data-testid="note-library-row"]')
     expect(row).not.toBeNull()
-    expect(row?.textContent).toContain('算法导论 · 汪海 — 第2节课')
-    expect(row?.textContent).toContain('v3')
+    expect(row?.textContent).toContain('第2节课')
+    expect(row?.querySelector('.badge')?.getAttribute('title')).toBe('第 3 次生成')
     click(row)
     expect(onOpenLesson).toHaveBeenCalledWith('l2')
   })
@@ -324,5 +331,37 @@ describe('NoteViewer M2.2 导图跳转', () => {
     // Back on the detailed view — the anchored concept card is on screen.
     expect(host.querySelector('.note-body')?.getAttribute('data-view')).toBe('detailed')
     expect(host.querySelector('[data-concept-term="大O"]')).not.toBeNull()
+  })
+})
+
+describe('NoteViewer 批6 阅读细节', () => {
+  it('a single-ref stamp renders as a passive label, not a dead toggle button', () => {
+    const host = mount(<NoteViewer note={NOTE} />)
+    const stamp = host.querySelector('.timeline-card .timeline-stamp')
+    expect(stamp?.tagName).toBe('SPAN')
+  })
+
+  it('the image zoom dialog is a view dialog: one 关闭 action, no 取消 pair', () => {
+    const host = mount(<NoteViewer note={NOTE} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
+    click(host.querySelector('.timeline-thumb') ?? null)
+    const dialog = host.querySelector('.dialog')
+    expect(dialog).not.toBeNull()
+    // Human title: entry title + timestamp, not the raw ref.
+    expect(dialog?.querySelector('.dialog-title')?.textContent).toContain('示例')
+    expect(dialog?.querySelector('.dialog-title')?.textContent).toContain('05:00')
+    const actions = host.querySelectorAll('.dialog-actions button')
+    expect(actions).toHaveLength(1)
+    expect(actions[0]?.textContent).toBe('关闭')
+  })
+
+  it('concept-card timestamps are locate buttons aimed at the timeline', () => {
+    const anchored: Note = {
+      ...NOTE,
+      concepts: [{ term: '大O', definition: '渐进上界', refs: [{ at: 65, text: '第 1 分钟讲到' }] }]
+    }
+    const host = mount(<NoteViewer note={anchored} />)
+    const stamp = host.querySelector('button.concept-ref')
+    expect(stamp).not.toBeNull()
+    expect(stamp?.getAttribute('title')).toContain('定位到时间线')
   })
 })

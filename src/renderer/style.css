@@ -957,6 +957,17 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 /* ---- note viewer ---- */
 /* 批B: cross-lesson note library (notes tab empty state) + recent Q&A rows. */
 .note-library, .qa-recent { display: flex; flex-direction: column; gap: 6px; max-width: var(--content-max); }
+/* 批6: 课程分组——组头（课程·教师+条数）可折叠，行内只剩课时名。 */
+.note-library-group { display: flex; flex-direction: column; gap: 4px; }
+.note-library-group-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: none; border: none; padding: 4px 2px; cursor: pointer;
+  font-family: inherit; font-size: var(--font-size-sm); font-weight: 620; color: var(--text-secondary);
+  text-align: left;
+}
+.note-library-group-head:hover { color: var(--text); }
+.note-library-count { font-size: var(--font-size-xs); font-weight: 500; color: var(--text-muted); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; }
+.note-library-lesson { min-width: 0; overflow-wrap: anywhere; text-align: left; }
 .note-library-row, .qa-recent-row {
   display: flex;
   align-items: center;
@@ -1309,6 +1320,8 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .timeline-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .timeline-head { display: flex; align-items: baseline; gap: 10px; }
 .timeline-stamp { font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--accent); background: var(--accent-soft); padding: 1px 8px; border-radius: 999px; font-weight: 600; border: none; cursor: pointer; }
+/* 批6: 单引文的时间戳是纯标签（span），无按钮手感。 */
+span.timeline-stamp { cursor: default; }
 .timeline-stamp.active { background: var(--accent-soft-2); }
 .timeline-stamp:hover { background: var(--accent-soft-2); }
 .refs-toggle { align-self: flex-start; background: none; border: none; color: var(--text-muted); font-size: var(--font-size-xs); cursor: pointer; padding: 0; }
@@ -1331,6 +1344,10 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .concept-term { font-weight: 650; color: var(--accent); font-size: var(--font-size-md); }
 .concept-def { margin: 0; font-size: var(--font-size-sm); line-height: 1.6; color: var(--text); }
 .concept-ref { position: absolute; top: 8px; right: 10px; font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--text-muted); }
+/* 批6: 概念卡时间戳成为定位按钮——可点击外观必须有响应。 */
+button.concept-ref { background: none; border: none; cursor: pointer; font-family: inherit; padding: 0; }
+button.concept-ref:hover { color: var(--accent); }
+.quiz-collapse-hint { opacity: 0.7; }
 
 /* ---- 公式/代码/操作 ---- */
 .formula-list { display: flex; flex-direction: column; gap: 10px; }
@@ -1488,8 +1505,7 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
   color: var(--text-muted); font-size: var(--font-size-sm);
 }
 
-/* ---- 证据图集 ---- */
-.evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+/* ---- 证据图集 ---- */.evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .evidence-fig { position: relative; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
 .evidence-fig img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
 .evidence-fig figcaption { display: flex; justify-content: space-between; align-items: center; padding: 5px 9px; font-size: var(--font-size-xs); }
