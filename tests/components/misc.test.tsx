@@ -81,7 +81,7 @@ describe('WelcomeGuide (批1 双源并列: two parallel source paths)', () => {
   it('disables the login action while a login is in flight', () => {
     const onLogin = vi.fn()
     const host = mount(<WelcomeGuide onLogin={onLogin} onOpenBili={() => undefined} onOpenSettings={() => undefined} busy />)
-    const loginButton = host.querySelector<HTMLButtonElement>('.guide-actions button.primary')
+    const loginButton = host.querySelector<HTMLButtonElement>('.empty-actions button.primary')
     expect(loginButton?.disabled).toBe(true)
     expect(host.textContent).toContain('登录中…')
     click(loginButton)

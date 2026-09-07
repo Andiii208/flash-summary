@@ -24,6 +24,12 @@ npm run lint && npm run typecheck && npm test
 - push 前 `git status` 只含本阶段目标文件。
 - 每阶段结束跑 neat-freak 式一致性检查：README/AGENTS/docs 与代码事实一致，只保留一个现役答案；发现待删残留列清单不擅自删除。
 
+## UI 约定（2026-09-08 批6 收口）
+
+- busy 视觉：慢操作一律「文案加省略号 + disabled」（如「添加中…」），hook 侧做 in-flight 守卫防连点；不新增第三种 busy 形态。
+- 模态层统一用共享 `ui/Dialog`（含滚动锁/Esc/居中遮罩）；自绘弹层必须挂 `useModalScrollLock`。
+- 笔记字段里的用户可见文本一律经 `MdLite`/`InlineText` 渲染——模型会自由输出 `**加粗**`，纯文本插值会印出字面星号。
+
 ## 安全红线（违反即失败）
 
 - 不提交：.env、Cookie、TGT、API Key、auth_key、完整视频直链。

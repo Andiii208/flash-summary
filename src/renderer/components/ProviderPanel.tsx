@@ -46,6 +46,8 @@ export interface ProviderPanelProps {
   onTest?: (input: { baseUrl: string; apiKey: string; model: string }) => void
   /** M3 批 D: result of the last probe (parent owns the async state). */
   testResult?: { ok: boolean; text: string } | null
+  /** 批6: the probe is in flight — the test button disables (no double fire). */
+  testBusy?: boolean
 }
 
 /** Fixed capability legend at the top of the block. */
@@ -121,6 +123,8 @@ interface ProviderFormProps {
   onModel: (id: string, v: string) => void
   onSubmit: () => void
   onTest: () => void
+  /** 批6: probe in flight — disables the test button. */
+  testBusy?: boolean
 }
 
 /** The add/edit form — collapsed under <details> once a provider exists. */
@@ -176,8 +180,8 @@ function ProviderForm(p: ProviderFormProps): JSX.Element {
           {p.busy ? '保存中…' : p.editing ? '保存修改' : p.capabilities.size > 1 ? `保存并绑定 ${p.capabilities.size} 项能力` : '保存并绑定'}
         </button>
         {p.onTest != null && (
-          <button class="btn" onClick={p.onTest} disabled={!p.canTest || p.busy} title={p.canTest ? undefined : '填写 Base URL、API Key 和模型后可测试'}>
-            测试连接
+          <button class="btn" onClick={p.onTest} disabled={!p.canTest || p.busy || p.testBusy === true} title={p.canTest ? undefined : '填写 Base URL、API Key 和模型后可测试'}>
+            {p.testBusy === true ? '测试中…' : '测试连接'}
           </button>
         )}
       </div>
@@ -191,7 +195,7 @@ function ProviderForm(p: ProviderFormProps): JSX.Element {
 }
 
 /** Settings › Provider 配置（2026-09-05 批4 重排：能力说明 → 状态 → 表单）。 */
-export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testResult }: ProviderPanelProps): JSX.Element {
+export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testResult, testBusy = false }: ProviderPanelProps): JSX.Element {
   const [preset, setPreset] = useState(PROVIDER_PRESETS[0]!.label)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState(PROVIDER_PRESETS[0]!.name)
@@ -301,6 +305,7 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
           canSave={canSave}
           canTest={canTest}
           testResult={testResult}
+          testBusy={testBusy}
           onPreset={applyPreset}
           onName={setName}
           onBaseUrl={setBaseUrl}

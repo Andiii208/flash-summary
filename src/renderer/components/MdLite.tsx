@@ -26,7 +26,9 @@ export function MdLite({ text }: { text: string }): JSX.Element {
       {blocks.map((block, i) => {
         switch (block.t) {
           case 'heading': {
-            const level = Math.min(block.level + 2, 6)
+            // 批6 (plan 2026-09-07 v07): markdown headings render as h4-h6 —
+            // h3 competed with the page skeleton's section headings.
+            const level = Math.min(block.level + 3, 6)
             const Tag = `h${level}` as 'h3'
             return (
               <Tag key={i} class={`md-h md-h${block.level}`}>

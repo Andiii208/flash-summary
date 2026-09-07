@@ -473,6 +473,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 
 /* ---- buttons ---- */
+/* busy 视觉约定（批6 收口，plan 2026-09-07 v07）：凡慢操作一律
+   「文案加省略号 + disabled」，如「添加中…」「润色中…」；并在 hook 侧
+   做 in-flight 守卫（连点不发第二次）。不再新增第三种 busy 形态。 */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -1255,8 +1258,8 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .empty-state { margin: 0; }
 .welcome-guide { margin: 10px 0 16px; }
 .empty-mark { color: var(--brass); opacity: 0.85; margin-bottom: 6px; display: flex; justify-content: center; }
-.empty-state h3, .welcome-guide h2 { margin: 0 0 8px; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
-.empty-state p, .welcome-guide p { color: var(--text-muted); margin: 0 0 14px; font-size: var(--font-size-md); }
+.empty-state h3 { margin: 0 0 8px; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
+.empty-state p { color: var(--text-muted); margin: 0 0 14px; font-size: var(--font-size-md); }
 .guide-steps {
   text-align: left;
   display: inline-block;
@@ -1266,7 +1269,7 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 }
 .guide-steps li { margin: 5px 0; }
 .guide-steps li::marker { color: var(--accent); font-weight: 700; }
-.guide-actions { display: flex; gap: 10px; justify-content: center; }
+.guide-actions, .empty-actions { display: flex; gap: 10px; justify-content: center; }
 
 /* ---- manual fallback ---- */
 /* 2026-09-05: 2px side padding aligns the summary onto the sidebar text axis
@@ -1654,6 +1657,9 @@ button.concept-ref:hover { color: var(--accent); }
 }
 .error-boundary h3 { margin: 0 0 8px; }
 .error-boundary p { color: var(--text-muted, #667085); margin: 0 0 16px; }
+/* 批6: 复制详情/打开日志动作行 + 操作反馈小字。 */
+.error-boundary-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.error-boundary-note { margin: 10px 0 0; font-size: var(--font-size-sm); color: var(--text-muted, #667085); }
 
 /* ---- B站导入对话框 (plan 2026-09-06 M5 面板 → 批1 双源并列升格为一级对话框；
         token 驱动、反截断、双主题兼容) ---- */

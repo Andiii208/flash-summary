@@ -427,6 +427,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onRemoveProvider={state.removeProvider}
               onTestProvider={state.testProvider}
               providerTestResult={state.providerTest}
+              providerTestBusy={state.providerTestBusy}
               onSetCacheDir={state.setCacheDir}
               onChooseCacheDir={state.chooseCacheDir}
               chosenCacheDir={state.chosenCacheDir}
@@ -586,6 +587,7 @@ interface AppState {
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   providerTest: { ok: boolean; text: string } | null
+  providerTestBusy: boolean
   exportNote: (lessonId: string) => void
   /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
   exportNoteAnki: (lessonId: string) => void
@@ -743,7 +745,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
+  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -1913,6 +1915,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     removeProvider,
     testProvider,
     providerTest,
+    providerTestBusy,
     exportNote,
     exportNoteAnki,
     exportNoteSvg,

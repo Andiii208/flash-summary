@@ -160,6 +160,7 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onR
             <button
               key={lesson.id}
               class={`lesson-row${lesson.id === selectedLesson ? ' selected' : ''}`}
+              title={lesson.title}
               onClick={() => onSelect(lesson.id)}
             >
               <span class="lesson-title">{lesson.title}</span>

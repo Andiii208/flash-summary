@@ -28,6 +28,8 @@ export interface SettingsPanelProps {
   onRemoveProvider: ProviderPanelProps['onRemove']
   onTestProvider?: ProviderPanelProps['onTest']
   providerTestResult?: ProviderPanelProps['testResult']
+  /** 批6: connection probe in flight — the test button disables. */
+  providerTestBusy?: boolean
   onSetCacheDir: (dir: string) => void
   /** C10: open the folder picker; result arrives via chosenCacheDir. */
   onChooseCacheDir?: () => void
@@ -213,7 +215,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
       </section>
 
       <section class="settings-block">
-        <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} />
+        <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} testBusy={props.providerTestBusy} />
       </section>
 
       <footer class="settings-footer">

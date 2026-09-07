@@ -14,6 +14,8 @@ export interface ConfigDomain {
   providers: ProvidersListResult | null
   providerBusy: boolean
   providerTest: { ok: boolean; text: string } | null
+  /** 批6: true while the connection probe runs — the test button disables. */
+  providerTestBusy: boolean
   settings: AppSettingsInfo | null
   /** 批4: per-domain load failure — the settings page shows it with a retry
       instead of an eternal blank/«…» (silent failure used to read as broken). */
@@ -44,6 +46,8 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   const [providers, setProviders] = useState<ProvidersListResult | null>(null)
   const [providerBusy, setProviderBusy] = useState(false)
   const [providerTest, setProviderTest] = useState<{ ok: boolean; text: string } | null>(null)
+  /** 批6: connection probe in flight (disables the test button). */
+  const [providerTestBusy, setProviderTestBusy] = useState(false)
   const [settings, setSettings] = useState<AppSettingsInfo | null>(null)
   const [loadError, setLoadError] = useState<{ providers: string | null; settings: string | null }>({ providers: null, settings: null })
   const [chosenCacheDir, setChosenCacheDir] = useState<string | null>(null)
@@ -86,10 +90,13 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
             return
           }
           const providerId = (saved.value as { id: string }).id
+          // 批6: a failed binding used to abandon the refresh — the list then
+          // showed a stale state while the provider row WAS saved.
           for (const capability of input.capabilities) {
             const bound = await bridge.providers.bind(capability, providerId, (input.models[capability] ?? '').trim())
             if (!bound.ok) {
-              toast(bound.error ?? `绑定 ${capability} 失败`, 'error')
+              toast(`Provider 已保存，但能力 ${capability} 绑定失败：${bound.error ?? '未知错误'}`, 'error')
+              await refreshProviders()
               return
             }
           }
@@ -120,17 +127,24 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
 
   const testProvider = useCallback(
     (input: { baseUrl: string; apiKey: string; model: string }): void => {
+      // 批6: a second click while the probe is in flight re-fired the request.
+      if (providerTestBusy) return
       void (async () => {
-        setProviderTest({ ok: true, text: '测试中…' })
-        const res = await bridge.providers.test(input)
-        if (res.ok && res.value != null) {
-          setProviderTest({ ok: true, text: `连接成功（${res.value.latencyMs}ms）` })
-        } else {
-          setProviderTest({ ok: false, text: `连接失败：${res.error ?? '未知错误'}` })
+        setProviderTestBusy(true)
+        try {
+          setProviderTest({ ok: true, text: '测试中…' })
+          const res = await bridge.providers.test(input)
+          if (res.ok && res.value != null) {
+            setProviderTest({ ok: true, text: `连接成功（${res.value.latencyMs}ms）` })
+          } else {
+            setProviderTest({ ok: false, text: `连接失败：${res.error ?? '未知错误'}` })
+          }
+        } finally {
+          setProviderTestBusy(false)
         }
       })()
     },
-    [bridge]
+    [bridge, providerTestBusy]
   )
 
   const setCacheDir = useCallback(
@@ -216,6 +230,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     providers,
     providerBusy,
     providerTest,
+    providerTestBusy,
     settings,
     loadError,
     chosenCacheDir,
