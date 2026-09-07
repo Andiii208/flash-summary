@@ -37,6 +37,8 @@ export interface SettingsPanelProps {
   /** C3: migration in flight — the button disables and shows progress. */
   libraryBusy?: boolean
   migrationProgress?: { copied: number; total: number } | null
+  /** 批5: a finished migration keeps a persistent restart notice on screen. */
+  libraryMigrated?: boolean
   onChooseLibrary: () => void
   onOpenPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
 }
@@ -47,8 +49,12 @@ const SESSION_LABELS: Record<SessionState, string> = {
   logged_out: '未登录'
 }
 
-function formatSessionInfo(info: SettingsPanelProps['sessionInfo']): string | null {
-  if (info.expiresAt != null) return `会话有效期至 ${new Date(info.expiresAt).toLocaleString()}`
+function formatSessionInfo(info: SettingsPanelProps['sessionInfo'], session: SessionState): string | null {
+  // 批5: an expired session must not present its past deadline as still valid.
+  if (info.expiresAt != null) {
+    const when = new Date(info.expiresAt).toLocaleString()
+    return session === 'expired' ? `会话已于 ${when} 过期，请重新登录` : `会话有效期至 ${when}`
+  }
   if (info.savedAt != null) return `会话保存于 ${new Date(info.savedAt).toLocaleString()}（有效期未知）`
   return null
 }
@@ -107,7 +113,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         </div>
         {props.session !== 'logged_out' && (
           <div class="settings-row">
-            <span class="settings-hint">{formatSessionInfo(props.sessionInfo) ?? ''}</span>
+            <span class="settings-hint">{formatSessionInfo(props.sessionInfo, props.session) ?? ''}</span>
           </div>
         )}
         {/* 批1 双源并列: both accounts are managed in one place. */}
@@ -128,7 +134,10 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         <h3>资料库与缓存位置</h3>
         <div class="settings-row">
           <span class="settings-label">资料库</span>
-          <code class="settings-path" title={props.settings?.libraryRoot ?? ''}>{props.settings?.libraryRoot ?? '…'}</code>
+          {/* 批5: «加载中…» beats a bare «…» — the two states must not look alike. */}
+          <code class="settings-path" title={props.settings?.libraryRoot ?? ''}>
+            {props.settings == null ? '加载中…' : (props.settings.libraryRoot != null && props.settings.libraryRoot !== '' ? props.settings.libraryRoot : '—')}
+          </code>
           <button class="btn small" onClick={props.onChooseLibrary} disabled={props.libraryBusy === true}>
             {props.libraryBusy === true ? '迁移中…' : '更改'}
           </button>
@@ -141,6 +150,12 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
             正在复制附件 {props.migrationProgress.copied}/{props.migrationProgress.total} …请勿关闭应用
           </p>
         )}
+        {/* 批5: 迁移完成的关键动作（重启）不再只活在 3.5s toast 里。 */}
+        {props.libraryMigrated === true && (
+          <p class="settings-hint migration-restart" data-testid="migration-restart-notice">
+            资料库已迁移，重启应用后生效——重启前已打开的资料库仍是旧位置。
+          </p>
+        )}
         <div class="settings-row">
           <span class="settings-label">任务缓存</span>
           <input class="qa-input" value={cacheDraft} placeholder="留空使用默认（资料库\\cache）" onInput={(e) => setCacheDraft((e.target as HTMLInputElement).value)} />
@@ -149,7 +164,13 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
               浏览…
             </button>
           )}
-          <button class="btn small" onClick={() => props.onSetCacheDir(cacheDraft.trim())}>
+          {/* 批5: dirty 检查——值未变时禁用保存，按钮自身即是「已保存」的确认。 */}
+          <button
+            class="btn small"
+            disabled={props.settings == null || cacheDraft.trim() === (props.settings.cacheDir ?? '').trim()}
+            title={props.settings == null ? '设置加载中…' : undefined}
+            onClick={() => props.onSetCacheDir(cacheDraft.trim())}
+          >
             保存
           </button>
           <button class="btn small" onClick={() => props.onOpenPath('cache')}>
@@ -174,7 +195,14 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         <h3>外观</h3>
         <div class="settings-row">
           <span class="settings-label">主题</span>
-          <select class="qa-input theme-select" value={props.settings?.theme ?? 'auto'} onChange={(e) => props.onSetTheme((e.target as HTMLSelectElement).value as 'auto' | 'light' | 'dark')}>
+          {/* 批5: settings 未加载完成前禁用，防「跟随系统→深色」闪变误读为被重置。 */}
+          <select
+            class="qa-input theme-select"
+            value={props.settings?.theme ?? 'auto'}
+            disabled={props.settings == null}
+            title={props.settings == null ? '设置加载中…' : undefined}
+            onChange={(e) => props.onSetTheme((e.target as HTMLSelectElement).value as 'auto' | 'light' | 'dark')}
+          >
             {THEME_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}

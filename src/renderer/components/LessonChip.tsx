@@ -39,19 +39,30 @@ export function LessonChip({ courseName, lessonTitle, lessons, currentLessonId, 
 
   return (
     <span class="lesson-chip" ref={rootRef}>
-      <button
-        class="lesson-chip-btn"
-        title={`${courseName} · ${lessonTitle}${switchable ? '（点击切换本课课时）' : ''}`}
-        aria-expanded={switchable ? open : undefined}
-        onClick={switchable ? () => setOpen((o) => !o) : undefined}
-      >
-        <span class="lesson-chip-course">{courseName}</span>
-        <span class="lesson-chip-dot" aria-hidden="true">
-          ·
+      {/* 批5: 不可切换时降级为纯文本胶囊——按钮外观却无响应是死端。 */}
+      {switchable ? (
+        <button
+          class="lesson-chip-btn"
+          title={`${courseName} · ${lessonTitle}（点击切换本课课时）`}
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span class="lesson-chip-course">{courseName}</span>
+          <span class="lesson-chip-dot" aria-hidden="true">
+            ·
+          </span>
+          <span class="lesson-chip-lesson">{lessonTitle}</span>
+          <ChevronDown size={12} strokeWidth={1.75} class={`chip-caret${open ? ' open' : ''}`} />
+        </button>
+      ) : (
+        <span class="lesson-chip-btn passive" title={`${courseName} · ${lessonTitle}`}>
+          <span class="lesson-chip-course">{courseName}</span>
+          <span class="lesson-chip-dot" aria-hidden="true">
+            ·
+          </span>
+          <span class="lesson-chip-lesson">{lessonTitle}</span>
         </span>
-        <span class="lesson-chip-lesson">{lessonTitle}</span>
-        {switchable && <ChevronDown size={12} strokeWidth={1.75} class={`chip-caret${open ? ' open' : ''}`} />}
-      </button>
+      )}
       {open && switchable && (
         <div class="lesson-chip-menu" role="menu">
           {lessons!.map((lesson) => (

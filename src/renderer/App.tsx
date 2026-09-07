@@ -431,6 +431,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onSetTheme={state.setTheme}
               onChooseLibrary={state.chooseLibrary}
               libraryBusy={state.libraryBusy}
+              libraryMigrated={state.libraryMigrated}
               migrationProgress={state.migrationProgress}
               onOpenPath={state.openPath}
             />
@@ -567,7 +568,7 @@ interface AppState {
   switchLesson: (lessonId: string) => void
   /** 批A: sibling lessons of the selected lesson's course (chip dropdown). */
   currentCourseLessons: LessonChipLesson[]
-  addManual: (courseId: string, lessonId: string) => void
+  addManual: (courseId: string, lessonId: string) => Promise<boolean>
   /** B站导入落地 (plan 2026-09-06 M5): refresh + queue tasks per P. */
   biliImported: (courseId: string, lessonIds: string[]) => void
   /** A2: one click from a finished task to its note. */
@@ -610,6 +611,8 @@ interface AppState {
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   /** C3: migration busy state + live progress for the settings page. */
   libraryBusy: boolean
+  /** 批5: persistent «restart to apply» notice after a finished migration. */
+  libraryMigrated: boolean
   migrationProgress: { copied: number; total: number } | null
   chooseLibrary: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
@@ -733,7 +736,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, settings, loadError, chosenCacheDir, libraryBusy, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
+  const { providers, providerBusy, providerTest, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -1354,16 +1357,19 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   const addManual = useCallback(
-    (courseId: string, lessonId: string): void => {
-      void (async () => {
+    (courseId: string, lessonId: string): Promise<boolean> => {
+      // 批5: returns success so the form clears only when the add landed —
+      // a failure used to wipe the ids the user had to hunt down.
+      return (async () => {
         const res = await bridge.school.addManualCourse(courseId, lessonId)
         if (!res.ok) {
           toast(res.error ?? '添加失败', 'error')
-          return
+          return false
         }
         toast('已添加课程与课时', 'success')
         await refreshTree()
         selectLesson(lessonId)
+        return true
       })()
     },
     [bridge, toast, refreshTree, selectLesson]
@@ -1885,6 +1891,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     removeCourse,
     setTheme,
     libraryBusy,
+    libraryMigrated,
     migrationProgress,
     chooseLibrary,
     openPath

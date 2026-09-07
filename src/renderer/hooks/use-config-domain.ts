@@ -23,6 +23,9 @@ export interface ConfigDomain {
   /** C3: library migration in flight (busy button + progress line). */
   libraryBusy: boolean
   migrationProgress: { copied: number; total: number } | null
+  /** 批5: a finished migration survives as a persistent restart notice on the
+      settings page — it used to live only in a 3.5s toast. */
+  libraryMigrated: boolean
   refreshProviders: () => Promise<void>
   refreshSettings: () => Promise<void>
   /** 2026-09-05 批4: one model PER capability — the UI no longer binds every
@@ -45,6 +48,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   const [loadError, setLoadError] = useState<{ providers: string | null; settings: string | null }>({ providers: null, settings: null })
   const [chosenCacheDir, setChosenCacheDir] = useState<string | null>(null)
   const [libraryBusy, setLibraryBusy] = useState(false)
+  const [libraryMigrated, setLibraryMigrated] = useState(false)
   const [migrationProgress, setMigrationProgress] = useState<{ copied: number; total: number } | null>(null)
 
   const refreshProviders = useCallback(async (): Promise<void> => {
@@ -186,6 +190,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
           return
         }
         if (res.value?.canceled) return
+        setLibraryMigrated(true)
         toast('资料库已迁移，重启应用后生效', 'success')
         await refreshSettings()
       } finally {
@@ -215,6 +220,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     loadError,
     chosenCacheDir,
     libraryBusy,
+    libraryMigrated,
     migrationProgress,
     refreshProviders,
     refreshSettings,

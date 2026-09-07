@@ -265,17 +265,63 @@ describe('ProviderPanel (capability model inputs)', () => {
   })
 })
 
-describe('ManualAdd', () => {
-  it('collects course/lesson ids and calls onAdd, then clears', () => {
-    const onAdd = vi.fn()
+describe('ManualAdd (批5: busy + Enter + success-only clearing)', () => {
+  it('collects course/lesson ids, calls onAdd, and clears ONLY on success', async () => {
+    const onAdd = vi.fn(async () => true)
     const host = mount(<ManualAdd onAdd={onAdd} />)
     const fields = host.querySelectorAll<HTMLInputElement>('input.qa-input')
     input(fields[0], 'c9')
     input(fields[1], 'l9')
     click(host.querySelector('button'))
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(onAdd).toHaveBeenCalledWith('c9', 'l9')
     expect(fields[0]!.value).toBe('')
     expect(fields[1]!.value).toBe('')
+  })
+
+  it('a failed add keeps the ids (they are the expensive-to-retype part)', async () => {
+    const onAdd = vi.fn(async () => false)
+    const host = mount(<ManualAdd onAdd={onAdd} />)
+    const fields = host.querySelectorAll<HTMLInputElement>('input.qa-input')
+    input(fields[0], 'c9')
+    input(fields[1], 'l9')
+    click(host.querySelector('button'))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(fields[0]!.value).toBe('c9')
+    expect(fields[1]!.value).toBe('l9')
+    expect((host.querySelector('button') as HTMLButtonElement).textContent).toBe('添加课程与课时')
+  })
+
+  it('Enter submits and the empty-id guard blocks an incomplete form', async () => {
+    let resolveAdd: (v: boolean) => void = () => undefined
+    const onAdd = vi.fn(
+      () => new Promise<boolean>((resolve) => {
+        resolveAdd = resolve
+      })
+    )
+    const host = mount(<ManualAdd onAdd={onAdd} />)
+    const fields = host.querySelectorAll<HTMLInputElement>('input.qa-input')
+    // Enter with only the course id filled must NOT fire a half request.
+    input(fields[0], 'c1')
+    fields[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(onAdd).not.toHaveBeenCalled()
+    input(fields[1], 'l1')
+    fields[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(onAdd).toHaveBeenCalledWith('c1', 'l1')
+    // Busy window: the button reads 添加中… until the add resolves.
+    expect((host.querySelector('button') as HTMLButtonElement).textContent).toBe('添加中…')
+    resolveAdd(true)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect((host.querySelector('button') as HTMLButtonElement).textContent).toBe('添加课程与课时')
   })
 })
 
@@ -432,5 +478,66 @@ describe('ToastArea 批4 (kind icon + close button)', () => {
   it('renders the kind icon (color alone must not carry the type)', () => {
     const host = mount(<ToastArea toasts={[{ id: 1, message: '失败', kind: 'error' }, { id: 2, message: '好了', kind: 'success' }]} />)
     expect(host.querySelectorAll('.toast-icon')).toHaveLength(2)
+  })
+})
+
+describe('SettingsPanel 批5 细节', () => {
+  const base = {
+    session: 'logged_out' as const,
+    sessionInfo: { savedAt: null, expiresAt: null },
+    sessionBusy: false,
+    onLogin: () => undefined,
+    onLogout: () => undefined,
+    providers: null,
+    providerBusy: false,
+    onSaveProvider: () => undefined,
+    onRemoveProvider: () => undefined,
+    onSetCacheDir: () => undefined,
+    onSetTheme: () => undefined,
+    onChooseLibrary: () => undefined,
+    onOpenPath: () => undefined
+  }
+  const LOADED = { libraryRoot: 'L', cacheDir: 'C:/cache', theme: 'dark' as const }
+
+  it('an expired session says «已于 X 过期» instead of presenting the past deadline as valid', () => {
+    const past = Date.now() - 86_400_000
+    const host = mount(
+      <SettingsPanel
+        {...base}
+        session="expired"
+        sessionInfo={{ savedAt: '2026-09-01T00:00:00Z', expiresAt: past }}
+        settings={LOADED}
+      />
+    )
+    expect(host.textContent).toContain('已于')
+    expect(host.textContent).toContain('过期')
+    expect(host.textContent).not.toContain('有效期至')
+  })
+
+  it('the theme select is disabled while settings load (no «跟随系统→深色» flash)', () => {
+    const loading = mount(<SettingsPanel {...base} settings={null} />)
+    expect((loading.querySelector('.theme-select') as HTMLSelectElement).disabled).toBe(true)
+    const loaded = mount(<SettingsPanel {...base} settings={LOADED} />)
+    expect((loaded.querySelector('.theme-select') as HTMLSelectElement).disabled).toBe(false)
+  })
+
+  it('the library path reads «加载中…» while settings load, not a bare ellipsis', () => {
+    const host = mount(<SettingsPanel {...base} settings={null} />)
+    expect(host.querySelector('.settings-path')?.textContent).toBe('加载中…')
+  })
+
+  it('缓存保存 is dirty-checked: unchanged value keeps the button disabled', () => {
+    const onSetCacheDir = vi.fn()
+    const host = mount(<SettingsPanel {...base} settings={LOADED} onSetCacheDir={onSetCacheDir} />)
+    const save = (): HTMLButtonElement =>
+      Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '保存') as HTMLButtonElement
+    expect(save().disabled).toBe(true)
+    click(save())
+    expect(onSetCacheDir).not.toHaveBeenCalled()
+  })
+
+  it('a finished migration keeps a persistent restart notice on screen', () => {
+    const host = mount(<SettingsPanel {...base} settings={LOADED} libraryMigrated />)
+    expect(host.querySelector('[data-testid="migration-restart-notice"]')?.textContent).toContain('重启应用后生效')
   })
 })

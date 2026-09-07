@@ -55,4 +55,13 @@ describe('LessonChip', () => {
     click(host.querySelectorAll('.lesson-chip-menu button')[0] ?? null)
     expect(onSelect).not.toHaveBeenCalled()
   })
+
+  it('批5: without sibling lessons the chip degrades to a passive span (no dead button)', () => {
+    const host = mount(<LessonChip courseName="数据结构" lessonTitle="第4讲" />)
+    const chip = host.querySelector('.lesson-chip-btn')
+    expect(chip?.tagName).toBe('SPAN')
+    expect(chip?.classList.contains('passive')).toBe(true)
+    // No caret affordance without a menu.
+    expect(host.querySelector('.chip-caret')).toBeNull()
+  })
 })
