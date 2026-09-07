@@ -13,6 +13,9 @@ export interface QaEntry {
   createdAt?: string
   /** 批C: true while the answer is in flight — renders as a pending bubble. */
   pending?: boolean
+  /** 批4: set on failure — the bubble stays in the transcript with a retry,
+      instead of the exchange vanishing with a 6.5s toast. */
+  error?: string
 }
 
 export interface QaPanelProps {
@@ -111,6 +114,17 @@ export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lesson
               <div class="qa-a pending" data-testid="qa-pending">
                 思考中…
               </div>
+            ) : e.error != null ? (
+              // 批4: 失败永久可见于对话流（此前只走一次 6.5s toast，问题像蒸发）。
+              <div class="qa-a qa-error" data-testid="qa-error">
+                <span class="ai-tag" aria-hidden="true">
+                  AI
+                </span>
+                <p class="qa-error-msg">回答失败：{e.error}</p>
+                <button class="btn small" disabled={busy} title={busy ? '上一条还在回答中' : '用同一个问题再问一次'} onClick={() => onAsk(e.question)}>
+                  重试
+                </button>
+              </div>
             ) : (
               <div class="qa-a">
                 <span class="ai-tag" aria-hidden="true">
@@ -128,6 +142,12 @@ export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lesson
             (e.g. a retry path) so «思考中» never renders twice. */}
         {busy && !entries.some((e) => e.pending === true) && <p class="qa-a pending">思考中…</p>}
       </div>
+      {/* 批4: busy 时 Enter 不再静默无回应——输入框上方说明原因。 */}
+      {busy && (
+        <p class="qa-busy-hint" data-testid="qa-busy-hint">
+          上一条还在回答中，请稍候再提问
+        </p>
+      )}
       <div class="qa-input-row">
         <textarea
           class="qa-input"

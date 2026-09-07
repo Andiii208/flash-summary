@@ -15,6 +15,9 @@ export interface ConfigDomain {
   providerBusy: boolean
   providerTest: { ok: boolean; text: string } | null
   settings: AppSettingsInfo | null
+  /** 批4: per-domain load failure — the settings page shows it with a retry
+      instead of an eternal blank/«…» (silent failure used to read as broken). */
+  loadError: { providers: string | null; settings: string | null }
   /** C10: path picked via the folder dialog, for the draft input. */
   chosenCacheDir: string | null
   /** C3: library migration in flight (busy button + progress line). */
@@ -39,18 +42,30 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   const [providerBusy, setProviderBusy] = useState(false)
   const [providerTest, setProviderTest] = useState<{ ok: boolean; text: string } | null>(null)
   const [settings, setSettings] = useState<AppSettingsInfo | null>(null)
+  const [loadError, setLoadError] = useState<{ providers: string | null; settings: string | null }>({ providers: null, settings: null })
   const [chosenCacheDir, setChosenCacheDir] = useState<string | null>(null)
   const [libraryBusy, setLibraryBusy] = useState(false)
   const [migrationProgress, setMigrationProgress] = useState<{ copied: number; total: number } | null>(null)
 
   const refreshProviders = useCallback(async (): Promise<void> => {
     const res = await bridge.providers.list()
-    if (res.ok && res.value != null) setProviders(res.value)
+    // 批4: a silent failure here left the settings page eternally blank.
+    if (res.ok && res.value != null) {
+      setProviders(res.value)
+      setLoadError((e) => (e.providers == null ? e : { ...e, providers: null }))
+    } else {
+      setLoadError((e) => ({ ...e, providers: res.error ?? '加载失败' }))
+    }
   }, [bridge])
 
   const refreshSettings = useCallback(async (): Promise<void> => {
     const res = await bridge.settings.get()
-    if (res.ok && res.value != null) setSettings(res.value)
+    if (res.ok && res.value != null) {
+      setSettings(res.value)
+      setLoadError((e) => (e.settings == null ? e : { ...e, settings: null }))
+    } else {
+      setLoadError((e) => ({ ...e, settings: res.error ?? '加载失败' }))
+    }
   }, [bridge])
 
   const saveProvider = useCallback(
@@ -182,9 +197,14 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
 
   const openPath = useCallback(
     (kind: 'library' | 'cache' | 'exports' | 'logs'): void => {
-      void bridge.settings.openPath(kind)
+      // 批4: the result is checked — a dead button (目录不存在/打开失败) must
+      // at least say why instead of doing nothing.
+      void (async () => {
+        const res = await bridge.settings.openPath(kind)
+        if (!res.ok) toast(res.error ?? '打开目录失败', 'error')
+      })()
     },
-    [bridge]
+    [bridge, toast]
   )
 
   return {
@@ -192,6 +212,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     providerBusy,
     providerTest,
     settings,
+    loadError,
     chosenCacheDir,
     libraryBusy,
     migrationProgress,

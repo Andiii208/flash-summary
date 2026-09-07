@@ -13,6 +13,10 @@ export interface SettingsPanelProps {
   /** Local session metadata (savedAt/JWT exp) shown under the account block. */
   sessionInfo: { savedAt: string | null; expiresAt: number | null }
   sessionBusy: boolean
+  /** 批4: per-domain load failure — surfaced with a retry instead of eternal blank. */
+  loadError?: { providers: string | null; settings: string | null }
+  /** 批4: retry both config loads. */
+  onRetryLoad?: () => void
   /** B站 session for the parallel account row (null = not read yet). */
   biliSession?: 'logged_in' | 'logged_out' | null
   onBiliLogout?: () => void
@@ -74,6 +78,18 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
   return (
     <section class="settings-panel">
       <PageHeader title="设置" />
+
+      {/* 批4: 加载失败不再是永远的空白/«…»——显式错误行 + 重试。 */}
+      {(props.loadError?.providers != null || props.loadError?.settings != null) && props.onRetryLoad != null && (
+        <div class="settings-load-error" role="alert" data-testid="settings-load-error">
+          <span>
+            部分设置加载失败：{[props.loadError.providers, props.loadError.settings].filter((s): s is string => s != null).join('；')}
+          </span>
+          <button class="btn small" onClick={props.onRetryLoad}>
+            重试
+          </button>
+        </div>
+      )}
 
       <section class="settings-block">
         <h3>账号</h3>

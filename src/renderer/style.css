@@ -869,6 +869,19 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 }
 
 .dialog-check { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-sm); color: var(--text-secondary); margin: 4px 0 2px; }
+/* 批4: QA 失败气泡 + busy 提示 + 设置页加载错误行。 */
+.qa-error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.qa-error-msg { margin: 0; color: var(--danger); }
+.qa-error .btn { align-self: flex-start; }
+.qa-busy-hint { font-size: var(--font-size-xs); color: var(--text-muted); margin: 4px 0 0; }
+.settings-load-error {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px; margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  font-size: var(--font-size-sm); color: var(--danger);
+}
 .task-status .btn.small { margin-top: 10px; }
 /* 批2: 进度条 + 百分比读数同行。 */
 .task-progress-row { display: flex; align-items: center; gap: 10px; }
@@ -1171,6 +1184,25 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: 1.5; font-f
 .toast-success::before { background: var(--success); }
 .toast-error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .toast-error::before { background: var(--danger); }
+/* 批4: 类型图标（色盲/扫读兜底）+ 手动关闭。 */
+.toast-icon { flex-shrink: 0; color: var(--accent); }
+.toast-success .toast-icon { color: var(--success); }
+.toast-error .toast-icon { color: var(--danger); }
+.toast-close {
+  flex-shrink: 0;
+  margin-left: 2px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 3px;
+  display: inline-flex;
+  border-radius: 4px;
+  font-family: inherit;
+}
+.toast-close:hover { opacity: 1; color: var(--text); }
+.toast-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-12px) scale(0.96); }
   to { opacity: 1; transform: translateY(0) scale(1); }

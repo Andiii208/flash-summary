@@ -113,3 +113,31 @@ describe('QaPanel', () => {
     expect(host.textContent).toContain('也可以直接提问')
   })
 })
+
+describe('QaPanel 批4 错误反馈', () => {
+  it('a failed exchange renders an inline error bubble with a retry that resends the question', () => {
+    const onAsk = vi.fn()
+    const host = mount(
+      <QaPanel busy={false} hasLesson onAsk={onAsk} entries={[{ question: '为什么反向传播有效？', answer: '', error: '网络中断', createdAt: new Date().toISOString() }]} />
+    )
+    const errorBubble = host.querySelector('[data-testid="qa-error"]')
+    expect(errorBubble).not.toBeNull()
+    expect(errorBubble?.textContent).toContain('回答失败')
+    expect(errorBubble?.textContent).toContain('网络中断')
+    click(errorBubble!.querySelector('button'))
+    expect(onAsk).toHaveBeenCalledWith('为什么反向传播有效？')
+  })
+
+  it('the retry button disables while another answer is in flight', () => {
+    const host = mount(
+      <QaPanel busy hasLesson onAsk={() => undefined} entries={[{ question: 'q', answer: '', error: '网络中断' }]} />
+    )
+    const retry = host.querySelector<HTMLButtonElement>('[data-testid="qa-error"] button')
+    expect(retry?.disabled).toBe(true)
+  })
+
+  it('busy shows a hint above the input instead of swallowing Enter silently', () => {
+    const host = mount(<QaPanel entries={[]} busy hasLesson onAsk={() => undefined} />)
+    expect(host.querySelector('[data-testid="qa-busy-hint"]')?.textContent).toContain('上一条还在回答中')
+  })
+})

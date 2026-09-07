@@ -9,6 +9,7 @@ import { ProviderPanel } from '../../src/renderer/components/ProviderPanel'
 import { SettingsPanel } from '../../src/renderer/components/SettingsPanel'
 import { TopBar } from '../../src/renderer/components/TopBar'
 import { ManualAdd } from '../../src/renderer/components/ManualAdd'
+import { useToasts } from '../../src/renderer/hooks/use-toasts'
 import { mount, click, input } from '../helpers/preact'
 
 describe('ToastArea', () => {
@@ -338,5 +339,98 @@ describe('SettingsPanel cache-dir draft (P6, 2026-09-05)', () => {
     const host = mount(<SettingsPanel {...baseProps} settings={null} biliSession="logged_out" />)
     expect(host.querySelector('[data-testid="bili-account-settings"]')?.textContent).toContain('B站·未登录')
     expect(host.querySelector('[data-testid="bili-account-settings"] button')).toBeNull()
+  })
+
+  it('批4: a failed config load surfaces an error row with retry instead of eternal blank', () => {
+    const onRetryLoad = vi.fn()
+    const host = mount(
+      <SettingsPanel {...baseProps} settings={null} loadError={{ providers: '连接失败', settings: null }} onRetryLoad={onRetryLoad} />
+    )
+    const row = host.querySelector('[data-testid="settings-load-error"]')
+    expect(row?.textContent).toContain('部分设置加载失败')
+    expect(row?.textContent).toContain('连接失败')
+    click(row!.querySelector('button'))
+    expect(onRetryLoad).toHaveBeenCalledOnce()
+  })
+})
+
+/** Harness exposing the latest useToasts state for hook assertions. */
+function ToastHarness({ onState }: { onState: (s: ReturnType<typeof useToasts>) => void }): null {
+  onState(useToasts())
+  return null
+}
+
+describe('useToasts 批4 (error persistent + cap 3 + manual close)', () => {
+  function harness(): { current: ReturnType<typeof useToasts> } {
+    const ref: { current: ReturnType<typeof useToasts> } = { current: null as unknown as ReturnType<typeof useToasts> }
+    mount(<ToastHarness onState={(s) => (ref.current = s)} />)
+    return ref
+  }
+
+  it('an error toast survives its old auto-dismiss window and closes only manually', () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness()
+      act(() => {
+        h.current.toast('导出失败：路径不可写', 'error')
+      })
+      expect(h.current.toasts).toHaveLength(1)
+      // The old 6.5s auto-dismiss is gone — the error must be read, then closed.
+      act(() => {
+        vi.advanceTimersByTime(10_000)
+      })
+      expect(h.current.toasts).toHaveLength(1)
+      act(() => {
+        h.current.dismiss(h.current.toasts[0]!.id)
+      })
+      expect(h.current.toasts).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('success toasts still auto-dismiss', () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness()
+      act(() => {
+        h.current.toast('已保存', 'success')
+      })
+      act(() => {
+        vi.advanceTimersByTime(4_000)
+      })
+      expect(h.current.toasts).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('caps at 3 visible toasts — the oldest yields first (no TopBar occlusion)', () => {
+    const h = harness()
+    act(() => {
+      h.current.toast('一')
+      h.current.toast('二')
+      h.current.toast('三')
+      h.current.toast('四', 'error')
+    })
+    expect(h.current.toasts.map((t) => t.message)).toEqual(['二', '三', '四'])
+  })
+})
+
+describe('ToastArea 批4 (kind icon + close button)', () => {
+  it('renders a close button per toast and calls onDismiss with its id', () => {
+    const onDismiss = vi.fn()
+    const host = mount(
+      <ToastArea toasts={[{ id: 7, message: '失败', kind: 'error' }]} onDismiss={onDismiss} />
+    )
+    const close = host.querySelector<HTMLButtonElement>('.toast-close')
+    expect(close).not.toBeNull()
+    click(close)
+    expect(onDismiss).toHaveBeenCalledWith(7)
+  })
+
+  it('renders the kind icon (color alone must not carry the type)', () => {
+    const host = mount(<ToastArea toasts={[{ id: 1, message: '失败', kind: 'error' }, { id: 2, message: '好了', kind: 'success' }]} />)
+    expect(host.querySelectorAll('.toast-icon')).toHaveLength(2)
   })
 })

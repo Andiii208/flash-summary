@@ -191,7 +191,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         breadcrumb={state.lessonContextOrIndex != null ? { courseName: state.lessonContextOrIndex.courseName, lessonTitle: state.lessonContextOrIndex.lessonTitle } : null}
         onClearLesson={state.clearLesson}
       />
-      <ToastArea toasts={state.toasts} />
+      <ToastArea toasts={state.toasts} onDismiss={state.dismissToast} />
       {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
       <BiliImportDialog
         bridge={bridge}
@@ -413,6 +413,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               session={state.session}
               sessionInfo={state.sessionInfo}
               sessionBusy={state.sessionBusy}
+              loadError={state.configLoadError}
+              onRetryLoad={state.retryConfigLoad}
               biliSession={state.biliSession}
               onBiliLogout={state.biliLogout}
               onLogin={state.login}
@@ -540,7 +542,11 @@ interface AppState {
   providers: ProvidersListResult | null
   providerBusy: boolean
   settings: AppSettingsInfo | null
+  /** 批4: per-domain load failure with a retry affordance on the settings page. */
+  configLoadError: { providers: string | null; settings: string | null }
+  retryConfigLoad: () => void
   toasts: ToastItem[]
+  dismissToast: (id: number) => void
   /** Toast emitter (BiliImport and other sidebar components push here). */
   toast: (message: string, kind?: ToastKind, action?: { actionLabel: string; onAction: () => void }) => void
   login: () => void
@@ -689,7 +695,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [qaEntries, setQaEntries] = useState<QaEntry[]>([])
   const [qaBusy, setQaBusy] = useState(false)
   // G1 (review): toasts + the config/provider domain live in dedicated hooks.
-  const { toasts, toast } = useToasts()
+  const { toasts, toast, dismiss: dismissToast } = useToasts()
   // 批1 双源并列: the B站 session mirrors the CAS one — one badge per source.
   const [biliSession, setBiliSession] = useState<'logged_in' | 'logged_out' | null>(null)
   const [biliDialogOpen, setBiliDialogOpen] = useState(false)
@@ -727,7 +733,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, settings, chosenCacheDir, libraryBusy, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
+  const { providers, providerBusy, providerTest, settings, loadError, chosenCacheDir, libraryBusy, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -736,6 +742,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     if (settings == null || settings.theme === 'auto') delete root.dataset.theme
     else root.dataset.theme = settings.theme
   }, [settings])
+
+  /** 批4: the settings page's 重试 for a failed providers/settings load. */
+  const retryConfigLoad = useCallback((): void => {
+    void refreshProviders()
+    void refreshSettings()
+  }, [refreshProviders, refreshSettings])
 
   const applyLocalTree = useCallback(async (): Promise<void> => {
     const res = await bridge.school.courseTree()
@@ -1538,9 +1550,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           if (lessonRef.current !== lid) return
           const entry: QaEntry = res.ok
             ? { question, answer: (res.value as { answer: string }).answer, createdAt: stamp }
-            : { question, answer: `失败：${res.error ?? '未知错误'}`, createdAt: stamp }
+            : { question, answer: '', error: res.error ?? '未知错误', createdAt: stamp }
           setQaEntries((es) => {
-            const idx = es.findIndex((e) => e.pending === true && e.question === question)
+            // 批4: a retry also replaces the failed bubble with the same question.
+            const idx = es.findIndex((e) => (e.pending === true || e.error != null) && e.question === question)
             if (idx < 0) return [...es, entry]
             const next = [...es]
             next[idx] = entry
@@ -1821,7 +1834,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     providers,
     providerBusy,
     settings,
+    configLoadError: loadError,
+    retryConfigLoad,
     toasts,
+    dismissToast,
     toast,
     login,
     logout,
