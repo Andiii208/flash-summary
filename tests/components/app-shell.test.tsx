@@ -334,21 +334,42 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     click(document.querySelector('.course-head'))
     await waitForSelector('.lesson-row')
 
-    // logged_out topbar shows the login button first; B2 asks for a jump
-    // confirmation before the window becomes the school's page.
-    click(host.querySelector('.topbar button.primary'))
+    // 批1 双源并列: the logged_out SEU badge IS the login affordance; B2
+    // asks for a jump confirmation before the window becomes the school's page.
+    click(host.querySelector('[data-testid="session-badge"]'))
     await waitForSelector('.dialog')
     const jump = Array.from(host.querySelectorAll('.dialog-actions button')).find((b) => b.textContent === '跳转')
     click(jump ?? null)
     await waitForSelector('[data-testid="session-badge"].logged_in')
+    // The B站 badge sits in parallel and never triggers the CAS jump dialog.
+    expect(document.querySelector('[data-testid="bili-session-badge"]')).not.toBeNull()
 
-    // C4: logout also confirms first.
-    click(host.querySelector('.topbar .btn:not(.primary)'))
+    // C4: logout also confirms first — click the logged-in badge.
+    click(host.querySelector('[data-testid="session-badge"]'))
     await waitForSelector('.dialog')
     const logoutConfirm = Array.from(host.querySelectorAll('.dialog-actions button')).find((b) => b.textContent === '退出')
     click(logoutConfirm ?? null)
     await waitForSelector('[data-testid="session-badge"].logged_out')
     await waitForGone('.lesson-row')
     expect(bridge.school.logout).toHaveBeenCalled()
+  })
+
+  it('批1 双源并列: the sidebar B站 entry opens the import dialog, which re-checks the session', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    const openBtn = Array.from(host.querySelectorAll('.sidebar-head button')).find((b) => b.textContent === '导入 B站视频')
+    expect(openBtn).not.toBeNull()
+    click(openBtn ?? null)
+    await waitForSelector('[data-testid="bili-import-dialog"]')
+    // openBili re-reads the bilibili session so the badge is never stale.
+    await vi.waitFor(() => {
+      expect(bridge.bilibili.session).toHaveBeenCalled()
+    })
+    expect(document.querySelector('[data-testid="bili-account-row"]')?.textContent).toContain('B站·未登录')
+    // Esc closes (same convention as the other dialogs).
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await waitForGone('[data-testid="bili-import-dialog"]')
+    expect(host.querySelector('.manual-fallback summary')?.textContent).toBe('高级：手动添加课程 ID')
   })
 })

@@ -8,11 +8,15 @@ export type SessionState = SessionStateValue
 
 export interface TopBarProps {
   session: SessionState
+  /** B站 session for the parallel source badge (null = not read yet). */
+  biliSession: 'logged_in' | 'logged_out' | null
   busy: boolean
   /** A task is currently executing (serial queue) — show the live dot. */
   running: boolean
   onLogin: () => void
   onLogout: () => void
+  /** 批1 双源并列: open the B站 import dialog (login + import live there). */
+  onOpenBili: () => void
   /** 批A: brand click = back to the start view (no lesson picked, tasks tab). */
   onHome: () => void
   /** 批A: «you are here» breadcrumb — present only while a lesson is picked. */
@@ -22,14 +26,26 @@ export interface TopBarProps {
 }
 
 const SESSION_LABELS: Record<SessionState, string> = {
-  logged_in: '已登录',
-  expired: '已过期',
-  logged_out: '未登录'
+  logged_in: '东大·已登录',
+  expired: '东大·已过期',
+  logged_out: '东大·未登录'
 }
 
-export function TopBar({ session, busy, running, onLogin, onLogout, onHome, breadcrumb, onClearLesson }: TopBarProps): JSX.Element {
+const SESSION_TITLES: Record<SessionState, string> = {
+  logged_in: '东大云课堂已登录，点击退出登录',
+  expired: '会话已过期，点击重新登录',
+  logged_out: '点击登录东大云课堂（CAS）'
+}
+
+/**
+ * 批1 双源并列（plan 2026-09-07）：两个内容源的会话徽标并列常驻——东大与
+ * B站同构同级，点击即操作（登录/退出/打开导入），不再是单一 CAS 按钮加
+ * 沉底的 B站小面板。
+ */
+export function TopBar({ session, biliSession, busy, running, onLogin, onLogout, onOpenBili, onHome, breadcrumb, onClearLesson }: TopBarProps): JSX.Element {
   // C4: logout wipes the working context — confirm first.
   const [pendingLogout, setPendingLogout] = useState(false)
+  const biliLoggedIn = biliSession === 'logged_in'
   return (
     <header class="topbar">
       <div class="topbar-left">
@@ -58,24 +74,33 @@ export function TopBar({ session, busy, running, onLogin, onLogout, onHome, brea
             任务运行中
           </span>
         )}
-        <span class={`session-badge ${session}`} data-testid="session-badge">
+        <button
+          class={`session-badge ${session}`}
+          data-testid="session-badge"
+          title={SESSION_TITLES[session]}
+          onClick={() => {
+            if (session === 'logged_in') setPendingLogout(true)
+            else onLogin()
+          }}
+          disabled={busy}
+        >
           <span class="badge-dot" />
           {SESSION_LABELS[session]}
-        </span>
-        {session === 'logged_in' ? (
-          <button class="btn" onClick={() => setPendingLogout(true)} disabled={busy}>
-            退出登录
-          </button>
-        ) : (
-          <button class="btn primary" onClick={onLogin} disabled={busy}>
-            {busy ? '登录中…' : session === 'expired' ? '重新登录' : '登录 CAS'}
-          </button>
-        )}
+        </button>
+        <button
+          class={`session-badge bili ${biliLoggedIn ? 'logged_in' : 'logged_out'}`}
+          data-testid="bili-session-badge"
+          title={biliLoggedIn ? 'B站已登录，点击导入视频' : '点击登录B站并导入视频'}
+          onClick={onOpenBili}
+        >
+          <span class="badge-dot" />
+          {biliLoggedIn ? 'B站·已登录' : 'B站·未登录'}
+        </button>
       </div>
       <Dialog
         open={pendingLogout}
-        title="退出登录？"
-        message="将清除本机保存的学校会话；课程收藏与已生成的笔记保留，重新登录后即可继续。"
+        title="退出东大云课堂登录？"
+        message="将清除本机保存的学校会话；课程收藏与已生成的笔记保留，重新登录后即可继续。B站登录不受影响。"
         confirmLabel="退出"
         danger
         onConfirm={() => {

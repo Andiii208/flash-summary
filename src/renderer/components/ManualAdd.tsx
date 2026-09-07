@@ -17,7 +17,7 @@ export function ManualAdd({ onAdd }: ManualAddProps): JSX.Element {
   }
   return (
     <details class="manual-fallback">
-      <summary>手动添加（后备）</summary>
+      <summary>高级：手动添加课程 ID</summary>
       <input class="qa-input" value={courseId} placeholder="课程 ID" onInput={(e) => setCourseId((e.target as HTMLInputElement).value)} />
       <input class="qa-input" value={lessonId} placeholder="课时 ID（回放页可查）" onInput={(e) => setLessonId((e.target as HTMLInputElement).value)} />
       <button class="btn small" onClick={submit}>

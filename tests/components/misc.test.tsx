@@ -47,23 +47,29 @@ describe('EmptyState', () => {
   })
 })
 
-describe('WelcomeGuide', () => {
-  it('shows the three onboarding steps with jump actions', () => {
+describe('WelcomeGuide (批1 双源并列: two parallel source paths)', () => {
+  it('shows the three onboarding steps; step 1 offers BOTH sources', () => {
     const onLogin = vi.fn()
+    const onOpenBili = vi.fn()
     const onSettings = vi.fn()
-    const host = mount(<WelcomeGuide onLogin={onLogin} onOpenSettings={onSettings} />)
+    const host = mount(<WelcomeGuide onLogin={onLogin} onOpenBili={onOpenBili} onOpenSettings={onSettings} />)
     const steps = host.querySelectorAll('.guide-steps li')
     expect(steps).toHaveLength(3)
+    expect(steps[0]!.textContent).toContain('东大云课堂 / B站')
     const buttons = host.querySelectorAll('button')
+    expect(buttons[0]!.textContent).toBe('登录东大云课堂')
+    expect(buttons[1]!.textContent).toBe('导入 B站视频')
     click(buttons[0])
     expect(onLogin).toHaveBeenCalledOnce()
     click(buttons[1])
+    expect(onOpenBili).toHaveBeenCalledOnce()
+    click(buttons[2])
     expect(onSettings).toHaveBeenCalledOnce()
   })
 
   it('disables the login action while a login is in flight', () => {
     const onLogin = vi.fn()
-    const host = mount(<WelcomeGuide onLogin={onLogin} onOpenSettings={() => undefined} busy />)
+    const host = mount(<WelcomeGuide onLogin={onLogin} onOpenBili={() => undefined} onOpenSettings={() => undefined} busy />)
     const loginButton = host.querySelector<HTMLButtonElement>('.guide-actions button.primary')
     expect(loginButton?.disabled).toBe(true)
     expect(host.textContent).toContain('登录中…')
@@ -72,22 +78,47 @@ describe('WelcomeGuide', () => {
   })
 })
 
-describe('TopBar', () => {
-  /** 批A: the brand button renders first — target session buttons explicitly. */
-  const btnByText = (host: HTMLElement, text: string): HTMLButtonElement | null =>
-    (Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.includes(text)) as HTMLButtonElement | undefined) ?? null
+describe('TopBar (批1 双源并列: two parallel session badges)', () => {
+  const baseProps = {
+    biliSession: 'logged_out' as const,
+    busy: false,
+    running: false,
+    onLogout: () => undefined,
+    onOpenBili: () => undefined,
+    onHome: () => undefined,
+    breadcrumb: null,
+    onClearLesson: () => undefined
+  }
 
-  it('shows login when logged out and fires onLogin', () => {
+  it('logged-out SEU badge click fires onLogin (the badge IS the login affordance)', () => {
     const onLogin = vi.fn()
-    const host = mount(<TopBar session="logged_out" busy={false} running={false} onLogin={onLogin} onLogout={() => undefined} onHome={() => undefined} breadcrumb={null} onClearLesson={() => undefined} />)
-    expect(host.textContent).toContain('登录 CAS')
-    click(btnByText(host, '登录 CAS'))
+    const host = mount(<TopBar session="logged_out" {...baseProps} onLogin={onLogin} />)
+    expect(host.querySelector('[data-testid="session-badge"]')?.textContent).toContain('东大·未登录')
+    click(host.querySelector('[data-testid="session-badge"]'))
     expect(onLogin).toHaveBeenCalledOnce()
+  })
+
+  it('B站 badge renders in parallel and click opens the import dialog', () => {
+    const onOpenBili = vi.fn()
+    const host = mount(<TopBar session="logged_out" {...baseProps} onLogin={() => undefined} onOpenBili={onOpenBili} />)
+    const bili = host.querySelector('[data-testid="bili-session-badge"]')
+    expect(bili).not.toBeNull()
+    expect(bili?.textContent).toContain('B站·未登录')
+    expect(bili?.className).toContain('logged_out')
+    click(bili)
+    expect(onOpenBili).toHaveBeenCalledOnce()
+  })
+
+  it('logged-in B站 session flips the badge class and label', () => {
+    const host = mount(<TopBar session="logged_out" {...baseProps} biliSession="logged_in" onLogin={() => undefined} />)
+    const bili = host.querySelector('[data-testid="bili-session-badge"]')
+    expect(bili?.className).toContain('logged_in')
+    expect(bili?.textContent).toContain('B站·已登录')
   })
 
   it('brand click fires onHome (批A: back to the start view)', () => {
     const onHome = vi.fn()
-    const host = mount(<TopBar session="logged_out" busy={false} running={false} onLogin={() => undefined} onLogout={() => undefined} onHome={onHome} breadcrumb={null} onClearLesson={() => undefined} />)
+    const host = mount(<TopBar session="logged_out" {...baseProps} onLogin={() => undefined} onHome={onHome} />)
     click(host.querySelector('.brand'))
     expect(onHome).toHaveBeenCalledOnce()
   })
@@ -97,11 +128,9 @@ describe('TopBar', () => {
     const host = mount(
       <TopBar
         session="logged_in"
-        busy={false}
-        running={false}
+        {...baseProps}
+        biliSession="logged_in"
         onLogin={() => undefined}
-        onLogout={() => undefined}
-        onHome={() => undefined}
         breadcrumb={{ courseName: '数据结构', lessonTitle: '第4讲' }}
         onClearLesson={onClearLesson}
       />
@@ -111,12 +140,11 @@ describe('TopBar', () => {
     expect(onClearLesson).toHaveBeenCalledOnce()
   })
 
-  it('shows logout when logged in with a session badge, behind a confirmation (批4 C4)', () => {
+  it('logged-in SEU badge click opens the logout confirmation; logout fires only on confirm (批4 C4)', () => {
     const onLogout = vi.fn()
-    const host = mount(<TopBar session="logged_in" busy={false} running={false} onLogin={() => undefined} onLogout={onLogout} onHome={() => undefined} breadcrumb={null} onClearLesson={() => undefined} />)
-    expect(host.textContent).toContain('已登录')
-    expect(host.querySelector('.session-badge.logged_in')).not.toBeNull()
-    click(btnByText(host, '退出登录'))
+    const host = mount(<TopBar session="logged_in" {...baseProps} onLogin={() => undefined} onLogout={onLogout} />)
+    expect(host.querySelector('.session-badge.logged_in')?.textContent).toContain('东大·已登录')
+    click(host.querySelector('[data-testid="session-badge"]'))
     // The dialog must appear first; logout fires only on confirm.
     expect(host.querySelector('.dialog')).not.toBeNull()
     expect(onLogout).not.toHaveBeenCalled()
@@ -125,7 +153,17 @@ describe('TopBar', () => {
     expect(onLogout).toHaveBeenCalledOnce()
   })
 
+  it('marks an expired session; the badge click offers re-login, not logout', () => {
+    const onLogin = vi.fn()
+    const host = mount(<TopBar session="expired" {...baseProps} onLogin={onLogin} />)
+    expect(host.querySelector('.session-badge.expired')?.textContent).toContain('东大·已过期')
+    click(host.querySelector('[data-testid="session-badge"]'))
+    expect(onLogin).toHaveBeenCalledOnce()
+    expect(host.querySelector('.dialog')).toBeNull()
+  })
+})
 
+describe('ProviderPanel (capability model inputs)', () => {
   it('ProviderPanel saves one model PER capability from per-field inputs (2026-09-05 批4)', () => {
     const onSave = vi.fn()
     const host = mount(<ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />)
@@ -204,16 +242,6 @@ describe('TopBar', () => {
       expect.objectContaining({ id: 'p1', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', apiKey: '', models: { asr: 'whisper-1' } })
     )
   })
-  it('marks an expired session and offers re-login instead of logout', () => {
-    const onLogin = vi.fn()
-    const onLogout = vi.fn()
-    const host = mount(<TopBar session="expired" busy={false} running={false} onLogin={onLogin} onLogout={onLogout} onHome={() => undefined} breadcrumb={null} onClearLesson={() => undefined} />)
-    expect(host.querySelector('.session-badge.expired')?.textContent).toContain('已过期')
-    click(btnByText(host, '重新登录'))
-    expect(onLogin).toHaveBeenCalledOnce()
-    // No logout affordance for a dead session — logout clears nothing extra.
-    expect(btnByText(host, '退出登录')).toBeNull()
-  })
 })
 
 describe('ManualAdd', () => {
@@ -275,5 +303,20 @@ describe('SettingsPanel cache-dir draft (P6, 2026-09-05)', () => {
       render(<SettingsPanel {...baseProps} settings={{ libraryRoot: 'L', cacheDir: 'C:\\lib\\cache', theme: 'auto' }} />, host)
     })
     expect(draft().value).toBe('C:\\lib\\cache')
+  })
+
+  it('批1 双源并列: the account block lists the B站 session in parallel with CAS', () => {
+    const onBiliLogout = vi.fn()
+    const host = mount(<SettingsPanel {...baseProps} settings={null} biliSession="logged_in" onBiliLogout={onBiliLogout} />)
+    const row = host.querySelector('[data-testid="bili-account-settings"]')
+    expect(row?.textContent).toContain('B站·已登录')
+    click(Array.from(row!.querySelectorAll('button')).find((b) => b.textContent === '退出登录') ?? null)
+    expect(onBiliLogout).toHaveBeenCalledOnce()
+  })
+
+  it('批1: a logged-out B站 session shows the state with no logout action', () => {
+    const host = mount(<SettingsPanel {...baseProps} settings={null} biliSession="logged_out" />)
+    expect(host.querySelector('[data-testid="bili-account-settings"]')?.textContent).toContain('B站·未登录')
+    expect(host.querySelector('[data-testid="bili-account-settings"] button')).toBeNull()
   })
 })

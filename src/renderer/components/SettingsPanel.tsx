@@ -13,6 +13,9 @@ export interface SettingsPanelProps {
   /** Local session metadata (savedAt/JWT exp) shown under the account block. */
   sessionInfo: { savedAt: string | null; expiresAt: number | null }
   sessionBusy: boolean
+  /** B站 session for the parallel account row (null = not read yet). */
+  biliSession?: 'logged_in' | 'logged_out' | null
+  onBiliLogout?: () => void
   onLogin: () => void
   onLogout: () => void
   providers: ProviderPanelProps['providers']
@@ -91,6 +94,18 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
             <span class="settings-hint">{formatSessionInfo(props.sessionInfo) ?? ''}</span>
           </div>
         )}
+        {/* 批1 双源并列: both accounts are managed in one place. */}
+        <div class="settings-row" data-testid="bili-account-settings">
+          <span class={`session-badge bili ${props.biliSession === 'logged_in' ? 'logged_in' : 'logged_out'}`}>
+            <span class="badge-dot" />
+            B站·{props.biliSession === 'logged_in' ? '已登录' : '未登录'}
+          </span>
+          {props.biliSession === 'logged_in' && props.onBiliLogout != null && (
+            <button class="btn" onClick={props.onBiliLogout}>
+              退出登录
+            </button>
+          )}
+        </div>
       </section>
 
       <section class="settings-block">

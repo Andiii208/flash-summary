@@ -21,7 +21,7 @@ import { Dialog } from './ui/Dialog'
 import { CourseMapDialog, type CourseMapInfo } from './components/CourseMapDialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
-import { BiliImport } from './components/BiliImport'
+import { BiliImportDialog } from './components/BiliImportDialog'
 import { useToasts } from './hooks/use-toasts'
 import { useConfigDomain } from './hooks/use-config-domain'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -177,10 +177,12 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
       <div class="app-shell">
       <TopBar
         session={state.session}
+        biliSession={state.biliSession}
         busy={state.sessionBusy}
         running={state.running}
         onLogin={state.login}
         onLogout={state.logout}
+        onOpenBili={state.openBili}
         onHome={() => {
           state.goHome()
           sidebarRef.current?.scrollTo({ top: 0 })
@@ -190,21 +192,37 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
       />
       <ToastArea toasts={state.toasts} />
       {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
+      <BiliImportDialog
+        bridge={bridge}
+        open={state.biliDialogOpen}
+        sessionState={state.biliSession}
+        onSessionRefresh={state.refreshBiliSession}
+        onLogout={state.biliLogout}
+        onImported={state.biliImported}
+        onClose={state.closeBili}
+        toast={state.toast}
+      />
       <div class="app-main">
         <aside class="sidebar" ref={sidebarRef}>
           <div class="sidebar-head">
             <h2>课程</h2>
-            <button
-              class="btn small ghost"
-              onClick={state.refreshTree}
-              disabled={state.session === 'logged_out' || state.refreshBusy}
-            >
-              {state.refreshBusy
-                ? state.refreshProgress != null
-                  ? `刷新中 ${state.refreshProgress.page}/${state.refreshProgress.pageCount} 页…`
-                  : '刷新中…'
-                : '刷新课程'}
-            </button>
+            <div class="sidebar-head-actions">
+              {/* 批1 双源并列: B站导入与「刷新课程」同层同级。 */}
+              <button class="btn small ghost" onClick={state.openBili} title="粘贴B站视频链接，解析后导入生成笔记">
+                导入 B站视频
+              </button>
+              <button
+                class="btn small ghost"
+                onClick={state.refreshTree}
+                disabled={state.session === 'logged_out' || state.refreshBusy}
+              >
+                {state.refreshBusy
+                  ? state.refreshProgress != null
+                    ? `刷新中 ${state.refreshProgress.page}/${state.refreshProgress.pageCount} 页…`
+                    : '刷新中…'
+                  : '刷新课程'}
+              </button>
+            </div>
           </div>
           {state.tree.length > 0 && (
             <input
@@ -221,7 +239,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             </p>
           )}
           {showWelcome ? (
-            <WelcomeGuide onLogin={state.login} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
+            <WelcomeGuide onLogin={state.login} onOpenBili={state.openBili} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
           ) : state.searchMode ? (
             <CourseTree
               tree={state.filteredTree}
@@ -297,7 +315,6 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               </section>
             </>
           )}
-          <BiliImport bridge={bridge} onImported={state.biliImported} toast={state.toast} />
           <ManualAdd onAdd={state.addManual} />
         </aside>
         <main class="content">
@@ -395,6 +412,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               session={state.session}
               sessionInfo={state.sessionInfo}
               sessionBusy={state.sessionBusy}
+              biliSession={state.biliSession}
+              onBiliLogout={state.biliLogout}
               onLogin={state.login}
               onLogout={state.logout}
               providers={state.providers}
@@ -458,6 +477,14 @@ interface AppState {
   session: SessionState
   sessionInfo: { savedAt: string | null; expiresAt: number | null }
   sessionBusy: boolean
+  /** 批1 双源并列: B站 session for the TopBar badge / dialog / settings row. */
+  biliSession: 'logged_in' | 'logged_out' | null
+  /** 批1: the B站 import dialog (login + resolve + import live in it). */
+  biliDialogOpen: boolean
+  openBili: () => void
+  closeBili: () => void
+  refreshBiliSession: () => void
+  biliLogout: () => void
   /** A course-list refresh is in flight (network + possible login round-trip). */
   refreshBusy: boolean
   /** Loaded/total boundary after the last paged refresh (B2). */
@@ -662,6 +689,31 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [qaBusy, setQaBusy] = useState(false)
   // G1 (review): toasts + the config/provider domain live in dedicated hooks.
   const { toasts, toast } = useToasts()
+  // 批1 双源并列: the B站 session mirrors the CAS one — one badge per source.
+  const [biliSession, setBiliSession] = useState<'logged_in' | 'logged_out' | null>(null)
+  const [biliDialogOpen, setBiliDialogOpen] = useState(false)
+  const refreshBiliSession = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.bilibili.session()
+      if (res.ok) setBiliSession(res.value?.state ?? 'logged_out')
+    })()
+  }, [bridge])
+  const openBili = useCallback((): void => {
+    setBiliDialogOpen(true)
+    refreshBiliSession()
+  }, [refreshBiliSession])
+  const closeBili = useCallback((): void => setBiliDialogOpen(false), [])
+  const biliLogout = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.bilibili.logout()
+      if (!res.ok) {
+        toast(res.error ?? '退出失败', 'error')
+        return
+      }
+      setBiliSession('logged_out')
+      toast('已退出B站登录', 'info')
+    })()
+  }, [bridge, toast])
   const config = useConfigDomain(bridge, toast)
   const lessonRef = useRef('')
   /** 批5: identity-stable indirection for callbacks used inside long-lived
@@ -943,6 +995,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     void applyLocalTree()
     void refreshProviders()
     void refreshSettings()
+    void refreshBiliSession()
     void loadGlobalHistory()
     void loadNoteIndex()
     void loadQaRecent()
@@ -1012,7 +1065,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     // openLessonNotes goes through its ref (identity-unstable: it flips with
     // tree/noteIndex, and this effect calls applyLocalTree which produces a
     // fresh tree — depending on it directly re-runs the effect forever).
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, refreshBiliSession, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
 
   // 批C: write the UI snapshot back on every change — a navigation-induced
   // reload (harvest/login) resumes exactly where the user was. Stale course
@@ -1712,6 +1765,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     session,
     sessionInfo,
     sessionBusy,
+    biliSession,
+    biliDialogOpen,
+    openBili,
+    closeBili,
+    refreshBiliSession,
+    biliLogout,
     refreshBusy,
     refreshMeta,
     refreshProgress,
