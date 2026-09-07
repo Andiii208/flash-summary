@@ -171,17 +171,24 @@ describe('BilibiliClient (fixture replay)', () => {
     expect(resolved).toBe('https://www.bilibili.com/video/BV1GJ411x7h7?p=2')
   })
 
-  it('qrGenerate returns the QR content url and polling key', async () => {
+  it('qrGenerate returns the QR content url and polling key (official referer + params)', async () => {
+    const capture: { urls: string[]; headers: Record<string, string>[] } = { urls: [], headers: [] }
     const client = makeClient(
-      makeFetch({
-        [`${API}/x/passport-login/web/qrcode/generate`.replace('https://api.bilibili.com', 'https://passport.bilibili.com')]: jsonResponse({
-          code: 0,
-          data: { url: 'https://passport.bilibili.com/h5-app/passport/login/scan?qrcode_key=QR1', qrcode_key: 'QR1' }
-        })
-      })
+      makeFetch(
+        {
+          'https://passport.bilibili.com/x/passport-login/web/qrcode/generate?source=main_web&go_url=&web_location=333.1228&x-bili-redirect=1': jsonResponse({
+            code: 0,
+            data: { url: 'https://passport.bilibili.com/h5-app/passport/login/scan?qrcode_key=QR1', qrcode_key: 'QR1' }
+          })
+        },
+        capture
+      )
     )
     const qr = await client.qrGenerate()
     expect(qr).toEqual({ qrUrl: 'https://passport.bilibili.com/h5-app/passport/login/scan?qrcode_key=QR1', qrcodeKey: 'QR1' })
+    // The passport state gate checks the referer — it must be the login page
+    // (www.bilibili.com referer kept the poll stuck at 86101, field 2026-09-07).
+    expect(capture.headers[0]?.Referer).toBe('https://passport.bilibili.com/login')
   })
 
   it('qrPoll walks waiting→scanned→confirmed and extracts the cookie string', async () => {

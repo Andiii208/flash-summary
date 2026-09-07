@@ -22,6 +22,15 @@ import { cookiesFromCrossDomainUrl, parseQrGenerate, qrStatusFromCode, type QrGe
 
 const DEFAULT_API_HOST = 'https://api.bilibili.com'
 const DEFAULT_PASSPORT_HOST = 'https://passport.bilibili.com'
+/**
+ * The passport endpoints gate the QR state on the Referer: with the main-site
+ * referer the poll keeps answering 86101 (未扫码) even after the phone
+ * confirmed — the QR expires server-side while we wait. The official login
+ * page's own referer + params (captured 2026-09-07) make the state visible.
+ */
+const PASSPORT_REFERER = 'https://passport.bilibili.com/login'
+const QR_GENERATE_PARAMS = 'source=main_web&go_url=&web_location=333.1228&x-bili-redirect=1'
+const QR_POLL_PARAMS = 'source=main_web&web_location=333.1228&x-bili-redirect=1'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 export const BILI_TIMEOUT_MS = 30_000
@@ -83,9 +92,12 @@ export class BilibiliClient {
   private async requestEnvelope(
     url: string,
     withCookie: boolean,
-    options: { tolerateCodes?: number[] } = {}
+    options: { tolerateCodes?: number[]; referer?: string } = {}
   ): Promise<Envelope> {
-    const headers: Record<string, string> = { 'User-Agent': USER_AGENT, Referer: 'https://www.bilibili.com/' }
+    const headers: Record<string, string> = {
+      'User-Agent': USER_AGENT,
+      Referer: options.referer ?? 'https://www.bilibili.com/'
+    }
     if (withCookie) {
       const cookie = await this.getCookie()
       if (cookie !== '') headers.Cookie = cookie
@@ -228,7 +240,11 @@ export class BilibiliClient {
 
   /** QR login step 1: the payload whose `url` the renderer renders as a QR image. */
   async qrGenerate(): Promise<QrGenerateResult> {
-    const payload = await this.requestEnvelope(`${this.passportHost}/x/passport-login/web/qrcode/generate`, false)
+    const payload = await this.requestEnvelope(
+      `${this.passportHost}/x/passport-login/web/qrcode/generate?${QR_GENERATE_PARAMS}`,
+      false,
+      { referer: PASSPORT_REFERER }
+    )
     const parsed = parseQrGenerate(payload)
     if (parsed == null) throw new BilibiliApiError('bad_response', 'bilibili qr generate payload unusable')
     return parsed
@@ -241,7 +257,11 @@ export class BilibiliClient {
    */
   async qrPoll(qrcodeKey: string): Promise<{ status: QrPollStatus; cookies: string | null }> {
     const query = new URLSearchParams({ qrcode_key: qrcodeKey }).toString()
-    const payload = await this.requestEnvelope(`${this.passportHost}/x/passport-login/web/qrcode/poll?${query}`, false)
+    const payload = await this.requestEnvelope(
+      `${this.passportHost}/x/passport-login/web/qrcode/poll?${query}&${QR_POLL_PARAMS}`,
+      false,
+      { referer: PASSPORT_REFERER }
+    )
     const data = (payload.data ?? {}) as { code?: unknown; url?: unknown }
     const code = typeof data.code === 'number' ? data.code : -1
     const status = qrStatusFromCode(code)

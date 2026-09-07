@@ -367,11 +367,13 @@ export function createContext(overrides: Partial<{
   // before the status is reported; the cookie string never reaches a log.
   let bilibiliQr: { qrcodeKey: string } | null = null
   let bilibiliPollCache: { at: number; result: { status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' } } | null = null
+  let bilibiliLastPollStatus: string | null = null
 
   const bilibiliLoginStart = async (): Promise<{ qrUrl: string }> => {
     const qr = await bilibili.qrGenerate()
     bilibiliQr = { qrcodeKey: qr.qrcodeKey }
     bilibiliPollCache = null
+    bilibiliLastPollStatus = null
     logger.info('bilibili qr login started')
     return { qrUrl: qr.qrUrl }
   }
@@ -380,6 +382,12 @@ export function createContext(overrides: Partial<{
     if (bilibiliQr == null) return { status: 'inactive' }
     if (bilibiliPollCache != null && Date.now() - bilibiliPollCache.at < 1000) return bilibiliPollCache.result
     const poll = await bilibili.qrPoll(bilibiliQr.qrcodeKey)
+    // Status-transition log: the evidence trail when a scan misbehaves
+    // (2026-09-07 field case: poll stuck at waiting through a confirmed scan).
+    if (poll.status !== bilibiliLastPollStatus) {
+      logger.info(`bilibili qr poll: ${bilibiliLastPollStatus ?? 'start'} → ${poll.status}`)
+      bilibiliLastPollStatus = poll.status
+    }
     if (poll.status === 'confirmed' && poll.cookies != null) {
       saveBilibiliSession(
         userDataDir,

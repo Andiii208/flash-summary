@@ -15,7 +15,7 @@ interface PreviewState extends BilibiliResolveResult {
 
 type LoginPhase = 'idle' | 'qr' | 'confirmed'
 
-const POLL_INTERVAL_MS = 1500
+const POLL_INTERVAL_MS = 2000 // official login page cadence (~2s)
 
 /** Default page selection: the requested P, or every page when there are few. */
 function defaultSelection(preview: BilibiliResolveResult): number[] {
