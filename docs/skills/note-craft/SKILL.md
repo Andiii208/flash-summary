@@ -147,3 +147,12 @@ Note {
 - `noteHealth(note, hitRate?)`（`src/shared/notes/health.ts`）→ `{ warnCount, grade: good|fair|weak, findings: [{field, level: warn|info}] }`：warn=重新生成可改进；info=诚实空节说明（宁空勿编，不拉低评级）。NoteViewer 工具体检徽标+findings 面板。
 - `notes:courseHealth(courseId)` IPC + 笔记库课程组「升级旧笔记」对话框（默认勾选 warn>0，逐课串行复用 notes:regenerate，零下载）。
 - 真实库基线（2026-09-08，升级前）：1690406-L0 v1=fair(warn2)/1690625-L0 v3=fair(warn2)/bili-P3 v2=fair(warn1)——升级后对比留待现场验收（需退 Clash TUN，大请求经代理会挂起）。
+
+## 11. Obsidian 结构化导出（2026-09-08，plan docs/plans/2026-09-08-obsidian-export.md）
+
+- **投影单一事实源**：`src/shared/notes/obsidian.ts`（projectObsidianNote / projectConceptIndex / projectVaultIndex）——只产 markdown 字符串；附件只列名不读字节，main 侧 `src/main/notes/obsidian-export.ts` 负责落盘与复制。
+- **文件布局**：`<vault>/Flash Summary/<课程名>/<课时名>.md` + `attachments/<lesson_id>-<原文件名>`；`_概念.md`（课程概念聚合，同名 term 归一归并，导出自动重建勿手改）；`_index.md`（全库结构约定，从 manifest 重建）。
+- **SR 卡纪律**：概念卡 `[[term]]::definition` 单行；quiz 多行「问 / ? / 答」；牌组 = 行内 `#flashcards/<课程tag>/<课时tag>`（**frontmatter tags 插件不识别，必须行内**）；tagSafe 清洗空格与非法字符。
+- **幂等**：migration 010 `obsidian_exports`（lesson_id 主键）——同课时覆写、改名清旧文件、vault 切换不误删；`_index.md` 明示「直接改写会在下次导出被覆盖」。
+- **红线**：导出物零直链零密钥，B站只放公开 bvid；附件只带走笔记实际引用的（D4=A）。
+- **测试缝**：`SEU_OBSIDIAN_PATH` 绕过 vault 目录选择（一次性覆盖，不落 settings）。

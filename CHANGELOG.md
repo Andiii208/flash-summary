@@ -2,6 +2,23 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 笔记内容质量攻坚 + Obsidian 结构化导出（2026-09-08，方案两件已批准执行）
+
+测试 720 → 769（+49），smoke 25 → 28。方案：docs/plans/2026-09-08-note-quality-overhaul.md、docs/plans/2026-09-08-obsidian-export.md（上一版「复习驾驶舱」重方案经用户否决已归档为调研存档）。
+
+### 笔记内容质量攻坚（四批）
+
+- **批1 生成质量规约**：SYSTEM_PROMPT 拆「形状+质量」两段——概念定义 ≥60 字三要素禁循环定义、时间线 detail 禁复读标题必须含具体数字结论、overview ≥150 字 ## 小节、考点具体到「考什么怎么答」且宁空勿编、转写同音错词结合关键帧纠正为正名、evidence 引用 few-shot + 仅关键帧素材时禁 ppt: 引用（收口引用命中 0/8 老问题）、conceptLinks label 关系词白名单；润色 prompt 同步质量下限。+条款钉住测试。
+- **批2 转写清洗**：新纯函数 transcript-clean——标点/串尾独立语气词压缩、近空段剔除、相邻段重复去重（长段 bigram 相似度防 B站字幕误杀）；生成/润色/追问三处统一吃清洗后文本，原始转写落库不动。
+- **批3 笔记体检**：noteHealth 纯函数（概览/概念/时间线/考点/缺口/自测/证据七维度，诚实空节为 info 级不拉低评级）+ 笔记工具栏「体检：N 项待改进」徽标与 findings 面板，warn 直达重新生成。
+- **批4 存量升级**：笔记库课程组「升级旧笔记」——按体检结果默认勾选，逐课复用已落库转写与关键帧零下载重生成，行内显示升级进度；真实库基线已留档（三课时 fair×3），升级后对比待现场验收（需退 Clash TUN）。
+
+### Obsidian 结构化导出（两批）
+
+- **单课时导出**：工具栏「导出 Obsidian」——结构化 Markdown 写入用户仓库 `Flash Summary/<课程>/<课时>.md`：YAML frontmatter（source/course/lesson/lesson_id/origin/bvid/version/created）、概念与知识树 `[[wikilink]]`（同名概念跨课时自动互链）、时间线 HH:MM:SS 引文、缺口转 `- [ ]` 任务列表、自测节生成 Obsidian Spaced Repetition 插件卡片（概念卡 `[[术语]]::定义`、问答题多行 `?` 块、`#flashcards/<课程>/<课时>` 嵌套牌组）；关键帧附件复制进 vault（只带走笔记实际引用的图）。
+- **整课导出**：笔记库课程组「导出 Obsidian」——全课时逐个写入 + 自动重建课程 `_概念.md`（同名概念聚合页）与库级 `_index.md`（目录约定文档，agent 与人共读）。
+- **幂等**：migration 010 导出清单表——同课时重复导出覆盖更新，课时改名自动清理旧文件，首次导出选择 vault 目录后记忆。
+
 ## [0.7.2] — 测试构建（2026-09-08，未打 tag；安装器支持自定义安装路径）
 
 ### 安装器
