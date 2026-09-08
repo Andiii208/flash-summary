@@ -146,7 +146,7 @@ Note {
 
 - `noteHealth(note, hitRate?)`（`src/shared/notes/health.ts`）→ `{ warnCount, grade: good|fair|weak, findings: [{field, level: warn|info}] }`：warn=重新生成可改进；info=诚实空节说明（宁空勿编，不拉低评级）。NoteViewer 工具体检徽标+findings 面板。
 - `notes:courseHealth(courseId)` IPC + 笔记库课程组「升级旧笔记」对话框（默认勾选 warn>0，逐课串行复用 notes:regenerate，零下载）。
-- 真实库基线（2026-09-08，升级前）：1690406-L0 v1=fair(warn2)/1690625-L0 v3=fair(warn2)/bili-P3 v2=fair(warn1)——升级后对比留待现场验收（需退 Clash TUN，大请求经代理会挂起）。
+- 真实库基线（2026-09-08，升级前）：1690406-L0 v1=fair(warn2)/1690625-L0 v3=fair(warn2)/bili-P3 v2=fair(warn1)；**升级后（同日真机 e2e：副本+安装版 Local State 缝+真实 MiMo 重生成）三课全部 good(0 warn)**——内容抽检：概览 147→705 字、概念定义均 45→109-134 字含芯片实例、考点 0→3 条具体化、ASR 错词纠正（74151）；evidence 引用 0 条且零编造（droppedRefs=0，MiMo 引用遵循度仍偏弱留观察）。
 
 ## 11. Obsidian 结构化导出（2026-09-08，plan docs/plans/2026-09-08-obsidian-export.md）
 
