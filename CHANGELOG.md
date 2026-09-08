@@ -2,7 +2,7 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.2] — 测试构建（2026-09-08，未打 tag；安装器支持自定义安装路径）
 
 ### 安装器
 
