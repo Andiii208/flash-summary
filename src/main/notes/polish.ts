@@ -20,7 +20,7 @@ const MAX_TRANSCRIPT_CHARS = 24_000
 /** Hard cap on the user's free-text feedback (guards the prompt size). */
 const MAX_FEEDBACK_TEXT_CHARS = 2_000
 
-const POLISH_SYSTEM_PROMPT =
+export const POLISH_SYSTEM_PROMPT =
   '你是课程笔记润色器。用户会对现有笔记提出反馈（不足之处），你要据此修订笔记。' +
   '只输出一个修订后的完整 JSON 对象，不要多余文字，结构与原笔记完全相同：' +
   '{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],quiz:[{question,answer,source,term}],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。' +
@@ -28,7 +28,8 @@ const POLISH_SYSTEM_PROMPT =
   '2) 所有 at 保持整数秒，evidence/concept refs/timeline refs 原样沿用原笔记中的引用（必要时可从「可用证据ID」列表中补充，禁止编造其他引用）；' +
   '3) 除 overview 与 methodology 用 Markdown 组织外，其余字段一律纯文本，禁止 Markdown 标记；' +
   '4) quiz 若已存在则按改进后的内容同步修订，source/term 锚定规则不变；' +
-  '5) 修订幅度与反馈匹配：反馈没提的部分不要乱动。'
+  '5) 修订幅度与反馈匹配：反馈没提的部分不要乱动；' +
+  '6) 质量下限同步（批1 2026-09-08）：修订后的笔记仍须满足生成器的内容质量规约——概念 definition 完整（是什么+为什么/用在哪，禁止循环定义）、timeline detail 含具体数字与结论且禁止复读 title、examCues 具体到「考什么、怎么答」、转写同音错词结合画面纠正为正确术语写法；反馈未提且已达标的部分保持原样。'
 
 /** The latest stored note for a lesson, with its version number. */
 function loadLatestNote(db: Db, lessonId: string): { version: number; note: Note } | { error: string } {
