@@ -34,7 +34,7 @@ const note = parseNote(
 
 describe('context assembly (current lesson only)', () => {
   it('collects transcript, evidence, and prior qa for the lesson', () => {
-    db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场\"},{\"at\":10,\"text\":\"定义极限\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场部分我们回顾上一讲\"},{\"at\":10,\"text\":\"我们定义极限的概念\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
     db.prepare("INSERT INTO ppt_pages (id, lesson_id, page_index, file_path, created_at) VALUES ('p1', 'l1', 0, 'a.png', '2026-08-30T00:00:00Z')").run()
     db.prepare("INSERT INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES ('k1', 'l1', 12, 'f.jpg', 'h', '2026-08-30T00:00:00Z')").run()
     recordQa(db, 'l1', '什么是极限?', '一种无限接近的过程')
@@ -66,7 +66,7 @@ describe('context assembly (current lesson only)', () => {
 
 describe('qa message building', () => {
   it('includes lesson scoping, note, transcript, evidence, and prior qa', () => {
-    db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场部分我们讲极限思想\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
     recordQa(db, 'l1', '第一问', '第一答')
 
     const ctx = assembleContext(db, 'l1', note)
@@ -97,7 +97,7 @@ describe('qa message building', () => {
   })
 
   it('stays silent about missing material when a transcript exists without a note', () => {
-    db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场部分我们讲极限思想\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
     const ctx = assembleContext(db, 'l1', null)
     const user = buildQaMessages(ctx, '这节课讲了什么?').find((m) => m.role === 'user')!.content
     expect(user).not.toContain('尚无笔记与转写材料')

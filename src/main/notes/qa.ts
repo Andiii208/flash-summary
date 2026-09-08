@@ -7,6 +7,7 @@
  */
 import type { Db } from '../db/open'
 import type { Note } from './schema'
+import { cleanTranscript } from '../../shared/notes/transcript-clean'
 
 export interface QaContext {
   lessonId: string
@@ -27,12 +28,9 @@ export function assembleContext(db: Db, lessonId: string, note: Note | null): Qa
   let transcriptText = ''
   if (transcriptRow != null) {
     try {
+      // 质量批2: 清洗后派生（语气词/近空段/相邻重复），原始 segments 落库不动。
       const segments = JSON.parse(transcriptRow.segments_json) as Array<{ at?: number; text?: string }>
-      transcriptText = segments
-        .map((s) => (typeof s.text === 'string' ? s.text : ''))
-        .filter((t) => t !== '')
-        .join('\n')
-        .slice(0, MAX_TRANSCRIPT_CHARS)
+      transcriptText = cleanTranscript(segments).slice(0, MAX_TRANSCRIPT_CHARS)
     } catch {
       transcriptText = ''
     }

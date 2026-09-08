@@ -14,6 +14,7 @@ import { dropUnknownEvidence, evidenceHitRate } from '../../shared/notes/evidenc
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
 import { saveNoteVersion, stripFences } from './summarize'
 import { feedbackTagInstructions } from '../../shared/feedback-tags'
+import { cleanTranscript } from '../../shared/notes/transcript-clean'
 
 /** Same reading-measure cap as qa (24k chars) — polish never needs more. */
 const MAX_TRANSCRIPT_CHARS = 24_000
@@ -51,11 +52,8 @@ function loadTranscript(db: Db, lessonId: string): string {
     | undefined
   if (row == null) return ''
   try {
-    return (JSON.parse(row.segments_json) as Array<{ text?: string }>)
-      .map((s) => (typeof s.text === 'string' ? s.text : ''))
-      .filter((t) => t !== '')
-      .join('\n')
-      .slice(0, MAX_TRANSCRIPT_CHARS)
+    // 质量批2: 清洗后派生（语气词/近空段/相邻重复），原始 segments 落库不动。
+    return cleanTranscript(JSON.parse(row.segments_json) as Array<{ text?: string }>).slice(0, MAX_TRANSCRIPT_CHARS)
   } catch {
     return ''
   }

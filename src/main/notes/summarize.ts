@@ -9,6 +9,7 @@ import type { Db } from '../db/open'
 import { resolveLibraryPath } from '../library/paths'
 import { parseNote, type Note } from './schema'
 import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidence'
+import { cleanTranscript } from '../../shared/notes/transcript-clean'
 import type { ChatPart, OpenAiCompatibleClient } from '../providers/openai-client'
 
 /** Max images embedded in the multimodal summarize call (token guard, U4). */
@@ -69,9 +70,8 @@ export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: strin
 
   let transcriptText = ''
   try {
-    transcriptText = (JSON.parse(transcriptRow.segments_json) as Array<{ text: string }>)
-      .map((s) => s.text)
-      .join('\n')
+    // 质量批2: 清洗后派生（语气词/近空段/相邻重复），原始 segments 落库不动。
+    transcriptText = cleanTranscript(JSON.parse(transcriptRow.segments_json) as Array<{ text: string }>)
   } catch {
     return { error: '转写数据损坏，请重跑任务' }
   }
