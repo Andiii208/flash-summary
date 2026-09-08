@@ -3,6 +3,7 @@ import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
 import type { NoteIndexInfo, NoteAttachmentInfo, AttachmentManifestEntry } from '../../shared/bridge'
 import { evidenceHitRate } from '../../shared/notes/evidence'
+import { noteHealth, HEALTH_FIELD_LABELS } from '../../shared/notes/health'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
@@ -96,6 +97,11 @@ export function NoteViewer({
   const [view, setView] = useState<ViewId>('detailed')
   // M2.2: concept-card anchor for the mind map popover's «view in detail» jump.
   const [pendingAnchor, setPendingAnchor] = useState<string | null>(null)
+  // 批3 (plan 2026-09-08 note-quality-overhaul): 内容体检面板开合；换笔记即收。
+  const [healthOpen, setHealthOpen] = useState(false)
+  useEffect(() => {
+    setHealthOpen(false)
+  }, [note])
   useEffect(() => {
     if (view !== 'detailed' || pendingAnchor == null) return
     // Wait a frame so the detailed projection mounts before scrolling.
@@ -113,6 +119,8 @@ export function NoteViewer({
   // Citation quality signal (roadmap 1.3): share of cited evidence refs that
   // resolve to real attachments; hidden when the note cites none.
   const hitRate = note != null ? evidenceHitRate(note, attachmentManifest) : null
+  // 批3: 内容体检——纯函数投影（批1 质量规约的可观测面）。
+  const health = note != null ? noteHealth(note, hitRate) : null
   return (
     <div class="note-viewer">
       <PageHeader
@@ -187,6 +195,15 @@ export function NoteViewer({
                 </button>
               </span>
             )}
+            {health != null && (
+              <button
+                class="btn small note-health-toggle"
+                title="内容体检——对照批1 质量规约检查这份笔记"
+                onClick={() => setHealthOpen(!healthOpen)}
+              >
+                {health.warnCount > 0 ? `体检：${health.warnCount} 项待改进` : '体检：良好'}
+              </button>
+            )}
             {hitRate != null && hitRate.total > 0 && (
               <span class="badge" title={`时间线证据引用精确命中附件 ${hitRate.hits}/${hitRate.total}`}>
                 引用命中 {hitRate.hits}/{hitRate.total}
@@ -218,6 +235,25 @@ export function NoteViewer({
               </button>
             )}
           </div>
+        </div>
+      )}
+      {/* 批3: 体检面板——findings 列表 + warn 时直达重新生成。 */}
+      {note != null && healthOpen && health != null && (
+        <div class="note-health-panel">
+          <ul>
+            {health.findings.length === 0 && <li class="info">各项检查通过，未发现待改进项。</li>}
+            {health.findings.map((finding) => (
+              <li key={`${finding.field}-${finding.message}`} class={finding.level}>
+                <span class="health-field">{HEALTH_FIELD_LABELS[finding.field]}</span>
+                {finding.message}
+              </li>
+            ))}
+          </ul>
+          {health.warnCount > 0 && onRegenerate != null && (
+            <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
+              {regenBusy ? '生成中…' : '重新生成此笔记'}
+            </button>
+          )}
         </div>
       )}
       {/* 批3 (plan 2026-09-07 v07): masthead lives OUTSIDE .note-body so the

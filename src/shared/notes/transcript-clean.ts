@@ -41,8 +41,9 @@ const MIN_SIMILARITY_CHARS = 20
 const NEAR_EMPTY_CHARS = 5
 const DUPLICATE_SIMILARITY = 0.85
 
-/** 字符 bigram Dice 系数：ASR 偶发重复输出的相邻段相似度远超 0.85。 */
-function bigramDice(left: string, right: string): number {
+/** 字符 bigram Dice 系数：ASR 偶发重复输出的相邻段相似度远超 0.85。
+ *  导出复用（批3 体检的「detail 复读标题」启发式共用同一几何）。 */
+export function bigramDice(left: string, right: string): number {
   if (left === right) return 1
   const leftGrams = new Set<string>()
   for (let i = 0; i < left.length - 1; i++) leftGrams.add(left.slice(i, i + 2))
