@@ -2,7 +2,7 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布] — 装机实测整改第二轮 + 笔记反馈润色（2026-09-08 · 方案 2026-09-07-v07-install-feedback-remediation 已批准「全按推荐」）
+## [0.7.1] — 测试构建（2026-09-08，未打 tag；装机实测整改第二轮 + 笔记反馈润色）
 
 Andiii 装机 0.7.0 实测六问题触发；扫描另发现多项存量缺陷。六批落地，测试 691 → 720（+29）。
 
