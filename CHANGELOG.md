@@ -2,6 +2,12 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 安装器
+
+- **安装包支持自定义安装路径**：NSIS 从一键安装（静默装入 `%LOCALAPPDATA%\Programs\Flash Summary`，全程无选择）切换为向导式安装，目录页放开编辑；默认路径与旧版一致，覆盖升级自动预填上次位置。`perMachine`、快捷方式、图标不变，默认按用户级安装无需管理员权限（主动选受保护目录时才弹 UAC）；userData 在 `%APPDATA%` 与安装位置无关，换目录重装不丢登录态与资料库。（docs/plans/2026-09-08-nsis-allow-install-directory.md）
+
 ## [0.7.1] — 测试构建（2026-09-08，未打 tag；装机实测整改第二轮 + 笔记反馈润色）
 
 Andiii 装机 0.7.0 实测六问题触发；扫描另发现多项存量缺陷。六批落地，测试 691 → 720（+29）。
