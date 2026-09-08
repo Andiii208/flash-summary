@@ -24,10 +24,12 @@ import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachmentManifest, readAttachmentData } from './notes/attachments'
 import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
-import { polishNote } from './notes/polish'
+import { polishNote, loadValidRefs } from './notes/polish'
 import { FEEDBACK_TAGS } from '../shared/feedback-tags'
 import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
+import { noteHealth } from '../shared/notes/health'
+import { evidenceHitRate } from '../shared/notes/evidence'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { treeToSvg } from '../shared/notes/mindmap-svg'
 import { mergeCourseTree } from '../shared/notes/course-tree'
@@ -981,7 +983,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const rows = ctx.db
         .prepare(
           `SELECT n.lesson_id AS lessonId, MAX(n.version) AS version, MAX(n.created_at) AS createdAt,
-                  l.title AS lessonTitle, c.name AS courseName, c.teacher
+                  l.title AS lessonTitle, c.id AS courseId, c.name AS courseName, c.teacher
            FROM notes n
            JOIN lessons l ON l.id = n.lesson_id
            LEFT JOIN courses c ON c.id = l.course_id
@@ -994,10 +996,43 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         version: number
         createdAt: string
         lessonTitle: string | null
+        courseId: string | null
         courseName: string | null
         teacher: string | null
       }>
       return ok(rows)
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // 质量批4 (plan 2026-09-08 note-quality-overhaul): per-lesson health for a
+  // course — feeds the library's «升级旧笔记» picker. Latest version only;
+  // corrupt note_json degrades to a weak report instead of failing the course.
+  handle(ipc, 'notes:courseHealth', (_e, courseId: unknown) => {
+    try {
+      const id = str(courseId, 'courseId')
+      const course = ctx.db.prepare('SELECT id FROM courses WHERE id = ?').get(id)
+      if (course == null) return err(new Error('课程不存在'))
+      const rows = ctx.db
+        .prepare(
+          `SELECT l.id AS lessonId, l.title AS lessonTitle, n.version, n.note_json
+           FROM lessons l
+           JOIN notes n ON n.lesson_id = l.id
+           WHERE l.course_id = ? AND n.version = (SELECT MAX(version) FROM notes WHERE lesson_id = l.id)
+           ORDER BY l.title`
+        )
+        .all(id) as Array<{ lessonId: string; lessonTitle: string; version: number; note_json: string }>
+      const report = rows.map((row) => {
+        try {
+          const note = parseNote(row.note_json)
+          const hitRate = evidenceHitRate(note, loadValidRefs(ctx.db, row.lessonId))
+          const health = noteHealth(note, hitRate)
+          return { lessonId: row.lessonId, lessonTitle: row.lessonTitle, version: row.version, warnCount: health.warnCount, grade: health.grade }
+        } catch {
+          return { lessonId: row.lessonId, lessonTitle: row.lessonTitle, version: row.version, warnCount: 3, grade: 'weak' as const }
+        }
+      })
+      return ok(report)
     } catch (e) {
       return err(e)
     }

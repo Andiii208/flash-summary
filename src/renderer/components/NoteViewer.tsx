@@ -40,6 +40,8 @@ export interface NoteViewerProps {
   library?: NoteIndexInfo[]
   /** 批B: open a library entry = select that lesson globally. */
   onOpenLesson?: (lessonId: string) => void
+  /** 质量批4: upgrade a course's stale notes from the library group head. */
+  onUpgradeCourse?: (courseId: string, label: string) => void
   /** A7: jump to the tasks tab when the selected lesson has no note. */
   onGoTasks?: () => void
   /** B4: «上一节/下一节» neighbors within the same course (sorted order;
@@ -79,6 +81,7 @@ export function NoteViewer({
   currentLessonId,
   library = [],
   onOpenLesson,
+  onUpgradeCourse,
   onGoTasks,
   prevLesson = null,
   nextLesson = null,
@@ -290,14 +293,14 @@ export function NoteViewer({
               {library.length > 0 && onOpenLesson != null && (
                 <>
                   <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
-                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
+                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} />
                 </>
               )}
             </>
           ) : library.length > 0 && onOpenLesson != null ? (
             <>
               <p class="msg">或打开其他笔记：</p>
-              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} />
+              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} />
             </>
           ) : null}
         </>

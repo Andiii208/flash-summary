@@ -8,7 +8,7 @@ import type {
   TaskProgressInfo,
   AppSettingsInfo,
   NoteAttachmentInfo, AttachmentManifestEntry,
-  NoteIndexInfo,
+  NoteIndexInfo, NoteHealthInfo,
   QaRecentInfo,
   BilibiliResolveResult
 } from '../shared/bridge'
@@ -90,6 +90,7 @@ const api: SeuSummaryBridge = {
   notes: {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
     list: (): Promise<ApiResult<NoteIndexInfo[]>> => ipcRenderer.invoke('notes:list'),
+    courseHealth: (courseId: string): Promise<ApiResult<NoteHealthInfo[]>> => ipcRenderer.invoke('notes:courseHealth', courseId),
     exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportMarkdown', lessonId),
     exportAnki: (lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>> =>

@@ -6,6 +6,8 @@ export interface NoteLibraryProps {
   entries: NoteIndexInfo[]
   /** Opening a library entry selects that lesson globally. */
   onOpenLesson: (lessonId: string) => void
+  /** 质量批4: upgrade a course's stale notes (guarded when not provided). */
+  onUpgradeCourse?: (courseId: string, label: string) => void
 }
 
 /** «YYYY-MM-DD HH:mm» short stamp; invalid input degrades to «—» (批6). */
@@ -16,6 +18,8 @@ function formatStamp(iso: string): string {
 
 interface LibraryGroup {
   label: string
+  /** 质量批4: course identity for the upgrade entry (first non-null wins). */
+  courseId: string | null
   items: NoteIndexInfo[]
 }
 
@@ -27,7 +31,8 @@ function groupByCourse(entries: NoteIndexInfo[]): LibraryGroup[] {
   for (const entry of entries) {
     const label = [entry.courseName, entry.teacher].filter((s): s is string => s != null && s !== '').join(' · ')
     const key = label !== '' ? label : '其他笔记'
-    const group = map.get(key) ?? { label: key, items: [] }
+    const group = map.get(key) ?? { label: key, courseId: entry.courseId, items: [] }
+    if (group.courseId == null && entry.courseId != null) group.courseId = entry.courseId
     group.items.push(entry)
     map.set(key, group)
   }
@@ -40,8 +45,9 @@ function groupByCourse(entries: NoteIndexInfo[]): LibraryGroup[] {
  * row selects that lesson so QA/exports/regenerate work immediately.
  * 2026-09-05: pure rows — the section heading lives with the caller.
  * 批6: course-grouped collapsible sections; v-badge explains itself.
+ * 质量批4: per-course «升级旧笔记» entry in the group head.
  */
-export function NoteLibrary({ entries, onOpenLesson }: NoteLibraryProps): JSX.Element {
+export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse }: NoteLibraryProps): JSX.Element {
   const groups = useMemo(() => groupByCourse(entries), [entries])
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const toggle = (label: string): void => {
@@ -58,10 +64,28 @@ export function NoteLibrary({ entries, onOpenLesson }: NoteLibraryProps): JSX.El
         const isCollapsed = collapsed.has(group.label)
         return (
           <div key={group.label} class="note-library-group">
-            <button class="note-library-group-head" aria-expanded={!isCollapsed} onClick={() => toggle(group.label)}>
-              <span class="note-library-course">{group.label}</span>
-              <span class="note-library-count">{group.items.length}</span>
-            </button>
+            <div class="note-library-group-head">
+              <button
+                class="note-library-group-toggle"
+                aria-expanded={!isCollapsed}
+                onClick={() => toggle(group.label)}
+              >
+                <span class="note-library-course">{group.label}</span>
+                <span class="note-library-count">{group.items.length}</span>
+              </button>
+              {onUpgradeCourse != null && group.courseId != null && (
+                <button
+                  class="btn small note-library-upgrade"
+                  title="按体检结果升级该课程的旧笔记（复用已落库转写，零下载）"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onUpgradeCourse(group.courseId!, group.label)
+                  }}
+                >
+                  升级旧笔记
+                </button>
+              )}
+            </div>
             {!isCollapsed &&
               group.items.map((entry) => {
                 const lesson = entry.lessonTitle != null && entry.lessonTitle !== '' ? entry.lessonTitle : entry.lessonId

@@ -238,7 +238,7 @@ describe('NoteViewer', () => {
   it('distinguishes «selected lesson has no note» from the library (批2 A7)', () => {
     const onGoTasks = vi.fn()
     const library = [
-      { lessonId: 'l2', version: 1, createdAt: '2026-09-04T00:00:00Z', courseName: '算法', teacher: null, lessonTitle: '第2节课' }
+      { lessonId: 'l2', version: 1, createdAt: '2026-09-04T00:00:00Z', courseId: 'c1', courseName: '算法', teacher: null, lessonTitle: '第2节课' }
     ]
     const host = mount(<NoteViewer note={null} lesson={{ courseName: '算法', lessonTitle: '第1节课' }} library={library} onOpenLesson={() => undefined} onGoTasks={onGoTasks} />)
     expect(host.querySelector('[data-testid="note-empty-current"]')).not.toBeNull()
@@ -275,7 +275,7 @@ describe('NoteViewer', () => {
   it('shows the cross-lesson note library grouped by course (批B + 批6)', () => {
     const onOpenLesson = vi.fn()
     const library = [
-      { lessonId: 'l2', version: 3, createdAt: '2026-09-04T02:00:00Z', courseName: '算法导论', teacher: '汪海', lessonTitle: '第2节课' }
+      { lessonId: 'l2', version: 3, createdAt: '2026-09-04T02:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第2节课' }
     ]
     const host = mount(<NoteViewer note={null} library={library} onOpenLesson={onOpenLesson} />)
     // 2026-09-05: home empty state mirrors the tasks tab — guide card, then

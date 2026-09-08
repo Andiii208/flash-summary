@@ -411,8 +411,7 @@ describe('notes:courseTree (M4.1, 2026-09-05)', () => {
   })
 })
 
-describe('notes:polish (批5, plan 2026-09-07 v07)', () => {
-  function seedTranscribedLesson(): AppContext {
+describe('notes:polish (批5, plan 2026-09-07 v07)', () => {  function seedTranscribedLesson(): AppContext {
     const ctx = makeCtx()
     db.prepare(
       "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-08T00:00:00Z')"
@@ -469,5 +468,74 @@ describe('notes:polish (批5, plan 2026-09-07 v07)', () => {
     expect(res.value?.version).toBe(2)
     const row = db.prepare('SELECT model FROM notes WHERE lesson_id = ? AND version = 2').get('l1') as { model: string }
     expect(row.model).toContain('润色')
+  })
+})
+
+describe('notes:courseHealth (质量批4, plan 2026-09-08 note-quality-overhaul)', () => {
+  const RICH_NOTE = JSON.stringify({
+    overview: `## 本讲主线\n${'很长的主线叙述，覆盖本讲完整的知识推进与演示结果。'.repeat(6)}`,
+    knowledgeTree: { title: 'r', children: [] },
+    timeline: [],
+    concepts: [],
+    methodology: 'm',
+    examCues: ['手推交叉熵损失的梯度公式'],
+    questionsAndGaps: ['讲者留下的作业：完成模块化重构'],
+    quiz: []
+  })
+  const THIN_NOTE = JSON.stringify({
+    overview: '太短。',
+    knowledgeTree: { title: 'r', children: [] },
+    methodology: 'm',
+    examCues: [],
+    questionsAndGaps: []
+  })
+  function seedNote(lessonId: string, version: number, noteJson: string): void {
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES (?, ?, ?, ?, 'p', 'm', '2026-09-08T00:00:00Z')"
+    ).run(`${lessonId}-v${version}`, lessonId, version, noteJson)
+  }
+
+  it('reports per-lesson health of the LATEST version only, default-selected warns', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '第2节课', '2026-09-08T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l3', 'c1', '第3节课 坏档', '2026-09-08T00:00:00Z')").run()
+    // l1: 薄 v1 + 丰富 v2 → 体检只看 v2（good）。
+    seedNote('l1', 1, THIN_NOTE)
+    seedNote('l1', 2, RICH_NOTE)
+    // l2: 只有薄 v1 → fair（warn 1）。
+    seedNote('l2', 1, THIN_NOTE)
+    // l3: 坏档 → 降级为 weak（warnCount 3）而不是让整门课失败。
+    seedNote('l3', 1, '{broken json')
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:courseHealth', 'c1')) as {
+      ok: boolean
+      value?: Array<{ lessonId: string; lessonTitle: string; version: number; warnCount: number; grade: 'good' | 'fair' | 'weak' }>
+    }
+    expect(res.ok).toBe(true)
+    const rows = res.value ?? []
+    expect(rows).toHaveLength(3)
+    expect(rows.find((r) => r.lessonId === 'l1')).toMatchObject({ version: 2, warnCount: 0, grade: 'good' })
+    expect(rows.find((r) => r.lessonId === 'l2')).toMatchObject({ version: 1, warnCount: 1, grade: 'fair' })
+    expect(rows.find((r) => r.lessonId === 'l3')).toMatchObject({ warnCount: 3, grade: 'weak' })
+    // 默认勾选口径 = warn>0（D2=A）——排除已达标的 l1。
+    const { defaultSelection } = await import('../src/renderer/components/NoteUpgradeDialog')
+    expect(defaultSelection(rows as NonNullable<typeof res.value>)).toEqual(['l2', 'l3'])
+  })
+
+  it('notes:list rows carry courseId (升级入口的分组定位键)', async () => {
+    const ctx = makeCtx()
+    seedNote('l1', 1, THIN_NOTE)
+    registerIpc(ctx, ipc as never)
+    const res = (await ipc.invoke('notes:list')) as { ok: boolean; value?: Array<{ lessonId: string; courseId: string | null }> }
+    expect(res.ok).toBe(true)
+    expect(res.value?.[0]).toMatchObject({ lessonId: 'l1', courseId: 'c1' })
+  })
+
+  it('fails with a readable error for a missing course', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:courseHealth', 'nope')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('课程不存在')
   })
 })

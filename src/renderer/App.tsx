@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight } from 'lucide-preact'
 import { render } from 'preact'
-import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, AttachmentManifestEntry, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, AttachmentManifestEntry, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
@@ -19,6 +19,7 @@ import { ToastArea, type ToastItem, type ToastKind } from './components/ToastAre
 import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
 import { CourseMapDialog, type CourseMapInfo } from './components/CourseMapDialog'
+import { NoteUpgradeDialog } from './components/NoteUpgradeDialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
 import { BiliImportDialog } from './components/BiliImportDialog'
@@ -193,6 +194,24 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
       />
       <ToastArea toasts={state.toasts} onDismiss={state.dismissToast} />
       {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
+      <NoteUpgradeDialog
+        open={state.noteUpgrade.open}
+        courseLabel={state.noteUpgrade.label}
+        loading={state.noteUpgrade.loading}
+        items={state.noteUpgrade.items}
+        busy={state.noteUpgradeRun.busy}
+        statusOf={(lessonId) =>
+          state.noteUpgradeRun.running.has(lessonId)
+            ? ('running' as const)
+            : state.noteUpgradeRun.done.has(lessonId)
+              ? ('done' as const)
+              : state.noteUpgradeRun.failed.has(lessonId)
+                ? ('failed' as const)
+                : ('idle' as const)
+        }
+        onRun={state.runNoteUpgrade}
+        onClose={state.closeNoteUpgrade}
+      />
       <BiliImportDialog
         bridge={bridge}
         open={state.biliDialogOpen}
@@ -379,6 +398,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               currentLessonId={state.currentLesson}
               library={state.noteIndex}
               onOpenLesson={state.selectLesson}
+              onUpgradeCourse={state.openNoteUpgrade}
               onGoTasks={goTasks}
               prevLesson={state.lessonNeighbors.prev}
               nextLesson={state.lessonNeighbors.next}
@@ -525,6 +545,12 @@ interface AppState {
   note: Note | null
   /** 批B: cross-lesson note library (notes tab empty state). */
   noteIndex: NoteIndexInfo[]
+  /** 质量批4: 存量升级对话框数据 + 逐课运行状态（笔记库课程组入口）。 */
+  noteUpgrade: { open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }
+  noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }
+  openNoteUpgrade: (courseId: string, label: string) => void
+  closeNoteUpgrade: () => void
+  runNoteUpgrade: (lessonIds: string[]) => void
   /** 批B: recent Q&A across lessons (qa tab empty state). */
   qaRecent: QaRecentInfo[]
     /** B4: neighbors of the selected lesson (sorted, same course). */
@@ -694,6 +720,20 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   /** Bumped per resolved image so lazy views re-render. */
   const [attachmentVersion, setAttachmentVersion] = useState(0)
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
+  // 质量批4 (plan 2026-09-08 note-quality-overhaul): 存量升级——对话框与逐课状态。
+  const [noteUpgrade, setNoteUpgrade] = useState<{ open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }>({
+    open: false,
+    courseId: '',
+    label: '',
+    loading: false,
+    items: []
+  })
+  const [noteUpgradeRun, setNoteUpgradeRun] = useState<{ busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }>({
+    busy: false,
+    running: new Set(),
+    done: new Set(),
+    failed: new Set()
+  })
   // 批5: feedback polish busy state (independent of regenerate).
   const [notePolishBusy, setNotePolishBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -1731,6 +1771,61 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast, loadNote, loadNoteIndex]
   )
 
+  /** 质量批4: open the upgrade picker — fetch the course's per-lesson health. */
+  const openNoteUpgrade = useCallback(
+    (courseId: string, label: string): void => {
+      setNoteUpgrade({ open: true, courseId, label, loading: true, items: [] })
+      setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Set() })
+      void (async () => {
+        const res = await bridge.notes.courseHealth(courseId)
+        if (res.ok && res.value != null) {
+          setNoteUpgrade((prev) => ({ ...prev, open: true, loading: false, items: res.value as NoteHealthInfo[] }))
+        } else {
+          setNoteUpgrade((prev) => ({ ...prev, open: false, loading: false }))
+          toast(res.error ?? '读取体检结果失败', 'error')
+        }
+      })()
+    },
+    [bridge, toast]
+  )
+
+  const closeNoteUpgrade = useCallback((): void => {
+    setNoteUpgrade((prev) => ({ ...prev, open: false }))
+    setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Set() })
+  }, [])
+
+  /** 质量批4: upgrade sequentially — one notes:regenerate per lesson (reuse
+   *  stored transcripts/keyframes; the handler's own guards apply per call). */
+  const runNoteUpgrade = useCallback(
+    (lessonIds: string[]): void => {
+      if (lessonIds.length === 0) return
+      void (async () => {
+        setNoteUpgradeRun({ busy: true, running: new Set(lessonIds), done: new Set(), failed: new Set() })
+        setNoteRegenBusy(true)
+        const done = new Set<string>()
+        const failed = new Set<string>()
+        try {
+          for (const lessonId of lessonIds) {
+            const res = await bridge.notes.regenerate(lessonId)
+            if (res.ok) {
+              done.add(lessonId)
+              await loadNoteIndex()
+            } else {
+              failed.add(lessonId)
+            }
+          }
+        } finally {
+          setNoteRegenBusy(false)
+          setNoteUpgradeRun({ busy: false, running: new Set(), done, failed })
+        }
+        const failedSuffix = failed.size > 0 ? `，${failed.size} 个课时失败（可重试）` : ''
+        if (done.size > 0) toast(`已升级 ${done.size} 个课时笔记，体检徽标可复核结果${failedSuffix}`, failed.size > 0 ? 'info' : 'success')
+        else toast('升级失败：所选课时都未能重新生成', 'error')
+      })()
+    },
+    [bridge, toast, loadNoteIndex]
+  )
+
   /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
   const exportNotePdf = useCallback(
     (lessonId: string): void => {
@@ -1930,6 +2025,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     regenerateNote,
     notePolishBusy,
     polishNote,
+    noteUpgrade,
+    noteUpgradeRun,
+    openNoteUpgrade,
+    closeNoteUpgrade,
+    runNoteUpgrade,
     pdfBusy,
     exportNotePdf,
     setCacheDir,

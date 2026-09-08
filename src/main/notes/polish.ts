@@ -59,8 +59,9 @@ function loadTranscript(db: Db, lessonId: string): string {
   }
 }
 
-/** Every evidence id this lesson actually has — polish may only cite these. */
-function loadValidRefs(db: Db, lessonId: string): Array<{ ref: string }> {
+/** Every evidence id this lesson actually has — polish may only cite these.
+ *  批4 起导出复用（notes:courseHealth 的命中率口径同源）。 */
+export function loadValidRefs(db: Db, lessonId: string): Array<{ ref: string }> {
   const pages = db.prepare('SELECT page_index FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index').all(lessonId) as Array<{ page_index: number }>
   const keyframes = db.prepare('SELECT id FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds').all(lessonId) as Array<{ id: string }>
   return [

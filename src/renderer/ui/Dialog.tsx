@@ -14,6 +14,9 @@ export interface DialogProps {
   kind?: 'confirm' | 'view'
   /** 2026-09-04: optional custom body (e.g. an image viewer) between title and actions. */
   children?: preact.ComponentChildren
+  /** 质量批4: busy guard for long-running confirms («升级中…» + disabled). */
+  confirmDisabled?: boolean
+  cancelDisabled?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -25,7 +28,7 @@ export interface DialogProps {
  * 批6: «view» kind — a pure viewer gets one close action and a backdrop
  * click; a «取消» next to «关闭» made the user hesitate over nothing.
  */
-export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, kind = 'confirm', children, onConfirm, onCancel }: DialogProps): JSX.Element | null {
+export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, kind = 'confirm', children, confirmDisabled = false, cancelDisabled = false, onConfirm, onCancel }: DialogProps): JSX.Element | null {
   const view = kind === 'view'
   useEffect(() => {
     if (!open) return
@@ -56,10 +59,10 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
             </button>
           ) : (
             <>
-              <button class="btn" autoFocus onClick={onCancel}>
+              <button class="btn" autoFocus onClick={onCancel} disabled={cancelDisabled}>
                 取消
               </button>
-              <button class={`btn ${danger ? 'danger' : 'primary'}`} onClick={onConfirm}>
+              <button class={`btn ${danger ? 'danger' : 'primary'}`} onClick={onConfirm} disabled={confirmDisabled}>
                 {confirmLabel}
               </button>
             </>

@@ -163,9 +163,21 @@ export interface NoteIndexInfo {
   lessonId: string
   version: number
   createdAt: string
+  /** 质量批4: 升级入口按课程分组定位（group label 是展示串不可作键）。 */
+  courseId: string | null
   courseName: string | null
   teacher: string | null
   lessonTitle: string | null
+}
+
+/** 质量批4 (plan 2026-09-08 note-quality-overhaul): one lesson's health row. */
+export interface NoteHealthInfo {
+  lessonId: string
+  lessonTitle: string
+  version: number
+  /** warn 级发现数；note_json 损坏时以 3（weak 下限）上报。 */
+  warnCount: number
+  grade: 'good' | 'fair' | 'weak'
 }
 
 /** 批B: one recent Q&A exchange across lessons (qa:recent, newest first). */
@@ -182,6 +194,8 @@ export interface NotesBridge {
   latest(lessonId: string): Promise<ApiResult<unknown>>
   /** 批B: every generated note across lessons (library list, newest first). */
   list(): Promise<ApiResult<NoteIndexInfo[]>>
+  /** 质量批4: per-lesson health of a course's latest notes (升级旧笔记 picker). */
+  courseHealth(courseId: string): Promise<ApiResult<NoteHealthInfo[]>>
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   /** 2026-09-04 roadmap 2.2: Anki TSV decks (concepts + quiz), one file per deck. */
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>

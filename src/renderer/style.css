@@ -967,11 +967,16 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-library-group { display: flex; flex-direction: column; gap: 4px; }
 .note-library-group-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  background: none; border: none; padding: 4px 2px; cursor: pointer;
-  font-family: inherit; font-size: var(--font-size-sm); font-weight: 620; color: var(--text-secondary);
-  text-align: left;
+  padding: 4px 2px;
 }
-.note-library-group-head:hover { color: var(--text); }
+.note-library-group-toggle {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: var(--font-size-sm); font-weight: 620; color: var(--text-secondary);
+  text-align: left; min-width: 0;
+}
+.note-library-group-toggle:hover { color: var(--text); }
+.note-library-upgrade { flex: none; }
 .note-library-count { font-size: var(--font-size-xs); font-weight: 500; color: var(--text-muted); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; }
 .note-library-lesson { min-width: 0; overflow-wrap: anywhere; text-align: left; }
 .note-library-row, .qa-recent-row {
@@ -1028,6 +1033,16 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-health-panel li.info::before { background: var(--text-muted); opacity: 0.5; }
 .note-health-panel .health-field { flex: none; font-weight: 600; color: var(--text); }
 .note-health-panel li.info .health-field { color: var(--text-muted); }
+/* 质量批4: 存量升级选择列表（Dialog 自定义 body）。 */
+.note-upgrade-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; margin: 8px 0 4px; min-width: 420px; }
+.note-upgrade-all { display: flex; gap: 8px; align-items: center; font-size: var(--font-size-xs); color: var(--text-muted); }
+.note-upgrade-row { display: flex; gap: 10px; align-items: center; font-size: var(--font-size-sm); padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); }
+.note-upgrade-row.done { opacity: 0.55; }
+.note-upgrade-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.note-upgrade-grade.weak { color: var(--danger); }
+.note-upgrade-grade.fair { color: var(--warning); }
+.note-upgrade-grade.good { color: var(--success); }
+.note-upgrade-status { flex: none; min-width: 64px; text-align: right; color: var(--text-muted); font-size: var(--font-size-xs); }
 .note-tabs {
   display: inline-flex;
   gap: 3px;
