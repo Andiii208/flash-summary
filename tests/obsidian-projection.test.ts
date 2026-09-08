@@ -3,7 +3,7 @@
  * frontmatter / wikilink / SR 卡语法 / 图片嵌入 / 空 section 省略 / 名称清洗。
  */
 import { describe, expect, it } from 'vitest'
-import { projectObsidianNote, tagSafe, type ObsidianMeta } from '../src/shared/notes/obsidian'
+import { projectObsidianNote, projectConceptIndex, projectVaultIndex, tagSafe, type ObsidianMeta } from '../src/shared/notes/obsidian'
 import { parseNote } from '../src/shared/notes/schema'
 
 const meta: ObsidianMeta = {
@@ -122,5 +122,53 @@ describe('projectObsidianNote (批1)', () => {
     expect(quoted.markdown).toContain('course: "C++: 从入门到 \\"放弃\\""')
     expect(tagSafe('信号与系统 第3讲')).toBe('信号与系统-第3讲')
     expect(tagSafe('')).toBe('deck')
+  })
+})
+
+describe('projectConceptIndex / projectVaultIndex (批2)', () => {
+  it('同 term 跨课时归并（trim/大小写归一），首见形态为展示名', () => {
+    const md = projectConceptIndex('信号与系统', [
+      {
+        lesson: '第3讲 傅里叶级数',
+        concepts: [
+          { term: '傅里叶级数', definition: '把周期信号表示为正交族线性组合。' },
+          { term: '频谱', definition: '信号在频率域的分布。' }
+        ]
+      },
+      {
+        lesson: '第5讲 采样',
+        concepts: [
+          { term: '傅里叶级数 ', definition: '第5讲里对同一概念的再表述。' },
+          { term: '奈奎斯特率', definition: '采样率的下限。' }
+        ]
+      }
+    ])
+    expect(md).toContain('kind: concept-index')
+    expect(md).toContain('## [[傅里叶级数]]')
+    expect(md).toContain('- [[第3讲 傅里叶级数]]：把周期信号表示为正交族线性组合。')
+    expect(md).toContain('- [[第5讲 采样]]：第5讲里对同一概念的再表述。')
+    // 只出现一个傅里叶级数分组（大小写/空白归一），频谱/奈奎斯特率各自成组。
+    expect(md.match(/## \[\[傅里叶级数\]\]/g)).toHaveLength(1)
+    expect(md).toContain('## [[奈奎斯特率]]')
+  })
+
+  it('单课时退化：无重复也成页；空概念课程只出骨架', () => {
+    const single = projectConceptIndex('课程甲', [{ lesson: '唯一一讲', concepts: [{ term: '概念', definition: '定义' }] }])
+    expect(single).toContain('## [[概念]]')
+    const empty = projectConceptIndex('课程乙', [{ lesson: '有一讲', concepts: [] }])
+    expect(empty).not.toContain('## [[')
+    expect(empty).toContain('概念索引')
+  })
+
+  it('_index 模板：结构约定 in-band + 课程清单（空库省略课程节）', () => {
+    const md = projectVaultIndex([
+      { course: '信号与系统', lessons: 3 },
+      { course: 'Python语言设计', lessons: 1 }
+    ])
+    expect(md).toContain('kind: index')
+    expect(md).toContain('#flashcards')
+    expect(md).toContain('- [[信号与系统]]（3 课时）')
+    expect(md).toContain('- [[Python语言设计]]（1 课时）')
+    expect(projectVaultIndex([])).not.toContain('## 课程')
   })
 })

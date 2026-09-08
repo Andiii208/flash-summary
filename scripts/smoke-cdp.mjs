@@ -121,7 +121,7 @@ const EXPECTED_BRIDGE = {
   bilibili: ['login', 'loginStatus', 'logout', 'session', 'resolve', 'import'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
-  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportAnki', 'exportSvg', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
+  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
   settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'onMigrateProgress'],
   log: ['rendererError']
@@ -142,6 +142,7 @@ const PROBES = [
   ['notes:list', 's.notes.list()', (r) => r.ok === true && Array.isArray(r.value)],
   ['notes:courseHealth (missing)', "s.notes.courseHealth('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:exportObsidian (missing note)', "s.notes.exportObsidian('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
+  ['notes:exportCourseObsidian (missing)', "s.notes.exportCourseObsidian('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:courseTree (missing)', "s.notes.courseTree('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:polish (empty feedback)', "s.notes.polish('smoke-none', { tags: [], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:polish (missing note)', "s.notes.polish('smoke-none', { tags: ['too_brief'], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],

@@ -42,6 +42,8 @@ export interface NoteViewerProps {
   onOpenLesson?: (lessonId: string) => void
   /** 质量批4: upgrade a course's stale notes from the library group head. */
   onUpgradeCourse?: (courseId: string, label: string) => void
+  /** Obsidian 批2: export the whole course into the vault. */
+  onExportCourseObsidian?: (courseId: string, label: string) => void
   /** A7: jump to the tasks tab when the selected lesson has no note. */
   onGoTasks?: () => void
   /** B4: «上一节/下一节» neighbors within the same course (sorted order;
@@ -84,6 +86,7 @@ export function NoteViewer({
   library = [],
   onOpenLesson,
   onUpgradeCourse,
+  onExportCourseObsidian,
   onGoTasks,
   prevLesson = null,
   nextLesson = null,
@@ -301,14 +304,14 @@ export function NoteViewer({
               {library.length > 0 && onOpenLesson != null && (
                 <>
                   <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
-                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} />
+                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} />
                 </>
               )}
             </>
           ) : library.length > 0 && onOpenLesson != null ? (
             <>
               <p class="msg">或打开其他笔记：</p>
-              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} />
+              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} />
             </>
           ) : null}
         </>

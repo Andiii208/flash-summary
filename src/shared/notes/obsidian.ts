@@ -125,3 +125,79 @@ export function projectObsidianNote(note: Note, meta: ObsidianMeta): ObsidianExp
   if (note.methodology.trim() !== '') lines.push('', '## 方法论', '', note.methodology.trim(), '')
   return { markdown: lines.join('\n'), attachments: meta.attachments }
 }
+
+export interface ConceptIndexLesson {
+  lesson: string
+  concepts: Array<{ term: string; definition: string }>
+}
+
+/** _概念.md (批2, D1=A): course-level concept aggregation — same normalized
+ *  term across lessons merges under one wikilink heading; the first-seen
+ *  display form wins. Rebuilt on every course export, never hand-edited. */
+export function projectConceptIndex(course: string, lessons: ConceptIndexLesson[]): string {
+  const groups = new Map<string, { term: string; entries: Array<{ lesson: string; definition: string }> }>()
+  for (const lesson of lessons) {
+    for (const concept of lesson.concepts) {
+      const term = concept.term.trim()
+      if (term === '') continue
+      const key = term.toLowerCase()
+      const group = groups.get(key) ?? { term, entries: [] }
+      group.entries.push({ lesson: lesson.lesson, definition: concept.definition.trim() })
+      groups.set(key, group)
+    }
+  }
+  const lines = [
+    '---',
+    'source: flash-summary',
+    `course: ${yamlValue(course)}`,
+    'kind: concept-index',
+    '---',
+    '',
+    `# ${course} · 概念索引`,
+    '',
+    '> 同名概念跨课时由 wikilink 自动互链；本页由 Flash Summary 导出时自动重建，请勿手改。',
+    ''
+  ]
+  for (const group of [...groups.values()].sort((left, right) => left.term.localeCompare(right.term, 'zh-Hans-CN'))) {
+    lines.push(`## ${wikilink(group.term)}`, '')
+    for (const entry of group.entries) lines.push(`- [[${entry.lesson}]]：${entry.definition}`)
+    lines.push('')
+  }
+  return lines.join('\n')
+}
+
+export interface VaultIndexCourse {
+  course: string
+  lessons: number
+}
+
+/** _index.md (批2): vault-wide navigation + in-band schema documentation —
+ *  the readme for humans and the contract for agents, rebuilt from the
+ *  export manifest on every course export. */
+export function projectVaultIndex(courses: VaultIndexCourse[]): string {
+  const lines = [
+    '---',
+    'source: flash-summary',
+    'kind: index',
+    '---',
+    '',
+    '# Flash Summary 导出库',
+    '',
+    '> 本文件由 Flash Summary 导出时自动重建。以下是结构约定，人和 agent 都可读。',
+    '',
+    '## 结构约定',
+    '',
+    '- 每课时一个自足文件：`Flash Summary/<课程名>/<课时名>.md`',
+    '- frontmatter：source / course / lesson / lesson_id / origin / bvid（仅B站）/ version / created',
+    '- 概念与知识树使用 [[wikilink]]——同名概念跨课时自动互链；聚合页见各课程 `_概念.md`',
+    '- `## 自测` 含 #flashcards 卡片（概念卡 `[[术语]]::定义`、问答题为「问题 / ? / 答案」多行块），Obsidian Spaced Repetition 插件可调度复习',
+    '- 时间线关键帧在 `attachments/`；导出文件建议以链接方式加工——直接改写会在下次导出被覆盖',
+    ''
+  ]
+  if (courses.length > 0) {
+    lines.push('## 课程', '')
+    for (const entry of courses) lines.push(`- [[${entry.course}]]（${entry.lessons} 课时）`)
+    lines.push('')
+  }
+  return lines.join('\n')
+}

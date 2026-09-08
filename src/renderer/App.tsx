@@ -399,6 +399,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               library={state.noteIndex}
               onOpenLesson={state.selectLesson}
               onUpgradeCourse={state.openNoteUpgrade}
+              onExportCourseObsidian={state.exportCourseObsidian}
               onGoTasks={goTasks}
               prevLesson={state.lessonNeighbors.prev}
               nextLesson={state.lessonNeighbors.next}
@@ -618,6 +619,8 @@ interface AppState {
   exportNote: (lessonId: string) => void
   /** Obsidian 批1: structured vault export. */
   exportNoteObsidian: (lessonId: string) => void
+  /** Obsidian 批2: whole-course vault export. */
+  exportCourseObsidian: (courseId: string, label: string) => void
   /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
   exportNoteAnki: (lessonId: string) => void
   /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
@@ -1671,6 +1674,25 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast]
   )
 
+  /** Obsidian 批2: whole-course vault export (lessons + derived pages). */
+  const exportCourseObsidian = useCallback(
+    (courseId: string, label: string): void => {
+      void (async () => {
+        const res = await bridge.notes.exportCourseObsidian(courseId)
+        if (!res.ok) {
+          toast(res.error ?? '导出失败', 'error')
+          return
+        }
+        if (res.value?.canceled) return
+        const exported = res.value?.exported ?? 0
+        const skipped = res.value?.skipped ?? 0
+        const skipSuffix = skipped > 0 ? `，${skipped} 个课时无笔记已跳过` : ''
+        toast(`已将《${label}》${exported} 个课时导出到 Obsidian 仓库（含概念聚合页）${skipSuffix}`, 'success')
+      })()
+    },
+    [bridge, toast]
+  )
+
   /** 2026-09-04 roadmap 2.2: Anki TSV decks — toast carries a reveal action. */
   const exportNoteAnki = useCallback(
     (lessonId: string): void => {
@@ -2039,6 +2061,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     providerTestBusy,
     exportNote,
     exportNoteObsidian,
+    exportCourseObsidian,
     exportNoteAnki,
     exportNoteSvg,
     openCourseMap,

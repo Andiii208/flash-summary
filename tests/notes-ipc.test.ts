@@ -634,3 +634,71 @@ describe('notes:exportObsidian (Obsidian 批1, plan 2026-09-08-obsidian-export)'
     expect(res.error).toContain('该课时尚无笔记')
   })
 })
+
+describe('notes:exportCourseObsidian (Obsidian 批2, plan 2026-09-08-obsidian-export)', () => {
+  const NOTE_A = JSON.stringify({
+    overview: 'o',
+    knowledgeTree: { title: 'r', children: [] },
+    methodology: 'm',
+    concepts: [
+      { term: '傅里叶级数', definition: '第一讲的定义。' },
+      { term: '频谱', definition: '频率域分布。' }
+    ],
+    examCues: [],
+    questionsAndGaps: []
+  })
+  const NOTE_B = JSON.stringify({
+    overview: 'o',
+    knowledgeTree: { title: 'r', children: [] },
+    methodology: 'm',
+    concepts: [{ term: '傅里叶级数', definition: '第二讲的再表述。' }],
+    examCues: [],
+    questionsAndGaps: []
+  })
+  function seedCourseLessons(): void {
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '第2节课', '2026-09-08T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l3', 'c1', '第3节课 无笔记', '2026-09-08T00:00:00Z')").run()
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-08T00:00:00Z')").run(NOTE_A)
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n2', 'l2', 1, ?, 'p', 'm', '2026-09-08T00:00:00Z')").run(NOTE_B)
+  }
+
+  it('exports every noted lesson + _概念.md aggregation + vault-wide _index.md', async () => {
+    const ctx = makeCtx()
+    seedCourseLessons()
+    const vault = join(dir, 'vault')
+    const prev = process.env.SEU_OBSIDIAN_PATH
+    process.env.SEU_OBSIDIAN_PATH = vault
+    try {
+      registerIpc(ctx, ipc as never)
+      const res = (await invoke('notes:exportCourseObsidian', 'c1')) as {
+        ok: boolean
+        value?: { canceled: boolean; exported?: number; skipped?: number }
+      }
+      expect(res.ok).toBe(true)
+      expect(res.value).toEqual({ canceled: false, exported: 2, skipped: 1 })
+      const { readFileSync, existsSync } = await import('fs')
+      const courseDir = join(vault, 'Flash Summary', '课程')
+      expect(existsSync(join(courseDir, '第2节课.md'))).toBe(true)
+      // 聚合页：同名概念跨课时归并，带课时 wikilink。
+      const concepts = readFileSync(join(courseDir, '_概念.md'), 'utf8')
+      expect(concepts).toContain('## [[傅里叶级数]]')
+      expect(concepts).toContain('- [[第2节课]]：第二讲的再表述。')
+      expect(concepts).toContain('## [[频谱]]')
+      // 全库索引：结构约定 + 课程清单（计数只含已导出课时）。
+      const index = readFileSync(join(vault, 'Flash Summary', '_index.md'), 'utf8')
+      expect(index).toContain('kind: index')
+      expect(index).toContain('- [[课程]]（2 课时）')
+    } finally {
+      if (prev == null) delete process.env.SEU_OBSIDIAN_PATH
+      else process.env.SEU_OBSIDIAN_PATH = prev
+    }
+  })
+
+  it('fails with a readable error for a missing course', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:exportCourseObsidian', 'nope')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('课程不存在')
+  })
+})
