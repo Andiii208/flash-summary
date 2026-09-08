@@ -1,7 +1,7 @@
 ---
 name: note-craft
 description: SEU Summary 笔记系统的工艺规范——数据契约、证据对齐、五视图投影、视觉纪律、PDF 排版与测试要求。凡改动笔记生成/展示/导出链路的会话必须先读本文件。
-version: 1.0.0
+version: 1.1.0
 ---
 
 # SEU Summary 笔记工艺（Note Craft）
@@ -126,3 +126,24 @@ Note {
 
 - `tapestry/learn-this`（URL→提取→行动计划）：编排类，与「学习后转行动」思想同向，但本产品的方法论视图已承载该职责，无需引入编排层。
 - qiaomu 的多源抓取/NotebookLM 上传管线：与本产品「本地优先、自有管线」定位冲突。
+
+## 10. 内容质量规约与体检（2026-09-08 质量攻坚批1-4，plan docs/plans/2026-09-08-note-quality-overhaul.md）
+
+真实库探针实证（2026-09-08）：旧 prompt 只管形状，SEU 课概念定义均 35-45 字、考点全空、evidence ref 全为非法散文——「形状对而内容平庸」是「笔记平平无奇」的直接来源。
+
+### 质量规约（prompt 行为契约）
+
+- `SYSTEM_PROMPT = NOTE_SHAPE_PROMPT + NOTE_QUALITY_PROMPT`（`src/main/notes/summarize.ts`）：形状 8 条（2026-09-04 起）+ 质量规约 9.1-9.8。动条款必须动 `tests/note-prompt-quality.test.ts` 的钉住断言。
+- 核心条款：概念定义 ≥60 字且「是什么+为什么/用在哪/与什么区分」三选二、禁循环定义；时间线 detail 禁复读 title、必须含具体数字/结论、refs 为忠实摘引；overview ≥150 字 ## 小节；考点具体到「考什么怎么答」且**宁空勿编**；转写同音错词结合关键帧纠正为正名（月华→鸢尾花 已实证）；evidence few-shot + 仅关键帧素材时禁 ppt: 引用（G0-2 的 0/8 根因收口）；conceptLinks label 关系词白名单。
+- POLISH 同步质量下限（第 6 条），保守修订纪律不变。
+
+### 转写清洗（load 时派生）
+
+- `src/shared/notes/transcript-clean.ts` 纯函数：标点/串尾语气词压缩（左边界刻意不设界——中文无以呃/嗯/啊为词内语素的词）、近空段（<5 字）剔除、相邻段精确+bigram Dice ≥0.85 去重（短段仅精确等防 B站字幕误杀）。
+- summarize/polish/qa 三消费点统一走清洗后文本；**原始 segments 落库不动**（refs 摘引需要原文）。
+
+### 体检与存量升级
+
+- `noteHealth(note, hitRate?)`（`src/shared/notes/health.ts`）→ `{ warnCount, grade: good|fair|weak, findings: [{field, level: warn|info}] }`：warn=重新生成可改进；info=诚实空节说明（宁空勿编，不拉低评级）。NoteViewer 工具体检徽标+findings 面板。
+- `notes:courseHealth(courseId)` IPC + 笔记库课程组「升级旧笔记」对话框（默认勾选 warn>0，逐课串行复用 notes:regenerate，零下载）。
+- 真实库基线（2026-09-08，升级前）：1690406-L0 v1=fair(warn2)/1690625-L0 v3=fair(warn2)/bili-P3 v2=fair(warn1)——升级后对比留待现场验收（需退 Clash TUN，大请求经代理会挂起）。
