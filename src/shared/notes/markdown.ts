@@ -24,7 +24,9 @@ function evidenceLabel(evidence: EvidenceRef): string {
   return evidence.kind === 'ppt' ? `PPT 第 ${evidence.ref.slice(4)} 页` : `关键帧 ${evidence.ref.slice(3)}`
 }
 
-function formulaSection(note: Note): string[] {
+/** Shared with the Obsidian projection (plan 2026-09-08-obsidian-export) —
+ *  the formula/step block shape is identical markdown. */
+export function formulaSection(note: Note): string[] {
   const lines: string[] = []
   for (const item of note.formulasAndSteps) {
     const suffix = item.explanation ? ` — ${item.explanation}` : ''
@@ -37,7 +39,8 @@ function formulaSection(note: Note): string[] {
   return lines
 }
 
-function listSection(heading: string, items: string[]): string[] {
+/** Shared with the Obsidian projection — same heading + list shape. */
+export function listSection(heading: string, items: string[]): string[] {
   return items.length === 0 ? [] : ['', `## ${heading}`, '', ...items.map((item) => `- ${item}`)]
 }
 

@@ -93,6 +93,8 @@ const api: SeuSummaryBridge = {
     courseHealth: (courseId: string): Promise<ApiResult<NoteHealthInfo[]>> => ipcRenderer.invoke('notes:courseHealth', courseId),
     exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportMarkdown', lessonId),
+    exportObsidian: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; version?: number }>> =>
+      ipcRenderer.invoke('notes:exportObsidian', lessonId),
     exportAnki: (lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>> =>
       ipcRenderer.invoke('notes:exportAnki', lessonId),
     exportSvg: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>

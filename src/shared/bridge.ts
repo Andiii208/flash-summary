@@ -197,6 +197,8 @@ export interface NotesBridge {
   /** 质量批4: per-lesson health of a course's latest notes (升级旧笔记 picker). */
   courseHealth(courseId: string): Promise<ApiResult<NoteHealthInfo[]>>
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
+  /** Obsidian 批1: structured markdown into the user's vault (+ attachments). */
+  exportObsidian(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; version?: number }>>
   /** 2026-09-04 roadmap 2.2: Anki TSV decks (concepts + quiz), one file per deck. */
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
   /** M3.3 (map expansion): the knowledge tree as a standalone paper-white SVG. */

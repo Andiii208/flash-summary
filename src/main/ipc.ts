@@ -9,9 +9,9 @@
  */
 import { ipcMain, dialog, shell, app, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { lookup as dnsLookup } from 'dns/promises'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, copyFileSync } from 'fs'
 import { randomUUID } from 'crypto'
-import { join, dirname, sep, resolve } from 'path'
+import { join, dirname, sep, resolve, basename } from 'path'
 import type { AppContext } from './app-context'
 import type { Db } from './db/open'
 import { isFakeIpResolution } from './net-diagnostics'
@@ -34,14 +34,15 @@ import { noteToMarkdown } from '../shared/notes/markdown'
 import { treeToSvg } from '../shared/notes/mindmap-svg'
 import { mergeCourseTree } from '../shared/notes/course-tree'
 import { ankiDecks, deckToTsv } from '../shared/notes/anki'
-import { noteExportBaseName } from '../shared/notes/export-name'
+import { noteExportBaseName, safeFileName } from '../shared/notes/export-name'
+import { projectObsidianNote, type ObsidianMeta } from '../shared/notes/obsidian'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import { formatBytes, formatSpeed } from '../shared/format'
 import type { Note } from '../shared/notes/schema'
-import { resolveCacheDir, attachmentsPath } from './library/paths'
+import { resolveCacheDir, attachmentsPath, resolveLibraryPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
-import { getSetting } from './settings/store'
+import { getSetting, setSetting } from './settings/store'
 import { fetchBilibiliLesson } from './bilibili/pipeline'
 import { nextPendingChainTask } from './bilibili/chain'
 import { biliCourseId, biliLessonId, parseBiliInput } from './bilibili/url-parse'
@@ -1037,6 +1038,94 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+  // Obsidian 导出 (plan 2026-09-08-obsidian-export 批1): one structured
+  // markdown file per lesson into the user's vault + copied attachments.
+  // Idempotent via obsidian_exports (migration 010) — re-export overwrites;
+  // a renamed lesson writes the new path and cleans up the old file.
+  // SEU_OBSIDIAN_PATH bypasses the vault picker (e2e/test seam, dev-only).
+  handle(ipc, 'notes:exportObsidian', async (_e, lessonId: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const row = ctx.db
+        .prepare(
+          `SELECT n.version, n.created_at, n.note_json, l.title AS lessonTitle,
+                  c.name AS courseName, c.source, c.bili_bvid
+           FROM notes n
+           JOIN lessons l ON l.id = n.lesson_id
+           JOIN courses c ON c.id = l.course_id
+           WHERE n.lesson_id = ? ORDER BY n.version DESC LIMIT 1`
+        )
+        .get(id) as { version: number; created_at: string; note_json: string; lessonTitle: string | null; courseName: string | null; source: string | null; bili_bvid: string | null } | undefined
+      if (row == null) return err(new Error('该课时尚无笔记'))
+      const note = parseNote(row.note_json)
+      let vault = getSetting(ctx.db, 'obsidianVaultPath', '')
+      if (vault === '') {
+        const seam = process.env.SEU_OBSIDIAN_PATH
+        if (seam != null && seam !== '') {
+          vault = seam
+        } else {
+          const win = BrowserWindow.getFocusedWindow()
+          const options: OpenDialogOptions = { title: '选择 Obsidian 仓库（vault）根目录', properties: ['openDirectory', 'createDirectory'] }
+          const picked = win == null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(win, options)
+          if (picked.canceled || picked.filePaths.length === 0) return ok({ canceled: true })
+          vault = picked.filePaths[0] as string
+          setSetting(ctx.db, 'obsidianVaultPath', vault)
+        }
+      }
+      // D4=A: only the attachments the note actually cites go to the vault.
+      const citedRefs = new Set<string>()
+      for (const entry of note.timeline) for (const ev of entry.evidence) citedRefs.add(ev.ref)
+      for (const ev of note.evidence) citedRefs.add(ev.ref)
+      const refToFile = new Map<string, string>()
+      for (const page of ctx.db.prepare('SELECT page_index, file_path FROM ppt_pages WHERE lesson_id = ?').all(id) as Array<{ page_index: number; file_path: string }>) {
+        refToFile.set(`ppt:${page.page_index}`, page.file_path)
+      }
+      for (const keyframe of ctx.db.prepare('SELECT id, file_path FROM keyframes WHERE lesson_id = ?').all(id) as Array<{ id: string; file_path: string }>) {
+        refToFile.set(`kf:${keyframe.id}`, keyframe.file_path)
+      }
+      const attachments: ObsidianMeta['attachments'] = [...citedRefs]
+        .filter((ref) => refToFile.has(ref))
+        .map((ref) => ({ ref, name: `${id}-${basename(refToFile.get(ref)!)}` }))
+      const meta: ObsidianMeta = {
+        course: row.courseName ?? '课程',
+        lesson: row.lessonTitle ?? id,
+        lessonId: id,
+        origin: row.source === 'bilibili' ? 'bilibili' : 'seu',
+        bvid: row.bili_bvid,
+        version: row.version,
+        created: row.created_at,
+        attachments
+      }
+      const projection = projectObsidianNote(note, meta)
+      const courseDir = join(vault, 'Flash Summary', safeFileName(meta.course))
+      const lessonPath = join(courseDir, `${safeFileName(meta.lesson)}.md`)
+      const attachmentDir = join(courseDir, 'attachments')
+      const previous = ctx.db.prepare('SELECT vault_path, file_path FROM obsidian_exports WHERE lesson_id = ?').get(id) as
+        | { vault_path: string; file_path: string }
+        | undefined
+      if (previous != null && previous.vault_path === vault && previous.file_path !== lessonPath) {
+        // Lesson renamed: the new file lands below, the stale one goes away.
+        rmSync(previous.file_path, { force: true })
+      }
+      mkdirSync(attachmentDir, { recursive: true })
+      writeFileSync(lessonPath, projection.markdown, 'utf8')
+      for (const attachment of attachments) {
+        copyFileSync(resolveLibraryPath(ctx.libraryRoot, refToFile.get(attachment.ref)!), join(attachmentDir, attachment.name))
+      }
+      ctx.db
+        .prepare(
+          `INSERT INTO obsidian_exports (lesson_id, vault_path, file_path, exported_version, exported_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(lesson_id) DO UPDATE SET vault_path=excluded.vault_path, file_path=excluded.file_path,
+             exported_version=excluded.exported_version, exported_at=excluded.exported_at`
+        )
+        .run(id, vault, lessonPath, row.version, new Date().toISOString())
+      return ok({ canceled: false, path: lessonPath, version: row.version })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
   // Export the latest note as Markdown via the system save dialog (U3).
   handle(ipc, 'notes:exportMarkdown', async (_e, lessonId: unknown) => {
     try {
@@ -1355,9 +1444,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   handle(ipc, 'notes:revealFile', (_e, filePath: unknown) => {
     try {
       // E4 (review): reveal only files the app itself produced — outside
-      // the exports/attachments roots the request is refused.
+      // the exports/attachments/obsidian-vault roots the request is refused.
       const requested = str(filePath, 'filePath')
       const allowedRoots = [ctx.exportsDir(), attachmentsPath(ctx.libraryRoot)]
+      const vault = getSetting(ctx.db, 'obsidianVaultPath', '')
+      if (vault !== '') allowedRoots.push(vault)
       const allowed = allowedRoots.some((root) => {
         const resolved = resolve(requested)
         return resolved === root || resolved.startsWith(root + sep)

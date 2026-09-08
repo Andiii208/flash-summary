@@ -539,3 +539,98 @@ describe('notes:courseHealth (质量批4, plan 2026-09-08 note-quality-overhaul)
     expect(res.error).toContain('课程不存在')
   })
 })
+
+describe('notes:exportObsidian (Obsidian 批1, plan 2026-09-08-obsidian-export)', () => {
+  const NOTE = JSON.stringify({
+    overview: 'o',
+    knowledgeTree: { title: 'r', children: [] },
+    timeline: [{ at: 120, title: 't', detail: 'd', refs: [], evidence: [{ kind: 'keyframe', ref: 'kf:kf-1' }] }],
+    methodology: 'm',
+    examCues: [],
+    questionsAndGaps: []
+  })
+  function seedNote(version = 1, noteJson = NOTE): void {
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', ?, ?, 'p', 'm', '2026-09-08T00:00:00Z')"
+    ).run(version, noteJson)
+  }
+
+  it('writes Flash Summary/<course>/<lesson>.md + cited attachments via the SEU_OBSIDIAN_PATH seam', async () => {
+    const ctx = makeCtx()
+    db.prepare("UPDATE courses SET name = '信号与系统' WHERE id = 'c1'").run()
+    db.prepare("UPDATE lessons SET title = '第3节课' WHERE id = 'l1'").run()
+    seedKeyframe()
+    seedNote()
+    const vault = join(dir, 'vault')
+    const prev = process.env.SEU_OBSIDIAN_PATH
+    process.env.SEU_OBSIDIAN_PATH = vault
+    try {
+      registerIpc(ctx, ipc as never)
+      const res = (await invoke('notes:exportObsidian', 'l1')) as { ok: boolean; value?: { canceled: boolean; path?: string; version?: number } }
+      expect(res.ok).toBe(true)
+      expect(res.value?.canceled).toBe(false)
+      expect(res.value?.path).toBe(join(vault, 'Flash Summary', '信号与系统', '第3节课.md'))
+      const { readFileSync, existsSync } = await import('fs')
+      const md = readFileSync(res.value?.path ?? '', 'utf8')
+      expect(md).toContain('source: flash-summary')
+      expect(md).toContain('course: 信号与系统')
+      expect(md).toContain('![[l1-kf-1.jpg]]')
+      // D4=A: 只带走被引用的附件（时间线绑定的那张关键帧）。
+      expect(existsSync(join(vault, 'Flash Summary', '信号与系统', 'attachments', 'l1-kf-1.jpg'))).toBe(true)
+      // Manifest 行落库（幂等对账键）。
+      const manifestRow = db.prepare('SELECT vault_path, file_path, exported_version FROM obsidian_exports WHERE lesson_id = ?').get('l1') as {
+        vault_path: string
+        file_path: string
+        exported_version: number
+      }
+      expect(manifestRow).toMatchObject({ vault_path: vault, exported_version: 1 })
+    } finally {
+      if (prev == null) delete process.env.SEU_OBSIDIAN_PATH
+      else process.env.SEU_OBSIDIAN_PATH = prev
+    }
+  })
+
+  it('re-export overwrites the same file; a renamed lesson cleans up the old one', async () => {
+    const ctx = makeCtx()
+    db.prepare("UPDATE lessons SET title = '第3节课' WHERE id = 'l1'").run()
+    seedNote()
+    const vault = join(dir, 'vault')
+    const prev = process.env.SEU_OBSIDIAN_PATH
+    process.env.SEU_OBSIDIAN_PATH = vault
+    try {
+      registerIpc(ctx, ipc as never)
+      await invoke('notes:exportObsidian', 'l1')
+      // 重新生成出一版 v2，再导出 → 覆盖同路径，manifest 推进到 v2。
+      db.prepare("UPDATE notes SET note_json = ? WHERE lesson_id = 'l1' AND version = 1").run(NOTE)
+      db.prepare(
+        "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n2', 'l1', 2, ?, 'p', 'm', '2026-09-08T01:00:00Z')"
+      ).run(NOTE)
+      await invoke('notes:exportObsidian', 'l1')
+      const { readFileSync, existsSync } = await import('fs')
+      const file = join(vault, 'Flash Summary', '课程', '第3节课.md')
+      expect(readFileSync(file, 'utf8')).toContain('version: 2')
+      // 课时改名 → 写新路径、删旧文件、manifest 指向新路径。
+      db.prepare("UPDATE lessons SET title = '第九节 复习课' WHERE id = 'l1'").run()
+      await invoke('notes:exportObsidian', 'l1')
+      expect(existsSync(join(vault, 'Flash Summary', '课程', '第3节课.md'))).toBe(false)
+      expect(existsSync(join(vault, 'Flash Summary', '课程', '第九节 复习课.md'))).toBe(true)
+      const manifestRow = db.prepare('SELECT file_path, exported_version FROM obsidian_exports WHERE lesson_id = ?').get('l1') as {
+        file_path: string
+        exported_version: number
+      }
+      expect(manifestRow.file_path).toContain('第九节 复习课.md')
+      expect(manifestRow.exported_version).toBe(2)
+    } finally {
+      if (prev == null) delete process.env.SEU_OBSIDIAN_PATH
+      else process.env.SEU_OBSIDIAN_PATH = prev
+    }
+  })
+
+  it('fails with a readable error when the lesson has no note', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:exportObsidian', 'l1')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('该课时尚无笔记')
+  })
+})

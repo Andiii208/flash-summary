@@ -121,7 +121,7 @@ const EXPECTED_BRIDGE = {
   bilibili: ['login', 'loginStatus', 'logout', 'session', 'resolve', 'import'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
-  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportAnki', 'exportSvg', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
+  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportAnki', 'exportSvg', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
   settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'onMigrateProgress'],
   log: ['rendererError']
@@ -141,6 +141,7 @@ const PROBES = [
   ['notes:latest (missing)', "s.notes.latest('smoke-none')", (r) => r.ok === true && r.value === null],
   ['notes:list', 's.notes.list()', (r) => r.ok === true && Array.isArray(r.value)],
   ['notes:courseHealth (missing)', "s.notes.courseHealth('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
+  ['notes:exportObsidian (missing note)', "s.notes.exportObsidian('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:courseTree (missing)', "s.notes.courseTree('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:polish (empty feedback)', "s.notes.polish('smoke-none', { tags: [], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:polish (missing note)', "s.notes.polish('smoke-none', { tags: ['too_brief'], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],
@@ -275,7 +276,7 @@ async function main() {
       const db = new Database(dbFile, { readonly: true })
       try {
         const migrations = db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n
-        record('L4 all nine migrations applied', migrations === 9, `schema_migrations rows ${migrations}`)
+        record('L4 all ten migrations applied', migrations === 10, `schema_migrations rows ${migrations}`)
         const courseRows = db.prepare('SELECT COUNT(*) AS n FROM courses').get().n
         record('L4 empty library has zero courses', courseRows === 0, `courses ${courseRows}`)
       } finally {

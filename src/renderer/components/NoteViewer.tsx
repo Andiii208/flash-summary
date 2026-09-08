@@ -58,6 +58,8 @@ export interface NoteViewerProps {
   pdfBusy?: boolean
   onExportPdf?: () => void
   onExport?: () => void
+  /** Obsidian 批1: structured vault export (vault picked on first run). */
+  onExportObsidian?: () => void
   /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
   onExportAnki?: () => void
   /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
@@ -91,6 +93,7 @@ export function NoteViewer({
   pdfBusy = false,
   onExportPdf,
   onExport,
+  onExportObsidian,
   onExportAnki,
   onExportSvg,
   onCopy,
@@ -235,6 +238,11 @@ export function NoteViewer({
             {onExport != null && note != null && (
               <button class="btn small" onClick={onExport}>
                 导出 Markdown
+              </button>
+            )}
+            {onExportObsidian != null && note != null && (
+              <button class="btn small" onClick={onExportObsidian} title="结构化 Markdown 写入 Obsidian 仓库（首次需选择仓库目录）">
+                导出 Obsidian
               </button>
             )}
           </div>

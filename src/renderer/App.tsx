@@ -408,6 +408,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
               onExportPdf={state.currentLesson !== '' && state.note != null ? () => state.exportNotePdf(state.currentLesson) : undefined}
               onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined}
+              onExportObsidian={state.currentLesson !== '' && state.note != null ? () => state.exportNoteObsidian(state.currentLesson) : undefined}
               onExportAnki={state.currentLesson !== '' && state.note != null ? () => state.exportNoteAnki(state.currentLesson) : undefined}
               onExportSvg={state.currentLesson !== '' && state.note != null ? () => state.exportNoteSvg(state.currentLesson) : undefined}
               onCopy={state.copyNote}
@@ -615,6 +616,8 @@ interface AppState {
   providerTest: { ok: boolean; text: string } | null
   providerTestBusy: boolean
   exportNote: (lessonId: string) => void
+  /** Obsidian 批1: structured vault export. */
+  exportNoteObsidian: (lessonId: string) => void
   /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
   exportNoteAnki: (lessonId: string) => void
   /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
@@ -1645,6 +1648,29 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast]
   )
 
+  /** Obsidian 批1: structured export into the user's vault — first run asks
+   *  for the vault root once, later runs overwrite the same file silently. */
+  const exportNoteObsidian = useCallback(
+    (lessonId: string): void => {
+      void (async () => {
+        const res = await bridge.notes.exportObsidian(lessonId)
+        if (!res.ok) {
+          toast(res.error ?? '导出失败', 'error')
+          return
+        }
+        if (res.value?.canceled) return
+        const filePath = res.value?.path ?? ''
+        toast(`已导出到 Obsidian 仓库（v${res.value?.version ?? '?'}）`, 'success', {
+          actionLabel: '打开所在文件夹',
+          onAction: () => {
+            void bridge.notes.revealFile(filePath)
+          }
+        })
+      })()
+    },
+    [bridge, toast]
+  )
+
   /** 2026-09-04 roadmap 2.2: Anki TSV decks — toast carries a reveal action. */
   const exportNoteAnki = useCallback(
     (lessonId: string): void => {
@@ -2012,6 +2038,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     providerTest,
     providerTestBusy,
     exportNote,
+    exportNoteObsidian,
     exportNoteAnki,
     exportNoteSvg,
     openCourseMap,
