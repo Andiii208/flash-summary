@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { act } from 'preact/test-utils'
 import { MyStudyPanel } from '../../src/renderer/components/MyStudyPanel'
 import { mount, click } from '../helpers/preact'
 import type { CourseTreeInfo } from '../../src/shared/bridge'
@@ -75,5 +76,25 @@ describe('MyStudyPanel (M2 批 A: 我的学习聚合区)', () => {
     const host = mount(<MyStudyPanel {...baseProps({ extracted: STUDIED, onToggleMine })} />)
     click(host.querySelector('.pin-btn'))
     expect(onToggleMine).toHaveBeenCalledWith('c1', true)
+  })
+
+  it('健康巡查 2026-09-12 批6: the collapsible group header is keyboard-operable (Enter/Space)', () => {
+    const two: CourseTreeInfo[] = [
+      { id: 'e1', name: '课一', hasExtracted: true, lessons: [] },
+      { id: 'e2', name: '课二', hasExtracted: true, lessons: [] }
+    ]
+    const host = mount(<MyStudyPanel {...baseProps({ extracted: two })} />)
+    const head = host.querySelectorAll('h3')[1] as HTMLElement
+    expect(head.getAttribute('tabindex')).toBe('0')
+    // Enter toggles…
+    act(() => {
+      head.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+    // …and so does Space.
+    act(() => {
+      head.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    })
+    expect(head.getAttribute('aria-expanded')).toBe('true')
   })
 })

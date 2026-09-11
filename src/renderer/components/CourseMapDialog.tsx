@@ -1,8 +1,9 @@
-import { useEffect } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { TreeNode } from '../../shared/notes/schema'
 import { MindMap } from './MindMap'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
+import { useFocusTrap } from '../ui/use-focus-trap'
 
 export interface CourseMapInfo {
   courseName: string
@@ -20,6 +21,9 @@ export interface CourseMapInfo {
  */
 export function CourseMapDialog({ info, onClose }: { info: CourseMapInfo; onClose: () => void }): JSX.Element {
   useModalScrollLock(true)
+  // 健康巡查 2026-09-12 批6: same focus discipline as Dialog.
+  const cardRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, cardRef)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose()
@@ -37,7 +41,7 @@ export function CourseMapDialog({ info, onClose }: { info: CourseMapInfo; onClos
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div class="course-map-card" data-testid="course-map-dialog">
+      <div class="course-map-card" data-testid="course-map-dialog" ref={cardRef}>
         <div class="course-map-head">
           <div>
             <h2>课程导图 · {info.courseName}</h2>

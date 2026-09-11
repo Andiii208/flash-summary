@@ -25,7 +25,31 @@ export interface LessonChipProps {
 export function LessonChip({ courseName, lessonTitle, lessons, currentLessonId, onSelectLesson }: LessonChipProps): JSX.Element {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLSpanElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const switchable = (lessons?.length ?? 0) > 0 && onSelectLesson != null
+
+  // 健康巡查 2026-09-12 批6: role="menu" promised keyboard support it did
+  // not have — Escape closes (focus back on the trigger) and ArrowUp/Down
+  // walk the menu items.
+  const onRootKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && open) {
+      setOpen(false)
+      triggerRef.current?.focus()
+      return
+    }
+    if (!open || !switchable) return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]') ?? [])
+    if (items.length === 0) return
+    e.preventDefault()
+    const currentIdx = document.activeElement instanceof HTMLButtonElement ? items.indexOf(document.activeElement) : -1
+    const next =
+      e.key === 'ArrowDown'
+        ? items[Math.min(currentIdx + 1, items.length - 1)] ?? items[0]!
+        : items[Math.max(currentIdx - 1, 0)] ?? items[0]!
+    next.focus()
+  }
 
   // Click-outside closes the dropdown (mousedown so it beats the blur).
   useEffect(() => {
@@ -38,11 +62,12 @@ export function LessonChip({ courseName, lessonTitle, lessons, currentLessonId, 
   }, [open])
 
   return (
-    <span class="lesson-chip" ref={rootRef}>
+    <span class="lesson-chip" ref={rootRef} onKeyDown={onRootKeyDown}>
       {/* 批5: 不可切换时降级为纯文本胶囊——按钮外观却无响应是死端。 */}
       {switchable ? (
         <button
           class="lesson-chip-btn"
+          ref={triggerRef}
           title={`${courseName} · ${lessonTitle}（点击切换本课课时）`}
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
@@ -64,7 +89,7 @@ export function LessonChip({ courseName, lessonTitle, lessons, currentLessonId, 
         </span>
       )}
       {open && switchable && (
-        <div class="lesson-chip-menu" role="menu">
+        <div class="lesson-chip-menu" role="menu" ref={menuRef}>
           {lessons!.map((lesson) => (
             <button
               key={lesson.id}

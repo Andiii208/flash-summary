@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { act } from 'preact/test-utils'
 import { LessonChip } from '../../src/renderer/components/LessonChip'
 import { mount, click } from '../helpers/preact'
 
@@ -63,5 +64,26 @@ describe('LessonChip', () => {
     expect(chip?.classList.contains('passive')).toBe(true)
     // No caret affordance without a menu.
     expect(host.querySelector('.chip-caret')).toBeNull()
+  })
+
+  it('健康巡查 2026-09-12 批6: Escape closes the menu and ArrowDown walks the items', () => {
+    const onSelect = vi.fn()
+    const host = mount(
+      <LessonChip courseName="数据结构" lessonTitle="第3节课" lessons={LESSONS} currentLessonId="l3" onSelectLesson={onSelect} />
+    )
+    click(host.querySelector('.lesson-chip-btn'))
+    const root = host.querySelector('.lesson-chip')!
+    // ArrowDown from the trigger pulls focus into the first menu item.
+    act(() => {
+      root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
+    const items = Array.from(host.querySelectorAll('.lesson-chip-menu button')) as HTMLButtonElement[]
+    expect(document.activeElement).toBe(items[0])
+    // Escape closes and hands focus back to the trigger button.
+    act(() => {
+      root.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(host.querySelector('.lesson-chip-menu')).toBeNull()
+    expect(document.activeElement).toBe(host.querySelector('.lesson-chip-btn'))
   })
 })

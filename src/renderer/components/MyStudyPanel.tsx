@@ -45,8 +45,19 @@ function StudyGroup({ label, count, hint, children }: StudyGroupProps): JSX.Elem
       <h3
         class={`flex items-center gap-1.5 px-0.5 text-[12px] font-medium tracking-[1px] text-muted${collapsible ? ' cursor-pointer select-none' : ''}`}
         onClick={collapsible ? toggle : undefined}
+        onKeyDown={
+          collapsible
+            ? (e: KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  toggle()
+                }
+              }
+            : undefined
+        }
         aria-expanded={collapsible ? open : undefined}
         role={collapsible ? 'button' : undefined}
+        tabIndex={collapsible ? 0 : undefined}
       >
         {collapsible && <span class="caret text-[10px]">{open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>}
         {label}

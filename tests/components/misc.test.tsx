@@ -10,6 +10,7 @@ import { SettingsPanel } from '../../src/renderer/components/SettingsPanel'
 import { TopBar } from '../../src/renderer/components/TopBar'
 import { ManualAdd } from '../../src/renderer/components/ManualAdd'
 import { useToasts, mergeToast } from '../../src/renderer/hooks/use-toasts'
+import { Dialog } from '../../src/renderer/ui/Dialog'
 import { mount, click, input } from '../helpers/preact'
 
 describe('ToastArea', () => {
@@ -572,6 +573,66 @@ describe('useToasts D1 合并去重 (same kind+message merges with a count)', ()
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('Dialog 焦点陷阱 (健康巡查 2026-09-12 批6)', () => {
+  function openDialog(): { trigger: HTMLButtonElement; host: HTMLElement } {
+    // A focused trigger outside the dialog — the element focus must return to.
+    const trigger = document.createElement('button')
+    trigger.textContent = '打开对话框'
+    document.body.appendChild(trigger)
+    trigger.focus()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    act(() => {
+      render(<Dialog open title="确认" message="内容" onConfirm={() => undefined} onCancel={() => undefined} />, host)
+    })
+    return { trigger, host }
+  }
+
+  const dialogButtons = (): HTMLButtonElement[] =>
+    Array.from(document.querySelectorAll('.dialog-actions button')) as HTMLButtonElement[]
+
+  it('Tab from the last action wraps back to the first', () => {
+    const { host } = openDialog()
+    const buttons = dialogButtons()
+    expect(buttons).toHaveLength(2)
+    buttons[buttons.length - 1]!.focus()
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    })
+    expect(document.activeElement).toBe(buttons[0])
+    render(null, host)
+  })
+
+  it('Shift+Tab from the first action wraps to the last', () => {
+    const { host } = openDialog()
+    const buttons = dialogButtons()
+    buttons[0]!.focus()
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }))
+    })
+    expect(document.activeElement).toBe(buttons[buttons.length - 1])
+    render(null, host)
+  })
+
+  it('Tab with focus outside the dialog pulls it back inside', () => {
+    const { host } = openDialog()
+    document.body.focus()
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    })
+    expect(dialogButtons().includes(document.activeElement as HTMLButtonElement)).toBe(true)
+    render(null, host)
+  })
+
+  it('closing the dialog returns focus to the element that opened it', () => {
+    const { trigger, host } = openDialog()
+    act(() => {
+      render(null, host)
+    })
+    expect(document.activeElement).toBe(trigger)
   })
 })
 

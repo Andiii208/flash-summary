@@ -1,6 +1,7 @@
 import type { JSX } from 'preact'
-import { useEffect } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 import { useModalScrollLock } from './use-modal-scroll-lock'
+import { useFocusTrap } from './use-focus-trap'
 
 export interface DialogProps {
   open: boolean
@@ -36,6 +37,10 @@ export interface DialogProps {
  */
 export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, kind = 'confirm', children, confirmDisabled = false, cancelDisabled = false, cancelLabel = '取消', persistent = false, onConfirm, onCancel }: DialogProps): JSX.Element | null {
   const view = kind === 'view'
+  // 健康巡查 2026-09-12 批6: Tab cycles inside the dialog and focus returns
+  // to the trigger on close — aria-modal now holds for keyboard users too.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(open, dialogRef)
   useEffect(() => {
     // 声明批2: a persistent gate has no Escape exit (see DialogProps).
     if (!open || persistent) return
@@ -55,7 +60,7 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
       role="presentation"
       onClick={view ? (e) => { if (e.target === e.currentTarget) onCancel() } : undefined}
     >
-      <div class="dialog" role="alertdialog" aria-modal="true" aria-label={title}>
+      <div class="dialog" role="alertdialog" aria-modal="true" aria-label={title} ref={dialogRef}>
         <h3 class="dialog-title">{title}</h3>
         {message != null && message !== '' && <p class="dialog-message">{message}</p>}
         {children}

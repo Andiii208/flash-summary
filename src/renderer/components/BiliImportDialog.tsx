@@ -3,6 +3,7 @@ import type { JSX } from 'preact'
 import QRCode from 'qrcode'
 import type { BilibiliResolveResult, SeuSummaryBridge } from '../../shared/bridge'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
+import { useFocusTrap } from '../ui/use-focus-trap'
 import { OWN_ACCOUNT_HINT } from './TopBar'
 
 export interface BiliImportDialogProps {
@@ -73,6 +74,10 @@ function statusLabel(status: string): string {
  */
 export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh, onLogout, onImported, onClose, toast }: BiliImportDialogProps): JSX.Element | null {
   useModalScrollLock(open)
+  // 健康巡查 2026-09-12 批6: same focus discipline as Dialog (the trap only
+  // arms while the dialog is rendered).
+  const cardRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(open, cardRef)
   const [input, setInput] = useState('')
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [busy, setBusy] = useState(false)
@@ -222,7 +227,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div class="bili-dialog-card">
+      <div class="bili-dialog-card" ref={cardRef}>
         <div class="bili-dialog-head">
           <h2>导入 B站视频</h2>
           <button class="btn small" onClick={onClose} aria-label="关闭导入对话框">
