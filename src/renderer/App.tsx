@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import { ChevronDown, ChevronRight } from 'lucide-preact'
+import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-preact'
 import { render } from 'preact'
 import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, AttachmentManifestEntry, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
@@ -80,6 +80,7 @@ interface PersistedUiState {
   currentLesson: string
   allCoursesOpen: boolean
   tab: MainTab
+  sidebarCollapsed: boolean
 }
 
 function loadPersistedUi(): Partial<PersistedUiState> {
@@ -149,6 +150,14 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   const goSettings = useCallback(() => setTab('settings'), [setTab])
   const state = useAppState(bridge, goTasks, goNotes, goSettings, setTab)
   const sidebarRef = useRef<HTMLElement>(null)
+  // 健康巡查 2026-09-12 批8 (遗留清单⑫): the sidebar is collapsible — a
+  // narrow window should not donate 304px permanently. The choice rides the
+  // UI snapshot, so a harvest/login round-trip keeps it.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => loadPersistedUi().sidebarCollapsed ?? false)
+  const toggleSidebar = useCallback((): void => setSidebarCollapsed((prev) => !prev), [])
+  useEffect(() => {
+    savePersistedUi({ sidebarCollapsed })
+  }, [sidebarCollapsed])
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   // 声明批2 (plan 2026-09-11): nothing renders before the 使用须知 gate is
@@ -278,7 +287,16 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         toast={state.toast}
       />
       <div class="app-main">
-        <aside class="sidebar" ref={sidebarRef}>
+        <aside class={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`} ref={sidebarRef}>
+          <button
+            class="sidebar-collapse"
+            aria-expanded={!sidebarCollapsed}
+            aria-label={sidebarCollapsed ? '展开课程侧栏' : '收起课程侧栏'}
+            title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+            onClick={toggleSidebar}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={15} strokeWidth={1.75} /> : <PanelLeftClose size={15} strokeWidth={1.75} />}
+          </button>
           <div class="sidebar-head">
             <h2>课程</h2>
             <div class="sidebar-head-actions">

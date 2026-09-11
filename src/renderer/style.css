@@ -322,6 +322,26 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 }
 .sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
 .sidebar-head-actions { display: flex; align-items: center; gap: 6px; }
+/* 健康巡查 2026-09-12 批8 (遗留清单⑫): collapse toggle + collapsed rail —
+   a narrow window no longer donates 304px permanently. */
+.sidebar-collapse {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.sidebar-collapse:hover { background: var(--surface-2); color: var(--text); }
+.sidebar.collapsed { width: 48px; padding-left: 8px; padding-right: 8px; align-items: center; gap: 0; }
+.sidebar.collapsed > :not(.sidebar-collapse) { display: none; }
+.sidebar.collapsed .sidebar-collapse { align-self: center; }
 .sidebar-head h2 {
   font-size: var(--font-size-md);
   margin: 0;

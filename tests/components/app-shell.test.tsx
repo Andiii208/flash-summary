@@ -344,4 +344,30 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
     expect(host).toBeTruthy()
   })
+
+  it('健康巡查 2026-09-12 批8: the sidebar collapses and the choice survives a reload', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    const toggle = host.querySelector('.sidebar-collapse') as HTMLButtonElement
+    expect(toggle).not.toBeNull()
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const aside = host.querySelector('aside.sidebar')!
+    expect(aside.className).not.toContain('collapsed')
+
+    click(toggle)
+    await vi.waitFor(() => expect(aside.className).toContain('collapsed'))
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    const saved = JSON.parse(window.sessionStorage.getItem('seu-summary.ui-state.v1') ?? '{}') as { sidebarCollapsed?: boolean }
+    expect(saved.sidebarCollapsed).toBe(true)
+
+    // Reload (harvest/login navigation): the collapsed rail comes back.
+    render(null, host)
+    const reloaded = mount(<App bridge={makeBridge()} />)
+    await waitForSelector('.app-shell')
+    const reloadedAside = reloaded.querySelector('aside.sidebar')!
+    expect(reloadedAside.className).toContain('collapsed')
+    click(reloaded.querySelector('.sidebar-collapse'))
+    await vi.waitFor(() => expect(reloadedAside.className).not.toContain('collapsed'))
+  })
 })
