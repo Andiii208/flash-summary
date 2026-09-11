@@ -947,6 +947,22 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 .about-note strong { color: var(--text); font-weight: 600; }
 .about-actions { gap: 8px; justify-content: flex-start; margin-top: 12px; }
+
+/* 声明批5: Provider 配置区的数据流向说明 + B站导入对话框的边界说明。
+   都是「用户正在做选择」时该看到的一句话，不抢主按钮的注意力。 */
+.provider-disclosure {
+  margin: 0 0 12px;
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.provider-disclosure strong { color: var(--text); font-weight: 600; }
+.bili-boundary-note {
+  margin: 8px 0 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
 /* 批4: QA 失败气泡 + busy 提示 + 设置页加载错误行。 */
 .qa-error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .qa-error-msg { margin: 0; color: var(--danger); }

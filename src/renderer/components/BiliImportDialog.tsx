@@ -3,6 +3,7 @@ import type { JSX } from 'preact'
 import QRCode from 'qrcode'
 import type { BilibiliResolveResult, SeuSummaryBridge } from '../../shared/bridge'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
+import { OWN_ACCOUNT_HINT } from './TopBar'
 
 export interface BiliImportDialogProps {
   bridge: SeuSummaryBridge
@@ -289,6 +290,11 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
         <button class="btn primary bili-import-btn" disabled={busy || preview == null || preview.selected.length === 0} onClick={onImportClick}>
           {loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
         </button>
+        {/* 声明批5: 边界说明放在动作旁边——用户正要点「导入」，此刻才看得进去。
+            说的是应用实际做了什么（拒绝付费内容、只要低清晰度），不是免责套话。 */}
+        <p class="bili-boundary-note" data-testid="bili-boundary-note">
+          {OWN_ACCOUNT_HINT}。本工具不支持付费/充电专属视频（会直接拒绝），视频仅取 480P 及以下用于抽取画面。
+        </p>
         {loginPhase === 'qr' && (
           <div class="bili-qr">
             {qrImage != null && <img src={qrImage} alt="B站登录二维码" width={220} height={220} />}

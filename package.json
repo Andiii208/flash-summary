@@ -33,6 +33,18 @@
       {
         "from": "node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe",
         "to": "ffmpeg/ffprobe.exe"
+      },
+      {
+        "from": "DISCLAIMER.md",
+        "to": "legal/DISCLAIMER.md"
+      },
+      {
+        "from": "THIRD-PARTY-NOTICES.md",
+        "to": "legal/THIRD-PARTY-NOTICES.md"
+      },
+      {
+        "from": "LICENSES",
+        "to": "legal/LICENSES"
       }
     ],
     "win": {
@@ -46,7 +58,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "license": "build/installer-license.txt"
     }
   },
   "scripts": {

@@ -33,10 +33,16 @@ const SESSION_LABELS: Record<SessionState, string> = {
   logged_out: '东大·未登录'
 }
 
+/**
+ * 声明批5: 账号风险的常驻提示。同一句话出现在两处徽标的 title、设置页账号块与
+ * B站导入对话框——只陈述能核对的事实（用本人账号 + 平台可能有风控），不吓唬人。
+ */
+export const OWN_ACCOUNT_HINT = '请使用你本人的账号；第三方工具访问可能触发平台风控'
+
 const SESSION_TITLES: Record<SessionState, string> = {
-  logged_in: '东大云课堂已登录，点击退出登录',
-  expired: '会话已过期，点击重新登录',
-  logged_out: '点击登录东大云课堂（CAS）'
+  logged_in: `东大云课堂已登录，点击退出登录 · ${OWN_ACCOUNT_HINT}`,
+  expired: `会话已过期，点击重新登录 · ${OWN_ACCOUNT_HINT}`,
+  logged_out: `点击登录东大云课堂（CAS）· ${OWN_ACCOUNT_HINT}`
 }
 
 /**
@@ -93,7 +99,7 @@ export function TopBar({ session, biliSession, busy, running, onLogin, onLogout,
         <button
           class={`session-badge bili ${biliLoggedIn ? 'logged_in' : 'logged_out'}`}
           data-testid="bili-session-badge"
-          title={biliLoggedIn ? 'B站已登录，点击导入视频' : '点击登录B站并导入视频'}
+          title={biliLoggedIn ? `B站已登录，点击导入视频 · ${OWN_ACCOUNT_HINT}` : `点击登录B站并导入视频 · ${OWN_ACCOUNT_HINT}`}
           onClick={onOpenBili}
         >
           <span class="badge-dot" />

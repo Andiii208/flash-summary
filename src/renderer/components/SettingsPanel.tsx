@@ -4,6 +4,7 @@ import type { AppSettingsInfo } from '../../shared/bridge'
 import { ProviderPanel, type ProviderPanelProps } from './ProviderPanel'
 import { AboutPanel } from './AboutPanel'
 import type { SessionState } from './TopBar'
+import { OWN_ACCOUNT_HINT } from './TopBar'
 import { Colonnade } from '../ui/Colonnade'
 import { PageHeader } from './PageHeader'
 import { Dialog } from '../ui/Dialog'
@@ -131,6 +132,11 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
             </button>
           )}
         </div>
+        {/* 声明批5: 账号风险的常驻说明。首启闸门里已经说过一次，但账号是随时会被
+            重新登录/切换的东西，放在账号块里才有人回头看。与徽标 title 同源。 */}
+        <p class="about-note" data-testid="account-risk-note">
+          {OWN_ACCOUNT_HINT}：使用第三方工具访问学校平台，可能触发学校的访问限制或临时锁定，请先确认用法符合学校规定。
+        </p>
       </section>
 
       <section class="settings-block">

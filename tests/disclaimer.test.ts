@@ -91,3 +91,41 @@ describe('第三方许可清单（声明批1 的随包约定）', () => {
     }
   })
 })
+
+describe('随包分发与安装器许可（声明批5）', () => {
+  it('NSIS 安装器挂上许可页，且指向仓库里真实存在的文件', () => {
+    const pkg = JSON.parse(read('package.json')) as { build?: { nsis?: { license?: string } } }
+    const license = pkg.build?.nsis?.license
+    expect(license, 'nsis.license 未设置——安装器就不会显示许可页').toBeTruthy()
+    expect(existsSync(join(repoRoot, license!)), `${license} 不存在`).toBe(true)
+  })
+
+  it('安装器许可页自己就该说清非官方、数据流向与 GPL', () => {
+    const text = read('build/installer-license.txt')
+    expect(text).toContain('非官方')
+    expect(text).toContain('没有开发者自有服务器')
+    expect(text).toContain('GPL-3.0')
+    // 全文与许可的随包位置必须写出来，否则用户拿到 exe 也找不到条款。
+    expect(text).toContain('resources\\legal\\')
+    for (const word of ['跨境', '出境', '不可抗力']) {
+      expect(text).not.toContain(word)
+    }
+  })
+
+  it('使用须知、第三方许可与全部许可全文都随安装包分发', () => {
+    const pkg = JSON.parse(read('package.json')) as { build?: { extraResources?: Array<{ from?: string; to?: string }> } }
+    const shipped = (pkg.build?.extraResources ?? []).map((entry) => `${entry.from ?? ''}->${entry.to ?? ''}`)
+    expect(shipped.some((entry) => entry === 'DISCLAIMER.md->legal/DISCLAIMER.md')).toBe(true)
+    expect(shipped.some((entry) => entry === 'THIRD-PARTY-NOTICES.md->legal/THIRD-PARTY-NOTICES.md')).toBe(true)
+    expect(shipped.some((entry) => entry === 'LICENSES->legal/LICENSES')).toBe(true)
+  })
+
+  it('LICENSES/ 里 GPL 全文与清单逐一对应（少一份就少一份合规）', () => {
+    const notices = read('THIRD-PARTY-NOTICES.md')
+    const referenced = [...notices.matchAll(/\(LICENSES\/([^)]+)\)/g)].map((matched) => matched[1] as string)
+    expect(referenced.length).toBeGreaterThan(5)
+    for (const file of referenced) {
+      expect(existsSync(join(repoRoot, 'LICENSES', file)), `LICENSES/${file} 缺失`).toBe(true)
+    }
+  })
+})

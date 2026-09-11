@@ -281,6 +281,12 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
   return (
     <section class="provider-panel">
       <h3>Provider 设置</h3>
+      {/* 声明批5: 数据流向说明放这里——用户此刻正在选服务商，说在这里才有意义。
+          不提跨境/出境（D7 裁决）：应用不知道你填的是境内还是境外服务商，
+          断言「会跨境」在多数情况下不成立。只说能核对的事：发给谁、留存归谁管。 */}
+      <p class="provider-disclosure" data-testid="provider-disclosure">
+        转写与总结会把<strong>音频、视频截图和文本</strong>发送到你填写的服务商；这些数据在该服务商处的处理与留存，以它的条款为准。本软件没有开发者服务器，不上报任何数据。
+      </p>
       <CapabilityNotes />
       {providers == null || !hasConfigured ? (
         <EmptyState title="尚未配置 Provider" hint="在下方表单添加一个 Provider 并绑定能力，任务管线才能运行。" />
