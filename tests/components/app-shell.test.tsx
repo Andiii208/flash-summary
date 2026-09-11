@@ -317,4 +317,31 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // 批2: the failed card is visible in the global (no-lesson) view too.
     await waitForSelector('[data-testid="task-status"]')
   })
+
+  it('健康巡查 2026-09-12: a catalog-harvest rejection toasts in the originating session', async () => {
+    // Regression: the err envelope used to vanish behind .catch(() => undefined) —
+    // the user saw one 3.5s «请稍候» toast and nothing else, with no badge and
+    // a re-clickable button.
+    window.localStorage.setItem('seu-summary.jump-confirm.skip', '1')
+    const bridge = makeBridge()
+    fakeState.courses = [{ id: 'c9', name: '空课', lessons: [] }]
+    ;(bridge.school.harvestLessons as unknown as { mockImplementation: (fn: unknown) => void }).mockImplementation(
+      async () => ({ ok: false, error: '课程缺少录播课时标识' })
+    )
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    click(document.querySelector('.course-head'))
+    await waitForSelector('.lesson-row.empty')
+    click(Array.from(document.querySelectorAll('button')).find((b) => b.textContent === '抓取课时目录') ?? null)
+    await waitForSelector('.toast-error')
+    expect(document.querySelector('.toast-error')?.textContent).toContain('课程缺少录播课时标识')
+    // The optimistic inflight badge cleared — the button is back (re-pickable
+    // after fixing the cause, not re-clickable DURING a phantom harvest).
+    await vi.waitFor(() => {
+      expect(
+        Array.from(document.querySelectorAll('button')).find((b) => b.textContent === '抓取课时目录')
+      ).not.toBeNull()
+    })
+    expect(host).toBeTruthy()
+  })
 })

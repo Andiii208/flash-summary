@@ -3,6 +3,7 @@ import type { JSX } from 'preact'
 import type { Concept, ConceptLink, QuizItem, TreeNode } from '../../shared/notes/schema'
 import { collapsedSetForMaxDepth, computeMindMapLayout, titleBaseline, type LayoutNode } from '../../shared/notes/mindmap-layout'
 import { QuizCards } from './NoteBlocks'
+import { InlineText } from './InlineText'
 
 /** M1.3 viewport transform: viewBox window over the unchanged layout geometry. */
 interface View {
@@ -578,7 +579,11 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
                 <h4>关联概念</h4>
                 {linkedConcepts.map((concept) => (
                   <p key={concept.term} class="mindmap-popover-concept">
-                    <strong>{concept.term}</strong>：{concept.definition}
+                    {/* 健康巡查 2026-09-12: definitions go through InlineText —
+                        the model freely emits **bold** markers and the detailed
+                        view renders them; the popover must not print literal
+                        asterisks (AGENTS 笔记字段渲染约定). */}
+                    <strong>{concept.term}</strong>：<InlineText text={concept.definition} />
                   </p>
                 ))}
               </div>

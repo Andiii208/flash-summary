@@ -1516,19 +1516,43 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const showMoreCourses = useCallback((): void => setVisibleCourses((n) => n + 150), [])
 
   // V1.3: harvest a course's «第N节课» catalog from the play page. The main
-  // window navigates away mid-call, so this is fire-and-forget: the fresh
-  // mount after the harvest re-reads the local tree and shows the lessons.
+  // window navigates away mid-call, so the outcome is reported by the fresh
+  // mount's harvestState polling (批C). 健康巡查 2026-09-12: while THIS
+  // session still renders, the course row needs its «正在抓取课时目录…» badge
+  // (optimistic), and a validation rejection — which resolves as an err
+  // envelope BEFORE any navigation — must surface here instead of dying
+  // silently behind a 3.5s «请稍候» toast.
   const harvestLessons = useCallback(
     (courseId: string): void => {
       confirmPlatformJump('harvest', () => {
+        if (harvestInflight.has(courseId)) return
+        setHarvestInflight((prev) => new Set(prev).add(courseId))
         toast('正在打开播放页抓取课时目录，请稍候…')
-        bridge.school
+        const clearInflight = (): void => {
+          setHarvestInflight((prev) => {
+            const next = new Set(prev)
+            next.delete(courseId)
+            return next
+          })
+        }
+        void bridge.school
           .harvestLessons(courseId)
-          .then(async () => applyLocalTree())
-          .catch(() => undefined)
+          .then(async (res) => {
+            if (!res.ok) {
+              clearInflight()
+              toast(`抓取课时目录失败：${(res.error ?? '未知错误').slice(0, 120)}`, 'error')
+              return
+            }
+            clearInflight()
+            await applyLocalTree()
+          })
+          .catch(() => {
+            clearInflight()
+            toast('抓取课时目录失败：与主进程的连接中断', 'error')
+          })
       })
     },
-    [bridge, toast, applyLocalTree, confirmPlatformJump]
+    [bridge, toast, applyLocalTree, confirmPlatformJump, harvestInflight]
   )
 
   // C2: pin/unpin «my course»; re-read the local tree so the ordering applies.

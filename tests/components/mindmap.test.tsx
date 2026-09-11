@@ -296,6 +296,29 @@ describe('MindMap M2.2 节点信息浮层', () => {
     expect(plain.querySelectorAll('.mindmap-info')).toHaveLength(0)
   })
 
+  it('健康巡查 2026-09-12: popover concept definitions render inline markdown, not literal asterisks', () => {
+    // The model freely emits **bold** in definitions; the detailed view runs
+    // them through InlineText — the popover must not print literal asterisks.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const concepts = [{ term: '递归', definition: '函数**调用自身**的过程', refs: [] }]
+    act(() => {
+      render(<MindMap tree={ANCHORED_TREE} concepts={concepts} quiz={QUIZ} />, host)
+    })
+    act(() => {
+      host.querySelector('.mindmap-info')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const popover = host.querySelector('[data-testid="mindmap-popover"]')
+    expect(popover).not.toBeNull()
+    // The concept line's first <strong> is the term; the definition arrives
+    // through InlineText, so the model's **bold** becomes a second <strong>
+    // instead of literal asterisks.
+    const conceptPara = popover!.querySelector('.mindmap-popover-concept')
+    const bolds = Array.from(conceptPara?.querySelectorAll('strong') ?? []).map((s) => s.textContent)
+    expect(bolds).toContain('调用自身')
+    expect(popover!.textContent).not.toContain('**')
+  })
+
   it('popover shows the linked concept and only quiz anchored to its terms', () => {
     const host = mountAnchored()
     act(() => {
