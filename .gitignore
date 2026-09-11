@@ -32,3 +32,7 @@ tmp-chunk-*
 
 # one-off real-data e2e artifacts (screenshots, svg, library copy)
 .tmp-e2e-shots/
+
+# Playwright MCP / ad-hoc audit screenshot leftovers (dev-only artifacts)
+.playwright-mcp/
+.tmp-audit-shots/

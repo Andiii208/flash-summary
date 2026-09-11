@@ -58,6 +58,10 @@
   color-scheme: light;
 }
 
+/* Dark «夜林» tokens exist in TWO gated blocks below (健康巡查 2026-09-12 D5):
+   the @media block follows the system preference, the [data-theme='dark']
+   block forces dark regardless of it. Same 32 values by design — ANY value
+   change must be applied to BOTH blocks. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --bg: #0f1211;
@@ -93,7 +97,8 @@
   }
 }
 
-/* Explicit theme override (U3): wins over prefers-color-scheme. */
+/* Explicit theme override (U3): wins over prefers-color-scheme.
+   MUST stay value-identical to the @media dark block above (D5 sync note). */
 :root[data-theme='dark'] {
   --bg: #0f1211;
   --surface: #171b19;
