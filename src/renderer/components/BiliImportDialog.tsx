@@ -124,6 +124,16 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
 
   // QR login polling: one effect owns the interval so unmount / close /
   // re-scan cannot leave a dangling timer hammering the passport endpoint.
+  //
+  // 健康巡查 2026-09-12: this effect previously had NO deps array — every
+  // render tore down and recreated the 2s interval, and while a task is
+  // running App re-renders on each progress event (often <2s apart), so the
+  // interval never got to fire and the QR flow starved at «等待扫码…». The
+  // interval now lives on [open, loginPhase]; callbacks ride in through refs.
+  const doImportRef = useRef(doImport)
+  doImportRef.current = doImport
+  const onSessionRefreshRef = useRef(onSessionRefresh)
+  onSessionRefreshRef.current = onSessionRefresh
   useEffect(() => {
     if (!open || loginPhase !== 'qr') return
     let cancelled = false
@@ -135,10 +145,10 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
         if (poll.value.status === 'confirmed') {
           setLoginPhase('confirmed')
           setQrImage(null)
-          onSessionRefresh()
+          onSessionRefreshRef.current()
           const pending = pendingPages.current
           pendingPages.current = null
-          if (pending != null && pending.length > 0) void doImport(pending)
+          if (pending != null && pending.length > 0) void doImportRef.current(pending)
         }
       })()
     }, POLL_INTERVAL_MS)
@@ -146,7 +156,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
       cancelled = true
       clearInterval(interval)
     }
-  })
+  }, [open, loginPhase, bridge])
 
   // Esc closes — same convention as Dialog/CourseMapDialog (批3 统一).
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { act } from 'preact/test-utils'
+import { render } from 'preact'
 import { BiliImportDialog } from '../../src/renderer/components/BiliImportDialog'
 import { mount, click, input } from '../helpers/preact'
 import type { SeuSummaryBridge } from '../../src/shared/bridge'
@@ -149,5 +150,41 @@ describe('BiliImportDialog (批1 双源并列: first-class import dialog)', () =
     mount(<BiliImportDialog {...makeProps(bridge, { onClose })} />)
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('健康巡查 2026-09-12: the QR poll interval survives parent re-renders (progress streaming)', async () => {
+    // Regression: the polling effect had no deps array, so every parent
+    // re-render tore down and recreated the 2s interval — and App re-renders
+    // more often than that while a task streams progress. The QR flow starved
+    // at «等待扫码…» forever.
+    vi.useFakeTimers()
+    try {
+      const bridge = makeBridge({ loginStatus: vi.fn(async () => ({ ok: true, value: { status: 'waiting' as const } })) })
+      const host = await resolveTo(makeProps(bridge))
+      click(host.querySelector('.bili-import-btn'))
+      await flush()
+      expect(host.querySelector('.bili-qr')).not.toBeNull()
+      const loginStatus = bridge.bilibili.loginStatus as ReturnType<typeof vi.fn>
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000)
+      })
+      expect(loginStatus).toHaveBeenCalled()
+      const afterFirst = loginStatus.mock.calls.length
+      // Simulate the App progress loop: frequent re-renders of the same
+      // dialog instance with fresh prop identities. The interval must keep
+      // ticking across them.
+      for (let round = 0; round < 5; round++) {
+        act(() => {
+          render(<BiliImportDialog {...makeProps(bridge)} />, host)
+        })
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1_000)
+        })
+      }
+      // 5s of elapsed time across 5 re-renders → at least two more polls.
+      expect(loginStatus.mock.calls.length).toBeGreaterThan(afterFirst + 1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

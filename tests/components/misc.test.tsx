@@ -521,6 +521,58 @@ describe('useToasts D1 合并去重 (same kind+message merges with a count)', ()
     expect(h.current.toasts).toHaveLength(1)
     expect(h.current.toasts[0]!.count).toBe(3)
   })
+
+  it('健康巡查 2026-09-12: a merged (recurring) plain toast still auto-expires', () => {
+    // The merge keeps the OLD entry id, so the old code's timer — which
+    // dismissed the NEW id — filtered nothing and merged toasts lingered
+    // until FIFO eviction.
+    vi.useFakeTimers()
+    try {
+      const h = harness()
+      act(() => {
+        h.current.toast('已加载 6 门课程', 'success')
+        h.current.toast('已加载 6 门课程', 'success')
+        h.current.toast('已加载 6 门课程', 'success')
+      })
+      expect(h.current.toasts).toHaveLength(1)
+      expect(h.current.toasts[0]!.count).toBe(3)
+      act(() => {
+        vi.advanceTimersByTime(4_000)
+      })
+      expect(h.current.toasts).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('健康巡查 2026-09-12: a recurrence resets the merged toast lifetime', () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness()
+      act(() => {
+        h.current.toast('复制成功', 'success')
+      })
+      act(() => {
+        vi.advanceTimersByTime(3_000)
+      })
+      act(() => {
+        // Second occurrence 3s in — the lifetime restarts from here.
+        h.current.toast('复制成功', 'success')
+      })
+      act(() => {
+        vi.advanceTimersByTime(3_000)
+      })
+      // 6s after the first push: the stale first timer must NOT have fired.
+      expect(h.current.toasts).toHaveLength(1)
+      expect(h.current.toasts[0]!.count).toBe(2)
+      act(() => {
+        vi.advanceTimersByTime(1_000)
+      })
+      expect(h.current.toasts).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('ToastArea D1 (recurrence count badge)', () => {

@@ -39,20 +39,36 @@ export function mergeToast(list: ToastItem[], entry: ToastItem): ToastItem[] {
 export function useToasts(): Toasts {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastId = useRef(0)
+  // 健康巡查 2026-09-12: merged toasts keep the EXISTING entry (and its id),
+  // so a timer dismissing the freshly generated id filtered nothing and a
+  // merged success/info toast never auto-expired — it lingered until the
+  // FIFO cap evicted it. One timer per kind+message identity instead: each
+  // recurrence RESETS it (recency decides lifetime, the same principle
+  // mergeToast uses for FIFO order), and firing removes by identity —
+  // mergeToast guarantees at most one entry per identity.
+  const autoDismissTimers = useRef(new Map<string, number>())
   const dismiss = useCallback((id: number): void => {
     setToasts((ts) => ts.filter((t) => t.id !== id))
   }, [])
+  const dismissByIdentity = useCallback((message: string, kind: ToastKind): void => {
+    setToasts((ts) => ts.filter((t) => !(t.message === message && t.kind === kind)))
+  }, [])
   const toast = useCallback(
     (message: string, kind: ToastKind = 'info', action?: { actionLabel: string; onAction: () => void }): void => {
-      const id = ++toastId.current
-      setToasts((ts) => mergeToast(ts, { id, message, kind, ...(action ?? {}) }))
+      setToasts((ts) => mergeToast(ts, { id: ++toastId.current, message, kind, ...(action ?? {}) }))
       // Errors stay until manually closed; actionable toasts get 8s, plain ones 3.5s.
-      if (kind !== 'error') {
-        const ms = action != null ? 8000 : 3500
-        window.setTimeout(() => dismiss(id), ms)
-      }
+      if (kind === 'error') return
+      const identity = `${kind}:${message}`
+      const previous = autoDismissTimers.current.get(identity)
+      if (previous != null) window.clearTimeout(previous)
+      const ms = action != null ? 8000 : 3500
+      const timer = window.setTimeout(() => {
+        autoDismissTimers.current.delete(identity)
+        dismissByIdentity(message, kind)
+      }, ms)
+      autoDismissTimers.current.set(identity, timer)
     },
-    [dismiss]
+    [dismiss, dismissByIdentity]
   )
   return { toasts, toast, dismiss }
 }
