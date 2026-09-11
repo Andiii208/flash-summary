@@ -81,6 +81,10 @@
 | 笔记演进 1.3 证据引用命中率（2026-09-04） | ✅ 完成 | evidenceHitRate 纯函数（timeline 证据引用唯一 ref 去重、判定口径=实际发送素材）+ notes:regenerate 返回 hitRate + toast/工具栏「引用命中 N/M」徽标（无引用隐藏）；四门禁 381/381+smoke 19/19；真实库副本 e2e 注入 2 真 1 假 ref 徽标精确显示 2/3，旧笔记无引用徽标正确隐藏（真实笔记生成于证据 prompt 之前，引用遵循度待批次 2.1 真实重新生成同轮验证）。测试 376→381 | 提交（本批） |
 
 ## 遗留（诚实清单）
+- **文档标题仍写旧产品名（2026-09-11 发现，未改，列清单）**：改名 Flash Summary 时只扫了**用户可见品牌字符串与 README**，下面这些**现役文档的标题**还写着「SEU Summary」——`scripts/release.md:1`、`docs/plans/ROADMAP.md:1`、`AGENTS.md:1`、`docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md`（标题 + 正文首段）。
+  与 D4 的「故意不改」**不是一回事**：D4 保的是 `appId`/包名/`LICENSE` 署名这类**标识符**（改了丢登录态与已加密密钥），文档标题属于展示层漂移。未擅自修改的原因是范围与一致性判断该由 Andiii 定（是全改、还是连 spec 标题一起动），且 AGENTS.md 明确警告过别「顺手统一」命名。
+  **另一处已修**：同一批发现 `scripts/release.md` 里两处 `SEU Summary Setup <version>.exe` 是**事实错误**（产物早已叫 `Flash Summary Setup …`），已在 11f2863 更正。
+
 
 - **UI 发布后迭代清单（2026-09-03 审查产出，2026-09-05 全面 UX 审查整改后核对）——已完成注销**：①页签 ARIA roving+方向键（M3-2/深审批5）；②主窗口 minWidth/minHeight/backgroundColor（main/index.ts）；③空态两级待遇（2026-09-05 批E EmptyState 统一）；④ProviderPanel h2 跳级 + NoteViewer 缺页标题（2026-09-05 批A PageHeader + h3 收口）；⑨错误 toast assertive（2026-09-05 role=alert）；⑩搜索防抖（M2 批A 已有）；⑪追问回车提交+IME 守卫（批2 A5/批C）；⑫（升级为方案项）内容列统一（2026-09-05 批B）。——**仍未做**：⑤资料库迁移按钮 busy 防护；⑥失败时表单过早清空（ManualAdd/ProviderPanel Key）；⑦课时行截断文本无 title（course-head 有、lesson-row 无）；⑧死令牌清理（--bg-tint/--warning 系）与深色令牌块去重；ManualAdd 回车提交；⑫侧栏可折叠。
 
