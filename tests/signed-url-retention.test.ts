@@ -5,6 +5,15 @@ import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
 import { pruneStaleSignedUrlHandoffs } from '../src/main/tasks/cache-clean'
 import { BILI_STREAM_FRESH_MS, STREAM_URL_FRESH_MS } from '../src/main/tasks/resume'
+import { createContext } from '../src/main/app-context'
+import type { Cryptor } from '../src/main/auth/session-crypto'
+
+/** Deterministic stand-in for Windows DPAPI (same shape the other ipc tests use). */
+const stubCryptor: Cryptor = {
+  isAvailable: () => true,
+  encryptString: (plain) => Buffer.from(plain.split('').map((ch) => ch.charCodeAt(0) ^ 0x5a)),
+  decryptString: (buf) => Buffer.from(buf.map((b) => b ^ 0x5a)).toString('utf8')
+}
 
 /**
  * 声明批7（plan 2026-09-11 compliance-disclosure）: 签名直链交接的保留期。
@@ -110,6 +119,30 @@ describe('签名直链交接的保留期（声明批7）', () => {
     const rows = db.prepare("SELECT COUNT(*) AS n FROM task_stage_outputs WHERE task_id = 't1'").get() as { n: number }
     expect(rows.n).toBe(1)
     db.close()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('启动接线生效：走真实 createContext 之后，陈旧的签名交接已经不在库里', () => {
+    // 这条测的不是函数本身（上面几条测过了），而是**它真的挂在启动路径上**——
+    // 一个从没被调用的清扫函数等于没写。
+    const root = mkdtempSync(join(tmpdir(), 'seu-summary-prune-boot-'))
+    const opts = { libraryRoot: root, userDataDir: join(root, 'userdata'), cryptor: stubCryptor }
+    // First boot creates the schema; seed the handoff the way an old failed task left it.
+    const first = createContext(opts)
+    const old = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString()
+    first.db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', ?)").run(old)
+    first.db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', ?)").run(old)
+    first.db.prepare("INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t1', 'l1', 'failed', ?, ?)").run(old, old)
+    first.db
+      .prepare("INSERT INTO task_stage_outputs (task_id, stage, output_json) VALUES ('t1', 'fetching_course', ?)")
+      .run(JSON.stringify({ lessonId: 'l1', teacherStreamUrl: 'https://vod/t.mp4?auth_key=SECRET' }))
+    expect(handoffCount(first.db, 't1')).toBe(1)
+    first.db.close()
+
+    // Second boot = the real startup path.
+    const second = createContext(opts)
+    expect(handoffCount(second.db, 't1')).toBe(0)
+    second.db.close()
     rmSync(root, { recursive: true, force: true })
   })
 })

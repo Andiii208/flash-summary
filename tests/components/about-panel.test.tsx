@@ -45,26 +45,41 @@ describe('设置页「关于与声明」面板', () => {
     // 标题按 md-h 类断言而不是具体 hN——MdLite 会把标题降级（h1/h2 → h4/h5）。
     const headings = Array.from(view?.querySelectorAll('.md-h') ?? []).map((node) => node.textContent ?? '')
     expect(headings.some((heading) => heading.includes('非官方声明'))).toBe(true)
-    expect(view?.textContent ?? '').not.toContain('**')
-    expect(view?.textContent ?? '').not.toContain('##')
+    const text = view?.textContent ?? ''
+    expect(text).not.toContain('**')
+    expect(text).not.toContain('##')
+    expect(text).not.toContain('](')
     // 九节的正文都得在（不能只渲染出标题骨架）。
-    expect(view?.textContent ?? '').toContain('Windows DPAPI')
+    expect(text).toContain('Windows DPAPI')
+    // 2026-09-11 双主题走查实拍的三个问题：标题重复 + 维护者说明 + 字面 `---`。
+    // 标题由弹窗负责，正文里不该再出现一次。
+    expect(headings.filter((heading) => heading.includes('使用须知与免责声明'))).toHaveLength(0)
+    // 这份文档是写给仓库读者的，「改本文件前先同步 disclaimer.ts」对用户毫无意义。
+    expect(text).not.toContain('disclaimer.ts')
+    expect(text).not.toContain('本文件是唯一文本源')
+    expect(text).not.toContain('---')
   })
 
-  it('「第三方许可」按原文展示，含 ffmpeg 的 GPL 说明与源码途径', () => {
+  it('「第三方许可」渲染成真表格（骨架是表格，印原文只会是一堆竖线）', () => {
     mount(<AboutPanel version="1.0.0" />)
     click(buttonByText('第三方许可'))
 
     const view = document.querySelector('[data-testid="legal-licenses"]')
     expect(view).not.toBeNull()
-    const raw = view?.querySelector('pre.legal-raw')
-    expect(raw).not.toBeNull()
-    const text = raw?.textContent ?? ''
+    const text = view?.textContent ?? ''
     expect(text).toContain('GPL-3.0')
     expect(text).toContain('ffmpeg')
     // 源码获取途径是 GPL 合规的要件，不是可选文案。
     expect(text).toContain('ffmpeg.org')
     expect(text).toContain('LICENSES/')
+    // 表格落成 table 节点，而不是 `| a | b |` 那种原文。
+    const table = view?.querySelector('table.md-table')
+    expect(table).not.toBeNull()
+    expect(table?.querySelectorAll('th').length).toBeGreaterThan(0)
+    expect(table?.querySelectorAll('tbody tr').length).toBeGreaterThan(0)
+    // 单元格内容真的进了表格（不是只画了个空壳）。
+    expect(table?.textContent ?? '').toContain('GPL-3.0')
+    expect(text).not.toContain('| ---')
   })
 
   it('两个弹层互斥：打开许可时不显示使用须知，反之亦然', () => {

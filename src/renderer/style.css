@@ -937,6 +937,24 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* 2026-09-11（声明批3 收口）: MdLite 的表格。第三方许可清单的骨架就是表格，
+   不认表格就只能印原文（用户看到一堆竖线）。 */
+.md-table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+.md-table th,
+.md-table td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.6;
+}
+.md-table th { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.md-table td { color: var(--text-secondary); }
 .about-version { color: var(--text); }
 .about-text-version { color: var(--text-muted); font-size: var(--font-size-sm); }
 .about-note {

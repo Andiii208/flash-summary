@@ -146,24 +146,82 @@ async function main() {
     const cdp = new Cdp(ws)
     await cdp.send('Page.enable')
 
-    await waitFor('bridge + course tree', async () => {
+    // 声明批2: a library without recorded consent stops at the 使用须知 gate, so
+    // the shell (and the course tree) does not exist yet. Wait for EITHER, then
+    // walk the gate before anything else can run.
+    const applyTheme = async (theme) => {
+      await cdp.eval(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`)
+      await sleep(350)
+    }
+    const readingState = () =>
+      cdp.eval(`JSON.stringify({
+        gate: document.querySelector('[data-testid="consent-clauses"]') != null,
+        shell: document.querySelector(".app-shell") != null
+      })`)
+
+    await waitFor('shell or consent gate', async () => {
+      try {
+        const raw = await readingState()
+        const parsed = JSON.parse(raw)
+        return { ok: parsed.gate === true || parsed.shell === true, value: raw }
+      } catch {
+        return { ok: false }
+      }
+    }, 20000)
+
+    const gated = JSON.parse(await readingState()).gate === true
+    if (process.argv.includes('--compliance') && gated) {
+      // The gate itself is one of the surfaces under review — shoot it in both
+      // themes BEFORE accepting (accepting re-reads settings, which re-runs the
+      // theme effect and drops the DOM override when the stored theme is auto).
+      await applyTheme('light')
+      await cdp.shot(shotName('c1-consent-light'))
+      await applyTheme('dark')
+      await cdp.shot(shotName('c1-consent-dark'))
+      await applyTheme('light')
+    }
+    if (gated) {
+      const ticked = await cdp.eval(`(() => {
+        const box = document.querySelector(".dialog-check input")
+        if (box == null) return false
+        box.checked = true
+        box.dispatchEvent(new Event("change", { bubbles: true }))
+        return true
+      })()`)
+      if (ticked !== true) throw new Error("consent checkbox not found")
+      // Preact re-renders on a microtask: in the same synchronous block the
+      // confirm button is still disabled and the click would be swallowed.
+      await sleep(250)
+      const accepted = await cdp.eval(`(() => {
+        const btn = [...document.querySelectorAll(".dialog-actions button")].find((b) => b.textContent === "同意并继续")
+        if (btn == null || btn.disabled) return false
+        btn.click()
+        return true
+      })()`)
+      if (accepted !== true) throw new Error("consent accept click failed")
+      await waitFor('consent lifted', async () => {
+        try {
+          return { ok: (await cdp.eval('document.querySelector(".app-shell") != null')) === true }
+        } catch {
+          return { ok: false }
+        }
+      }, 15000)
+    }
+
+    await waitFor('course tree', async () => {
       try {
         const n = await cdp.eval('document.querySelectorAll(".sidebar .course-item").length')
-        return { ok: typeof n === 'number' && n > 0, value: n }
+        return { ok: typeof n === "number" && n > 0, value: n }
       } catch {
         return { ok: false }
       }
     }, 20000)
 
     // --light / --dark: pin the theme via DOM override (auto follows the OS).
-    if (process.argv.includes('--light')) {
-      await cdp.eval('document.documentElement.dataset.theme = "light"')
-      await sleep(300)
-    }
-    if (process.argv.includes('--dark')) {
-      await cdp.eval('document.documentElement.dataset.theme = "dark"')
-      await sleep(300)
-    }
+    // Deliberately AFTER the gate: accepting consent re-reads settings, and the
+    // theme effect would otherwise clear the override.
+    if (process.argv.includes('--light')) await applyTheme('light')
+    if (process.argv.includes('--dark')) await applyTheme('dark')
 
     // 1. initial view (tasks tab, nothing selected)
     await sleep(400)
@@ -331,6 +389,140 @@ async function main() {
     await goTab('任务')
     await sleep(500)
     await cdp.shot(shotName('09-dark-tasks'))
+
+    // --compliance (plan 2026-09-11): 这批新增的四个界面。
+    // Reuses the walk above, so a noted lesson is already selected by the time
+    // we reach the export step (the notice needs an export button on screen).
+    if (process.argv.includes('--compliance')) {
+      // The walk above ends in the dark override — pin light for the first half.
+      await applyTheme('light')
+      const clickByText = (selector, label) =>
+        cdp.eval(`(() => {
+          const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(label)})
+          if (b == null) return false
+          b.click()
+          return true
+        })()`)
+      const waitForSel = (label, selector, timeout = 8000) =>
+        waitFor(label, async () => {
+          try {
+            return { ok: (await cdp.eval(`document.querySelector(${JSON.stringify(selector)}) != null`)) === true }
+          } catch {
+            return { ok: false }
+          }
+        }, timeout)
+      // Direct scroller math: the settings page scrolls inside an ancestor, and
+      // scrollIntoView({block:'start'}) turned out to be a no-op there.
+      const scrollTo = (selector) =>
+        cdp.eval(`(() => {
+          const el = document.querySelector(${JSON.stringify(selector)})
+          if (el == null) return JSON.stringify({ found: false })
+          let scroller = el.parentElement
+          while (scroller != null && scroller !== document.body) {
+            const style = getComputedStyle(scroller)
+            if ((style.overflowY === "auto" || style.overflowY === "scroll") && scroller.scrollHeight > scroller.clientHeight + 4) break
+            scroller = scroller.parentElement
+          }
+          if (scroller == null || scroller === document.body) {
+            el.scrollIntoView({ block: "center" })
+            return JSON.stringify({ found: true, fallback: true })
+          }
+          const delta = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+          scroller.scrollTop += delta - 12
+          return JSON.stringify({ found: true, scrollTop: Math.round(scroller.scrollTop) })
+        })()`)
+
+      // 批3: 设置 → 关于与声明（批6 的反馈二维码区块也在其中）
+      await goTab('设置')
+      await sleep(600)
+      await scrollTo('[data-testid="about-panel"]')
+      await sleep(400)
+      await cdp.shot(shotName('c2-about-light'))
+      await scrollTo('[data-testid="feedback-block"]')
+      await sleep(400)
+      await cdp.shot(shotName('c3-feedback-qr-light'))
+
+      // 两份全文：使用须知走渲染，第三方许可走原文
+      if ((await clickByText('[data-testid="about-panel"] button', '查看使用须知全文')) !== true) throw new Error('disclaimer entry not found')
+      await waitForSel('disclaimer dialog', '[data-testid="legal-disclaimer"]')
+      await sleep(400)
+      await cdp.shot(shotName('c4-disclaimer-light'))
+      if ((await clickByText('.dialog-actions button', '关闭')) !== true) throw new Error('disclaimer close failed')
+      await sleep(350)
+      if ((await clickByText('[data-testid="about-panel"] button', '第三方许可')) !== true) throw new Error('licenses entry not found')
+      await waitForSel('licenses dialog', '[data-testid="legal-licenses"]')
+      await sleep(400)
+      await cdp.shot(shotName('c5-licenses-light'))
+      if ((await clickByText('.dialog-actions button', '关闭')) !== true) throw new Error('licenses close failed')
+      await sleep(300)
+
+      // 暗色重拍：白底二维码卡片是这批唯一「外来」视觉，重点看它
+      await applyTheme('dark')
+      await sleep(450)
+      await scrollTo('[data-testid="about-panel"]')
+      await sleep(350)
+      await cdp.shot(shotName('c8-about-dark'))
+      await clickByText('[data-testid="about-panel"] button', '查看使用须知全文')
+      await waitForSel('disclaimer dialog (dark)', '[data-testid="legal-disclaimer"]')
+      await sleep(400)
+      await cdp.shot(shotName('c9-disclaimer-dark'))
+      await clickByText('.dialog-actions button', '关闭')
+      await sleep(300)
+      await scrollTo('[data-testid="feedback-block"]')
+      await sleep(400)
+      await cdp.shot(shotName('c10-feedback-qr-dark'))
+      await applyTheme('light')
+      await sleep(350)
+
+      // 批4: 导出前的版权提醒（屏幕上得有一个可点的导出按钮）
+      await goTab('笔记')
+      await sleep(900)
+      if ((await clickByText('.note-toolbar button', '导出 Markdown')) !== true) {
+        throw new Error('no export button on screen — the walk did not land on a noted lesson')
+      }
+      await waitFor('copyright notice', async () => {
+        try {
+          return { ok: (await cdp.eval('document.body.textContent.includes("导出提醒")')) === true }
+        } catch {
+          return { ok: false }
+        }
+      }, 8000)
+      await sleep(400)
+      await cdp.shot(shotName('c6-export-notice-light'))
+      await applyTheme('dark')
+      await sleep(450)
+      await cdp.shot(shotName('c7-export-notice-dark'))
+      await applyTheme('light')
+      await sleep(300)
+      // Cancel — this run must not write an export file nobody asked for.
+      if ((await clickByText('.dialog-actions button', '取消')) !== true) throw new Error('notice cancel failed')
+      await sleep(400)
+
+      // 批6: 失败任务的诊断弹层（真实库里有失败任务可点）。
+      // 必须先回首页：有课时被选中时任务页只渲染「本课时历史任务」，而那几条
+      // 失败任务属于别的课时——全局列表才看得到它们。
+      await cdp.eval('(() => { document.querySelector(".brand")?.click(); return true })()')
+      await sleep(500)
+      await goTab('任务')
+      await sleep(900)
+      const reportClicked = await cdp.eval(
+        '(() => { const b = document.querySelector("[data-testid=\'report-error\']"); if (b == null) return false; b.click(); return true })()'
+      )
+      if (reportClicked === true) {
+        await waitForSel('diagnostics dialog', '[data-testid="feedback-diagnostics"]')
+        await sleep(500)
+        await cdp.shot(shotName('c11-diagnostics-light'))
+        await applyTheme('dark')
+        await sleep(450)
+        await cdp.shot(shotName('c12-diagnostics-dark'))
+        await applyTheme('light')
+        await clickByText('.dialog-actions button', '关闭')
+      } else {
+        console.log('note  no failed-task row visible — skipped the diagnostics shots')
+      }
+      return
+    }
+
     await cdp.eval('delete document.documentElement.dataset.theme')
   } finally {
     if (electron.pid != null) {

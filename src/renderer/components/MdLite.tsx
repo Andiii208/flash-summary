@@ -60,6 +60,34 @@ export function MdLite({ text }: { text: string }): JSX.Element {
                 <Inline spans={block.inline} />
               </blockquote>
             )
+          case 'table':
+            // 2026-09-11（声明批3 收口）: tables are pure presentation — the reason
+            // this exists is the third-party notices document, whose backbone is a
+            // table per component. Emitted as real <table> JSX (no innerHTML).
+            return (
+              <table key={i} class="md-table">
+                <thead>
+                  <tr>
+                    {block.header.map((cell, j) => (
+                      <th key={j}>
+                        <Inline spans={cell} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, j) => (
+                    <tr key={j}>
+                      {row.map((cell, k) => (
+                        <td key={k}>
+                          <Inline spans={cell} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
           default:
             return (
               <p key={i} class="md-para">

@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import { useState } from 'preact/hooks'
 import { Dialog } from '../ui/Dialog'
 import { MdLite } from './MdLite'
-import { DISCLAIMER_FULL_TEXT, THIRD_PARTY_NOTICES_TEXT } from '../legal-text'
+import { DISCLAIMER_FULL_TEXT, THIRD_PARTY_NOTICES_TEXT, toReaderMarkdown } from '../legal-text'
 import { DISCLAIMER_TITLE, DISCLAIMER_TEXT_VERSION } from '../../shared/disclaimer'
 import { FEEDBACK_HINT, FEEDBACK_OPEN_LABEL, FEEDBACK_TITLE } from '../../shared/feedback'
 /** 声明批6: 反馈二维码成品图（732×960）。见下方尺寸注释。 */
@@ -74,7 +74,7 @@ export function AboutPanel({ version, onOpenFeedback }: { version?: string; onOp
         onCancel={close}
       >
         <div class="legal-scroll" data-testid="legal-disclaimer">
-          <MdLite text={DISCLAIMER_FULL_TEXT} />
+          <MdLite text={toReaderMarkdown(DISCLAIMER_FULL_TEXT)} />
         </div>
       </Dialog>
 
@@ -86,9 +86,10 @@ export function AboutPanel({ version, onOpenFeedback }: { version?: string; onOp
         onConfirm={close}
         onCancel={close}
       >
-        {/* 原样文本：许可声明要给人看与随包文件逐字一致的原文（含表格）。 */}
+        {/* 同一套渲染：走查发现按原文印出来全是 `**`、`|`、`[x](y)`，看着像坏掉的
+            markdown。toReaderMarkdown 去掉重复标题与维护者说明，MdLite 负责表格。 */}
         <div class="legal-scroll" data-testid="legal-licenses">
-          <pre class="legal-raw">{THIRD_PARTY_NOTICES_TEXT}</pre>
+          <MdLite text={toReaderMarkdown(THIRD_PARTY_NOTICES_TEXT)} />
         </div>
       </Dialog>
     </section>
