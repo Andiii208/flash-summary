@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { AppSettingsInfo } from '../../shared/bridge'
 import { ProviderPanel, type ProviderPanelProps } from './ProviderPanel'
+import { AboutPanel } from './AboutPanel'
 import type { SessionState } from './TopBar'
 import { Colonnade } from '../ui/Colonnade'
 import { PageHeader } from './PageHeader'
@@ -213,6 +214,9 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
           </select>
         </div>
       </section>
+
+      {/* 声明批3: 常驻的「关于与声明」——首启闸门是一次性的，这里是随时可查的那一半。 */}
+      <AboutPanel version={props.settings?.version} />
 
       <section class="settings-block">
         <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} testBusy={props.providerTestBusy} />

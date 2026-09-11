@@ -915,6 +915,38 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   text-align: center;
 }
 .consent-boot p { margin: 0; max-width: 460px; line-height: 1.6; }
+
+/* 声明批3: 设置页「关于与声明」+ 两份全文弹层。
+   全文弹层要比确认框宽得多：法务文本在 420px 里每行只有十来个字。 */
+.dialog:has(.legal-scroll) { width: min(760px, calc(100vw - 48px)); }
+.legal-scroll {
+  max-height: min(62vh, 540px);
+  overflow-y: auto;
+  margin: 0 0 16px;
+  padding: 4px 10px 4px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+/* 许可声明按原文呈现（含表格），等宽字体是这类文件的常规读法。 */
+.legal-raw {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.7;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.about-version { color: var(--text); }
+.about-text-version { color: var(--text-muted); font-size: var(--font-size-sm); }
+.about-note {
+  margin: 8px 0 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.about-note strong { color: var(--text); font-weight: 600; }
+.about-actions { gap: 8px; justify-content: flex-start; margin-top: 12px; }
 /* 批4: QA 失败气泡 + busy 提示 + 设置页加载错误行。 */
 .qa-error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .qa-error-msg { margin: 0; color: var(--danger); }
