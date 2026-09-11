@@ -142,6 +142,11 @@ const api: SeuSummaryBridge = {
   },
   log: {
     rendererError: (message: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('log:rendererError', message)
+  },
+  // 声明批6: 只给入口、不上报——开反馈表（无参，地址在 main 侧）与取脱敏诊断文本。
+  feedback: {
+    openForm: (): Promise<ApiResult<boolean>> => ipcRenderer.invoke('feedback:openForm'),
+    diagnostics: (taskId: string): Promise<ApiResult<{ text: string }>> => ipcRenderer.invoke('feedback:diagnostics', taskId)
   }
 }
 

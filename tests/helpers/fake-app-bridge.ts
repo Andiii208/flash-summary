@@ -158,6 +158,12 @@ export function makeBridge(): SeuSummaryBridge {
     },
     log: {
       rendererError: vi.fn(async () => ok(true))
+    },
+    // 声明批6: 反馈通道的假实现——注意这里**没有任何发送方法**，与真实桥面一致
+    // （只给入口、不上报）。
+    feedback: {
+      openForm: vi.fn(async () => ok(true)),
+      diagnostics: vi.fn(async () => ok({ text: '—— Flash Summary 诊断信息 ——\n应用版本：0.0.0-test' }))
     }
   } as unknown as SeuSummaryBridge
 }

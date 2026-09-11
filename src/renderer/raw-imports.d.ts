@@ -9,3 +9,9 @@ declare module '*?raw' {
   const content: string
   export default content
 }
+
+/** 声明批6: bundled image assets (the feedback QR) — Vite returns the final URL. */
+declare module '*.png' {
+  const url: string
+  export default url
+}

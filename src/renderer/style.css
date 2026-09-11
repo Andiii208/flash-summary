@@ -963,6 +963,42 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   line-height: 1.6;
   color: var(--text-muted);
 }
+
+/* 声明批6: 测试期问题反馈——二维码用成品图，缩到 220px 级会扫不动（见 AboutPanel 注释），
+   所以固定按 380px 展示；白底卡片在暗色主题下保持自身形态，读起来像「外部服务的码」。 */
+.feedback-block {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.feedback-title { margin: 0 0 6px; font-size: var(--font-size-md); }
+.feedback-qr {
+  display: block;
+  width: 380px;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+}
+/* 「反馈这个错误」弹层里的诊断文本与隐私提醒。 */
+.feedback-hint { margin: 0 0 10px; font-size: var(--font-size-sm); line-height: 1.6; color: var(--text-secondary); }
+.feedback-body {
+  max-height: min(46vh, 360px);
+  overflow-y: auto;
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.feedback-sensitive {
+  margin: 0 0 12px;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--danger);
+}
 /* 批4: QA 失败气泡 + busy 提示 + 设置页加载错误行。 */
 .qa-error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .qa-error-msg { margin: 0; color: var(--danger); }

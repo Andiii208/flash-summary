@@ -45,6 +45,8 @@ export interface SettingsPanelProps {
   libraryMigrated?: boolean
   onChooseLibrary: () => void
   onOpenPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
+  /** 声明批6: 打开测试期反馈表（地址在 main 侧，无参 IPC）。 */
+  onOpenFeedback?: () => void
 }
 
 const SESSION_LABELS: Record<SessionState, string> = {
@@ -222,7 +224,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
       </section>
 
       {/* 声明批3: 常驻的「关于与声明」——首启闸门是一次性的，这里是随时可查的那一半。 */}
-      <AboutPanel version={props.settings?.version} />
+      <AboutPanel version={props.settings?.version} onOpenFeedback={props.onOpenFeedback} />
 
       <section class="settings-block">
         <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} testBusy={props.providerTestBusy} />

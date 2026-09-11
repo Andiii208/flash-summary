@@ -124,7 +124,8 @@ const EXPECTED_BRIDGE = {
   notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
   settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'acceptDisclaimer', 'optOutCopyrightNotice', 'onMigrateProgress'],
-  log: ['rendererError']
+  log: ['rendererError'],
+  feedback: ['openForm', 'diagnostics']
 }
 
 // Ipc probes: channel, expression returning the envelope, and a predicate.

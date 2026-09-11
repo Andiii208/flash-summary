@@ -47,6 +47,8 @@ export interface ConfigDomain {
   /** 声明批4: record «不再提示» for the export copyright notice, then re-read
    *  settings so the exemption comes from the stored value. */
   optOutCopyrightNotice: () => void
+  /** 声明批6: 打开测试期反馈表（地址在 main 侧，无参 IPC，渲染层传不了 URL）。 */
+  openFeedbackForm: () => void
 }
 
 export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigDomain {
@@ -260,6 +262,15 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     })()
   }, [bridge, toast, refreshSettings])
 
+  const openFeedbackForm = useCallback((): void => {
+    void (async () => {
+      // 声明批6: the IPC carries no URL — main owns the address. A failure here
+      // (no browser handler) must say so instead of looking like a dead button.
+      const res = await bridge.feedback.openForm()
+      if (!res.ok) toast(res.error ?? '打开反馈表失败', 'error')
+    })()
+  }, [bridge, toast])
+
   return {
     providers,
     providerBusy,
@@ -282,6 +293,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     chooseLibrary,
     openPath,
     acceptDisclaimer,
-    optOutCopyrightNotice
+    optOutCopyrightNotice,
+    openFeedbackForm
   }
 }

@@ -40,6 +40,9 @@ import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import { formatBytes, formatSpeed } from '../shared/format'
 import { DISCLAIMER_TEXT_VERSION } from '../shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../shared/copyright-notice'
+import { FEEDBACK_FORM_URL } from '../shared/feedback'
+import { buildDiagnostics, type DiagnosticsTask } from './feedback/diagnostics'
+import { redact } from './logger'
 import type { Note } from '../shared/notes/schema'
 import { resolveCacheDir, attachmentsPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
@@ -799,6 +802,44 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       ctx.logger.error(`renderer: ${str(message, 'message')}`)
       return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // ---- 声明批6: 测试期问题反馈通道 ----
+  //
+  // 红线：这里只做两件不需要网络的事——把一段**已脱敏**的诊断文本交给渲染层
+  // （进用户自己的剪贴板），以及用 main 自己的常量打开反馈表。**不上报任何数据。**
+  //
+  // feedback:openForm 故意**不接参数**：地址只存在于 main 侧，渲染层无法让 main
+  // 打开任意 URL（否则就是一个 openExternal 注入洞）。沿用 settings:openPath 的
+  // 枚举/无参先例。
+  handle(ipc, 'feedback:openForm', async () => {
+    try {
+      await shell.openExternal(FEEDBACK_FORM_URL)
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+  handle(ipc, 'feedback:diagnostics', (_e, taskId: unknown) => {
+    try {
+      const id = str(taskId, 'taskId')
+      const row = ctx.db
+        .prepare(
+          'SELECT t.id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name, c.source AS source FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id WHERE t.id = ?'
+        )
+        .get(id) as DiagnosticsTask | undefined
+      const text = buildDiagnostics({
+        version: app.getVersion(),
+        platform: `${process.platform} ${process.arch}`,
+        logsDir: ctx.logsDir(),
+        task: row ?? null
+      })
+      // Second redaction pass: this text leaves the app on the user's clipboard,
+      // so a credential leak here is worse than one sitting in a log file.
+      return ok({ text: redact(text) })
     } catch (e) {
       return err(e)
     }

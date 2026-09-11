@@ -34,6 +34,8 @@ export interface TaskPanelProps {
   onClearFinished: () => void
   /** A2: open a finished task's note (selects the lesson + switches tab). */
   onOpenNote?: (lessonId: string) => void
+  /** 声明批6: 复制这次失败的诊断信息，供用户粘贴进反馈表（应用不上报任何数据）。 */
+  onReportError?: (taskId: string) => void
 }
 
 type HistoryFilter = 'all' | 'running' | 'succeeded' | 'failed'
@@ -78,7 +80,8 @@ export function TaskPanel({
   onCancel,
   onDelete,
   onClearFinished,
-  onOpenNote
+  onOpenNote,
+  onReportError
 }: TaskPanelProps): JSX.Element {
   const noLesson = currentLesson === ''
   const hasNoteAlready = history.some((row) => row.state === 'succeeded')
@@ -120,6 +123,7 @@ export function TaskPanel({
             onDelete={onDelete}
             onClearFinished={onClearFinished}
             onOpenNote={onOpenNote}
+            onReportError={onReportError}
           />
         </>
       ) : (
@@ -153,6 +157,7 @@ export function TaskPanel({
             onDelete={onDelete}
             onClearFinished={onClearFinished}
             onOpenNote={onOpenNote}
+            onReportError={onReportError}
           />
         </>
       )}
@@ -249,9 +254,11 @@ interface HistoryListProps {
   onClearFinished: () => void
   /** A2: open a finished task's note. */
   onOpenNote?: (lessonId: string) => void
+  /** 声明批6: 复制失败诊断信息（用户在反馈表里自己粘贴）。 */
+  onReportError?: (taskId: string) => void
 }
 
-function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFinished, onOpenNote }: HistoryListProps): JSX.Element {
+function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFinished, onOpenNote, onReportError }: HistoryListProps): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all')
   const [confirmClear, setConfirmClear] = useState(false)
   if (history.length === 0) return <p class="msg">暂无任务</p>
@@ -332,6 +339,18 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
             {row.state === 'failed' && (
               <button class="btn small" onClick={() => onRetry(row.id)} disabled={disabled}>
                 重试
+              </button>
+            )}
+            {/* 声明批6: 失败行就在用户最想吐槽的位置。按钮叫「反馈这个错误」——
+                不叫「反馈」，因为笔记页的「反馈」是润色笔记，两件事。 */}
+            {row.state === 'failed' && onReportError != null && (
+              <button
+                class="btn small ghost"
+                data-testid="report-error"
+                title="复制这次失败的诊断信息，粘贴到反馈表里"
+                onClick={() => onReportError(row.id)}
+              >
+                反馈这个错误
               </button>
             )}
             {(row.state === 'succeeded' || row.state === 'failed') && (

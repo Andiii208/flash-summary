@@ -25,6 +25,7 @@ import { ManualAdd } from './components/ManualAdd'
 import { BiliImportDialog } from './components/BiliImportDialog'
 import { ConsentDialog } from './components/ConsentDialog'
 import { CopyrightNoticeDialog } from './components/CopyrightNoticeDialog'
+import { FeedbackDiagnosticsDialog } from './components/FeedbackDiagnosticsDialog'
 import { useToasts } from './hooks/use-toasts'
 import { useConfigDomain } from './hooks/use-config-domain'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -220,6 +221,14 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onRememberChange={state.setExportNoticeRemember}
         onConfirm={state.confirmExportNotice}
         onCancel={state.cancelExportNotice}
+      />
+      {/* 声明批6: «反馈这个错误» 弹层。诊断文本已过 main 的 redact，只复制到本地剪贴板。 */}
+      <FeedbackDiagnosticsDialog
+        open={state.feedbackReport != null}
+        busy={state.feedbackReport?.busy ?? false}
+        text={state.feedbackReport?.text ?? ''}
+        onCopy={state.copyReport}
+        onClose={state.closeReport}
       />
       <div class="app-shell">
       <TopBar
@@ -431,6 +440,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onDelete={state.removeTask}
               onClearFinished={state.clearFinishedTasks}
               onOpenNote={state.openLessonNotes}
+              onReportError={state.reportError}
             />
           )}
           {tab === 'notes' && (
@@ -505,6 +515,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               libraryMigrated={state.libraryMigrated}
               migrationProgress={state.migrationProgress}
               onOpenPath={state.openPath}
+              onOpenFeedback={state.openFeedbackForm}
             />
           )}
         </main>
@@ -628,6 +639,14 @@ interface AppState {
   setExportNoticeRemember: (value: boolean) => void
   confirmExportNotice: () => void
   cancelExportNotice: () => void
+  /** 声明批6: 打开某个失败任务的诊断弹层（取回已脱敏文本供复制）。 */
+  reportError: (taskId: string) => void
+  /** 声明批6: 诊断弹层状态（null = 未打开）。 */
+  feedbackReport: { busy: boolean; text: string } | null
+  copyReport: () => void
+  closeReport: () => void
+  /** 声明批6: 打开测试期反馈表（地址在 main 侧）。 */
+  openFeedbackForm: () => void
   toasts: ToastItem[]
   dismissToast: (id: number) => void
   /** Toast emitter (BiliImport and other sidebar components push here). */
@@ -844,7 +863,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath, acceptDisclaimer, optOutCopyrightNotice } = config
+  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath, acceptDisclaimer, optOutCopyrightNotice, openFeedbackForm } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -889,6 +908,43 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   const cancelExportNotice = useCallback((): void => {
     setPendingExport(null)
+  }, [])
+
+  // 声明批6: «反馈这个错误» —— 取回**已脱敏**的诊断文本供用户复制。应用不上报任何
+  // 数据：文本只进本地状态，再由用户点「复制诊断信息」进他自己的剪贴板。
+  const [reportTaskId, setReportTaskId] = useState<string | null>(null)
+  const [reportText, setReportText] = useState('')
+  const [reportBusy, setReportBusy] = useState(false)
+
+  const reportError = useCallback(
+    (taskId: string): void => {
+      setReportTaskId(taskId)
+      setReportText('')
+      setReportBusy(true)
+      void (async () => {
+        const res = await bridge.feedback.diagnostics(taskId)
+        setReportBusy(false)
+        if (!res.ok) {
+          toast(res.error ?? '无法整理诊断信息', 'error')
+          setReportTaskId(null)
+          return
+        }
+        setReportText(res.value?.text ?? '')
+      })()
+    },
+    [bridge, toast]
+  )
+
+  const copyReport = useCallback((): void => {
+    void navigator.clipboard
+      .writeText(reportText)
+      .then(() => toast('诊断信息已复制，粘贴到反馈表即可', 'success'))
+      .catch(() => toast('复制失败', 'error'))
+  }, [reportText, toast])
+
+  const closeReport = useCallback((): void => {
+    setReportTaskId(null)
+    setReportText('')
   }, [])
 
   const applyLocalTree = useCallback(async (): Promise<void> => {
@@ -2131,6 +2187,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     setExportNoticeRemember,
     confirmExportNotice,
     cancelExportNotice,
+    reportError,
+    feedbackReport: reportTaskId != null ? { busy: reportBusy, text: reportText } : null,
+    copyReport,
+    closeReport,
+    openFeedbackForm,
     toasts,
     dismissToast,
     toast,

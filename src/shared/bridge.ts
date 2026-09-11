@@ -265,6 +265,21 @@ export interface LogBridge {
   rendererError(message: string): Promise<ApiResult<boolean>>
 }
 
+/**
+ * 声明批6: 测试期问题反馈通道。
+ *
+ * **只给入口、不上报**——应用不向开发者发送任何数据。这里两个方法都不涉及网络
+ * 上报：一个是用系统浏览器打开反馈表，一个是把已脱敏的诊断文本取回本地供用户
+ * 复制。没有埋点、没有自动提交。
+ */
+export interface FeedbackBridge {
+  /** 在系统浏览器打开反馈表。**不接参数**：地址只存在于 main 侧，渲染层无法让
+   *  main 打开任意 URL（沿用 settings:openPath 的无参/枚举先例）。 */
+  openForm(): Promise<ApiResult<boolean>>
+  /** 某个失败任务的诊断文本（已过 main 的 redact），进用户自己的剪贴板。 */
+  diagnostics(taskId: string): Promise<ApiResult<{ text: string }>>
+}
+
 export interface QaBridge {
   ask(lessonId: string, question: string): Promise<ApiResult<{ id: string; answer: string }>>
   history(lessonId: string): Promise<ApiResult<Array<{ question: string; answer: string; created_at: string }>>>
@@ -314,4 +329,6 @@ export interface SeuSummaryBridge {
   qa: QaBridge
   settings: SettingsBridge
   log: LogBridge
+  /** 声明批6: 反馈入口（只给入口、不上报）。 */
+  feedback: FeedbackBridge
 }
