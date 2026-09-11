@@ -69,7 +69,10 @@ export function redact(message: string): string {
     // redact to end of line instead of stopping at the first ';'.
     .replace(/(cookie\s*[:=]\s*).*/gi, '$1[REDACTED]')
     // Generic name=value credentials; the value runs to whitespace/;/quote.
-    .replace(/((?:api[_-]?key|castgt|tgt|auth_key|jwt[-_]?token|sessdata|bili_jct|dedeuserid)\s*[=:]\s*)(?:"[^"]*"|[^\s;"]*)/gi, '$1[REDACTED]')
+    // Health audit 2026-09-12: access/refresh tokens live in the school
+    // platform's localStorage and OAuth flows — no current log line carries
+    // them, but any future response-body logging must not leak them first.
+    .replace(/((?:api[_-]?key|castgt|tgt|auth_key|jwt[-_]?token|sessdata|bili_jct|dedeuserid|access[_-]?token|refresh[_-]?token|password)\s*[=:]\s*)(?:"[^"]*"|[^\s;"]*)/gi, '$1[REDACTED]')
     .replace(/https?:\/\/[^\s"']+/gi, (url) => {
       try {
         const parsed = new URL(url)

@@ -61,6 +61,19 @@ describe('redact (U5 安全红线)', () => {
     expect(out).not.toContain('12345678')
     expect(out).not.toContain('abc123')
   })
+
+  it('健康巡查 2026-09-12: access/refresh token 与 password 入名单（纵深——当前无日志携带，未来不得先漏）', () => {
+    // The school platform keeps a refresh token in localStorage and OAuth
+    // flows hand out access tokens; any future response-body logging must
+    // hit this net before the values reach disk.
+    const out = redact(
+      'oauth callback access_token=at-abc123 refresh_token=rt-xyz789 and password=hunter2 done'
+    )
+    expect(out).not.toContain('at-abc123')
+    expect(out).not.toContain('rt-xyz789')
+    expect(out).not.toContain('hunter2')
+    expect(out).toContain('[REDACTED]')
+  })
 })
 
 describe('Logger (U5)', () => {
