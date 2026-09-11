@@ -154,6 +154,20 @@ Users can move the library by selecting a new empty directory. MVP performs a on
 - Temporary task files older than 24 hours are cleaned on application startup.
 - Verbose network logging is disabled in release builds.
 
+### User-facing disclosure layer
+
+Added 2026-09-11 (user-approved plan: `docs/plans/2026-09-11-compliance-disclosure-plan.md`). The authoritative text lives in `DISCLAIMER.md` (nine clauses); the in-app text version is pinned in `src/shared/disclaimer.ts` and must stay in sync with the `文本版本` line of that file.
+
+- **First-run consent gate**: on first launch the user must read and accept «使用须知与免责声明» before the main UI renders. Acceptance is stored together with a **text version**, and the gate re-prompts when that version changes. Declining exits the application.
+- **Settings → 关于与声明 panel**: shows the app version, the non-affiliation notice, a data-flow summary, the full text, and the third-party license notices.
+- **Export notice**: every export path (PDF / Markdown / clipboard / Anki / Obsidian single lesson / Obsidian whole course / mind-map SVG) shows a one-time reminder that course materials are school teaching resources and must not be publicly redistributed. This fulfils the "Exports can omit attachments, but the UI warns…" clause above.
+- **Login entries** (SEU CAS and Bilibili) carry a one-line notice that the user must use their own account and that third-party access may trigger platform risk controls.
+- **Provider configuration area** states that audio, images and transcripts are sent to the user-configured provider, and that retention there is governed by that provider's terms.
+- **Signed stream URLs**: the complete signed URL is handed off inside the task only — cleared when the task **succeeds**; a **failed or cancelled** task retains it so that resume can avoid a re-harvest, until the task is retried successfully, deleted, or history is cleared. The library stores sanitized paths only. Disclosure text must describe this retention honestly.
+- **Third-party licenses**: `THIRD-PARTY-NOTICES.md` plus the full license texts in `LICENSES/` ship inside the installer (the bundled `ffmpeg` is GPL-3.0). The NSIS installer shows a license page.
+- **Feedback channel**: the app may display a link/QR to an external feedback form and may offer to copy redacted diagnostics to the user's clipboard. It **never** transmits anything to the developer — no telemetry, no auto-report — so the "no developer-owned backend" clause above continues to hold.
+- **Editorial rule**: user-visible disclosure text states only facts the application can verify, and avoids legal terminology (plan D7).
+
 ## 10. Technology Direction
 
 The selected application form is an Electron desktop application:

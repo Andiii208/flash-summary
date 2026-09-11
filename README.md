@@ -25,7 +25,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 | 🎬 媒体管线 | 课时详情自播放页收割（视频直链 + 课时目录，主窗口内完成并恢复界面）；教师流取音频（无音频轨自动回退屏幕流）；屏幕流抽关键帧并**感知哈希去重**；全景流按规格不下载；平台 PPT 优先，关键帧补充；ffmpeg 超时（30 分钟）与停滞检测（60 秒无输出即终止） |
 | 🗣️ ASR 转写 | 分片转写（默认 120 秒/片——按真实网关校准，解除大请求体上限），拼接保留片偏移，静音分片自动跳过；HTTP 下载支持 **Range 断点续传** |
 | 🧠 多模态笔记 | 转写 + **真实 PPT/关键帧图片**（每张带证据ID标注，上限 20 张）→ 多模态模型生成结构化笔记（JSON）；模型输出偏差容错归一（时间戳/证据引用格式过滤）；不支持视觉输入时自动回退纯文本；笔记可**一键重新生成**（复用已存转写与关键帧，不重下载） |
-| 📖 五种阅读视图 | 详细笔记（时间线图文卡片）/ 标准总结 / 要点 / 方法论 / **思维导图**——**同一份 JSON** 投影，非多份独立总结；时间线卡片自动绑定课堂关键帧（证据引用精确匹配 → 时间就近兜底）；导出 **PDF 整册讲义**（封面 + 整页导图 + 图文正文 + 图集，矢量文本）或 Markdown；复制到剪贴板 |
+| 📖 五种阅读视图 | 详细笔记（时间线图文卡片）/ 标准总结 / 要点 / 方法论 / **思维导图**——**同一份 JSON** 投影，非多份独立总结；时间线卡片自动绑定课堂关键帧（证据引用精确匹配 → 时间就近兜底）；导出 **PDF 整册讲义**（封面 + 整页导图 + 图文正文 + 图集，矢量文本）、**Markdown**、**Anki 牌组**、**Obsidian 结构化笔记**（frontmatter + wikilink + 间隔重复卡）、导图 **SVG**；复制到剪贴板 |
 | ⚙️ 设置 | Provider 预设模板（OpenAI/DeepSeek/硅基流动/小米 MiMo）+「测试连接」探活；任务缓存目录可改（即时生效）、资料库迁移（备份 + 失败回滚）、主题、打开日志目录 |
 | 📺 B站视频源 | 侧栏「B站视频导入」：粘贴视频链接/BV号/b23.tv 短链 → 解析预览（标题/分P列表勾选）→ 应用内扫码登录（SESSDATA DPAPI 加密落盘）→ 与校内课程同规格生成笔记；**字幕优先**（B站 CC/AI 字幕直插，秒级时间戳），无字幕自动回退 **ASR 兜底**（DASH 音频流）；360P 视频流抽关键帧保时间线配图；付费/充电专属内容明确拒绝；导入后自动排队生成 |
 | 💬 课时追问 | 上下文 = 本课时转写 + 笔记 + PPT + 关键帧 + 历史问答（严格课时边界） |
@@ -82,7 +82,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（639 个用例，71 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（769 个用例，79 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -92,7 +92,7 @@ src/
   preload/    类型化桥接（contextBridge）
   renderer/   Preact UI（课程树/任务/笔记/追问/设置，CSS 变量设计系统）
   shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
-tests/        71 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
+tests/        79 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
 scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）
 docs/
   plans/ROADMAP.md         阶段计划（8 阶段 + 验收命令）
@@ -106,15 +106,27 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 
 - **无后端**：所有数据只在你本机与你自己配置的 Provider 之间流动。
 - **凭据加密**：CAS 会话（Cookie + JWT）与 API Key 用 **Windows DPAPI** 加密落盘；绝不进入 Git、日志或文档。
-- **视频直链**：课时收割得到的完整签名直链只在任务内部做阶段交接（随缓存清理删除）；课程库只保存去除签名参数的路径段。
+- **视频直链**：课时收割得到的完整签名直链只在任务内部做阶段交接——任务**成功后即清除**；**失败或被取消**的任务为支持断点续跑会保留该记录，直至你重试成功、删除该任务或清空历史任务。课程库只保存去除签名参数的路径段。
 - **红线**：严禁提交 `.env`、Cookie、TGT、API Key、`auth_key`、完整视频直链。
 - **临时文件**：成功后即删；超过 24h 的缓存启动时自动清理。
-- 课程资料属于学校教学资源，请勿公开转发（应用导出时会有提示）。
+- 课程资料属于学校教学资源，请勿公开转发。**完整条款见 [使用须知与免责声明](DISCLAIMER.md)**。
+
+## ⚖️ 合规与使用声明
+
+- **非官方工具**：Flash Summary 由个人开发，与**东南大学**及其信息化部门、与**哔哩哔哩**均无隶属、合作或授权关系。
+- **个人学习用途**：请使用**你本人**的账号，仅处理你有权访问的内容，不做批量抓取、不二次分发。
+- **数据流向**：音频、截图与转写文本只发往**你在设置里自己配置**的第三方 ASR/LLM 服务商——没有开发者自有服务器，不上报任何数据给开发者（无遥测、无埋点、无崩溃上报）。
+- **账号风险**：使用第三方工具访问学校平台可能触发学校的安全策略（频率限制、风控、临时锁定），请自行确认符合学校规定。
+- **版权**：课程与视频的著作权归学校、教师或原作者；导出的文件可能包含课程画面与他人肖像声音，**请勿公开转发或公开发布**。
+- **技术边界**：不处理 B 站付费/充电专属内容、不请求会员清晰度、不下载全景流、不提供批量抓取、**不含任何 DRM 绕过或解密逻辑**。
+- **AI 输出可能出错**：笔记由模型生成，请**以课程原始内容为准**。
+
+> 上表为摘要。**全文（九条）见 [DISCLAIMER.md](DISCLAIMER.md)**；随包分发的第三方组件与许可（含内置 ffmpeg 的 **GPL-3.0** 说明与源码获取途径）见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。应用内可在「设置 → 关于与声明」查看同一份文本。
 
 ## ✅ 当前状态
 
 - **v0.2.1 + 可用性整改**：真实课时下载管线全通（播放页收割直链+课时目录；真实单课 810MB 双流→ASR→笔记已跑通）、主窗口内嵌登录与会话过期恢复活体验证通过；2026-09-03 用户实测反馈修复：dev/安装版数据隔离、会话三态（JWT 过期本地判定）、登录失败可见反馈、校园域名代理绕行 + Fake-IP 预检、课程分页拉取（含总量/进度边界明示）、星标「我的课程」置顶 + 同课程其他老师推荐 + 课程时间/教室展示。
-- **525 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **769 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
 
@@ -133,9 +145,9 @@ npm install
 npm run dev          # 开发模式（热重载）
 npm run lint         # ESLint
 npm run typecheck    # TypeScript strict（node + web 双工程）
-npm test             # vitest（221 用例）
+npm test             # vitest（769 用例 / 79 文件）
 npm run build        # electron-vite 构建到 out/
-npm run smoke        # 构建并运行 CDP 进程级烟测（19 项组合断言）
+npm run smoke        # 构建并运行 CDP 进程级烟测（28 项组合断言）
 npm run dist         # 构建 NSIS 安装包到 release/
 npm run verify:asar  # 抽验安装包 asar 与 out/ 一致（发布门禁）
 ```
@@ -147,13 +159,16 @@ CI（GitHub Actions，windows-latest）在每个 push 上运行 lint + typecheck
 ## 📖 更多文档
 
 - [设计规格](docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md)（唯一规格来源）
+- [使用须知与免责声明](DISCLAIMER.md)（九条全文，应用内同源）
+- [第三方组件与许可](THIRD-PARTY-NOTICES.md)（含 ffmpeg GPL-3.0 说明）
 - [ROADMAP](docs/plans/ROADMAP.md)（阶段计划与验收命令）
 - [MVP 验收记录](docs/acceptance/MVP.md)（spec 第 11 条逐项）
 - [AGENTS.md](AGENTS.md)（工程约定，供 AI 协作者）
 
 ## 🤝 贡献
 
-MVP 范围明确不做：B 站、云端同步、多用户、本地 ASR、PDF 导出、macOS。
+MVP 范围明确不做：云端同步、多用户、本地 ASR、macOS。
+已交付并超出初版 MVP 边界（均经用户批准，见 [ROADMAP](docs/plans/ROADMAP.md) 与相应方案）：PDF 讲义导出（2026-09-04）、**B 站作为第二视频源**（2026-09-06）、Obsidian / Anki 结构化导出（2026-09-08）。
 欢迎在 issue 中讨论需求；改动请保持小而聚焦的 Conventional Commits，并在提交前通过全部门禁。
 
 ## 📄 License

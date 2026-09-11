@@ -8,6 +8,7 @@
 - 阶段计划：`docs/plans/ROADMAP.md`；进度台账：`PROGRESS.md`（新会话先读，不重做已完成阶段）。
 - 技术栈：Electron + TypeScript（strict），main/preload/renderer 三进程结构，代码在 `src/`，测试在 `tests/`。
 - 平台 Windows only。
+- **命名现状（故意保留，勿「顺手统一」）**：产品展示名 **Flash Summary**；npm 包名 / userData 目录 `seu-summary`（`%APPDATA%\seu-summary`）；仓库名 `Andiii208/seu-summary`；appId `edu.seu.summary`；`LICENSE` 署名为 "SEU Summary contributors"。改 `name`/`appId` 会丢登录态与已加密密钥（红线）；2026-09-11 D4 裁决 = **不改**，改由声明层写明「非官方、无隶属关系」。
 
 ## 命令（提交前必须全过）
 
@@ -30,11 +31,21 @@ npm run lint && npm run typecheck && npm test
 - 模态层统一用共享 `ui/Dialog`（含滚动锁/Esc/居中遮罩）；自绘弹层必须挂 `useModalScrollLock`。
 - 笔记字段里的用户可见文本一律经 `MdLite`/`InlineText` 渲染——模型会自由输出 `**加粗**`，纯文本插值会印出字面星号。
 
+## 声明层纪律（2026-09-11 起，违反即「设计声明与实现漂移」复发）
+
+- **唯一文本源**：用户可见的完整声明是仓库根 `DISCLAIMER.md`（九条）。应用内文本版本号钉在 `src/shared/disclaimer.ts`，必须与 `DISCLAIMER.md` 的 `文本版本` 行一致（有钉住测试断言）。
+- **新增任何用户可见承诺，先进 spec §9「User-facing disclosure layer」，再落实现**——spec 是唯一规格来源，不允许代码先行。
+- **只写能核对的事实**：声明里每句话都必须能在源码里找到依据。写不实的承诺比不写更有害。**不出现法律术语**（「跨境」「出境」「不可抗力」等一律不用，见 2026-09-11 D7 裁决）。
+- **落点分工**：拦路弹窗只陈述事实、口语化短句、每条 ≤2 行；细节放设置页与「用户正在做选择」的位置（如 Provider 配置区）。
+- **新增运行时依赖 → 必须同步 `THIRD-PARTY-NOTICES.md` 一行 + 把许可文本放进 `LICENSES/`**；升级 `ffmpeg-static` 或更换媒体二进制后必须同步更新该文件里的版本、构建配置与来源链接。
+- **反馈通道只给入口、不上报**：应用不得向开发者发送任何数据（无埋点、无自动上报）。若将来要加任何自动上报，属于产品边界变更，先问用户。
+
 ## 安全红线（违反即失败）
 
 - 不提交：.env、Cookie、TGT、API Key、auth_key、完整视频直链。
 - 凭据与学校会话用 Windows DPAPI 加密后落盘；日志不含敏感值。
 - 用户数据（Library/）不入 Git。
+- **打开外部网址只能经 main 侧的固定常量**（形如 `settings:openPath` 的枚举/无参 IPC）。绝不接受渲染层传入的任意 URL——那是 `openExternal` 注入洞。
 
 ## 范围
 
