@@ -235,6 +235,10 @@ export interface AppSettingsInfo {
   disclaimerVersion?: number
   /** 声明批2: true only when the stored acceptance matches disclaimerVersion. */
   disclaimerAccepted?: boolean
+  /** 声明批4: the export copyright notice text version this build ships. */
+  copyrightNoticeVersion?: number
+  /** 声明批4: true when the user ticked «不再提示» for this text version. */
+  copyrightNoticeOptOut?: boolean
 }
 
 export interface SettingsBridge {
@@ -249,6 +253,9 @@ export interface SettingsBridge {
    *  Takes no argument on purpose — the version is main's own constant, so the
    *  renderer cannot vouch for text it never showed. */
   acceptDisclaimer(): Promise<ApiResult<{ version: number }>>
+  /** 声明批4: record «不再提示» for the export copyright notice. No argument —
+   *  same reasoning as acceptDisclaimer (the version is main's own constant). */
+  optOutCopyrightNotice(): Promise<ApiResult<{ version: number }>>
   /** C3: live migration progress (copied/total attachment entries). */
   onMigrateProgress(cb: (p: { copied: number; total: number }) => void): () => void
 }

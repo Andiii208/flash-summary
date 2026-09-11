@@ -44,6 +44,9 @@ export interface ConfigDomain {
    *  re-read settings so the gate lifts from the authoritative stored value
    *  (never from a local flag — that could show a shell main never accepted). */
   acceptDisclaimer: () => void
+  /** 声明批4: record «不再提示» for the export copyright notice, then re-read
+   *  settings so the exemption comes from the stored value. */
+  optOutCopyrightNotice: () => void
 }
 
 export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigDomain {
@@ -244,6 +247,19 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     })()
   }, [bridge, toast, refreshSettings])
 
+  const optOutCopyrightNotice = useCallback((): void => {
+    void (async () => {
+      // 声明批4: a failed write only means the notice shows again next time —
+      // honest, and not worth blocking the export the user already confirmed.
+      const res = await bridge.settings.optOutCopyrightNotice()
+      if (!res.ok) {
+        toast(res.error ?? '无法记录「不再提示」，下次导出还会提醒', 'error')
+        return
+      }
+      await refreshSettings()
+    })()
+  }, [bridge, toast, refreshSettings])
+
   return {
     providers,
     providerBusy,
@@ -265,6 +281,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     setTheme,
     chooseLibrary,
     openPath,
-    acceptDisclaimer
+    acceptDisclaimer,
+    optOutCopyrightNotice
   }
 }

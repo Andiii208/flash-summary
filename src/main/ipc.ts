@@ -39,6 +39,7 @@ import { exportLessonToObsidian, exportCourseToObsidian, resolveObsidianVault } 
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import { formatBytes, formatSpeed } from '../shared/format'
 import { DISCLAIMER_TEXT_VERSION } from '../shared/disclaimer'
+import { COPYRIGHT_NOTICE_VERSION } from '../shared/copyright-notice'
 import type { Note } from '../shared/notes/schema'
 import { resolveCacheDir, attachmentsPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
@@ -676,7 +677,10 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         theme: s.theme,
         version: app.getVersion(),
         disclaimerVersion: DISCLAIMER_TEXT_VERSION,
-        disclaimerAccepted: s.disclaimerAcceptedVersion === String(DISCLAIMER_TEXT_VERSION)
+        disclaimerAccepted: s.disclaimerAcceptedVersion === String(DISCLAIMER_TEXT_VERSION),
+        // 声明批4: 导出前的版权提醒是否已被用户免除（同样是 main 侧比对版本）。
+        copyrightNoticeVersion: COPYRIGHT_NOTICE_VERSION,
+        copyrightNoticeOptOut: s.copyrightNoticeVersion === String(COPYRIGHT_NOTICE_VERSION)
       })
     } catch (e) {
       return err(e)
@@ -690,6 +694,18 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       ctx.setSetting(SETTINGS_KEYS.disclaimerAcceptedVersion, String(DISCLAIMER_TEXT_VERSION))
       return ok({ version: DISCLAIMER_TEXT_VERSION })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // 声明批4: «不再提示» for the export copyright notice. No argument for the
+  // same reason as acceptDisclaimer — the version is main's own constant, so
+  // the renderer cannot opt out of a notice it never showed. Called ONLY when
+  // the user ticked the box: not ticking means the notice comes back next time.
+  handle(ipc, 'settings:optOutCopyrightNotice', () => {
+    try {
+      ctx.setSetting(SETTINGS_KEYS.copyrightNoticeVersion, String(COPYRIGHT_NOTICE_VERSION))
+      return ok({ version: COPYRIGHT_NOTICE_VERSION })
     } catch (e) {
       return err(e)
     }

@@ -10,6 +10,7 @@ import { noteToMarkdown } from '../src/shared/notes/markdown'
 import { readLibraryPointer } from '../src/main/library/pointer'
 import { getSetting, SETTINGS_KEYS } from '../src/main/settings/store'
 import { DISCLAIMER_TEXT_VERSION } from '../src/shared/disclaimer'
+import { COPYRIGHT_NOTICE_VERSION } from '../src/shared/copyright-notice'
 
 // Electron dialogs are user-facing; tests stub them and assert the wiring.
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
@@ -234,5 +235,43 @@ describe('声明批2 — 使用须知同意状态（settings IPC）', () => {
     // version comes from main's own constant.
     await invoke(ctx, 'settings:acceptDisclaimer', '999', 'forged')
     expect(getSetting(ctx.db, SETTINGS_KEYS.disclaimerAcceptedVersion, '')).toBe(String(DISCLAIMER_TEXT_VERSION))
+  })
+})
+
+describe('声明批4 — 导出前版权提醒的免除（settings IPC）', () => {
+  it('新库默认仍在提醒（未免除）', async () => {
+    const ctx = makeCtx()
+    const res = await invoke(ctx, 'settings:get') as { ok: true; value: { copyrightNoticeVersion: number; copyrightNoticeOptOut: boolean } }
+    expect(res.value.copyrightNoticeVersion).toBe(COPYRIGHT_NOTICE_VERSION)
+    expect(res.value.copyrightNoticeOptOut).toBe(false)
+  })
+
+  it('settings:optOutCopyrightNotice 记下文本版本，之后不再提醒', async () => {
+    const ctx = makeCtx()
+    const optOut = await invoke(ctx, 'settings:optOutCopyrightNotice') as { ok: true; value: { version: number } }
+    expect(optOut.value.version).toBe(COPYRIGHT_NOTICE_VERSION)
+    expect(getSetting(ctx.db, SETTINGS_KEYS.copyrightNoticeVersion, '')).toBe(String(COPYRIGHT_NOTICE_VERSION))
+
+    const res = await invoke(ctx, 'settings:get') as { ok: true; value: { copyrightNoticeOptOut: boolean } }
+    expect(res.value.copyrightNoticeOptOut).toBe(true)
+  })
+
+  it('免除的是「文本版本」：文案改版后提醒会回来一次', async () => {
+    const ctx = makeCtx()
+    await invoke(ctx, 'settings:optOutCopyrightNotice')
+    // Simulate having opted out of an older revision of the notice text.
+    ctx.setSetting(SETTINGS_KEYS.copyrightNoticeVersion, String(COPYRIGHT_NOTICE_VERSION - 1))
+
+    const res = await invoke(ctx, 'settings:get') as { ok: true; value: { copyrightNoticeOptOut: boolean } }
+    expect(res.value.copyrightNoticeOptOut).toBe(false)
+  })
+
+  it('两个「不再提示」互不干扰（使用须知 / 导出提醒）', async () => {
+    const ctx = makeCtx()
+    await invoke(ctx, 'settings:optOutCopyrightNotice')
+    const res = await invoke(ctx, 'settings:get') as { ok: true; value: { disclaimerAccepted: boolean; copyrightNoticeOptOut: boolean } }
+    // 免除导出提醒不等于同意了使用须知——两条同意各自独立。
+    expect(res.value.copyrightNoticeOptOut).toBe(true)
+    expect(res.value.disclaimerAccepted).toBe(false)
   })
 })

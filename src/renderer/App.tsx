@@ -24,6 +24,7 @@ import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
 import { BiliImportDialog } from './components/BiliImportDialog'
 import { ConsentDialog } from './components/ConsentDialog'
+import { CopyrightNoticeDialog } from './components/CopyrightNoticeDialog'
 import { useToasts } from './hooks/use-toasts'
 import { useConfigDomain } from './hooks/use-config-domain'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -211,6 +212,14 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           state.acceptJump()
         }}
         onCancel={state.dismissJump}
+      />
+      {/* 声明批4: 导出前的版权提醒（spec §9 承诺的兑现）。 */}
+      <CopyrightNoticeDialog
+        open={state.exportNotice != null}
+        remember={state.exportNotice?.remember ?? false}
+        onRememberChange={state.setExportNoticeRemember}
+        onConfirm={state.confirmExportNotice}
+        onCancel={state.cancelExportNotice}
       />
       <div class="app-shell">
       <TopBar
@@ -614,6 +623,11 @@ interface AppState {
   /** 批4: per-domain load failure with a retry affordance on the settings page. */
   configLoadError: { providers: string | null; settings: string | null }
   retryConfigLoad: () => void
+  /** 声明批4: 导出前的版权提醒——非 null 表示有待办导出等着用户确认。 */
+  exportNotice: { remember: boolean } | null
+  setExportNoticeRemember: (value: boolean) => void
+  confirmExportNotice: () => void
+  cancelExportNotice: () => void
   toasts: ToastItem[]
   dismissToast: (id: number) => void
   /** Toast emitter (BiliImport and other sidebar components push here). */
@@ -830,7 +844,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath, acceptDisclaimer } = config
+  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath, acceptDisclaimer, optOutCopyrightNotice } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -845,6 +859,37 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     void refreshProviders()
     void refreshSettings()
   }, [refreshProviders, refreshSettings])
+
+  // 声明批4 (plan 2026-09-11, D3=B/D6=A): 导出前的版权提醒。spec §9 与 README
+  // 早就承诺「导出时会有提示」，这里把它兑现。
+  //
+  // 语义：**除用户明确勾过「不再提示」，每次导出都先提示**——勾了才写库，没勾
+  // 下次还会出现。提醒不阻塞导出：确认即继续，取消就是这次不导。
+  const [pendingExport, setPendingExport] = useState<{ run: () => void } | null>(null)
+  const [exportNoticeRemember, setExportNoticeRemember] = useState(false)
+
+  const guardExport = useCallback(
+    (run: () => void): void => {
+      if (settings?.copyrightNoticeOptOut === true) {
+        run()
+        return
+      }
+      setExportNoticeRemember(false)
+      setPendingExport({ run })
+    },
+    [settings]
+  )
+
+  const confirmExportNotice = useCallback((): void => {
+    const run = pendingExport?.run
+    if (exportNoticeRemember) optOutCopyrightNotice()
+    setPendingExport(null)
+    run?.()
+  }, [pendingExport, exportNoticeRemember, optOutCopyrightNotice])
+
+  const cancelExportNotice = useCallback((): void => {
+    setPendingExport(null)
+  }, [])
 
   const applyLocalTree = useCallback(async (): Promise<void> => {
     const res = await bridge.school.courseTree()
@@ -1668,7 +1713,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, qaBusy, note, toast, loadQaRecent]
   )
 
-  const exportNote = useCallback(
+  const runExportNote = useCallback(
     (lessonId: string): void => {
       void (async () => {
         const res = await bridge.notes.exportMarkdown(lessonId)
@@ -1692,7 +1737,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   /** Obsidian 批1: structured export into the user's vault — first run asks
    *  for the vault root once, later runs overwrite the same file silently. */
-  const exportNoteObsidian = useCallback(
+  const runExportNoteObsidian = useCallback(
     (lessonId: string): void => {
       void (async () => {
         const res = await bridge.notes.exportObsidian(lessonId)
@@ -1714,7 +1759,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   /** Obsidian 批2: whole-course vault export (lessons + derived pages). */
-  const exportCourseObsidian = useCallback(
+  const runExportCourseObsidian = useCallback(
     (courseId: string, label: string): void => {
       void (async () => {
         const res = await bridge.notes.exportCourseObsidian(courseId)
@@ -1733,7 +1778,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   /** 2026-09-04 roadmap 2.2: Anki TSV decks — toast carries a reveal action. */
-  const exportNoteAnki = useCallback(
+  const runExportNoteAnki = useCallback(
     (lessonId: string): void => {
       void (async () => {
         const res = await bridge.notes.exportAnki(lessonId)
@@ -1753,7 +1798,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
-  const exportNoteSvg = useCallback(
+  const runExportNoteSvg = useCallback(
     (lessonId: string): void => {
       void (async () => {
         const res = await bridge.notes.exportSvg(lessonId)
@@ -1914,7 +1959,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
-  const exportNotePdf = useCallback(
+  const runExportNotePdf = useCallback(
     (lessonId: string): void => {
       void (async () => {
         if (note == null) return
@@ -1978,13 +2023,27 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast, note, attachmentManifest, loadAllAttachments, tree]
   )
 
-  const copyNote = useCallback((): void => {
+  const runCopyNote = useCallback((): void => {
     if (note == null) return
     void navigator.clipboard
       .writeText(noteToMarkdown(note, '课程笔记'))
       .then(() => toast('已复制 Markdown 到剪贴板', 'success'))
       .catch(() => toast('复制失败', 'error'))
   }, [note, tree, currentLesson, toast])
+
+  // 声明批4: 七个导出出口统一从这里出去——出口清单与 spec §9「每个导出路径都提示」
+  // 一一对应：PDF 讲义 / Markdown / 剪贴板 / Anki / Obsidian 单课时 / Obsidian 整课 /
+  // 导图 SVG。**新增导出路径必须在这里包一层**，否则会绕过版权提醒。
+  const exportNote = useCallback((lessonId: string): void => guardExport(() => runExportNote(lessonId)), [guardExport, runExportNote])
+  const exportNoteObsidian = useCallback((lessonId: string): void => guardExport(() => runExportNoteObsidian(lessonId)), [guardExport, runExportNoteObsidian])
+  const exportCourseObsidian = useCallback(
+    (courseId: string, label: string): void => guardExport(() => runExportCourseObsidian(courseId, label)),
+    [guardExport, runExportCourseObsidian]
+  )
+  const exportNoteAnki = useCallback((lessonId: string): void => guardExport(() => runExportNoteAnki(lessonId)), [guardExport, runExportNoteAnki])
+  const exportNoteSvg = useCallback((lessonId: string): void => guardExport(() => runExportNoteSvg(lessonId)), [guardExport, runExportNoteSvg])
+  const exportNotePdf = useCallback((lessonId: string): void => guardExport(() => runExportNotePdf(lessonId)), [guardExport, runExportNotePdf])
+  const copyNote = useCallback((): void => guardExport(runCopyNote), [guardExport, runCopyNote])
 
   /** C6: remove an empty (never-processed) course from the sidebar. */
   const removeCourse = useCallback(
@@ -2068,6 +2127,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     settings,
     configLoadError: loadError,
     retryConfigLoad,
+    exportNotice: pendingExport != null ? { remember: exportNoticeRemember } : null,
+    setExportNoticeRemember,
+    confirmExportNotice,
+    cancelExportNotice,
     toasts,
     dismissToast,
     toast,

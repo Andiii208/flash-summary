@@ -17,7 +17,9 @@ export const SETTINGS_KEYS = {
   courseListMaxPages: 'courseListMaxPages',
   cacheQuotaGb: 'cacheQuotaGb',
   /** 声明批2: the DISCLAIMER_TEXT_VERSION the user accepted ('' = never). */
-  disclaimerAcceptedVersion: 'disclaimerAcceptedVersion'
+  disclaimerAcceptedVersion: 'disclaimerAcceptedVersion',
+  /** 声明批4: the COPYRIGHT_NOTICE_VERSION the user opted out of ('' = never). */
+  copyrightNoticeVersion: 'copyrightNoticeVersion'
 } as const
 
 export interface AppSettings {
@@ -27,6 +29,8 @@ export interface AppSettings {
   theme: ThemeSetting
   /** 声明批2: accepted 使用须知文本版本（'' = 尚未接受）。 */
   disclaimerAcceptedVersion: string
+  /** 声明批4: 已免除导出提醒的版权提醒文本版本（'' = 仍会提示）。 */
+  copyrightNoticeVersion: string
 }
 
 export const DEFAULT_THEME: ThemeSetting = 'auto'
@@ -51,7 +55,8 @@ export function readSettings(db: Db, effectiveRoot: string): AppSettings {
     libraryRoot: effectiveRoot,
     cacheDir: getSetting(db, SETTINGS_KEYS.cacheDir, ''),
     theme,
-    disclaimerAcceptedVersion: getSetting(db, SETTINGS_KEYS.disclaimerAcceptedVersion, '')
+    disclaimerAcceptedVersion: getSetting(db, SETTINGS_KEYS.disclaimerAcceptedVersion, ''),
+    copyrightNoticeVersion: getSetting(db, SETTINGS_KEYS.copyrightNoticeVersion, '')
   }
 }
 

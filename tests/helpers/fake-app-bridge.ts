@@ -13,6 +13,7 @@ import { vi } from 'vitest'
 import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, SeuSummaryBridge, TaskRowInfo } from '../../src/shared/bridge'
 import type { ApiResult } from '../../src/shared/api-result'
 import { DISCLAIMER_TEXT_VERSION } from '../../src/shared/disclaimer'
+import { COPYRIGHT_NOTICE_VERSION } from '../../src/shared/copyright-notice'
 
 export const TREE: CourseTreeInfo[] = [
   { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: false }] }
@@ -32,6 +33,10 @@ export interface FakeAppState {
   settingsError: string | null
   /** When true, settings:get never settles (boot loading state). */
   settingsPending: boolean
+  /** 声明批4: whether the export copyright notice has been opted out of.
+   *  Default false — the notice is armed, which is the honest fresh-install
+   *  state and what the export tests need to drive. */
+  copyrightNoticeOptOut: boolean
 }
 
 /** Mutable fixture state — assign after makeBridge() to steer a single test. */
@@ -40,7 +45,8 @@ export const fakeState: FakeAppState = {
   qaHistory: [],
   disclaimerAccepted: true,
   settingsError: null,
-  settingsPending: false
+  settingsPending: false,
+  copyrightNoticeOptOut: false
 }
 
 function resetFakeState(): void {
@@ -51,6 +57,7 @@ function resetFakeState(): void {
   fakeState.disclaimerAccepted = true
   fakeState.settingsError = null
   fakeState.settingsPending = false
+  fakeState.copyrightNoticeOptOut = false
 }
 
 export function makeBridge(): SeuSummaryBridge {
@@ -90,15 +97,24 @@ export function makeBridge(): SeuSummaryBridge {
       run: vi.fn(async () => ok({})),
       runAsync: vi.fn(async () => ok({ id: 't1', state: 'running' })),
       cancel: vi.fn(async () => ok({ cancelled: true })),
+      remove: vi.fn(async () => ok(true)),
+      clearFinished: vi.fn(async () => ok({ removed: 0 })),
       onProgress: vi.fn(() => () => undefined)
     },
     notes: {
       latest: vi.fn(async () => ok(null)),
       list: vi.fn(async () => ok([])),
+      courseHealth: vi.fn(async () => ok([])),
       exportMarkdown: vi.fn(async () => ok({ canceled: true })),
+      exportObsidian: vi.fn(async () => ok({ canceled: true, path: 'x.md', version: 1 })),
+      exportCourseObsidian: vi.fn(async () => ok({ canceled: true, exported: 0, skipped: 0 })),
       exportAnki: vi.fn(async () => ok({ canceled: true, paths: [] })),
+      exportSvg: vi.fn(async () => ok({ canceled: true, path: 'x.svg' })),
+      courseTree: vi.fn(async () => ok({ tree: { title: 't', children: [] }, lessons: 0, skipped: 0 })),
       attachments: vi.fn(async () => ok([])),
+      attachmentData: vi.fn(async () => ok(null)),
       regenerate: vi.fn(async () => ok({ version: 1, images: 0, hitRate: { hits: 0, total: 0 } })),
+      polish: vi.fn(async () => ok({ version: 2, hitRate: { hits: 0, total: 0 } })),
       exportPdfDialog: vi.fn(async () => ok({ canceled: true })),
       exportPdfWrite: vi.fn(async () => ok({ path: 'x.pdf', bytes: 1 })),
       revealFile: vi.fn(async () => ok(true))
@@ -117,7 +133,9 @@ export function makeBridge(): SeuSummaryBridge {
           cacheDir: 'C',
           theme: 'auto',
           disclaimerVersion: DISCLAIMER_TEXT_VERSION,
-          disclaimerAccepted: fakeState.disclaimerAccepted
+          disclaimerAccepted: fakeState.disclaimerAccepted,
+          copyrightNoticeVersion: COPYRIGHT_NOTICE_VERSION,
+          copyrightNoticeOptOut: fakeState.copyrightNoticeOptOut
         })
       }),
       setCacheDir: vi.fn(async () => ok({ cacheDir: 'C' })),
@@ -129,6 +147,12 @@ export function makeBridge(): SeuSummaryBridge {
       acceptDisclaimer: vi.fn(async () => {
         fakeState.disclaimerAccepted = true
         return ok({ version: DISCLAIMER_TEXT_VERSION })
+      }),
+      // Same shape as the real handler: recording the opt-out is what stops the
+      // reminder, and the re-read that follows is what the UI acts on.
+      optOutCopyrightNotice: vi.fn(async () => {
+        fakeState.copyrightNoticeOptOut = true
+        return ok({ version: COPYRIGHT_NOTICE_VERSION })
       }),
       onMigrateProgress: vi.fn(() => () => undefined)
     },
