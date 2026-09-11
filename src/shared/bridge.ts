@@ -231,6 +231,10 @@ export interface AppSettingsInfo {
   theme: string
   /** C7: app version for the settings footer. */
   version?: string
+  /** 声明批2: the 使用须知 text version this build ships. */
+  disclaimerVersion?: number
+  /** 声明批2: true only when the stored acceptance matches disclaimerVersion. */
+  disclaimerAccepted?: boolean
 }
 
 export interface SettingsBridge {
@@ -241,6 +245,10 @@ export interface SettingsBridge {
   setTheme(theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>>
   chooseLibrary(): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>>
   openPath(kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>>
+  /** 声明批2: record first-run consent for the current text version.
+   *  Takes no argument on purpose — the version is main's own constant, so the
+   *  renderer cannot vouch for text it never showed. */
+  acceptDisclaimer(): Promise<ApiResult<{ version: number }>>
   /** C3: live migration progress (copied/total attachment entries). */
   onMigrateProgress(cb: (p: { copied: number; total: number }) => void): () => void
 }

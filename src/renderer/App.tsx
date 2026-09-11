@@ -23,6 +23,7 @@ import { NoteUpgradeDialog } from './components/NoteUpgradeDialog'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
 import { BiliImportDialog } from './components/BiliImportDialog'
+import { ConsentDialog } from './components/ConsentDialog'
 import { useToasts } from './hooks/use-toasts'
 import { useConfigDomain } from './hooks/use-config-domain'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -147,6 +148,42 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   const state = useAppState(bridge, goTasks, goNotes, goSettings, setTab)
   const sidebarRef = useRef<HTMLElement>(null)
   const showWelcome = state.treeLoaded && state.tree.length === 0
+
+  // 声明批2 (plan 2026-09-11): nothing renders before the 使用须知 gate is
+  // satisfied. The decision comes from main (settings:get compares the stored
+  // acceptance against the shared text version), never from a local flag — so
+  // bumping the text re-prompts on the next launch.
+  //
+  // Three states and no fourth: settings unreadable → wait, or offer a retry
+  // when the read actually failed. A gate that quietly lets the app through
+  // because a read errored is not a gate.
+  if (state.settings == null) {
+    return (
+      <div class="consent-boot" data-testid="consent-boot">
+        {state.configLoadError.settings == null ? (
+          <p>正在加载设置…</p>
+        ) : (
+          <>
+            <p>无法读取设置，因此无法确认使用须知状态：{state.configLoadError.settings}</p>
+            <button class="btn" onClick={state.retryConfigLoad}>
+              重试
+            </button>
+          </>
+        )}
+      </div>
+    )
+  }
+  if (state.settings.disclaimerAccepted !== true) {
+    return (
+      <ConsentDialog
+        onAccept={state.acceptDisclaimer}
+        // A real quit, not «稍后再说»: main's close handler only intercepts
+        // while a task is running (impossible at the gate), after which
+        // window-all-closed runs app.quit() as usual.
+        onExit={() => window.close()}
+      />
+    )
+  }
 
   // 批F: Ctrl+1..4 switch the four tabs (desktop convention).
   useEffect(() => {
@@ -655,6 +692,8 @@ interface AppState {
   migrationProgress: { copied: number; total: number } | null
   chooseLibrary: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
+  /** 声明批2: record first-run consent (see useConfigDomain). */
+  acceptDisclaimer: () => void
 }
 
 /** Rough percent per stage for restored in-flight tasks (UI hint only). */
@@ -791,7 +830,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath } = config
+  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath, acceptDisclaimer } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -2091,6 +2130,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     libraryMigrated,
     migrationProgress,
     chooseLibrary,
-    openPath
+    openPath,
+    acceptDisclaimer
   }
 }

@@ -40,6 +40,10 @@ export interface ConfigDomain {
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   chooseLibrary: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
+  /** 声明批2: record first-run consent for the current text version, then
+   *  re-read settings so the gate lifts from the authoritative stored value
+   *  (never from a local flag — that could show a shell main never accepted). */
+  acceptDisclaimer: () => void
 }
 
 export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigDomain {
@@ -226,6 +230,20 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     [bridge, toast]
   )
 
+  const acceptDisclaimer = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.settings.acceptDisclaimer()
+      // 声明批2: a failed write must NOT lift the gate — the user would be let
+      // through on a consent the database never recorded, and the next launch
+      // would ask again with no explanation.
+      if (!res.ok) {
+        toast(res.error ?? '无法记录同意状态，请重试', 'error')
+        return
+      }
+      await refreshSettings()
+    })()
+  }, [bridge, toast, refreshSettings])
+
   return {
     providers,
     providerBusy,
@@ -246,6 +264,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     chooseCacheDir,
     setTheme,
     chooseLibrary,
-    openPath
+    openPath,
+    acceptDisclaimer
   }
 }

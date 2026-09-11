@@ -17,6 +17,12 @@ export interface DialogProps {
   /** 质量批4: busy guard for long-running confirms («升级中…» + disabled). */
   confirmDisabled?: boolean
   cancelDisabled?: boolean
+  /** 声明批2: label for the cancel action — the first-run consent gate's is
+   *  «退出应用», and hard-coding «取消» there would read as «稍后再说». */
+  cancelLabel?: string
+  /** 声明批2: a blocking gate. Escape must not dismiss it — the only ways out
+   *  are the two explicit actions (the backdrop already does nothing here). */
+  persistent?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -28,16 +34,17 @@ export interface DialogProps {
  * 批6: «view» kind — a pure viewer gets one close action and a backdrop
  * click; a «取消» next to «关闭» made the user hesitate over nothing.
  */
-export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, kind = 'confirm', children, confirmDisabled = false, cancelDisabled = false, onConfirm, onCancel }: DialogProps): JSX.Element | null {
+export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, kind = 'confirm', children, confirmDisabled = false, cancelDisabled = false, cancelLabel = '取消', persistent = false, onConfirm, onCancel }: DialogProps): JSX.Element | null {
   const view = kind === 'view'
   useEffect(() => {
-    if (!open) return
+    // 声明批2: a persistent gate has no Escape exit (see DialogProps).
+    if (!open || persistent) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onCancel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onCancel])
+  }, [open, persistent, onCancel])
   // 批6: the page behind an open modal must not scroll (zooming an image
   // while the note slides behind reads as the page moving).
   useModalScrollLock(open)
@@ -59,10 +66,10 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
             </button>
           ) : (
             <>
-              <button class="btn" autoFocus onClick={onCancel} disabled={cancelDisabled}>
-                取消
+              <button class="btn" autoFocus={!persistent} onClick={onCancel} disabled={cancelDisabled}>
+                {cancelLabel}
               </button>
-              <button class={`btn ${danger ? 'danger' : 'primary'}`} onClick={onConfirm} disabled={confirmDisabled}>
+              <button class={`btn ${danger ? 'danger' : 'primary'}`} autoFocus={persistent} onClick={onConfirm} disabled={confirmDisabled}>
                 {confirmLabel}
               </button>
             </>

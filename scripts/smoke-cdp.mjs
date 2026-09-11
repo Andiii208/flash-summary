@@ -123,7 +123,7 @@ const EXPECTED_BRIDGE = {
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
   notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
-  settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'onMigrateProgress'],
+  settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'acceptDisclaimer', 'onMigrateProgress'],
   log: ['rendererError']
 }
 
@@ -256,6 +256,71 @@ async function main() {
       typeof settingsEnvelope?.value?.libraryRoot === 'string' && settingsEnvelope.value.libraryRoot.startsWith(tmpDocs),
       `libraryRoot ${String(settingsEnvelope?.value?.libraryRoot)} vs tmp ${tmpDocs}`
     )
+
+    // L4 (声明批2): a throwaway userData means no consent is recorded yet, so
+    // the app must STOP at the 使用须知 gate instead of rendering the shell.
+    // Drive the real UI (tick + accept) rather than calling the IPC directly —
+    // this is the actual first-run path, preact state update included.
+    const gate = JSON.parse(
+      await cdp.eval(
+        `JSON.stringify({
+          clauses: document.querySelectorAll('[data-testid="consent-clauses"] p').length,
+          shell: document.querySelector('.app-shell') != null
+        })`
+      )
+    )
+    record('L4 使用须知闸门拦在首启（未同意不渲染主界面）', gate.clauses === 9 && gate.shell === false, `clauses ${gate.clauses}, shell ${gate.shell}`)
+
+    // Preact re-renders on a microtask, so the tick and the click must be two
+    // separate evaluations: clicking «同意并继续» in the same synchronous block
+    // hits the still-disabled button and silently does nothing.
+    const beforeTick = JSON.parse(
+      await cdp.eval(
+        `(() => {
+          const confirm = [...document.querySelectorAll('.dialog-actions button')].find((b) => b.textContent === '同意并继续')
+          return JSON.stringify({ found: confirm != null, disabled: confirm?.disabled ?? null })
+        })()`
+      )
+    )
+    record('L4 未勾选时「同意并继续」禁用', beforeTick.found && beforeTick.disabled === true, JSON.stringify(beforeTick))
+
+    await cdp.eval(
+      `(() => {
+        const box = document.querySelector('.dialog-check input')
+        if (box != null) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })) }
+        return 'ticked'
+      })()`
+    )
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    const clicked = JSON.parse(
+      await cdp.eval(
+        `(() => {
+          const confirm = [...document.querySelectorAll('.dialog-actions button')].find((b) => b.textContent === '同意并继续')
+          if (confirm != null && !confirm.disabled) confirm.click()
+          return JSON.stringify({ found: confirm != null, disabled: confirm?.disabled ?? null })
+        })()`
+      )
+    )
+    record('L4 勾选后闸门可同意', clicked.found && clicked.disabled === false, JSON.stringify(clicked))
+
+    // Consent is written by main and re-read before the shell renders, so poll.
+    let gateLifted = false
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const state = await cdp.eval(
+        `JSON.stringify({
+          shell: document.querySelector('.app-shell') != null,
+          clauses: document.querySelectorAll('[data-testid="consent-clauses"] p').length
+        })`
+      )
+      const parsed = JSON.parse(state)
+      if (parsed.shell === true && parsed.clauses === 0) {
+        gateLifted = true
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    record('L4 同意后闸门消失、主界面接管', gateLifted, gateLifted ? '' : 'shell 未出现或闸门未收起')
 
     // L4: first render — four tabs and an honest logged_out badge.
     const dom = await cdp.eval(

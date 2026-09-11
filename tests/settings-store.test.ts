@@ -44,8 +44,8 @@ describe('settings store (U3)', () => {
   })
 
   it('effectiveCacheDir resolves the override or the default under the library', () => {
-    expect(effectiveCacheDir({ libraryRoot: 'D:\\Lib', cacheDir: '', theme: 'auto' })).toBe(join('D:\\Lib', 'cache'))
-    expect(effectiveCacheDir({ libraryRoot: 'D:\\Lib', cacheDir: 'E:\\Cache', theme: 'auto' })).toBe('E:\\Cache')
+    expect(effectiveCacheDir({ libraryRoot: 'D:\\Lib', cacheDir: '', theme: 'auto', disclaimerAcceptedVersion: '' })).toBe(join('D:\\Lib', 'cache'))
+    expect(effectiveCacheDir({ libraryRoot: 'D:\\Lib', cacheDir: 'E:\\Cache', theme: 'auto', disclaimerAcceptedVersion: '' })).toBe('E:\\Cache')
   })
 
   it('resolveCacheDir trims whitespace and treats blank as default', () => {

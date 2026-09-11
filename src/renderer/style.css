@@ -878,6 +878,43 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 
 .dialog-check { display: flex; align-items: center; gap: 6px; font-size: var(--font-size-sm); color: var(--text-secondary); margin: 4px 0 2px; }
+
+/* 声明批2: 首启「使用须知与免责声明」闸门。九条要能滚，但不能把弹窗撑成整屏。
+   :has 选宽度，免去给 Dialog 加一个只服务一处的 class 透传。 */
+.dialog:has(.consent-body) { width: min(560px, calc(100vw - 48px)); }
+.consent-body {
+  max-height: min(46vh, 360px);
+  overflow-y: auto;
+  margin: 0 0 12px;
+  padding: 10px 6px 2px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.consent-clause {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 4px 8px;
+  margin: 0 0 8px;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.consent-clause:last-child { margin-bottom: 4px; }
+.consent-clause strong { color: var(--text); font-weight: 600; }
+.consent-footnote { margin: 8px 0 0; font-size: var(--font-size-xs); color: var(--text-muted); line-height: 1.5; }
+/* 设置尚未就绪（加载中 / 读取失败）时的极简宿主——闸门必须知道自己该不该出现。 */
+.consent-boot {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 100vh;
+  padding: 32px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  text-align: center;
+}
+.consent-boot p { margin: 0; max-width: 460px; line-height: 1.6; }
 /* 批4: QA 失败气泡 + busy 提示 + 设置页加载错误行。 */
 .qa-error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .qa-error-msg { margin: 0; color: var(--danger); }

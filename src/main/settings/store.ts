@@ -15,7 +15,9 @@ export const SETTINGS_KEYS = {
   cacheDir: 'cacheDir',
   theme: 'theme',
   courseListMaxPages: 'courseListMaxPages',
-  cacheQuotaGb: 'cacheQuotaGb'
+  cacheQuotaGb: 'cacheQuotaGb',
+  /** 声明批2: the DISCLAIMER_TEXT_VERSION the user accepted ('' = never). */
+  disclaimerAcceptedVersion: 'disclaimerAcceptedVersion'
 } as const
 
 export interface AppSettings {
@@ -23,6 +25,8 @@ export interface AppSettings {
   libraryRoot: string
   cacheDir: string
   theme: ThemeSetting
+  /** 声明批2: accepted 使用须知文本版本（'' = 尚未接受）。 */
+  disclaimerAcceptedVersion: string
 }
 
 export const DEFAULT_THEME: ThemeSetting = 'auto'
@@ -46,7 +50,8 @@ export function readSettings(db: Db, effectiveRoot: string): AppSettings {
   return {
     libraryRoot: effectiveRoot,
     cacheDir: getSetting(db, SETTINGS_KEYS.cacheDir, ''),
-    theme
+    theme,
+    disclaimerAcceptedVersion: getSetting(db, SETTINGS_KEYS.disclaimerAcceptedVersion, '')
   }
 }
 

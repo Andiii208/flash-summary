@@ -38,11 +38,12 @@ import { noteExportBaseName } from '../shared/notes/export-name'
 import { exportLessonToObsidian, exportCourseToObsidian, resolveObsidianVault } from './notes/obsidian-export'
 import { okResult, errResult, type ApiResult } from '../shared/api-result'
 import { formatBytes, formatSpeed } from '../shared/format'
+import { DISCLAIMER_TEXT_VERSION } from '../shared/disclaimer'
 import type { Note } from '../shared/notes/schema'
 import { resolveCacheDir, attachmentsPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
-import { getSetting } from './settings/store'
+import { getSetting, SETTINGS_KEYS } from './settings/store'
 import { fetchBilibiliLesson } from './bilibili/pipeline'
 import { nextPendingChainTask } from './bilibili/chain'
 import { biliCourseId, biliLessonId, parseBiliInput } from './bilibili/url-parse'
@@ -666,7 +667,29 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       const s = ctx.settings()
       // C7: the UI shows the app version in the settings footer.
-      return ok({ libraryRoot: s.libraryRoot, cacheDir: resolveCacheDir(s.cacheDir, s.libraryRoot), theme: s.theme, version: app.getVersion() })
+      // 声明批2: the consent gate's comparison happens HERE, against the
+      // shared text version — the renderer never carries a version of its own,
+      // so a bumped DISCLAIMER_TEXT_VERSION cannot be missed by the UI.
+      return ok({
+        libraryRoot: s.libraryRoot,
+        cacheDir: resolveCacheDir(s.cacheDir, s.libraryRoot),
+        theme: s.theme,
+        version: app.getVersion(),
+        disclaimerVersion: DISCLAIMER_TEXT_VERSION,
+        disclaimerAccepted: s.disclaimerAcceptedVersion === String(DISCLAIMER_TEXT_VERSION)
+      })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // 声明批2: record first-run consent together with the TEXT version it was
+  // given for. Deliberately takes no argument — the version comes from the
+  // shared constant, so the renderer cannot record consent for text it never
+  // showed (and a bumped version re-prompts on the next launch).
+  handle(ipc, 'settings:acceptDisclaimer', () => {
+    try {
+      ctx.setSetting(SETTINGS_KEYS.disclaimerAcceptedVersion, String(DISCLAIMER_TEXT_VERSION))
+      return ok({ version: DISCLAIMER_TEXT_VERSION })
     } catch (e) {
       return err(e)
     }

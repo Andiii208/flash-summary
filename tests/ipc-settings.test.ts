@@ -8,6 +8,8 @@ import { registerIpc } from '../src/main/ipc'
 import type { Cryptor } from '../src/main/auth/session-crypto'
 import { noteToMarkdown } from '../src/shared/notes/markdown'
 import { readLibraryPointer } from '../src/main/library/pointer'
+import { getSetting, SETTINGS_KEYS } from '../src/main/settings/store'
+import { DISCLAIMER_TEXT_VERSION } from '../src/shared/disclaimer'
 
 // Electron dialogs are user-facing; tests stub them and assert the wiring.
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
@@ -193,5 +195,44 @@ describe('notes:exportMarkdown (U3)', () => {
     const res = await invoke(ctx, 'notes:exportMarkdown', 'l-missing') as { ok: false; error: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('尚无笔记')
+  })
+})
+
+describe('声明批2 — 使用须知同意状态（settings IPC）', () => {
+  it('settings:get reports the consent gate as unsatisfied on a fresh library', async () => {
+    const ctx = makeCtx()
+    const res = await invoke(ctx, 'settings:get') as { ok: true; value: { disclaimerVersion: number; disclaimerAccepted: boolean } }
+    expect(res.value.disclaimerVersion).toBe(DISCLAIMER_TEXT_VERSION)
+    // Fresh library: nothing recorded, so the gate must be closed (fail-closed).
+    expect(res.value.disclaimerAccepted).toBe(false)
+  })
+
+  it('settings:acceptDisclaimer records the shared text version and opens the gate', async () => {
+    const ctx = makeCtx()
+    const accepted = await invoke(ctx, 'settings:acceptDisclaimer') as { ok: true; value: { version: number } }
+    expect(accepted.value.version).toBe(DISCLAIMER_TEXT_VERSION)
+
+    const res = await invoke(ctx, 'settings:get') as { ok: true; value: { disclaimerAccepted: boolean } }
+    expect(res.value.disclaimerAccepted).toBe(true)
+    // Persisted under the shared key, so it survives a context rebuild.
+    expect(getSetting(ctx.db, SETTINGS_KEYS.disclaimerAcceptedVersion, '')).toBe(String(DISCLAIMER_TEXT_VERSION))
+  })
+
+  it('re-opens the gate when the accepted version is older than the shipped text', async () => {
+    const ctx = makeCtx()
+    await invoke(ctx, 'settings:acceptDisclaimer')
+    // Simulate a previously accepted, older text version.
+    ctx.setSetting(SETTINGS_KEYS.disclaimerAcceptedVersion, String(DISCLAIMER_TEXT_VERSION - 1))
+
+    const res = await invoke(ctx, 'settings:get') as { ok: true; value: { disclaimerAccepted: boolean } }
+    expect(res.value.disclaimerAccepted).toBe(false)
+  })
+
+  it('ignores a renderer-supplied version — acceptDisclaimer takes no argument', async () => {
+    const ctx = makeCtx()
+    // A hand-crafted call with a bogus version must not be honoured: the
+    // version comes from main's own constant.
+    await invoke(ctx, 'settings:acceptDisclaimer', '999', 'forged')
+    expect(getSetting(ctx.db, SETTINGS_KEYS.disclaimerAcceptedVersion, '')).toBe(String(DISCLAIMER_TEXT_VERSION))
   })
 })

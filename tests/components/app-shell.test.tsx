@@ -2,8 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { App } from '../../src/renderer/App'
 import { render } from 'preact'
 import { mount, click } from '../helpers/preact'
-import type { SeuSummaryBridge, CourseTreeInfo, TaskRowInfo, ProvidersListResult, AppSettingsInfo } from '../../src/shared/bridge'
-import type { ApiResult } from '../../src/shared/api-result'
+import type { SeuSummaryBridge } from '../../src/shared/bridge'
+import { makeBridge, ok, fakeState } from '../helpers/fake-app-bridge'
 
 /**
  * App-shell integration over a mocked bridge: the useAppState state machine
@@ -14,86 +14,6 @@ import type { ApiResult } from '../../src/shared/api-result'
  * DOM assertions go through waitForSelector polling.
  */
 
-const TREE: CourseTreeInfo[] = [
-  { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: false }] }
-]
-
-function ok<T>(value: T): ApiResult<T> {
-  return { ok: true, value }
-}
-
-let courseTreeRows: CourseTreeInfo[]
-let qaHistoryRows: Array<{ question: string; answer: string }>
-
-function makeBridge(): SeuSummaryBridge {
-  courseTreeRows = TREE
-  qaHistoryRows = []
-  return {
-    school: {
-      login: vi.fn(async () => ok({ state: 'logged_in' })),
-      logout: vi.fn(async () => ok({ state: 'logged_out' })),
-      session: vi.fn(async () => ok({ state: 'logged_out' })),
-      listCourses: vi.fn(async () => ok({ loaded: 0, platformTotal: 0, platformPages: 1 })),
-      addManualCourse: vi.fn(async () => ok({ courseId: 'c', lessonId: 'l' })),
-      courseTree: vi.fn(async () => ok(courseTreeRows)),
-      harvestLessons: vi.fn(async () => ok({ lessons: 0 })),
-      harvestState: vi.fn(async () => ok({ inflight: [], outcome: null })),
-      netCheck: vi.fn(async () => ok({ intercepted: false, resolved: [] })),
-      setMine: vi.fn(async () => ok(true)),
-      onRefreshProgress: vi.fn(() => () => undefined)
-    },
-    bilibili: {
-      login: vi.fn(async () => ok({ qrUrl: 'https://passport.bilibili.com/qr' })),
-      loginStatus: vi.fn(async () => ok({ status: 'inactive' })),
-      logout: vi.fn(async () => ok({ state: 'logged_out' })),
-      session: vi.fn(async () => ok({ state: 'logged_out', savedAt: null })),
-      resolve: vi.fn(async () => ok({ bvid: 'BV1X', requestedPage: null, title: 't', coverUrl: '', upMid: 1, pages: [] })),
-      import: vi.fn(async () => ok({ courseId: 'b', lessonIds: [] }))
-    },
-    providers: {
-      list: vi.fn(async (): Promise<ApiResult<ProvidersListResult>> => ok({ providers: [], bindings: [] })),
-      save: vi.fn(async () => ok({ id: 'p', hasKey: true })),
-      remove: vi.fn(async () => ok(true)),
-      bind: vi.fn(async () => ok(true)),
-      test: vi.fn(async () => ok({ latencyMs: 12, answer: 'ok' }))
-    },
-    tasks: {
-      create: vi.fn(async () => ok({ id: 't1' })),
-      list: vi.fn(async (): Promise<ApiResult<TaskRowInfo[]>> => ok([])),
-      run: vi.fn(async () => ok({})),
-      runAsync: vi.fn(async () => ok({ id: 't1', state: 'running' })),
-      cancel: vi.fn(async () => ok({ cancelled: true })),
-      onProgress: vi.fn(() => () => undefined)
-    },
-    notes: {
-      latest: vi.fn(async () => ok(null)),
-      list: vi.fn(async () => ok([])),
-      exportMarkdown: vi.fn(async () => ok({ canceled: true })),
-      exportAnki: vi.fn(async () => ok({ canceled: true, paths: [] })),
-      attachments: vi.fn(async () => ok([])),
-      regenerate: vi.fn(async () => ok({ version: 1, images: 0, hitRate: { hits: 0, total: 0 } })),
-      exportPdfDialog: vi.fn(async () => ok({ canceled: true })),
-      exportPdfWrite: vi.fn(async () => ok({ path: 'x.pdf', bytes: 1 })),
-      revealFile: vi.fn(async () => ok(true))
-    },
-    qa: {
-      ask: vi.fn(async () => ok({ id: 'q1', answer: '回答' })),
-      history: vi.fn(async () => ok(qaHistoryRows)),
-      recent: vi.fn(async () => ok([]))
-    },
-    settings: {
-      get: vi.fn(async (): Promise<ApiResult<AppSettingsInfo>> => ok({ libraryRoot: 'L', cacheDir: 'C', theme: 'auto' })),
-      setCacheDir: vi.fn(async () => ok({ cacheDir: 'C' })),
-      setTheme: vi.fn(async () => ok({ theme: 'dark' })),
-      chooseLibrary: vi.fn(async () => ok({ canceled: true })),
-      openPath: vi.fn(async () => ok(true)),
-      onMigrateProgress: vi.fn(() => () => undefined)
-    },
-    log: {
-      rendererError: vi.fn(async () => ok(true))
-    }
-  } as unknown as SeuSummaryBridge
-}
 
 async function waitForSelector(selector: string): Promise<void> {
   await vi.waitFor(
@@ -115,6 +35,9 @@ async function waitForGone(selector: string): Promise<void> {
 
 /** M2 批 A: 全部课程默认折叠——先展开组，课程行才存在于 DOM。 */
 async function expandAllCourses(): Promise<void> {
+  // 声明批2: 首启「使用须知」闸门要先读完 settings 才渲染外壳（boot 态没有侧栏），
+  // 所以交互前必须先等外壳出现——这也是真实启动顺序。
+  await waitForSelector('.app-shell')
   const toggle = document.querySelector('[data-testid="all-courses-toggle"]')
   if (toggle != null) click(toggle)
   await waitForSelector('.course-head')
@@ -194,14 +117,14 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   it('shows the welcome guide when the local tree is empty', async () => {
     const bridge = makeBridge()
-    courseTreeRows = []
+    fakeState.courses = []
     mount(<App bridge={bridge} />)
     await waitForSelector('.welcome-guide')
   })
 
   it('echoes recorded qa history for the selected lesson, oldest first', async () => {
     const bridge = makeBridge()
-    qaHistoryRows = [
+    fakeState.qaHistory = [
       { question: '第二问', answer: '答二' },
       { question: '第一问', answer: '答一' }
     ]
@@ -216,14 +139,14 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   it('does not leak the previous lesson qa panel when the new one has no history', async () => {
     const bridge = makeBridge()
-    qaHistoryRows = [{ question: '旧课时的问题', answer: '答' }]
+    fakeState.qaHistory = [{ question: '旧课时的问题', answer: '答' }]
     const host = mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
     openQaTab(host)
     await waitForSelector('.qa-q')
 
     // Re-select the same lesson with an emptied history: panel must clear.
-    qaHistoryRows = []
+    fakeState.qaHistory = []
     click(document.querySelector('.lesson-row'))
     await waitForGone('.qa-q')
   })
@@ -256,7 +179,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   it('lands on the notes tab for a processed lesson (批5 C9)', async () => {
     const bridge = makeBridge()
-    courseTreeRows = [
+    fakeState.courses = [
       { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] }
     ]
     const host = mount(<App bridge={bridge} />)
@@ -275,7 +198,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // C9 persists the tab: reset so this mount starts from a clean slate.
     window.sessionStorage.clear()
     const bridge = makeBridge()
-    courseTreeRows = [
+    fakeState.courses = [
       { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: false }] }
     ]
     const host = mount(<App bridge={bridge} />)
@@ -307,7 +230,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
         evidence: []
       })
     )
-    courseTreeRows = [
+    fakeState.courses = [
       { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] }
     ]
     const host = mount(<App bridge={bridge} />)
@@ -328,7 +251,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   it('login flips the badge and logout clears the tree and qa panel', async () => {
     const bridge = makeBridge()
-    qaHistoryRows = [{ question: '问', answer: '答' }]
+    fakeState.qaHistory = [{ question: '问', answer: '答' }]
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
     click(document.querySelector('.course-head'))
