@@ -119,6 +119,20 @@ describe('ipc handlers over a real context', () => {
     expect(after.value?.state).toBe('logged_out')
   })
 
+  it('school:logout failures come back as the err envelope, not a raw rejection (health audit 2026-09-12)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    // Inject a logout failure — every other async handler already guarantees
+    // the renderer an ApiResult; logout was the last one that could leak a
+    // raw exception across the bridge.
+    ctx.logout = async () => {
+      throw new Error('登出失败注入')
+    }
+    const res = (await ipc.invoke('school:logout')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('登出失败注入')
+  })
+
   it('reports an expired session from the stored JWT exp claim (no network)', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
@@ -728,6 +742,14 @@ describe('U1: course tree and task list', () => {
     expect(del.ok).toBe(true)
     expect((db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE id = ?').get(taskId) as { n: number }).n).toBe(0)
     expect((db.prepare('SELECT COUNT(*) AS n FROM task_stage_outputs WHERE task_id = ?').get(taskId) as { n: number }).n).toBe(0)
+
+    // Health audit 2026-09-12: the id is joined into an rmSync path — reject
+    // anything outside the generator's alphabet before it ever gets there.
+    for (const hostile of ['../escape', 'a/b', 'id with space', '.']) {
+      const rejected = (await ipc.invoke('tasks:delete', hostile)) as { ok: boolean; error?: string }
+      expect(rejected.ok, hostile).toBe(false)
+      expect(rejected.error).toContain('格式')
+    }
 
     // clearFinished sweeps every terminal row.
     db.prepare("UPDATE tasks SET state = 'succeeded' WHERE id = ?").run(running.value!.id)

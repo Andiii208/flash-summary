@@ -64,7 +64,7 @@ export interface FetchLike {
 }
 
 /** Hard deadline for one school API request (review 2026-09-05 A7). */
-export const SCHOOL_TIMEOUT_MS = 30_000
+const SCHOOL_TIMEOUT_MS = 30_000
 
 export class SchoolClient {
   constructor(

@@ -245,6 +245,12 @@ async function navigateToPlayPage(win: BrowserWindowLike, url: string, deadline:
   const budget = sleep(budgetMs, signal).then(() => {
     throw new Error(`播放页加载超时（${Math.round(budgetMs / 1000)}s 内未完成导航）`)
   })
+  // Whichever racer loses (or rejects after the race already settled) must
+  // still have a handler — a late ERR_ABORTED from loadURL or the budget's
+  // timeout throw would otherwise surface as an unhandled main-process
+  // rejection. The race below observes the original promises regardless.
+  loading.catch(() => undefined)
+  budget.catch(() => undefined)
   await Promise.race([loading, budget])
   assertStillOnPlatform(win, new URL(url).origin)
 }

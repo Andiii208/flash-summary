@@ -159,6 +159,16 @@ describe('settings IPC (U3)', () => {
     const res = await invoke(ctx, 'settings:chooseLibrary') as { ok: true; value: { canceled: boolean } }
     expect(res.value.canceled).toBe(true)
   })
+
+  it('settings:openPath reports the failure instead of swallowing it (health audit 2026-09-12)', async () => {
+    const { shell } = await import('electron')
+    const ctx = makeCtx()
+    ;(shell.openPath as ReturnType<typeof vi.fn>).mockResolvedValueOnce('EPERM: operation not permitted')
+    const res = await invoke(ctx, 'settings:openPath', 'library') as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('资料库')
+    expect(res.error).toContain('EPERM')
+  })
 })
 
 describe('notes:exportMarkdown (U3)', () => {

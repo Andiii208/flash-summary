@@ -380,7 +380,6 @@ describe('orchestrator stage executors', () => {
 
     const executors = createExecutors(depsWithFetch)
     const result = await runTask(repo, 't7', executors, 'fetching_course')
-    if (result !== 'succeeded') console.log('t7 debug:', JSON.stringify(repo.get('t7')))
     expect(result).toBe('succeeded')
     expect(repo.get('t7')?.state).toBe('succeeded')
     // Note persisted, transcript persisted, teacher video gone (deleted post audio).

@@ -249,6 +249,9 @@ if (!gotSingleInstanceLock) {
               win.destroy()
             }
           })
+          // The window can be destroyed while the message box is up (task
+          // cancel path) — that rejects this promise; nothing left to do.
+          .catch(() => undefined)
       })
       mainWindow.on('closed', () => {
         if (unsubscribeIdle != null) unsubscribeIdle()
@@ -261,6 +264,8 @@ if (!gotSingleInstanceLock) {
           ctx.setMainWindow(mainWindow)
           attachNavigationGuards(ctx, mainWindow)
           bindWindowLifecycle(ctx, mainWindow)
+          // registerIpc now clears its previous handlers before re-registering,
+          // so a recreated window gets a fresh progress sender.
           ipcHandleRef = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
         }
       })

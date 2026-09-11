@@ -118,6 +118,11 @@ export function assertAppSender(e: unknown): void {
 }
 
 function handle(target: HandleLike, channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
+  // Re-registration safety (health audit 2026-09-12): main/index.ts re-runs
+  // registerIpc when the window is recreated (app 'activate'), and Electron
+  // throws «Attempted to register a second handler» without this. Real
+  // ipcMain has removeHandler; test doubles without it keep working as-is.
+  if ('removeHandler' in target && typeof target.removeHandler === 'function') target.removeHandler(channel)
   target.handle(channel, (e, ...args) => {
     assertAppSender(e)
     return fn(e, ...args)
@@ -237,8 +242,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
   handle(ipc, 'school:logout', async () => {
-    await ctx.logout()
-    return ok({ state: ctx.sessionState() })
+    try {
+      await ctx.logout()
+      return ok({ state: ctx.sessionState() })
+    } catch (e) {
+      return err(e)
+    }
   })
   // justLoggedIn is the one-shot «a login flow just completed» marker: the
   // renderer's fresh mount (after the in-window login navigation) uses it to
@@ -778,7 +787,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
-  handle(ipc, 'settings:openPath', (_e, kind: unknown) => {
+  handle(ipc, 'settings:openPath', async (_e, kind: unknown) => {
     try {
       const k = str(kind, 'kind')
       const s = ctx.settings()
@@ -790,7 +799,14 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
             : k === 'logs'
               ? ctx.logsDir()
               : s.libraryRoot
-      void shell.openPath(target)
+      // shell.openPath resolves to an error string («» on success) instead of
+      // rejecting — swallowing it used to leave a deleted/locked directory
+      // click with zero feedback.
+      const openError = await shell.openPath(target)
+      if (openError !== '') {
+        ctx.logger.warn(`openPath failed for ${k}: ${openError}`)
+        return err(new Error(`无法打开${k === 'cache' ? '缓存' : k === 'exports' ? '导出' : k === 'logs' ? '日志' : '资料库'}目录：${openError}`))
+      }
       return ok(true)
     } catch (e) {
       return err(e)
@@ -892,6 +908,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   handle(ipc, 'tasks:delete', (_e, taskId: unknown) => {
     try {
       const id = str(taskId, 'taskId')
+      // Defense in depth: the id is joined into an rmSync path below. It can
+      // only ever come from main's own task-id generator, but never trust that
+      // implicit invariant with a filesystem delete — the leading char must be
+      // alphanumeric, so «.», «..» and «../x» cannot resolve to another
+      // directory (join(root, '.') IS root).
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new Error('任务 ID 格式不合法')
       const row = new TaskRepository(ctx.db).get(id)
       if (row == null) throw new Error('任务不存在')
       if (row.state !== 'succeeded' && row.state !== 'failed') throw new Error('任务尚未结束，请先取消再删除')

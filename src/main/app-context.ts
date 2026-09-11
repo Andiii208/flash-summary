@@ -347,7 +347,8 @@ export function createContext(overrides: Partial<{
     target: PlayPageTarget,
     selectLessonRef?: string | null,
     signal?: AbortSignal
-  ): Promise<PlayHarvestResult> => {    if (harvestInFlight != null) {
+  ): Promise<PlayHarvestResult> => {
+    if (harvestInFlight != null) {
       throw new Error('已有播放页抓取在进行中，请稍候')
     }
     const win = mainWindowRef
