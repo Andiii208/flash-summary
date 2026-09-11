@@ -967,8 +967,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       // A4: store lessons «第N节»-sorted so every consumer reads one order.
       setTree(orderTreeLessonsByNumber(res.value))
       setTreeLoaded(true)
+    } else if (!res.ok) {
+      // 健康巡查 2026-09-12 批7: a local read failure used to leave the
+      // sidebar at «暂无课程» with no word (mergeToast dedupes repeats).
+      toast(res.error ?? '本地课程树读取失败', 'error')
     }
-  }, [bridge])
+  }, [bridge, toast])
 
   /** A5 preflight: turn a proxy Fake-IP takeover into an actionable message
    *  instead of a dead refresh/login. Inconclusive (DNS itself failing) does
@@ -1010,6 +1014,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setRefreshBusy(false)
     }
   }, [bridge, toast, applyLocalTree, refreshBusy, ensureCampusNet])
+  // 健康巡查 2026-09-12 批7: the mount effect depended on refreshTree's
+  // identity, which flips with refreshBusy — every 刷新课程 start/end re-ran
+  // the whole mount block (progress resubscription + every loader). The
+  // latest callback rides through the ref instead; the effect stays
+  // mount-once.
+  const refreshTreeRef = useRef(refreshTree)
+  refreshTreeRef.current = refreshTree
 
   // All three lesson-scoped loaders guard on lessonRef: a slow response for
   // a previously selected lesson must not overwrite the current one's panel.
@@ -1196,7 +1207,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           actionLabel: '去选课',
           onAction: () => setAllCoursesOpen(true)
         })
-        void refreshTree()
+        void refreshTreeRef.current()
         // M1-3 (B7): after a re-login, surface the retryable failures left
         // by the expired session instead of making the user hunt for them.
         const rows = await bridge.tasks.list()
@@ -1300,7 +1311,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     // openLessonNotes goes through its ref (identity-unstable: it flips with
     // tree/noteIndex, and this effect calls applyLocalTree which produces a
     // fresh tree — depending on it directly re-runs the effect forever).
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, refreshBiliSession, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, refreshTree, goTasks])
+    // refreshTree goes through its ref too (健康巡查 2026-09-12 批7: its
+    // identity flips with refreshBusy).
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, refreshBiliSession, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, goTasks])
 
   // 批C: write the UI snapshot back on every change — a navigation-induced
   // reload (harvest/login) resumes exactly where the user was. Stale course
