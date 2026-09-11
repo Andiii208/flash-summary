@@ -1,4 +1,4 @@
-Flash Summary — 使用须知与免责声明（安装前请阅读）
+﻿Flash Summary — 使用须知与免责声明（安装前请阅读）
 
 本安装包内含 Flash Summary 软件（MIT 许可）及其使用须知。条款全文随安装包分发，见安装目录
 resources\legal\ 下的 DISCLAIMER.md（使用须知全文）与 THIRD-PARTY-NOTICES.md（第三方组件与许可）。
@@ -37,4 +37,4 @@ resources\legal\ 下的 DISCLAIMER.md（使用须知全文）与 THIRD-PARTY-NOT
 对应的 ffmpeg 源码获取途径与该构建的完整编译配置见 resources\legal\THIRD-PARTY-NOTICES.md。
 本软件以独立子进程方式调用 ffmpeg，其自身代码以 MIT 许可发布，不受 GPL 传染。
 
-点击「我接受」表示你已阅读并同意上述须知；不接受请关闭安装程序。
+点击「我同意」表示你已阅读并同意上述须知；不接受请点「取消」退出安装程序。
