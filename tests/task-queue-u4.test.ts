@@ -124,6 +124,25 @@ describe('task cancellation (U4)', () => {
     expect(events).toContain('cancelled')
   })
 
+  it('声明批7: 取消时一并清除签名直链交接（不留一条还有生命的 auth_key）', async () => {
+    const repo = repoOf()
+    repo.create('t1', 'l1')
+    // The fetching_course handoff is the only place a plaintext signed URL
+    // (auth_key) lands in app.db — cancelled tasks never resume from it.
+    db.prepare("INSERT INTO task_stage_outputs (task_id, stage, output_json) VALUES ('t1', 'fetching_course', ?)").run(
+      JSON.stringify({ lessonId: 'l1', teacherStreamUrl: 'https://vod/t.mp4?auth_key=live' })
+    )
+
+    const controller = new AbortController()
+    controller.abort()
+    await runTask(repo, 't1', allOkExecutors(), 'fetching_course', undefined, controller.signal)
+
+    const row = db
+      .prepare("SELECT COUNT(*) AS n FROM task_stage_outputs WHERE task_id = 't1' AND stage = 'fetching_course'")
+      .get() as { n: number }
+    expect(row.n).toBe(0)
+  })
+
   it('records the failure kind on a normal stage failure', async () => {
     const repo = repoOf()
     repo.create('t1', 'l1')

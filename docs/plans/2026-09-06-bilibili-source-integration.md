@@ -239,7 +239,7 @@ lesson.source === 'bilibili' ?
 2. **付费/专属内容不碰**：`is_upower_exclusive`/`is_ugc_pay_preview`/会员清晰度（qn>64 不请求，360P/480P 足够抽帧）——既合规又避免大会员 Cookie 的风控敏感面。
 3. **速率与体量**：串行任务队列天然限速；单人单视频粒度，不做批量抓取形态（MVP 非目标就是防线）。
 4. **凭据**：SESSDATA 是登录凭据，DPAPI 封存、日志 redact、永入 Git——全部复用现有红线基建，零新原则。
-5. **签名流地址**：与 SEU auth_key 同规格对待——只进 task_stage_outputs，任务终态清除，lessons 只存脱敏路径。
+5. **签名流地址**：与 SEU auth_key 同规格对待——只进 task_stage_outputs，lessons 只存脱敏路径。**（2026-09-11 修正）** 原写「任务终态清除」不准确：成功与取消确实清除，但**失败**任务会为断点续跑保留，直到超过签名有效期（SEU 6h / B站 100min）由启动清扫 `pruneStaleSignedUrlHandoffs` 删除，或用户重试成功/删除任务。见 plan 2026-09-11 compliance-disclosure 批7。
 
 ---
 

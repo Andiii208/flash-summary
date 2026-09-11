@@ -62,9 +62,20 @@ export class TaskRepository {
     // Red line (design review 2026-09-05): the fetching_course handoff holds
     // the FULL signed stream URLs (auth_key). A succeeded task never runs
     // again, so its handoff must not sit in the db forever — clear it.
-    // Failed tasks keep theirs: a fresh-enough URL still resumes without a
-    // re-harvest, and the resume-degradation check (2026-09-05 批B) handles
-    // the stale ones.
+    this.clearFetchHandoff(taskId)
+  }
+
+  /**
+   * 声明批7（plan 2026-09-11）: drop the fetching_course handoff — the one place a
+   * **plaintext time-limited signed URL (auth_key)** lands in app.db.
+   *
+   * Cleared on success (the task never runs again) and on **cancellation** (a
+   * retry re-harvests anyway, so keeping the URL buys nothing and only leaves a
+   * live signature on disk). Failed tasks keep it on purpose: while the URL is
+   * still fresh, resume skips a re-harvest. The startup sweep
+   * (`pruneStaleSignedUrlHandoffs`) clears the ones past the freshness window.
+   */
+  clearFetchHandoff(taskId: string): void {
     this.db.prepare("DELETE FROM task_stage_outputs WHERE task_id = ? AND stage = 'fetching_course'").run(taskId)
   }
 }
@@ -165,6 +176,10 @@ function cancelTask(
   onProgress?: ProgressListener
 ): 'failed' {
   repo.markFailed(taskId, stage, '任务已取消', 'cancelled')
+  // 声明批7: a cancelled task keeps no signed-URL handoff — nothing resumes from
+  // it (the user retries by hand, which re-harvests), so the plaintext auth_key
+  // would sit in the db for nothing.
+  repo.clearFetchHandoff(taskId)
   onProgress?.({ taskId, state: 'failed', stage, message: '任务已取消', percent: stagePercent(stage), kind: 'cancelled' })
   return 'failed'
 }

@@ -54,6 +54,13 @@ describe('redact (U5 安全红线)', () => {
     expect(out).not.toContain('eyJhbGciO.secret')
     expect(out).toContain('jwt-token=[REDACTED]')
   })
+
+  it('声明批7: 补上 DedeUserID——它和另两个 B 站 cookie 一样是账号标识', () => {
+    // SESSDATA / bili_jct 早在名单里，DedeUserID 是当初漏掉的那个。
+    const out = redact('bili cookies DedeUserID=12345678; SESSDATA=abc123 done')
+    expect(out).not.toContain('12345678')
+    expect(out).not.toContain('abc123')
+  })
 })
 
 describe('Logger (U5)', () => {

@@ -26,7 +26,7 @@ import { OpenAiCompatibleClient } from './providers/openai-client'
 import { ffmpegPath, ffprobePath } from './media/binaries'
 import { decodeGrid8x8 } from './media/grid'
 import type { Grid8x8 } from './media/phash'
-import { cleanStaleCache, cleanStaleCrashDumps } from './tasks/cache-clean'
+import { cleanStaleCache, cleanStaleCrashDumps, pruneStaleSignedUrlHandoffs } from './tasks/cache-clean'
 import { getSetting, setSetting, readSettings, SETTINGS_KEYS, type AppSettings } from './settings/store'
 import { readLibraryPointer } from './library/pointer'
 import { Logger } from './logger'
@@ -160,6 +160,15 @@ export function createContext(overrides: Partial<{
   try {
     const dumps = cleanStaleCrashDumps(userDataDir)
     if (dumps > 0) logger.info(`startup sweep removed ${dumps} stale crash dumps`)
+  } catch {
+    // The sweep must never brick startup.
+  }
+
+  // 声明批7（plan 2026-09-11）: 失败任务为支持续跑保留的签名直链有保质期——过了
+  // auth_key 的新鲜窗口就只剩风险没有用途（续跑那时本来就会重新收割）。启动时删。
+  try {
+    const stale = pruneStaleSignedUrlHandoffs(db)
+    if (stale > 0) logger.info(`startup sweep removed ${stale} stale signed-url handoffs`)
   } catch {
     // The sweep must never brick startup.
   }

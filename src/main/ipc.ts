@@ -1030,6 +1030,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     if (row != null && row.state !== 'succeeded' && row.state !== 'failed') {
       const failedStage = PIPELINE_STAGES.includes(row.state as Stage) ? (row.state as Stage) : null
       repo.markFailed(id, failedStage, '任务已取消', 'cancelled')
+      // 声明批7: 取消即清除签名直链交接（与 queue.ts 的 cancelTask 同一口径），
+      // 免得一条仍有生命的 auth_key 因为「取消」这个终态留在库里。
+      repo.clearFetchHandoff(id)
       sendProgress({ taskId: id, state: 'failed', stage: failedStage, message: '任务已取消', percent: 0, kind: 'cancelled' })
       if (queue.members().includes(id)) cancelledWhileQueued.add(id)
     }

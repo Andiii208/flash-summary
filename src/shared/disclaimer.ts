@@ -11,7 +11,7 @@
  */
 
 /** 文本版本：改动任一条款都必须递增此值，并同步更新 `DISCLAIMER.md`。 */
-export const DISCLAIMER_TEXT_VERSION = 1
+export const DISCLAIMER_TEXT_VERSION = 2
 
 export const DISCLAIMER_TITLE = '使用须知与免责声明'
 
@@ -63,7 +63,7 @@ export const DISCLAIMER_CONSENT_CLAUSES: readonly DisclaimerClause[] = [
   },
   {
     heading: '本地留存',
-    text: '转写、图片与笔记默认保存在本机；失败或被取消的任务会保留当次视频直链，直至重试成功或删除该任务。'
+    text: '转写、图片与笔记默认保存在本机；失败的任务会暂时保留当次视频直链（超过有效期后自动清除），取消的任务不会保留。'
   },
   {
     heading: '结果仅供参考',
