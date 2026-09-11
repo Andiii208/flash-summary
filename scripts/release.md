@@ -27,7 +27,8 @@ npm run lint && npm run typecheck && npm test && npm run build
 npm run dist
 ```
 
-- [ ] 产物生成：`release/SEU Summary Setup <version>.exe` 与 `release/win-unpacked/`。
+- [ ] 产物生成：`release/Flash Summary Setup <version>.exe` 与 `release/win-unpacked/`。
+- [ ] **目视安装器许可页**（`./release/Flash Summary Setup <version>.exe` 打开看一眼，看完点「取消」——不点「我同意」不会写任何东西）：正文必须是**可读中文**。编码不对时 NSIS 会把 UTF-8 当 CP936 读，整屏乱码（2026-09-11 0.7.3 实锤：`build/installer-license.txt` 缺 UTF-8 BOM）。**这一步代码层面查不出来**，只能看。
 
 ## 4. asar 抽验（防资产过期事故）
 
@@ -42,11 +43,12 @@ node scripts/verify-asar.mjs "release/win-unpacked/resources/app.asar" out
 ```bash
 git tag vX.Y.Z
 git push origin master vX.Y.Z
-gh release create vX.Y.Z "release/SEU Summary Setup <version>.exe" --title "vX.Y.Z" --notes "<CHANGELOG 摘要>"
+gh release create vX.Y.Z "release/Flash Summary Setup <version>.exe" --title "vX.Y.Z" --notes "<CHANGELOG 摘要>"
 ```
 
 - [ ] release 资产与 tag 同一提交（`git log --oneline -1` 与 release 的 target commit 一致）。
 - [ ] release 页面资产可下载，说明含版本号。
+- [ ] **资产名会被 GitHub 规范化**：文件名里的空格换成点（`Flash Summary Setup 0.7.3.exe` → `Flash.Summary.Setup.0.7.3.exe`）。README 的「安装」一节按**下载后的名字**写（2026-09-11 已对齐）。
 
 ## 6. 收尾
 
