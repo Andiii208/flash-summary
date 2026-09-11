@@ -76,6 +76,9 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   const [input, setInput] = useState('')
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [busy, setBusy] = useState(false)
+  // 健康巡查 2026-09-12 批5: which operation owns the busy state — resolve and
+  // import share the disabled flag but their buttons need distinct labels.
+  const [busyKind, setBusyKind] = useState<'resolve' | 'import' | null>(null)
   const [qrImage, setQrImage] = useState<string | null>(null)
   const [qrStatus, setQrStatus] = useState<string>('')
   const [loginPhase, setLoginPhase] = useState<LoginPhase>('idle')
@@ -98,8 +101,10 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   const resolve = async (): Promise<void> => {
     if (input.trim() === '' || busy) return
     setBusy(true)
+    setBusyKind('resolve')
     const res = await bridge.bilibili.resolve(input.trim())
     setBusy(false)
+    setBusyKind(null)
     if (!res.ok || res.value == null) {
       toast(res.error ?? '解析失败', 'error')
       return
@@ -110,8 +115,10 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   const doImport = async (pages: number[]): Promise<void> => {
     if (preview == null) return
     setBusy(true)
+    setBusyKind('import')
     const res = await bridge.bilibili.import({ bvid: preview.bvid, pages })
     setBusy(false)
+    setBusyKind(null)
     if (!res.ok || res.value == null) {
       toast(res.error ?? '导入失败', 'error')
       return
@@ -234,7 +241,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
             }}
           />
           <button class="btn small" disabled={busy} onClick={() => void resolve()}>
-            解析
+            {busyKind === 'resolve' ? '解析中…' : '解析'}
           </button>
         </div>
         {preview != null && (
@@ -298,7 +305,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
           )}
         </div>
         <button class="btn primary bili-import-btn" disabled={busy || preview == null || preview.selected.length === 0} onClick={onImportClick}>
-          {loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
+          {busyKind === 'import' ? '导入中…' : loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
         </button>
         {/* 声明批5: 边界说明放在动作旁边——用户正要点「导入」，此刻才看得进去。
             说的是应用实际做了什么（拒绝付费内容、只要低清晰度），不是免责套话。 */}

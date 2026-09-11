@@ -15,6 +15,8 @@ export interface MyStudyPanelProps {
   expanded: ReadonlySet<string>
   /** 批C: courses whose «第N节课» catalog harvest is running. */
   harvestInflight?: ReadonlySet<string>
+  /** 健康巡查 2026-09-12 批5: a course-map aggregation is in flight. */
+  courseMapBusy?: boolean
   /** C6: remove an empty (never-processed) course. */
   onRemoveCourse?: (courseId: string) => void
   /** M4.1: open the course-level mind map dialog (同主侧栏入口). */
@@ -72,6 +74,7 @@ function renderTree(
       searching={false}
       sameCourseIds={sameIds}
       harvestInflight={props.harvestInflight}
+      courseMapBusy={props.courseMapBusy}
       onRemoveCourse={props.onRemoveCourse}
       onCourseMap={props.onCourseMap}
       onToggle={props.onToggle}

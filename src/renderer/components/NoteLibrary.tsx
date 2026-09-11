@@ -10,6 +10,9 @@ export interface NoteLibraryProps {
   onUpgradeCourse?: (courseId: string, label: string) => void
   /** Obsidian 批2: export the whole course into the vault. */
   onExportCourseObsidian?: (courseId: string, label: string) => void
+  /** 健康巡查 2026-09-12 批5: the in-flight export kind — the course-export
+   *  button reads «导出中…» and disables while any export runs. */
+  exportBusy?: string | null
 }
 
 /** «YYYY-MM-DD HH:mm» short stamp; invalid input degrades to «—» (批6). */
@@ -49,7 +52,7 @@ function groupByCourse(entries: NoteIndexInfo[]): LibraryGroup[] {
  * 批6: course-grouped collapsible sections; v-badge explains itself.
  * 质量批4: per-course «升级旧笔记» entry in the group head.
  */
-export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian }: NoteLibraryProps): JSX.Element {
+export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian, exportBusy = null }: NoteLibraryProps): JSX.Element {
   const groups = useMemo(() => groupByCourse(entries), [entries])
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const toggle = (label: string): void => {
@@ -79,12 +82,13 @@ export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCo
                 <button
                   class="btn small ghost note-library-upgrade"
                   title="整门课结构化导出到 Obsidian 仓库（含概念聚合页）"
+                  disabled={exportBusy != null}
                   onClick={(e) => {
                     e.stopPropagation()
                     onExportCourseObsidian(group.courseId!, group.label)
                   }}
                 >
-                  导出 Obsidian
+                  {exportBusy === 'course-obsidian' ? '导出中…' : '导出 Obsidian'}
                 </button>
               )}
               {onUpgradeCourse != null && group.courseId != null && (

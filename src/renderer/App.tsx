@@ -323,6 +323,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               searching
               sameCourseIds={state.sameCourseIds}
               harvestInflight={state.harvestInflight}
+              courseMapBusy={state.courseMapBusy}
               onRemoveCourse={state.removeCourse}
               onCourseMap={state.openCourseMap}
               onToggle={state.toggleCourse}
@@ -338,6 +339,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 sameCourses={state.sameCourses}
                 selectedLesson={state.currentLesson}
                 expanded={state.expanded}
+                courseMapBusy={state.courseMapBusy}
                 onRemoveCourse={state.removeCourse}
                 onCourseMap={state.openCourseMap}
                 onToggle={state.toggleCourse}
@@ -373,6 +375,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                       searching={false}
                       sameCourseIds={state.sameCourseIds}
                       harvestInflight={state.harvestInflight}
+                      courseMapBusy={state.courseMapBusy}
                       onRemoveCourse={state.removeCourse}
                       onCourseMap={state.openCourseMap}
                       onToggle={state.toggleCourse}
@@ -462,6 +465,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onNavigateLesson={state.openLessonNotes}
               regenBusy={state.noteRegenBusy}
               pdfBusy={state.pdfBusy}
+              exportBusy={state.exportBusy}
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
               onExportPdf={state.currentLesson !== '' && state.note != null ? () => state.exportNotePdf(state.currentLesson) : undefined}
               onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined}
@@ -710,6 +714,10 @@ interface AppState {
   notePolishBusy: boolean
   polishNote: (lessonId: string, feedback: { tags: string[]; text: string }) => void
   pdfBusy: boolean
+  /** 健康巡查 2026-09-12 批5: the in-flight export kind (null = idle). */
+  exportBusy: string | null
+  /** 健康巡查 2026-09-12 批5: course-map aggregation in flight. */
+  courseMapBusy: boolean
   exportNotePdf: (lessonId: string) => void
   setCacheDir: (dir: string) => void
   /** C10: open the folder picker; result lands in the panel via chosenCacheDir. */
@@ -815,6 +823,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   // 批5: feedback polish busy state (independent of regenerate).
   const [notePolishBusy, setNotePolishBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
+  // 健康巡查 2026-09-12 批5: one export in flight at a time — double-clicking
+  // an export button used to open two native save dialogs. The kind names the
+  // running export so its own button can read «导出中…»; the ref guard closes
+  // the same-tick double-click race the state alone would miss.
+  const [exportBusy, setExportBusy] = useState<string | null>(null)
+  const exportBusyRef = useRef<string | null>(null)
   /** M4.1: open course-level mind map (null = closed). */
   const [courseMap, setCourseMap] = useState<CourseMapInfo | null>(null)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
@@ -1793,9 +1807,23 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, qaBusy, note, toast, loadQaRecent]
   )
 
+  /** 健康巡查 2026-09-12 批5: serialize the export family (markdown /
+   *  obsidian / anki / course-obsidian / svg) — native save dialogs must not
+   *  stack. While busy, every export button disables and the triggering one
+   *  reads «导出中…». PDF keeps its own pdfBusy (in-page render, pre-existing). */
+  const withExportBusy = useCallback((kind: string, run: () => Promise<void>): void => {
+    if (exportBusyRef.current != null) return
+    exportBusyRef.current = kind
+    setExportBusy(kind)
+    void run().finally(() => {
+      exportBusyRef.current = null
+      setExportBusy(null)
+    })
+  }, [])
+
   const runExportNote = useCallback(
     (lessonId: string): void => {
-      void (async () => {
+      withExportBusy('markdown', async () => {
         const res = await bridge.notes.exportMarkdown(lessonId)
         if (!res.ok) {
           toast(res.error ?? '导出失败', 'error')
@@ -1810,16 +1838,16 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             void bridge.notes.revealFile(filePath)
           }
         })
-      })()
+      })
     },
-    [bridge, toast]
+    [bridge, toast, withExportBusy]
   )
 
   /** Obsidian 批1: structured export into the user's vault — first run asks
    *  for the vault root once, later runs overwrite the same file silently. */
   const runExportNoteObsidian = useCallback(
     (lessonId: string): void => {
-      void (async () => {
+      withExportBusy('obsidian', async () => {
         const res = await bridge.notes.exportObsidian(lessonId)
         if (!res.ok) {
           toast(res.error ?? '导出失败', 'error')
@@ -1833,15 +1861,15 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             void bridge.notes.revealFile(filePath)
           }
         })
-      })()
+      })
     },
-    [bridge, toast]
+    [bridge, toast, withExportBusy]
   )
 
   /** Obsidian 批2: whole-course vault export (lessons + derived pages). */
   const runExportCourseObsidian = useCallback(
     (courseId: string, label: string): void => {
-      void (async () => {
+      withExportBusy('course-obsidian', async () => {
         const res = await bridge.notes.exportCourseObsidian(courseId)
         if (!res.ok) {
           toast(res.error ?? '导出失败', 'error')
@@ -1852,15 +1880,15 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         const skipped = res.value?.skipped ?? 0
         const skipSuffix = skipped > 0 ? `，${skipped} 个课时无笔记已跳过` : ''
         toast(`已将《${label}》${exported} 个课时导出到 Obsidian 仓库（含概念聚合页）${skipSuffix}`, 'success')
-      })()
+      })
     },
-    [bridge, toast]
+    [bridge, toast, withExportBusy]
   )
 
   /** 2026-09-04 roadmap 2.2: Anki TSV decks — toast carries a reveal action. */
   const runExportNoteAnki = useCallback(
     (lessonId: string): void => {
-      void (async () => {
+      withExportBusy('anki', async () => {
         const res = await bridge.notes.exportAnki(lessonId)
         if (!res.ok) {
           toast(res.error ?? '导出失败', 'error')
@@ -1872,15 +1900,15 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           actionLabel: '打开所在文件夹',
           onAction: () => void bridge.notes.revealFile(value.paths[0] ?? '')
         })
-      })()
+      })
     },
-    [bridge, toast]
+    [bridge, toast, withExportBusy]
   )
 
   /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
   const runExportNoteSvg = useCallback(
     (lessonId: string): void => {
-      void (async () => {
+      withExportBusy('svg', async () => {
         const res = await bridge.notes.exportSvg(lessonId)
         if (!res.ok) {
           toast(res.error ?? '导出失败', 'error')
@@ -1894,32 +1922,41 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             void bridge.notes.revealFile(filePath)
           }
         })
-      })()
+      })
     },
-    [bridge, toast]
+    [bridge, toast, withExportBusy]
   )
 
   /** M4.1 (map expansion): aggregate the course's latest trees into one map. */
+  const [courseMapBusy, setCourseMapBusy] = useState(false)
   const openCourseMap = useCallback(
     (courseId: string): void => {
+      // 健康巡查 2026-09-12 批5: aggregation can take seconds on large
+      // courses — the button must say so and not re-trigger.
+      if (courseMapBusy) return
+      setCourseMapBusy(true)
       void (async () => {
-        const res = await bridge.notes.courseTree(courseId)
-        if (!res.ok) {
-          toast(res.error ?? '课程导图打开失败', 'error')
-          return
+        try {
+          const res = await bridge.notes.courseTree(courseId)
+          if (!res.ok) {
+            toast(res.error ?? '课程导图打开失败', 'error')
+            return
+          }
+          const value = res.value
+          if (value == null) return
+          // The merged tree's root title IS the course name (filled main-side).
+          setCourseMap({
+            courseName: value.tree.title,
+            tree: value.tree,
+            lessons: value.lessons,
+            skipped: value.skipped
+          })
+        } finally {
+          setCourseMapBusy(false)
         }
-        const value = res.value
-        if (value == null) return
-        // The merged tree's root title IS the course name (filled main-side).
-        setCourseMap({
-          courseName: value.tree.title,
-          tree: value.tree,
-          lessons: value.lessons,
-          skipped: value.skipped
-        })
       })()
     },
-    [bridge, toast]
+    [bridge, toast, courseMapBusy]
   )
 
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
@@ -2268,6 +2305,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     closeNoteUpgrade,
     runNoteUpgrade,
     pdfBusy,
+    exportBusy,
+    courseMapBusy,
     exportNotePdf,
     setCacheDir,
     chooseCacheDir,

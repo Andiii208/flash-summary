@@ -124,6 +124,10 @@ describe('导出前的版权提醒', () => {
       expect(spy, `${label} 未经提醒就导出了`).toHaveBeenCalledTimes(0)
       confirmNotice()
       await vi.waitFor(() => expect(spy, `${label} 确认后没导出`).toHaveBeenCalledTimes(1))
+      // 健康巡查批5: while an export is in flight every export button is
+      // disabled (native save dialogs must not stack) — wait for it to clear
+      // before driving the next exit.
+      await settle()
     }
 
     // ⑤ 复制到剪贴板——同样是最容易被粘出去的一条路。
@@ -141,6 +145,7 @@ describe('导出前的版权提醒', () => {
     expect(bridge.notes.exportSvg).not.toHaveBeenCalled()
     confirmNotice()
     await vi.waitFor(() => expect(bridge.notes.exportSvg).toHaveBeenCalledTimes(1))
+    await settle()
 
     // ⑦ 整课 Obsidian —— 入口在笔记库的课程组上。笔记库只在「未显示笔记」时出现，
     //    所以先回首页（品牌点击）再点课程组上的「导出 Obsidian」。
@@ -198,6 +203,7 @@ describe('导出前的版权提醒', () => {
     confirmNotice()
     await vi.waitFor(() => expect(bridge.notes.exportMarkdown).toHaveBeenCalledTimes(1))
     expect(bridge.settings.optOutCopyrightNotice).not.toHaveBeenCalled()
+    await settle()
 
     click(buttonByText('.note-toolbar button', '导出 Anki'))
     await waitFor('.dialog-actions')

@@ -16,6 +16,9 @@ export interface CourseTreeProps {
   sameCourseIds: ReadonlySet<string>
   /** 批C: courses whose «第N节课» catalog harvest is running. */
   harvestInflight?: ReadonlySet<string>
+  /** 健康巡查 2026-09-12 批5: a course-map aggregation is in flight — every
+   *  map button disables (aggregation can take seconds on large courses). */
+  courseMapBusy?: boolean
   /** C6: remove an empty (never-processed) course. */
   onRemoveCourse?: (courseId: string) => void
   /** M4.1: open the course-level mind map dialog (决策点 D7 entry). */
@@ -34,6 +37,7 @@ export function CourseTree({
   searching,
   sameCourseIds,
   harvestInflight,
+  courseMapBusy,
   onRemoveCourse,
   onCourseMap,
   onToggle,
@@ -54,6 +58,7 @@ export function CourseTree({
           selectedLesson={selectedLesson}
           sameCourse={sameCourseIds.has(course.id)}
           inflight={harvestInflight?.has(course.id) ?? false}
+          mapBusy={courseMapBusy ?? false}
           onRemoveCourse={onRemoveCourse}
           onCourseMap={onCourseMap}
           onToggle={onToggle}
@@ -73,6 +78,8 @@ interface CourseRowProps {
   sameCourse: boolean
   /** 批C: this course's catalog harvest is currently running. */
   inflight: boolean
+  /** 健康巡查 2026-09-12 批5: a course-map aggregation is in flight. */
+  mapBusy: boolean
   /** C6: remove an empty course (propagated from CourseTree). */
   onRemoveCourse?: (courseId: string) => void
   onCourseMap?: (courseId: string) => void
@@ -90,7 +97,7 @@ function courseSubLine(course: CourseTreeInfo): string | null {
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
-function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onRemoveCourse, onCourseMap, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
+function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, mapBusy, onRemoveCourse, onCourseMap, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
   const sub = courseSubLine(course)
   // C6: only never-processed courses are deletable (cascade protection).
   const deletable = course.lessons.length === 0 && course.noteCount === 0 && onRemoveCourse != null
@@ -116,8 +123,9 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, onR
         {onCourseMap != null && (
           <button
             class="pin-btn"
-            title={`查看「${course.name}」的课程导图`}
+            title={mapBusy ? '正在聚合课程导图…' : `查看「${course.name}」的课程导图`}
             aria-label={`查看课程导图 ${course.name}`}
+            disabled={mapBusy}
             onClick={() => onCourseMap(course.id)}
           >
             <GitBranch size={13} strokeWidth={1.75} />

@@ -365,3 +365,39 @@ describe('NoteViewer 批6 阅读细节', () => {
     expect(stamp?.getAttribute('title')).toContain('定位到时间线')
   })
 })
+
+describe('NoteViewer 健康巡查 2026-09-12 批5 (export busy feedback)', () => {
+  it('export buttons disable while an export runs; the running one reads 导出中…', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        onExport={() => undefined}
+        onExportAnki={() => undefined}
+        onExportObsidian={() => undefined}
+        onExportSvg={() => undefined}
+        exportBusy="markdown"
+      />
+    )
+    const byLabel = (label: string): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll('button')).find((b) => b.textContent === label) as HTMLButtonElement | null
+    // The running export's button swapped its label; the rest just disable.
+    expect(byLabel('导出中…')?.disabled).toBe(true)
+    expect(byLabel('导出 Markdown')).toBeUndefined()
+    expect(byLabel('导出 Anki')?.disabled).toBe(true)
+    expect(byLabel('导出 Obsidian')?.disabled).toBe(true)
+  })
+
+  it('idle state keeps the plain labels enabled', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        onExport={() => undefined}
+        onExportAnki={() => undefined}
+        onExportObsidian={() => undefined}
+        exportBusy={null}
+      />
+    )
+    const markdown = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '导出 Markdown') as HTMLButtonElement
+    expect(markdown.disabled).toBe(false)
+  })
+})

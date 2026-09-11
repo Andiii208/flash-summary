@@ -58,6 +58,10 @@ export interface NoteViewerProps {
   onRegenerate?: () => void
   /** 2026-09-04: export the full-lesson PDF handout. */
   pdfBusy?: boolean
+  /** 健康巡查 2026-09-12 批5: the in-flight export kind (null = idle) —
+   *  export buttons disable while any export runs, the matching one reads
+   *  «导出中…» (native save dialogs must not stack). */
+  exportBusy?: string | null
   onExportPdf?: () => void
   onExport?: () => void
   /** Obsidian 批1: structured vault export (vault picked on first run). */
@@ -94,6 +98,7 @@ export function NoteViewer({
   regenBusy = false,
   onRegenerate,
   pdfBusy = false,
+  exportBusy = null,
   onExportPdf,
   onExport,
   onExportObsidian,
@@ -234,18 +239,23 @@ export function NoteViewer({
               </button>
             )}
             {onExportAnki != null && note != null && (
-              <button class="btn small" onClick={onExportAnki}>
-                导出 Anki
+              <button class="btn small" onClick={onExportAnki} disabled={exportBusy != null}>
+                {exportBusy === 'anki' ? '导出中…' : '导出 Anki'}
               </button>
             )}
             {onExport != null && note != null && (
-              <button class="btn small" onClick={onExport}>
-                导出 Markdown
+              <button class="btn small" onClick={onExport} disabled={exportBusy != null}>
+                {exportBusy === 'markdown' ? '导出中…' : '导出 Markdown'}
               </button>
             )}
             {onExportObsidian != null && note != null && (
-              <button class="btn small" onClick={onExportObsidian} title="结构化 Markdown 写入 Obsidian 仓库（首次需选择仓库目录）">
-                导出 Obsidian
+              <button
+                class="btn small"
+                onClick={onExportObsidian}
+                disabled={exportBusy != null}
+                title="结构化 Markdown 写入 Obsidian 仓库（首次需选择仓库目录）"
+              >
+                {exportBusy === 'obsidian' ? '导出中…' : '导出 Obsidian'}
               </button>
             )}
           </div>
@@ -304,14 +314,14 @@ export function NoteViewer({
               {library.length > 0 && onOpenLesson != null && (
                 <>
                   <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
-                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} />
+                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
                 </>
               )}
             </>
           ) : library.length > 0 && onOpenLesson != null ? (
             <>
               <p class="msg">或打开其他笔记：</p>
-              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} />
+              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
             </>
           ) : null}
         </>
@@ -325,6 +335,7 @@ export function NoteViewer({
               conceptLinks={note.conceptLinks}
               onViewDetailed={jumpToConcept}
               onExportSvg={onExportSvg}
+              exportBusy={exportBusy}
             />
           ) : (
             projectNoteBlocks(note, view).map((section) => (

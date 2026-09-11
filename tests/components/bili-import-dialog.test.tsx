@@ -187,4 +187,30 @@ describe('BiliImportDialog (批1 双源并列: first-class import dialog)', () =
       vi.useRealTimers()
     }
   })
+
+  it('健康巡查 2026-09-12 批5: the resolve button reads 解析中… while resolving', async () => {
+    let release: (value: unknown) => void = () => undefined
+    const gate = new Promise((r) => {
+      release = r
+    })
+    const bridge = makeBridge({
+      resolve: vi.fn(async () => {
+        await gate
+        return { ok: true, value: RESOLVE_PAYLOAD }
+      })
+    })
+    const host = mount(<BiliImportDialog {...makeProps(bridge)} />)
+    input(host.querySelector('.bili-row .qa-input'), 'https://www.bilibili.com/video/BV1GJ411x7h7')
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '解析') ?? null)
+    await flush()
+    const resolving = [...host.querySelectorAll('button')].find((b) => b.textContent === '解析中…') as HTMLButtonElement | undefined
+    expect(resolving).not.toBeNull()
+    expect(resolving!.disabled).toBe(true)
+    await act(async () => {
+      release(undefined)
+      await Promise.resolve()
+    })
+    await flush()
+    expect([...host.querySelectorAll('button')].some((b) => b.textContent === '解析')).toBe(true)
+  })
 })
