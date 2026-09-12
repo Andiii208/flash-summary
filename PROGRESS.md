@@ -98,6 +98,11 @@
 - **待确认删除项**：①构建产物 release/ 已 ignore，未入库；②**系统 TEMP 有 567 个历次会话遗留的 seu-* 调试文件**（含 seu-cookie.b64 疑似 cookie 残留、若干 .mjs/.cjs 探针与日志缓存目录）——不入 Git 但有敏感残留风险，建议清理（待用户确认后执行）。
 
 ## 失败与卡点
+- **pnpm 污染事故第二次 + 根因实锤（2026-09-12，0.7.4 发版日，已恢复）**：0.7.4 打包并 asar 抽验完成后，两条 `head … | od …` 检查命令相继触发 pnpm 接管本仓 node_modules（第一次挪 29 包进 `.ignored` 后失败退出，按既定手册原地搬回+四门禁验证恢复；第二次 pnpm install 跑成功，node_modules 整体变成 `.pnpm` 虚拟仓库结构）。**根因实锤（type -a od）**：用户 shell 配置里存在别名 **`od` = `cd E:/open-design && pnpm run daemon & pnpm run dev`**（另一项目的开发别名）——`&` 分隔使第二个 `pnpm run dev` 落在**当前目录**执行，本仓的 package.json 就被 pnpm「纠正」。2026-09-11 那次「并行进程跑 pnpm install」十有八九也是同一颗雷（当时也用过 od）。
+  **处置**：删掉 pnpm 结构的 node_modules → `npm.cmd ci` 精确重建（package.json/package-lock.json 全程未被 pnpm 改动，仓库无 pnpm-lock.yaml）→ 四门禁 866/866 + build 复验全绿。
+  **途中撞上新坑（npm 11.19 install-scripts 审批门）**：本机 npm 已从 11.12.1 升到 **11.19.0**，新机制默认不跑未批准的 install 脚本——electron 二进制缺失、esbuild/ffmpeg-static/better-sqlite3/electron-winstaller 脚本被拦。处置=在 package.json 落 **`allowScripts` 白名单**（6 个包，见该提交）并 `npm ci` 重建；这是 npm 官方安全机制，白名单入库后 CI 与未来重装都不再受影响。electron 的 postinstall 在 rebuild 下不触发，手动 `node node_modules/electron/install.js` 补齐二进制。
+  **教训**：①本会话 shell 里**永远不要用 `od`**（以及任何可能命中用户别名的裸命令）——查字节用 Node 脚本；②`pnpm run dev` 型别名尾部 `&` 会让第二个命令在任意 cwd 落地，危害不限于本仓；③npm 升级带来的新门控要第一时间把白名单落库。
+
 - **并行进程跑 `pnpm install` 挪走依赖（2026-09-11，发布前，已恢复）**：发布流程中途，一条只读命令的输出里突然出现 `pnpm` 的日志——它把 npm 装的包判为「different package manager」整体移进 `node_modules/.ignored`（含 electron / better-sqlite3 / vitest / typescript / eslint / electron-builder），随后自己的 `pnpm install` 因 `node_modules/electron` 缺失而失败退出。
   **判断**：仓库用的是 npm + `package-lock.json`，`package.json` 无 `packageManager` 字段、仓库内无任何 pnpm 配置——不是仓库触发的，是**并行的外部进程**（当时同机 5+ 个 node.exe）在跑 pnpm。
   **处置**：把 `.ignored` 里的条目原地搬回 `node_modules/`（含 `@scope/` 逐个合并，共 29 项），再用四门禁验证完整——848/848 通过；`package.json` / `package-lock.json` 全程未被改动。
