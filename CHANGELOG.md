@@ -2,7 +2,11 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布] — 健康巡查与体验优化（2026-09-12，方案 docs/plans/2026-09-12-health-audit-optimization.md）
+## [未发布]
+
+暂无。
+
+## [0.7.4] — 测试构建（2026-09-12，未打 tag）· 健康巡查与体验优化
 
 全库巡查（渲染层/main/文档三条独立线 + 逐条读码核实）后分 9 批落地的修复，测试 848 → 866（+18），提交 758c8cd…：
 
