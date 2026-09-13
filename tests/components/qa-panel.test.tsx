@@ -69,6 +69,10 @@ describe('QaPanel', () => {
       { lessonId: 'l1', question: '什么是复杂度？', answer: '略', createdAt: '2026-09-04T01:00:00Z', courseName: '算法', lessonTitle: '第1节' }
     ]
     const host = mount(<QaPanel entries={[]} busy={false} hasLesson={false} onAsk={() => undefined} recent={recent} onOpenLesson={onOpenLesson} />)
+    // A3 (plan 2026-09-13): with recent rows below, the «从一条追问开始» hero
+    // card is replaced by a one-line lead-in — the card contradicted the list.
+    expect(host.querySelector('.qa-panel .empty-state')).toBeNull()
+    expect(host.querySelector('.msg')?.textContent).toContain('选择课时后')
     const row = host.querySelector('[data-testid="qa-recent-row"]')
     expect(row).not.toBeNull()
     expect(row?.textContent).toContain('算法 · 第1节')

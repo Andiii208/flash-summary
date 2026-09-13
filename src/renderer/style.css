@@ -1147,6 +1147,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   text-align: left; min-width: 0;
 }
 .note-library-group-toggle:hover { color: var(--text); }
+/* A2 (plan 2026-09-13): the two actions sit in one right-flush cluster so
+   their edges align across groups regardless of the course-name length. */
+.note-library-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
 .note-library-upgrade { flex: none; }
 .note-library-count { font-size: var(--font-size-xs); font-weight: 500; color: var(--text-muted); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; }
 .note-library-lesson { min-width: 0; overflow-wrap: anywhere; text-align: left; }

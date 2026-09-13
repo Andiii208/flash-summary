@@ -309,15 +309,20 @@ export function NoteViewer({
           {lesson == null ? (
             // 2026-09-05: home view mirrors the tasks tab — guide card,
             // then the library under its own subheading.
-            <>
+            // A3 (plan 2026-09-13): with a non-empty library the «尚无笔记»
+            // hero card contradicted the list right below it (3 courses of
+            // notes under a card claiming there are none) — a one-line hint
+            // replaces the card and the list leads. The card stays for the
+            // truly-empty case.
+            library.length > 0 && onOpenLesson != null ? (
+              <>
+                <p class="msg">笔记在任务生成后自动显示；从左侧课程树点一个课时即可创建任务。</p>
+                <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
+                <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
+              </>
+            ) : (
               <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
-              {library.length > 0 && onOpenLesson != null && (
-                <>
-                  <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
-                  <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
-                </>
-              )}
-            </>
+            )
           ) : library.length > 0 && onOpenLesson != null ? (
             <>
               <p class="msg">或打开其他笔记：</p>

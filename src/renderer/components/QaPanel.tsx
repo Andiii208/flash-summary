@@ -84,11 +84,16 @@ export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lesson
         {entries.length === 0 && hasLesson && (
           <p class="msg">{hasNote ? '针对当前课时的笔记提问。' : '此课时尚无笔记——先生成笔记会让追问更有的放矢；也可以直接提问。'}</p>
         )}
-        {entries.length === 0 && !hasLesson && (
+        {/* A3 (plan 2026-09-13): the hero card only for the truly-empty case —
+            with recent Q&A below it, «从一条追问开始» contradicted the rows
+            under it; a one-line lead-in replaces the card there. */}
+        {entries.length === 0 && !hasLesson && recent.length === 0 && (
           <EmptyState title="从一条追问开始" hint="选择课时后即可针对该课时的笔记提问；已有的追问会列在下方。" />
         )}
         {entries.length === 0 && !hasLesson && recent.length > 0 && onOpenLesson != null && (
-          <div class="qa-recent" data-testid="qa-recent">
+          <>
+            <p class="msg">选择课时后即可针对该课时的笔记提问；点下面一条可回到那次追问。</p>
+            <div class="qa-recent" data-testid="qa-recent">
             {recent.map((r, i) => {
               const where = [r.courseName, r.lessonTitle].filter((s): s is string => s != null && s !== '').join(' · ')
               return (
@@ -106,7 +111,8 @@ export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lesson
                 </button>
               )
             })}
-          </div>
+            </div>
+          </>
         )}
         {entries.map((e, i) => (
           <div key={i} class="qa-pair">

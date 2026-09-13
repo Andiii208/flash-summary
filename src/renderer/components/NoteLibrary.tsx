@@ -78,31 +78,37 @@ export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCo
                 <span class="note-library-course">{group.label}</span>
                 <span class="note-library-count">{group.items.length}</span>
               </button>
-              {onExportCourseObsidian != null && group.courseId != null && (
-                <button
-                  class="btn small ghost note-library-upgrade"
-                  title="整门课结构化导出到 Obsidian 仓库（含概念聚合页）"
-                  disabled={exportBusy != null}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onExportCourseObsidian(group.courseId!, group.label)
-                  }}
-                >
-                  {exportBusy === 'course-obsidian' ? '导出中…' : '导出 Obsidian'}
-                </button>
-              )}
-              {onUpgradeCourse != null && group.courseId != null && (
-                <button
-                  class="btn small note-library-upgrade"
-                  title="按体检结果升级该课程的旧笔记（复用已落库转写，零下载）"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onUpgradeCourse(group.courseId!, group.label)
-                  }}
-                >
-                  升级旧笔记
-                </button>
-              )}
+              {/* A2 (plan 2026-09-13): both actions in one right-flush cluster —
+                  as the middle of three space-between children the export
+                  button drifted with the course-name length (measured left
+                  edges 941/775/743 across groups). */}
+              <div class="note-library-actions">
+                {onExportCourseObsidian != null && group.courseId != null && (
+                  <button
+                    class="btn small ghost note-library-upgrade"
+                    title="整门课结构化导出到 Obsidian 仓库（含概念聚合页）"
+                    disabled={exportBusy != null}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onExportCourseObsidian(group.courseId!, group.label)
+                    }}
+                  >
+                    {exportBusy === 'course-obsidian' ? '导出中…' : '导出 Obsidian'}
+                  </button>
+                )}
+                {onUpgradeCourse != null && group.courseId != null && (
+                  <button
+                    class="btn small note-library-upgrade"
+                    title="按体检结果升级该课程的旧笔记（复用已落库转写，零下载）"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onUpgradeCourse(group.courseId!, group.label)
+                    }}
+                  >
+                    升级旧笔记
+                  </button>
+                )}
+              </div>
             </div>
             {!isCollapsed &&
               group.items.map((entry) => {

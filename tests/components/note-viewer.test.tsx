@@ -277,15 +277,31 @@ describe('NoteViewer', () => {
     const library = [
       { lessonId: 'l2', version: 3, createdAt: '2026-09-04T02:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第2节课' }
     ]
-    const host = mount(<NoteViewer note={null} library={library} onOpenLesson={onOpenLesson} />)
-    // 2026-09-05: home empty state mirrors the tasks tab — guide card, then
-    // the library under its own subheading (the bare .msg line is gone).
-    expect(host.querySelector('.note-viewer .empty-state')).not.toBeNull()
+    const host = mount(
+      <NoteViewer
+        note={null}
+        library={library}
+        onOpenLesson={onOpenLesson}
+        onUpgradeCourse={() => undefined}
+        onExportCourseObsidian={() => undefined}
+      />
+    )
+    // A3 (plan 2026-09-13): a non-empty library must NOT sit under a «尚无笔记»
+    // hero card — a one-line hint leads instead, and the hero only exists when
+    // the library is truly empty.
+    expect(host.querySelector('.note-viewer .empty-state')).toBeNull()
+    expect(host.querySelector('.note-viewer .msg')?.textContent).toContain('笔记在任务生成后自动显示')
     expect(host.querySelector('.subheading')?.textContent).toContain('全部笔记')
     // 批6: the course identity lives on the group head; the row carries the lesson.
     const group = host.querySelector('.note-library-group-head')
     expect(group?.textContent).toContain('算法导论 · 汪海')
     expect(group?.textContent).toContain('1')
+    // A2 (plan 2026-09-13): both group actions live in ONE right-flush cluster,
+    // so their edges align across groups no matter how long the course name is.
+    const actions = host.querySelector('.note-library-group-head .note-library-actions')
+    expect(actions?.textContent).toContain('导出 Obsidian')
+    expect(actions?.textContent).toContain('升级旧笔记')
+    expect(host.querySelectorAll('.note-library-group-head > button')).toHaveLength(1)
     const row = host.querySelector('[data-testid="note-library-row"]')
     expect(row).not.toBeNull()
     expect(row?.textContent).toContain('第2节课')
