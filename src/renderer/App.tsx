@@ -66,6 +66,32 @@ export function tabForHotkey(key: string, modifiers: { ctrl: boolean; alt: boole
   return entry.id
 }
 
+/**
+ * A4 (plan 2026-09-13): the sidebar meta line, keeping three easily-confused
+ * numbers apart — the LAST refresh's yield, the platform's page-count
+ * approximation, and the local catalog (which accumulates across refreshes,
+ * so «已加载 0 门» next to a four-digit catalog is normal, not a bug).
+ * D2: while a paged refresh runs, its page progress also lives here so the
+ * header button can hold a fixed-width «刷新中…». Null → render nothing
+ * (fresh install, never refreshed).
+ */
+export function sidebarMetaLine(
+  refreshBusy: boolean,
+  progress: { page: number; pageCount: number } | null,
+  meta: { loaded: number; platformTotal: number } | null,
+  catalogCount: number
+): string | null {
+  if (refreshBusy) {
+    const at = progress != null ? `第 ${progress.page}/${progress.pageCount} 页` : ''
+    return `正在刷新${at}… · 本地已收录 ${catalogCount} 门`
+  }
+  if (meta == null) return null
+  // ok-envelope with an empty list: state the fact, point at the usual cause
+  // (soft-expired session returns a valid but empty payload) without claiming it.
+  const empty = meta.loaded === 0 ? '——平台返回了空列表，可重新登录后再试' : ''
+  return `本地已收录 ${catalogCount} 门 · 本次刷新 ${meta.loaded} 门${empty} · 平台列表约 ${meta.platformTotal} 门（搜索只查本地已收录的课）`
+}
+
 /** 批C: sidebar/context persistence — the harvest and login flows navigate
  *  the main window away, which unloads this renderer; without persistence
  *  the user lands back at the top of a collapsed tree (field 2026-09-04).
@@ -288,15 +314,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
       />
       <div class="app-main">
         <aside class={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`} ref={sidebarRef}>
-          <button
-            class="sidebar-collapse"
-            aria-expanded={!sidebarCollapsed}
-            aria-label={sidebarCollapsed ? '展开课程侧栏' : '收起课程侧栏'}
-            title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
-            onClick={toggleSidebar}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen size={15} strokeWidth={1.75} /> : <PanelLeftClose size={15} strokeWidth={1.75} />}
-          </button>
+          {/* A1 (plan 2026-09-13): the toggle lives at the END of the header
+              row. It used to be the aside's first flex child, which gave a
+              lone 24px icon its own full row above «课程» (+34px of height). */}
           <div class="sidebar-head">
             <h2>课程</h2>
             <div class="sidebar-head-actions">
@@ -309,13 +329,22 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 onClick={state.refreshTree}
                 disabled={state.session === 'logged_out' || state.refreshBusy}
               >
-                {state.refreshBusy
-                  ? state.refreshProgress != null
-                    ? `刷新中 ${state.refreshProgress.page}/${state.refreshProgress.pageCount} 页…`
-                    : '刷新中…'
-                  : '刷新课程'}
+                {/* D2 (plan 2026-09-13): fixed-width busy label — the paged
+                    progress «第 N/M 页» moved to the meta line below, its old
+                    spot here overflowed the one-row header (measured 289px
+                    against a 269px content box) and clipped this toggle. */}
+                {state.refreshBusy ? '刷新中…' : '刷新课程'}
               </button>
             </div>
+            <button
+              class="sidebar-collapse"
+              aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarCollapsed ? '展开课程侧栏' : '收起课程侧栏'}
+              title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+              onClick={toggleSidebar}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={15} strokeWidth={1.75} /> : <PanelLeftClose size={15} strokeWidth={1.75} />}
+            </button>
           </div>
           {state.tree.length > 0 && (
             <input
@@ -326,11 +355,15 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onInput={(e) => state.setQuery((e.target as HTMLInputElement).value)}
             />
           )}
-          {state.tree.length > 0 && state.refreshMeta != null && (
-            <p class="tree-meta">
-              已加载 {state.refreshMeta.loaded} 门 / 全校约 {state.refreshMeta.platformTotal} 门（搜索仅覆盖已加载课程）
-            </p>
-          )}
+          {/* A4/D2 (plan 2026-09-13): three numbers that must not be conflated —
+              the last refresh's yield, the platform's page-count approximation,
+              and the local catalog (which ACCUMULATES across refreshes: field
+              case showed «已加载 0 门 / 全校约 500 门» directly above a 1314-row
+              catalog). The refresh page progress also lives here (D2). */}
+          {(() => {
+            const metaLine = sidebarMetaLine(state.refreshBusy, state.refreshProgress, state.refreshMeta, state.tree.length)
+            return metaLine != null ? <p class="tree-meta" data-testid="tree-meta">{metaLine}</p> : null
+          })()}
           {showWelcome ? (
             <WelcomeGuide onLogin={state.login} onOpenBili={state.openBili} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
           ) : state.searchMode ? (
@@ -1017,7 +1050,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         )) as ApiResult<CourseListResult>
         if (list.ok && list.value != null) {
           setRefreshMeta({ loaded: list.value.loaded, platformTotal: list.value.platformTotal })
-          toast(`已加载 ${list.value.loaded} 门课程（全校约 ${list.value.platformTotal} 门）`, 'success')
+          // A4 (plan 2026-09-13): same de-conflation as the sidebar meta line —
+          // «全校约» claimed more than pageCount×pageSize can know.
+          toast(`本次刷新 ${list.value.loaded} 门课程 · 平台列表约 ${list.value.platformTotal} 门`, 'success')
         } else if (!list.ok && list.kind === 'session_expired') {
           setSession('logged_out')
           toast('会话已过期，请重新登录', 'error')

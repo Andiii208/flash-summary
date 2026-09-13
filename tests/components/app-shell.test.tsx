@@ -3,6 +3,7 @@ import { App } from '../../src/renderer/App'
 import { render } from 'preact'
 import { mount, click } from '../helpers/preact'
 import type { SeuSummaryBridge } from '../../src/shared/bridge'
+import type { ApiResult } from '../../src/shared/api-result'
 import { makeBridge, ok, fakeState } from '../helpers/fake-app-bridge'
 
 /**
@@ -351,6 +352,9 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await expandAllCourses()
     const toggle = host.querySelector('.sidebar-collapse') as HTMLButtonElement
     expect(toggle).not.toBeNull()
+    // 批1 (plan 2026-09-13): the toggle lives IN the header row (one row with
+    // «课程» and the actions), not on its own line above them.
+    expect(toggle.closest('.sidebar-head')).not.toBeNull()
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     const aside = host.querySelector('aside.sidebar')!
     expect(aside.className).not.toContain('collapsed')
@@ -369,5 +373,62 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(reloadedAside.className).toContain('collapsed')
     click(reloaded.querySelector('.sidebar-collapse'))
     await vi.waitFor(() => expect(reloadedAside.className).not.toContain('collapsed'))
+  })
+
+  it('批1 (plan 2026-09-13): 刷新中 keeps a fixed-width label and the page progress lives in the meta line', async () => {
+    const bridge = makeBridge()
+    bridge.school.session = vi.fn(async () => ok({ state: 'logged_in' as const }))
+    type ListValue = { loaded: number; platformTotal: number; platformPages: number }
+    let releaseList!: (value: ApiResult<ListValue>) => void
+    bridge.school.listCourses = vi.fn(
+      () => new Promise<ApiResult<ListValue>>((resolve) => { releaseList = resolve })
+    )
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    const refreshBtn = [...host.querySelectorAll('.sidebar-head button')].find((b) => b.textContent === '刷新课程')
+    expect(refreshBtn).not.toBeUndefined()
+    click(refreshBtn!)
+    // D2: the busy label is one fixed string — the old «刷新中 12/34 页…» made
+    // the one-row header overflow (289px vs 269px) and clipped the toggle.
+    await vi.waitFor(() => {
+      const busy = [...host.querySelectorAll('.sidebar-head button')].find((b) => b.textContent === '刷新中…')
+      expect(busy).not.toBeUndefined()
+      expect(busy?.hasAttribute('disabled')).toBe(true)
+    })
+    // The meta line shows up DURING the refresh (it used to need a finished
+    // one) and carries the page progress + the local-catalog count.
+    await waitForSelector('[data-testid="tree-meta"]')
+    expect(host.querySelector('[data-testid="tree-meta"]')?.textContent).toContain('正在刷新')
+    expect(host.querySelector('[data-testid="tree-meta"]')?.textContent).toContain('本地已收录')
+
+    releaseList(ok({ loaded: 12, platformTotal: 500, platformPages: 5 }))
+    await vi.waitFor(() => {
+      expect(host.querySelector('[data-testid="tree-meta"]')?.textContent).toContain('本次刷新 12 门')
+    })
+    // A4: three numbers, three honest labels — never «已加载 0 门 / 全校约 500 门».
+    const line = host.querySelector('[data-testid="tree-meta"]')?.textContent ?? ''
+    expect(line).toContain('本地已收录')
+    expect(line).toContain('平台列表约 500 门')
+    expect(line).not.toContain('全校约')
+    expect(line).toContain('搜索只查本地已收录的课')
+    expect(refreshBtn?.textContent).toBe('刷新课程')
+  })
+
+  it('批1 (plan 2026-09-13): a refresh that yields 0 courses states it and points at re-login instead of conflating counts', async () => {
+    const bridge = makeBridge()
+    bridge.school.session = vi.fn(async () => ok({ state: 'logged_in' as const }))
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    const refreshBtn = [...host.querySelectorAll('.sidebar-head button')].find((b) => b.textContent === '刷新课程')
+    click(refreshBtn!)
+    // The busy line also matches [data-testid=tree-meta]; wait for the
+    // finished-refresh wording, not just the element.
+    await vi.waitFor(() => {
+      expect(host.querySelector('[data-testid="tree-meta"]')?.textContent).toContain('本次刷新 0 门')
+    })
+    const line = host.querySelector('[data-testid="tree-meta"]')?.textContent ?? ''
+    expect(line).toContain('平台返回了空列表')
+    expect(line).toContain('本地已收录')
+    expect(line).not.toContain('全校约')
   })
 })

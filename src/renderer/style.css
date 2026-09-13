@@ -325,12 +325,15 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
   flex-direction: column;
   gap: 10px;
 }
-.sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
-.sidebar-head-actions { display: flex; align-items: center; gap: 6px; }
+.sidebar-head { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+.sidebar-head-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 /* 健康巡查 2026-09-12 批8 (遗留清单⑫): collapse toggle + collapsed rail —
-   a narrow window no longer donates 304px permanently. */
+   a narrow window no longer donates 304px permanently.
+   A1 (plan 2026-09-13): the toggle moved INTO .sidebar-head as its last
+   child — as the aside's first flex child it owned a whole row above
+   «课程» (+34px); the merged row measures 240/269px. */
 .sidebar-collapse {
-  align-self: flex-end;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -344,9 +347,13 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
   cursor: pointer;
 }
 .sidebar-collapse:hover { background: var(--surface-2); color: var(--text); }
-.sidebar.collapsed { width: 48px; padding-left: 8px; padding-right: 8px; align-items: center; gap: 0; }
-.sidebar.collapsed > :not(.sidebar-collapse) { display: none; }
-.sidebar.collapsed .sidebar-collapse { align-self: center; }
+.sidebar.collapsed { width: 48px; padding-left: 8px; padding-right: 8px; align-items: center; gap: 0; scrollbar-gutter: auto; }
+/* Collapsed rail: hide every aside child except the head, and inside the
+   head everything except the toggle (centered in the 32px inner width). */
+.sidebar.collapsed > :not(.sidebar-head) { display: none; }
+.sidebar.collapsed .sidebar-head { justify-content: center; padding: 0; }
+.sidebar.collapsed .sidebar-head h2,
+.sidebar.collapsed .sidebar-head-actions { display: none; }
 .sidebar-head h2 {
   font-size: var(--font-size-md);
   margin: 0;
