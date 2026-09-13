@@ -1268,8 +1268,14 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 /* A5/D9 (plan 2026-09-13): the toolbar's primary action pins to the right
    edge of the content axis, so the wrapped second row no longer ends with a
    126px hole (measured: actions row 328→1062 against the 328→1188 axis). */
+/* A5/D9 (plan 2026-09-13): the toolbar's primary action pins to the right
+   edge of the content axis. basis:100% sends the actions to their own line
+   and stretches them across it — with a plain flex:1 they squeezed onto the
+   tabs' line instead (measured: buttons shrank to 40-82px), and with no flex
+   at all the wrapped group shrink-wrapped and ended 126px short (328→1062
+   against the 328→1188 axis). */
+.note-actions { display: flex; gap: 8px; flex: 1 1 100%; }
 .note-actions .note-pdf-btn { margin-left: auto; }
-.note-actions { display: flex; gap: 8px; }
 /* 批3 (plan 2026-09-08 note-quality-overhaul): 体检面板——findings 列表。
    warn 用琥珀语义色（考点/缺口语义色的既有约定），info 用弱化文本。 */
 .note-health-panel {
