@@ -183,9 +183,12 @@ describe('TaskPanel', () => {
     expect(host.querySelector('.history-lesson')?.textContent).toBe('网络信息编程 · 第五讲')
     // F4: teacher / meeting-times / classroom secondary line.
     expect(host.querySelector('.history-meta')?.textContent).toBe('汪海 · 周一 第3-4节 · 中山-312')
-    // Network code translated to user guidance; raw text kept in tooltip.
+    // Network code translated to user guidance; the tooltip carries the same
+    // humanized wording in full (A8, plan 2026-09-13 — the raw code stays
+    // reachable via «反馈这个错误» diagnostics, the tooltip now matches what
+    // the row shows instead of exposing a different, more cryptic string).
     expect(host.querySelector('.history-error')?.textContent).toContain('网络连接被中断')
-    expect(host.querySelector('.history-error')?.getAttribute('title')).toContain('ERR_CONNECTION_RESET')
+    expect(host.querySelector('.history-error')?.getAttribute('title')).toContain('网络连接被中断')
     click(host.querySelector<HTMLButtonElement>('.history-row button.ghost'))
     expect(onDelete).toHaveBeenCalledWith('t1')
     // M3 批 D: clear goes through the in-app Dialog, not window.confirm.

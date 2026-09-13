@@ -40,6 +40,24 @@ describe('NoteViewer', () => {
     expect(host.querySelectorAll('.note-tabs button')).toHaveLength(0)
   })
 
+  it('A5 (plan 2026-09-13): 导出 PDF 讲义 is the toolbar’s LAST action and pins right', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        onExportPdf={() => undefined}
+        onRegenerate={() => undefined}
+        onCopy={() => undefined}
+        onExport={() => undefined}
+        onExportAnki={() => undefined}
+        onExportObsidian={() => undefined}
+      />
+    )
+    const pdf = host.querySelector('.note-actions .note-pdf-btn')
+    expect(pdf).not.toBeNull()
+    const actionNodes = [...host.querySelectorAll('.note-actions > *')]
+    expect(actionNodes[actionNodes.length - 1]).toBe(pdf)
+  })
+
   it('renders the exam-paper masthead only with a note and lesson context (V4)', () => {
     const bare = mount(<NoteViewer note={NOTE} />)
     expect(bare.querySelector('.note-masthead')).toBeNull()

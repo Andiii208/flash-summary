@@ -1124,9 +1124,13 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   font-size: var(--font-size-sm);
   flex: 1;
   min-width: 0;
+  /* A8 (plan 2026-09-13): the failure reason is the one thing the user needs
+     to read — give it two lines instead of one ellipsized one. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .history-row .btn.small { flex-shrink: 0; }
 .history-row .btn.small.ghost { color: var(--text-muted); }
@@ -1187,6 +1191,10 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
+/* A5/D9 (plan 2026-09-13): the toolbar's primary action pins to the right
+   edge of the content axis, so the wrapped second row no longer ends with a
+   126px hole (measured: actions row 328→1062 against the 328→1188 axis). */
+.note-actions .note-pdf-btn { margin-left: auto; }
 .note-actions { display: flex; gap: 8px; }
 /* 批3 (plan 2026-09-08 note-quality-overhaul): 体检面板——findings 列表。
    warn 用琥珀语义色（考点/缺口语义色的既有约定），info 用弱化文本。 */

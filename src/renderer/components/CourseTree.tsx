@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, GitBranch, Star, Trash2 } from 'lucide-preac
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { subjectInk } from '../../shared/subject-ink'
+import { courseAvatarChar } from '../../shared/course-display'
 import { Dialog } from '../ui/Dialog'
 
 export interface CourseTreeProps {
@@ -108,7 +109,7 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, map
         <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded} title={course.name}>
           <span class="caret">{expanded ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
           <span class="course-mono" aria-hidden="true">
-            {course.name.slice(0, 1)}
+            {courseAvatarChar(course.name)}
           </span>
           <span class="course-name">{course.name}</span>
           {course.source === 'bilibili' && <span class="badge bili">B站</span>}

@@ -387,6 +387,9 @@ describe('SettingsPanel cache-dir draft (P6, 2026-09-05)', () => {
     const host = mount(<SettingsPanel {...baseProps} settings={null} biliSession="logged_in" onBiliLogout={onBiliLogout} />)
     const row = host.querySelector('[data-testid="bili-account-settings"]')
     expect(row?.textContent).toContain('B站·已登录')
+    // A7 (plan 2026-09-13): the CAS badge carries the same state dot as the
+    // topbar's — the settings page used to show a dotless «未登录».
+    expect(host.querySelectorAll('.session-badge .badge-dot').length).toBe(2)
     click(Array.from(row!.querySelectorAll('button')).find((b) => b.textContent === '退出登录') ?? null)
     expect(onBiliLogout).toHaveBeenCalledOnce()
   })

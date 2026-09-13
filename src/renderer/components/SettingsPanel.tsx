@@ -106,7 +106,12 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
       <section class="settings-block">
         <h3>账号</h3>
         <div class="settings-row">
-          <span class={`session-badge ${props.session}`}>{SESSION_LABELS[props.session]}</span>
+          {/* A7 (plan 2026-09-13): same dot as the topbar's CAS badge — the two
+              surfaces showed the same account state with different marks. */}
+          <span class={`session-badge ${props.session}`}>
+            <span class="badge-dot" />
+            {SESSION_LABELS[props.session]}
+          </span>
           {props.session === 'logged_in' ? (
             <button class="btn" onClick={() => setPendingLogout(true)}>
               退出登录

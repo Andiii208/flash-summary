@@ -223,11 +223,6 @@ export function NoteViewer({
                 引用命中 {hitRate.hits}/{hitRate.total}
               </span>
             )}
-            {onExportPdf != null && (
-              <button class="btn small primary" onClick={onExportPdf} disabled={pdfBusy}>
-                {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
-              </button>
-            )}
             {onRegenerate != null && note != null && (
               <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
                 {regenBusy ? '生成中…' : '重新生成'}
@@ -256,6 +251,15 @@ export function NoteViewer({
                 title="结构化 Markdown 写入 Obsidian 仓库（首次需选择仓库目录）"
               >
                 {exportBusy === 'obsidian' ? '导出中…' : '导出 Obsidian'}
+              </button>
+            )}
+            {/* A5/D9 (plan 2026-09-13): the page's primary action sits LAST and
+                pins to the right edge of the 860 axis — the wrapped second row
+                used to end 126px short with the green button second from the
+                left. */}
+            {onExportPdf != null && (
+              <button class="btn small primary note-pdf-btn" onClick={onExportPdf} disabled={pdfBusy}>
+                {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
               </button>
             )}
           </div>

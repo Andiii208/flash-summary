@@ -312,7 +312,10 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
               {meta != null && <span class="history-meta">{meta}</span>}
             </div>
             {row.error_message != null && (
-              <span class="history-error" title={row.error_message}>
+              // A8 (plan 2026-09-13): the tooltip carries the same humanized
+              // wording the row truncates — the raw message was unreachable
+              // before (it lives on in «反馈这个错误» diagnostics).
+              <span class="history-error" title={humanizeTaskError(row.error_message, row.error_kind)}>
                 {humanizeTaskError(row.error_message, row.error_kind)}
               </span>
             )}
