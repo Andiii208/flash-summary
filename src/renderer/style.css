@@ -716,6 +716,49 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- course browser (批4, plan 2026-09-13) — near-fullscreen modal (D5-A),
+   same modal language as CourseMapDialog: scroll lock, focus trap, Esc. ---- */
+.course-browser-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(18, 22, 20, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px;
+}
+.course-browser-card {
+  width: min(1440px, 98vw); height: 92vh;
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px;
+}
+.course-browser-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.course-browser-head h2 { margin: 0; font-size: var(--font-size-md); }
+.course-browser-meta { margin: 2px 0 0; font-size: var(--font-size-xs); color: var(--text-muted); }
+.course-browser-search { flex: none; margin-bottom: 10px; }
+.course-browser-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 2px; }
+.course-browser-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.course-browser-empty { color: var(--text-muted); font-size: var(--font-size-sm); padding: 24px 4px; }
+.course-browser-more { margin: 12px auto 4px; display: block; }
+/* 批5 will attach actions; 批4 cards are display-only. The subject-ink left
+   bar matches the sidebar's course rows so a course reads the same in both. */
+.course-card {
+  border: 1px solid var(--border); border-left: 2px solid var(--course-ink, var(--border-strong));
+  border-radius: var(--radius-sm); background: var(--surface);
+  padding: 9px 11px; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+}
+.course-card-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.course-card-name { flex: 1; min-width: 0; font-size: var(--font-size-sm); font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.course-card-sub { color: var(--text-muted); font-size: var(--font-size-xs); padding-left: 27px; }
+/* entry button on the «全部课程» row (D6-A) */
+.all-courses-row { display: flex; align-items: stretch; gap: 6px; }
+.all-courses-row .all-courses-head { flex: 1; width: auto; }
+.course-browser-open {
+  flex: none; width: 34px; display: grid; place-items: center;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+  border-radius: var(--radius-sm); cursor: pointer;
+}
+.course-browser-open:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+.course-browser-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 /* M3 批 D: in-app confirm dialog */
 .dialog-backdrop {
   position: fixed;

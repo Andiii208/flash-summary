@@ -431,4 +431,17 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(line).toContain('本地已收录')
     expect(line).not.toContain('全校约')
   })
+
+  it('批4 (plan 2026-09-13): the «全部课程» row opens the fullscreen browser and Ctrl+K closes it', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    click(host.querySelector('[data-testid="course-browser-open"]'))
+    await waitForSelector('[data-testid="course-browser"]')
+    expect(host.querySelector('[data-testid="course-browser"]')?.textContent).toContain('全部课程')
+    expect(host.querySelector('[data-testid="course-browser-meta"]')?.textContent).toContain('本地已收录')
+    // D6-A: Ctrl+K toggles the browser back closed (the chord is free).
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
+    await waitForGone('[data-testid="course-browser"]')
+  })
 })

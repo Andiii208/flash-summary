@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-preact'
+import { ChevronDown, ChevronRight, Maximize2, PanelLeftClose, PanelLeftOpen } from 'lucide-preact'
 import { render } from 'preact'
 import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, AttachmentManifestEntry, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
 import { orderMyCoursesFirst, orderTreeLessonsByNumber } from '../shared/course-order'
+import { courseMatchesQuery } from '../shared/course-search'
 import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
+import { CourseBrowser } from './components/CourseBrowser'
 import { MyStudyPanel } from './components/MyStudyPanel'
 import { TaskPanel } from './components/TaskPanel'
 import { NoteViewer, type LessonContext } from './components/NoteViewer'
@@ -184,6 +186,12 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   useEffect(() => {
     savePersistedUi({ sidebarCollapsed })
   }, [sidebarCollapsed])
+  // 批4 (plan 2026-09-13): fullscreen course browser — opened from the
+  // «全部课程» row's icon button or Ctrl+K (D6). Transient, never persisted:
+  // a harvest/login round-trip landing on a full-screen overlay would hide
+  // the login state the user navigated for.
+  const [courseBrowserOpen, setCourseBrowserOpen] = useState(false)
+  const closeCourseBrowser = useCallback((): void => setCourseBrowserOpen(false), [])
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   // 声明批2 (plan 2026-09-11): nothing renders before the 使用须知 gate is
@@ -223,8 +231,15 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   }
 
   // 批F: Ctrl+1..4 switch the four tabs (desktop convention).
+  // 批4 (plan 2026-09-13): Ctrl+K toggles the fullscreen course browser (D6);
+  // the chord is free (the app menu defines no accelerators).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setCourseBrowserOpen((open) => !open)
+        return
+      }
       const next = tabForHotkey(e.key, { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey, shift: e.shiftKey })
       if (next == null) return
       e.preventDefault()
@@ -312,6 +327,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onClose={state.closeBili}
         toast={state.toast}
       />
+      {/* 批4 (plan 2026-09-13): fullscreen course browser (D5-A near-fullscreen modal). */}
+      <CourseBrowser open={courseBrowserOpen} tree={state.tree} onClose={closeCourseBrowser} />
       <div class="app-main">
         <aside class={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`} ref={sidebarRef}>
           {/* A1 (plan 2026-09-13): the toggle lives at the END of the header
@@ -399,16 +416,28 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 onToggleMine={state.toggleMine}
               />
               <section class="all-courses">
-                <button
-                  class="all-courses-head"
-                  data-testid="all-courses-toggle"
-                  aria-expanded={state.allCoursesOpen}
-                  onClick={state.toggleAllCourses}
-                >
-                  <span class="caret">{state.allCoursesOpen ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
-                  <span>全部课程</span>
-                  <span class="all-courses-count">{state.tree.length}</span>
-                </button>
+                <div class="all-courses-row">
+                  <button
+                    class="all-courses-head"
+                    data-testid="all-courses-toggle"
+                    aria-expanded={state.allCoursesOpen}
+                    onClick={state.toggleAllCourses}
+                  >
+                    <span class="caret">{state.allCoursesOpen ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
+                    <span>全部课程</span>
+                    <span class="all-courses-count">{state.tree.length}</span>
+                  </button>
+                  {/* 批4 (plan 2026-09-13): fullscreen browser entry (D6-A). */}
+                  <button
+                    class="course-browser-open"
+                    data-testid="course-browser-open"
+                    title="全屏浏览全部课程（Ctrl+K）"
+                    aria-label="全屏浏览全部课程"
+                    onClick={() => setCourseBrowserOpen(true)}
+                  >
+                    <Maximize2 size={13} strokeWidth={1.75} />
+                  </button>
+                </div>
                 {state.allCoursesOpen && (
                   <>
                     <div class="tree-tools">
@@ -1556,13 +1585,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
 
   const filteredTree = useMemo<CourseTreeInfo[]>(() => {
+    // 批4 (plan 2026-09-13, D7): one search predicate shared with the course
+    // browser — the sidebar gains classroom/courTimes/subject-code matching.
+    if (debouncedQuery.trim() === '') return orderedTree.tree
     const q = debouncedQuery.trim().toLowerCase()
-    if (q === '') return orderedTree.tree
     return orderedTree.tree
-      .filter((c) => {
-        const haystack = `${c.name} ${c.teacher ?? ''} ${c.term ?? ''} ${c.id}`.toLowerCase()
-        return haystack.includes(q) || c.lessons.some((l) => l.title.toLowerCase().includes(q))
-      })
+      .filter((c) => courseMatchesQuery(c, debouncedQuery))
       .map((c) => {
         const lessons = c.lessons.filter((l) => l.title.toLowerCase().includes(q))
         return lessons.length > 0 && lessons.length < c.lessons.length ? { ...c, lessons } : c

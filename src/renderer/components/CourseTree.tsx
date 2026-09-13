@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, GitBranch, Star, Trash2 } from 'lucide-preac
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { subjectInk } from '../../shared/subject-ink'
-import { courseAvatarChar } from '../../shared/course-display'
+import { courseAvatarChar, courseSubLine } from '../../shared/course-display'
 import { Dialog } from '../ui/Dialog'
 
 export interface CourseTreeProps {
@@ -88,14 +88,6 @@ interface CourseRowProps {
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
   onToggleMine: (courseId: string, mine: boolean) => void
-}
-
-/** Teacher / times / classroom / term line under the title, official-site parity (C3). */
-function courseSubLine(course: CourseTreeInfo): string | null {
-  const parts = [course.teacher, course.courTimes, course.classroom, course.term].filter(
-    (p): p is string => p != null && p !== ''
-  )
-  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, mapBusy, onRemoveCourse, onCourseMap, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
