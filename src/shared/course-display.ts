@@ -19,14 +19,19 @@ export function courseAvatarChar(name: string): string {
 }
 
 /**
- * Teacher / times / classroom / term secondary line, official-site parity
- * (usability overhaul C3). Moved here in 批4 (plan 2026-09-13) so the
- * fullscreen course browser shows the SAME disambiguation line as the
- * sidebar — with 212 courses named «学位英语», teacher/room is the identity.
+ * Teacher / times / classroom / term secondary parts, official-site parity
+ * (usability overhaul C3). 批5 (plan 2026-09-13) splits them out so the
+ * course browser can render the teacher as a separate filter chip while the
+ * sidebar keeps the joined line — with 212 courses named «学位英语»,
+ * teacher/room is the identity.
  */
-export function courseSubLine(course: CourseTreeInfo): string | null {
-  const parts = [course.teacher, course.courTimes, course.classroom, course.term].filter(
+export function courseSubParts(course: CourseTreeInfo): string[] {
+  return [course.teacher, course.courTimes, course.classroom, course.term].filter(
     (p): p is string => p != null && p !== ''
   )
+}
+
+export function courseSubLine(course: CourseTreeInfo): string | null {
+  const parts = courseSubParts(course)
   return parts.length > 0 ? parts.join(' · ') : null
 }

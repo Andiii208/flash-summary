@@ -748,6 +748,37 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .course-card-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .course-card-name { flex: 1; min-width: 0; font-size: var(--font-size-sm); font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .course-card-sub { color: var(--text-muted); font-size: var(--font-size-xs); padding-left: 27px; }
+/* 批5: filter bar + interactive cards */
+.course-browser-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.course-browser-select {
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--text); font-size: var(--font-size-xs); font-family: inherit;
+}
+.course-card-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px;
+  border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; font-family: inherit;
+}
+.course-card-head .pin-btn { width: 24px; height: 24px; }
+.course-card-teacher {
+  border: none; background: none; padding: 0; cursor: pointer; font-family: inherit;
+  font-size: var(--font-size-xs); color: var(--text-muted);
+  text-decoration: underline dotted; text-underline-offset: 2px;
+}
+.course-card-teacher:hover { color: var(--accent); }
+.course-card-lessons { display: flex; flex-direction: column; gap: 2px; border-top: 1px dashed var(--border); margin-top: 2px; padding-top: 4px; }
+.course-card-lesson {
+  display: flex; align-items: center; gap: 8px; border: none; background: transparent;
+  padding: 4px 6px; border-radius: var(--radius-sm); cursor: pointer; text-align: left;
+  font-size: var(--font-size-xs); color: var(--text); font-family: inherit;
+}
+.course-card-lesson:hover { background: var(--surface-2); }
+.course-card-lesson.selected { background: var(--accent-soft); color: var(--accent); }
+.course-card-lesson-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.course-card-lessons-empty {
+  display: flex; align-items: center; gap: 10px;
+  border-top: 1px dashed var(--border); margin-top: 2px; padding-top: 6px;
+  color: var(--text-muted); font-size: var(--font-size-xs);
+}
 /* entry button on the «全部课程» row (D6-A) */
 .all-courses-row { display: flex; align-items: stretch; gap: 6px; }
 .all-courses-row .all-courses-head { flex: 1; width: auto; }

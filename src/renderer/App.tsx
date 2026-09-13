@@ -327,8 +327,22 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onClose={state.closeBili}
         toast={state.toast}
       />
-      {/* 批4 (plan 2026-09-13): fullscreen course browser (D5-A near-fullscreen modal). */}
-      <CourseBrowser open={courseBrowserOpen} tree={state.tree} onClose={closeCourseBrowser} />
+      {/* 批4 (plan 2026-09-13): fullscreen course browser (D5-A near-fullscreen modal).
+          批5: full handler parity with the sidebar rows (star/map/harvest/delete,
+          lesson pick closes the browser and lands the selection). */}
+      <CourseBrowser
+        open={courseBrowserOpen}
+        tree={state.tree}
+        selectedLessonId={state.currentLesson}
+        onSelectLesson={state.selectLesson}
+        onToggleMine={state.toggleMine}
+        onHarvestLessons={state.harvestLessons}
+        onRemoveCourse={state.removeCourse}
+        onCourseMap={state.openCourseMap}
+        harvestInflight={state.harvestInflight}
+        courseMapBusy={state.courseMapBusy}
+        onClose={closeCourseBrowser}
+      />
       <div class="app-main">
         <aside class={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`} ref={sidebarRef}>
           {/* A1 (plan 2026-09-13): the toggle lives at the END of the header
