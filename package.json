@@ -23,7 +23,19 @@
     },
     "files": [
       "out/**",
-      "package.json"
+      "package.json",
+      "!node_modules/ffmpeg-static/**",
+      "!node_modules/ffprobe-static/**",
+      "!node_modules/better-sqlite3/deps/**",
+      "!node_modules/better-sqlite3/src/**",
+      "!node_modules/better-sqlite3/build/**",
+      "!node_modules/better-sqlite3/prebuilds/darwin-arm64.node",
+      "!node_modules/better-sqlite3/prebuilds/darwin-x64.node",
+      "!node_modules/better-sqlite3/prebuilds/linux-arm64.node",
+      "!node_modules/better-sqlite3/prebuilds/linux-x64.node",
+      "!node_modules/better-sqlite3/prebuilds/linuxmusl-arm64.node",
+      "!node_modules/better-sqlite3/prebuilds/linuxmusl-x64.node",
+      "!node_modules/better-sqlite3/prebuilds/win32-arm64.node"
     ],
     "extraResources": [
       {
@@ -60,7 +72,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "license": "build/installer-license.txt"
-    }
+    },
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ]
   },
   "scripts": {
     "dev": "electron-vite dev",
@@ -89,23 +105,23 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.0",
     "eslint": "^9.30.0",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
     "happy-dom": "^20.12.0",
+    "lucide-preact": "^1.40.0",
     "lxgw-wenkai-screen-webfont": "^1.7.0",
     "png-to-ico": "^3.0.2",
+    "preact": "^10.29.8",
+    "qrcode": "^1.5.4",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.35.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "^4.5.4"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
-    "ffmpeg-static": "^5.3.0",
-    "ffprobe-static": "^3.1.0",
-    "jpeg-js": "^0.4.4",
-    "lucide-preact": "^1.40.0",
-    "preact": "^10.29.8",
-    "qrcode": "^1.5.4",
-    "zod": "^4.5.4"
+    "jpeg-js": "^0.4.4"
   },
   "allowScripts": {
     "better-sqlite3@13.0.3": true,

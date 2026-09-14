@@ -4,7 +4,20 @@
 
 ## [未发布]
 
-暂无。
+### 变更
+- **安装包体积精简 -48.3%（307.7 MB → 159.2 MB，实测 `release/Flash Summary Setup 0.7.5.exe` = 159,164,522 B）**：方案 docs/plans/2026-09-14-package-size-slimming.md。根因是 `electron-builder` 把 production dependencies **整包**拷进 `app.asar.unpacked`——`ffprobe-static` 带了 6 个平台二进制（未压缩 335 MB，本项目 Windows-only）、`ffmpeg-static/ffmpeg.exe` 与 `resources/ffmpeg/ffmpeg.exe` 是**同一份文件的第二份拷贝**（79 MB），两者应用运行时一个字节都不会读。四处改动，**零功能删减、零业务逻辑改动**：
+  1. 只用于构建的包移出 `dependencies`：`zod`/`qrcode`/`preact`/`lucide-preact`（已被 bundle 内联）、`ffmpeg-static`/`ffprobe-static`（运行时二进制由 `extraResources` 提供）。依赖收集从 11 个包降到 3 个。
+  2. `build.files` 排除 `better-sqlite3` 的 SQLite C 源码（`deps/`、`src/`、`build/`）与 7 个非 win32-x64 平台 prebuild（`app.asar.unpacked` 26.8 MB → 2.0 MB）。
+  3. `electronLanguages: ["zh-CN", "en-US"]`，去掉 53 个用不到的语言包（48.4 MB → 1.14 MB）。
+  4. renderer 新增 Vite 插件剥离 `@fontsource` 的 legacy `.woff` url：Chromium 永远只用 woff2，但 Vite 会把 CSS 里每个 `url()` 都 emit 成文件（500 个 woff → 0，`assets` 38 MB → 21 MB）。
+- **踩坑记录（写在这里防止复发）**：`build.files` 里的负向模式对 node_modules 生效，但路径基准是**应用目录**而非包目录（`filter.js` 的 `getRelativePath()` 优先取 `NodeModuleCopyHelper` 挂上的 `stat.moduleFullFilePath`）。所以 `!node_modules/better-sqlite3/deps/**` 有效、而看似更"局部"的 `!deps/**` 完全无效。另外：`build.files` 里**一个 `!` 模式都没有时过滤器为 `null`**，production dependencies 被原样整包拷贝——这正是 451 MB 死重量的来源。
+- **新增打包机约束**：`ffmpeg-static`/`ffprobe-static` 现在在 `devDependencies`，而 `extraResources` 仍从 `node_modules/` 取源文件，因此**打包机必须安装 devDependencies**（`npm ci --omit=dev` 之后跑 `npm run dist` 会在 `extraResources` 阶段失败；CI 用 `npm ci`，不受影响）。已记入方案文档 §6。
+
+### 验证
+- 四门禁：`lint` / `typecheck` / **898 / 898 测试** / `build` 全过。
+- `verify-asar` 601 文件 sha256 一致；`smoke` 32/32。
+- **打包产物冒烟 32/32**（用 `release/win-unpacked/Flash Summary.exe` 跑同一套冒烟，覆盖安装版从 `app.asar.unpacked` 加载 better-sqlite3 的路径——`app.db created` + 10 条迁移全过）。
+- **打包后媒体二进制实跑**：`ffmpeg.exe`/`ffprobe.exe` 版本查询、16kHz 单声道生成、`ffprobe -select_streams a`（`hasAudioStream` 路径）、`-vn -ar 16000 -f wav`（ASR 抽取路径）、`-c copy`（remux 路径）全部通过。
 
 ## [0.7.5] — 测试构建（2026-09-13，未打 tag）· 侧栏/笔记库观感修正 + 课程全屏浏览
 
