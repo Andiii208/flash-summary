@@ -109,9 +109,11 @@
     "ffmpeg-static": "^5.3.0",
     "ffprobe-static": "^3.1.0",
     "happy-dom": "^20.12.0",
+    "katex": "^0.18.7",
     "lucide-preact": "^1.40.0",
     "lxgw-wenkai-screen-webfont": "^1.7.0",
     "png-to-ico": "^3.0.2",
+    "pngjs": "^7.0.0",
     "preact": "^10.29.8",
     "qrcode": "^1.5.4",
     "tailwindcss": "^4.3.3",
@@ -122,9 +124,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
-    "jpeg-js": "^0.4.4",
-    "katex": "^0.18.7",
-    "pngjs": "^7.0.0"
+    "jpeg-js": "^0.4.4"
   },
   "allowScripts": {
     "better-sqlite3@13.0.3": true,

@@ -9,7 +9,7 @@ version: 2.0.0
 > 2026-09-04 由 Note Revolution 计划沉淀。方法论转化自官方 document-skills（pdf 的矢量铁律/分页质量门/色彩纪律、pptx 的反 AI 味清单），实现事实以本仓库代码为准。
 >
 > **2026-09-17 v2.0.0**：按 plan `docs/plans/2026-09-17-note-quality-upgrade.md` 重写为
-> 「五阶段 + 每阶段门禁」，补写 PPT×关键帧融合，修订 §9 方法论参照并新增外部方法论
+> 「五阶段 + 每阶段门禁」，补写 PPT×关键帧融合，修订方法论参照（现 §15）并新增外部方法论
 > 吸收登记。定位经 Andiii 裁定收窄为**「把总结做好」**——**不做学习/教学功能**（见 §13）。
 
 ## 0. 工艺五阶段（先看这张图，再看细节）
@@ -232,9 +232,36 @@ Note {
 > （那份文档 §一 的 Dunlosky 效用分级分析仍然有效，保留作调研存档）。
 > **若将来要重开学习科学线，应当单独立项，不要并进笔记质量方案。**
 
-## 14. 方法论参照（GitHub 调研）
+## 14. 与外部 Agent 能力外露方案的会师点（2026-09-17 写死，勿绕）
 
-### 13.1 外部方法论吸收登记（2026-09-17）
+背景：`docs/plans/2026-09-17-agent-capability-exposure.md` 计划把本产品的「视频源 →
+总结文档」能力经回环服务 + stdio 桥接外露给 ZCode / Codex / WorkBuddy 等外部 Agent，
+工具面里有两个**读**工具：`note_get(lessonId, format)` 与 `document_export(lessonId, format)`。
+
+**硬约束（改这两条链路前必读）**：
+
+1. **外露通道返回的 markdown 必须过同一套 `shared/notes/*` 投影**——`note_get` 的
+   markdown 走 `noteToMarkdown`，导出走 `obsidian.ts` / `anki.ts` / `mindmap-svg.ts`，
+   一个字节都不许另写一份。理由：本文件 §0 的「一个 JSON 驱动全部呈现」是产品的地基；
+   外露通道如果自建投影，就会长出**第二事实源**，此后五视图/PDF/Obsidian 修好了而
+   Agent 拿到的那份没修——同一份笔记在两条通道上内容不一致，而用户无从发现。
+2. **`document_export` 必须复用现有的导出投影，不得为了「无对话框」另实现一套**。
+   无头变体只允许改**落盘与返回路径**这一层（写 `exports/` 并返回绝对路径），
+   内容生成仍然调 `shared/notes/*`。
+3. **凭据边界**：工具只返回文档与任务状态，**绝不返回** cookie / JWT / API Key
+   （与 `DISCLAIMER.md` §4、AGENTS「反馈通道只给入口、不上报」同源）。
+4. **声明层先行**：外露是**新的用户可见承诺**（批量边界、风控提示），按 AGENTS
+   「声明层纪律」必须先进 spec §9 与 `DISCLAIMER.md` 再落实现——那份方案的批 0
+   就是干这个的，不许跳过。
+
+**回归防线**：任何改动 `shared/notes/` 投影的批次，都要意识到它有**两个消费面**
+（应用内五视图/导出 + 外露通道）。改动后除四门禁外，应顺带确认
+`tests/concept-example.test.ts` 一类「全链路投影」用例仍覆盖新字段——那正是
+「新字段有没有在每个出口都落地」的机械保证。
+
+## 15. 方法论参照（GitHub 调研）
+
+### 15.1 外部方法论吸收登记（2026-09-17）
 
 | 来源 | 仓库许可 | 吸收了什么 | 处置 |
 |---|---|---|---|
@@ -247,7 +274,7 @@ Note {
 **若将来确要吸收第三方文本**：先澄清 provenance，再在 `THIRD-PARTY-NOTICES.md` 登记 +
 许可文本进 `LICENSES/`（AGENTS 硬规定）。
 
-### 13.2 已评估不采纳（含教学向，防止重复提案）
+### 15.2 已评估不采纳（含教学向，防止重复提案）
 
 - 教学向（见 §13 的整份清单）：`active-recall-practice`、`generating-practice-questions`、
   `flashcard-generation`、`anki-card-creator`、`spaced-repetition`、`feynman-technique`、`exam-prep-plan`。
@@ -258,7 +285,7 @@ Note {
 - `tapestry/learn-this`（URL→提取→行动计划）：编排类，方法论视图已承载该职责。
 - qiaomu 的多源抓取/NotebookLM 上传管线：与「本地优先、自有管线」定位冲突。
 
-### 13.3 Cornell 5R ↔ 五视图映射（视图设计的理论锚点）
+### 15.3 Cornell 5R ↔ 五视图映射（视图设计的理论锚点）
 
 先例：`KenWuqianghao/Obsidian-Cornell-Notes-Generator`（LLM 从 lecture transcript 生成 Cornell 时间线笔记，与本产品场景同构）；生态参照 `latazadehomero/cornell-marginalia`、`TfTHacker/cornell-notes-learning-vault`。
 
@@ -269,7 +296,7 @@ Note {
 | Summary（页底总结） | 标准总结视图 | 总结必须是**合上详录后能独立读懂**的封闭叙述 |
 | Reflect / Review | 方法论 + 疑问与缺口 | 反思层永远不与详录混排—— methodology 单独成视图的依据 |
 
-### 13.4 Zettelkasten 原子化（概念卡的原则）
+### 15.4 Zettelkasten 原子化（概念卡的原则）
 
 参照 `01110100chony/optimized-study`（Obsidian Zettelkasten + Claude 苏格拉底式，STEM 深度学习）。原则：概念卡**一卡一概念、自足可读**。当前 `concepts[]` 已是原子卡；2026-09-17 起补 `example` 让「自足」落到**具体实例**上（而不只是定义够长）。
 
