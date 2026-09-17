@@ -73,6 +73,16 @@ describe('SYSTEM_PROMPT 内容质量规约 (批1 2026-09-08)', () => {
     expect(SYSTEM_PROMPT).toContain('concepts:[{term,definition,example,refs}]')
   })
 
+  it('批4 收口：formula 的 content 必须用 LaTeX（否则 KaTeX 渲染器空转）', () => {
+    // 真实数据验收发现的缺口：规则 4 原本「除 overview/methodology 外一律纯文本」把
+    // formula 的 content 也禁了 Markdown/LaTeX，于是渲染器渲染的 $...$ 语法模型永远
+    // 不会写——KaTeX 是空转的。补上例外并钉住。
+    expect(SYSTEM_PROMPT).toContain('kind="formula" 的 content 必须用 LaTeX 书写')
+    expect(SYSTEM_PROMPT).toContain('$$...$$')
+    expect(SYSTEM_PROMPT).toContain('KaTeX')
+    expect(SYSTEM_PROMPT).toContain('$...$')
+  })
+
   it('批6 9.11 去 AI 味：去路标 / 具体优先 / 不均匀化', () => {
     expect(NOTE_QUALITY_PROMPT).toContain('9.11')
     expect(NOTE_QUALITY_PROMPT).toContain('去路标')
