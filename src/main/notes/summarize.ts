@@ -390,7 +390,13 @@ export async function summarizeLesson(
       /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped: NormalizationDropCounts
       /** 批3: 生成闭环结果——返修后的体检结果与是否真的返修过。 */
-      health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean }
+      health: {
+        warnCount: number
+        grade: 'good' | 'fair' | 'weak'
+        repaired: boolean
+        /** 返修前的 warn 数（未返修时为 null）。 */
+        warnCountBeforeRepair: number | null
+      }
     }
   | { error: string }
 > {
@@ -423,6 +429,8 @@ export async function summarizeLesson(
     let stats = verified.stats
     let warnCountBefore = noteHealth(note, hitRate, transcriptHitRate).warnCount
     let repaired = false
+    /** 返修前的 warn 数——只有真返修过才有值，用于把「返修改进了多少」暴露出来。 */
+    let warnCountBeforeRepair: number | null = null
     if (warnCountBefore > 0) {
       const health = noteHealth(note, hitRate, transcriptHitRate)
       const attempt = await repairOnce(
@@ -438,6 +446,7 @@ export async function summarizeLesson(
       if (attempt != null && attempt.warnCount < warnCountBefore) {
         note = attempt.note
         stats = attempt.stats
+        warnCountBeforeRepair = warnCountBefore
         warnCountBefore = attempt.warnCount
         repaired = true
       }
@@ -453,7 +462,13 @@ export async function summarizeLesson(
       droppedRefs: dropped,
       /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped,
-      health: { warnCount: warnCountBefore, grade: noteHealth(note).grade, repaired }
+      health: {
+        warnCount: warnCountBefore,
+        grade: noteHealth(note).grade,
+        repaired,
+        /** 返修前的 warn 数（未返修时为 null），便于展示「返修把 N 项改进到 M 项」。 */
+        warnCountBeforeRepair
+      }
     }
   } catch (err) {
     return { error: `笔记生成失败: ${(err as Error).message}` }

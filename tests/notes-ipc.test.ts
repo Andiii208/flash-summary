@@ -294,7 +294,7 @@ describe('notes:regenerate (2026-09-04)', () => {
       // 批3: 归一层丢弃计数。这份夹具的 timeline evidence 是合法的 kf:kf-1，
       // 也没有 quiz/conceptLinks/terms，所以一项没丢。
       normalizationDropped: {},
-      health: { warnCount: 5, grade: 'weak', repaired: false }
+      health: { warnCount: 5, grade: 'weak', repaired: false, warnCountBeforeRepair: null }
     })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
     expect(row).toEqual({ version: 1, model: 'mimo-v2.5' })
@@ -448,7 +448,8 @@ describe('批3 生成质量闭环：有界返修（2026-09-17）', () => {
       value?: { health: { warnCount: number; grade: string; repaired: boolean }; images: number }
     }
     expect(res.ok).toBe(true)
-    expect(res.value?.health).toEqual({ warnCount: 0, grade: 'good', repaired: true })
+    // 返修前 5 项（太短/空概念/空时间线/树分支不足/树层数不足）→ 返修后 0 项。
+    expect(res.value?.health).toEqual({ warnCount: 0, grade: 'good', repaired: true, warnCountBeforeRepair: 5 })
     // 恰好两次：生成 + 返修（返修不再触发第三次）。
     expect(chatJson).toHaveBeenCalledTimes(2)
 
@@ -510,7 +511,7 @@ describe('批3 生成质量闭环：有界返修（2026-09-17）', () => {
     registerIpc(ctx, ipc as never)
     const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { health: { warnCount: number; repaired: boolean } } }
     expect(res.ok).toBe(true)
-    expect(res.value?.health).toEqual({ warnCount: 0, grade: 'good', repaired: false })
+    expect(res.value?.health).toEqual({ warnCount: 0, grade: 'good', repaired: false, warnCountBeforeRepair: null })
     expect(chatJson).toHaveBeenCalledTimes(1)
   })
 

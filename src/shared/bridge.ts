@@ -231,6 +231,8 @@ export interface NotesBridge {
       droppedRefs?: number
       /** 批3 (2026-09-17): 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped?: Record<string, number>
+      /** 批3: 生成闭环结果（返修后体检 + 是否真返修过 + 返修前的 warn 数）。 */
+      health?: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean; warnCountBeforeRepair: number | null }
     }>
   >
   /** 批5 (plan 2026-09-07 v07): feedback-driven polish — revises the latest note into version N+1. */

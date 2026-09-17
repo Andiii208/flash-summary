@@ -205,6 +205,7 @@ Note {
   - `node scripts/ui-shots.mjs [outDir]` —— 真实库**一次性副本**启动真实构建，走查各视图并截图（可见性走查）。
   - `npx vite-node scripts/note-ref-audit.ts` —— **只读**真实库，用新核验逻辑跑各笔记的转写锚，输出可核验率 / at 越界 / 邻域违例的真数字。
   - `node scripts/note-pdf-verify.mjs` —— 往**副本**注入一份含 LaTeX 公式/表格/例子/关联的样例笔记，走真实「导出 PDF 讲义」按钮流，扫 PDF 字节确认 **KaTeX 字体子集已嵌入（= 公式是矢量文本而非图片）**，并顺带核验迁移在真实库副本上生效。
+  - `node scripts/note-regen-e2e.mjs --keep` —— 在**副本**上跑真实重生成（真实模型）：库副本 + 真实 userData 的 `Local State`（DPAPI 缝）→ 逐课调 `window.seuSummary.notes.regenerate`。**单课上限必须大于两次串联的聊天超时**（生成 + 返修，而 `CHAT_TIMEOUT_MS=600_000`/次）——脚本取 25 分钟，否则你观察到的只是自己被掐断，不是应用的结果。
   - 教训：**「渲染器写了」不等于「渲染得到」**。批4 的 KaTeX 一度是空转的——规则 4 禁止一切 Markdown 标记，把 formula 的 content 也禁了，模型永远不会写 `$...$`；批4 的表格一度只在 detail 视图验，而表格其实在方法论视图。**新增渲染能力必须配一条真实数据的 DOM 探针**。
 - **组件测试环境缝**：`tests/components/setup.ts` 补 `document.compatMode`——happy-dom 不实现它，
   而 KaTeX 在**模块加载时**据此判定并永久禁用渲染。真实渲染进程 `index.html` 第一行就是

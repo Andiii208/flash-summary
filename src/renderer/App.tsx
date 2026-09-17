@@ -2139,7 +2139,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           // 在界面上完全不可见（用户只看到「内容有点少」）。
           const normalizedTotal = Object.values(result.normalizationDropped ?? {}).reduce((acc, n) => acc + n, 0)
           const normalSuffix = normalizedTotal > 0 ? `，${normalizedTotal} 项格式不合法已丢弃` : ''
-          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}`, 'success')
+          // 批3: 返修真的发生时把「N 项 → M 项」说出来——否则用户不知道系统改善过什么。
+          const repairSuffix =
+            result.health?.repaired === true && result.health.warnCountBeforeRepair != null
+              ? `，体检 ${result.health.warnCountBeforeRepair} 项 → ${result.health.warnCount} 项`
+              : ''
+          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}${repairSuffix}`, 'success')
           await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
