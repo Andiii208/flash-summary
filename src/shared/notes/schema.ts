@@ -392,6 +392,90 @@ function repairJsonCandidate(text: string): string {
 }
 
 /** Parse+validate a stored note JSON; throws with a readable message. */
+/**
+ * 归一化诊断（批3, plan 2026-09-17 item 3）：模型产出里有多少项**被格式层悄悄丢了**。
+ *
+ * 起因：`quiz` / `conceptLinks` / `terms` / `evidence` 的非法项都在归一层被静默丢弃，
+ * 用户看到的只是「内容有点少」，体检也只会说「空」——区分不了「模型没写」和
+ * 「写了但被拦下」。这两者是完全不同的问题，必须让它们可分。
+ *
+ * 实现刻意用**原始数组长度 vs 归一化后长度**的差分，而不是给每个 zod transform 加计数器：
+ * 判定谓词只有一份（在归一层里），这里不复制它们——复制就会漂移。
+ */
+export interface NormalizationDropCounts {
+  /** key = 字段名，value = 被丢弃的项数。只列 >0 的字段。 */
+  [field: string]: number
+}
+
+export interface ParsedNote {
+  note: Note
+  /** 各字段被格式层丢弃的项数（空对象 = 一个都没丢）。 */
+  dropped: NormalizationDropCounts
+}
+
+function countIfArray(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0
+}
+
+/** 递归数一棵原始树里的 terms 总数（树形结构不规整也要能数）。 */
+function countRawTerms(node: unknown): number {
+  if (node == null || typeof node !== 'object') return 0
+  const record = node as { terms?: unknown; children?: unknown }
+  const own = countIfArray(record.terms)
+  const children = Array.isArray(record.children) ? record.children : []
+  return own + children.reduce<number>((acc, child) => acc + countRawTerms(child), 0)
+}
+
+function countKeptTerms(tree: TreeNode): number {
+  const own = tree.terms?.length ?? 0
+  return own + tree.children.reduce((acc, child) => acc + countKeptTerms(child), 0)
+}
+
+/** 原始 JSON 与归一化结果之间的丢弃差分。 */
+function diffNormalization(rawNote: unknown, note: Note): NormalizationDropCounts {
+  if (rawNote == null || typeof rawNote !== 'object') return {}
+  const raw = rawNote as Record<string, unknown>
+  const dropped: NormalizationDropCounts = {}
+  const put = (field: string, count: number): void => {
+    if (count > 0) dropped[field] = count
+  }
+  put('quiz', countIfArray(raw.quiz) - note.quiz.length)
+  put('conceptLinks', countIfArray(raw.conceptLinks) - note.conceptLinks.length)
+  put('transcriptRefs', countIfArray(raw.transcriptRefs) - note.transcriptRefs.length)
+  put('evidence', countIfArray(raw.evidence) - note.evidence.length)
+  put('treeTerms', countRawTerms(raw.knowledgeTree) - countKeptTerms(note.knowledgeTree))
+  const rawTimelineEvidence = Array.isArray(raw.timeline)
+    ? (raw.timeline as unknown[]).reduce<number>((acc, entry) => {
+        if (entry == null || typeof entry !== 'object') return acc
+        return acc + countIfArray((entry as { evidence?: unknown }).evidence)
+      }, 0)
+    : 0
+  const keptTimelineEvidence = note.timeline.reduce((acc, entry) => acc + entry.evidence.length, 0)
+  put('timelineEvidence', rawTimelineEvidence - keptTimelineEvidence)
+  return dropped
+}
+
+/**
+ * 与 `parseNote` 同源，但额外回报归一化丢弃计数（批3）。
+ * 生成路径用它把「模型编了 N 项被拦下」变成用户看得见的事实。
+ */
+export function parseNoteWithDiagnostics(json: string): ParsedNote {
+  let firstError: Error | null = null
+  for (const text of [json, repairJsonCandidate(json)]) {
+    let rawParsed: unknown
+    try {
+      rawParsed = JSON.parse(text)
+    } catch (err) {
+      firstError = firstError ?? (err as Error)
+      continue
+    }
+    const parsed = ValidatedNoteSchema.safeParse(rawParsed)
+    if (parsed.success) return { note: parsed.data, dropped: diffNormalization(rawParsed, parsed.data) }
+    const issue = parsed.error.issues[0]
+    firstError = new Error(`note JSON failed validation: ${issue?.path.join('.')} ${issue?.message}`)
+  }
+  throw firstError ?? new Error('note JSON failed validation')
+}
 export function parseNote(json: string): Note {
   // Two attempts: verbatim, then the repaired candidate. Both may throw at
   // JSON.parse (syntax) — the first error is preserved for the caller.

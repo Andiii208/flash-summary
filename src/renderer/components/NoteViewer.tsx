@@ -70,6 +70,8 @@ export interface NoteViewerProps {
   onExportAnki?: () => void
   /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
   onExportSvg?: () => void
+  /** 批5: 位图导出（光栅化在渲染层，main 只写字节）。 */
+  onExportPng?: () => void
   /** Copy the markdown rendering to the clipboard (best-effort). */
   onCopy?: () => void
   /** 批5: feedback polish in flight (button busy state). */
@@ -104,6 +106,7 @@ export function NoteViewer({
   onExportObsidian,
   onExportAnki,
   onExportSvg,
+  onExportPng,
   onCopy,
   polishBusy = false,
   onPolish
@@ -344,6 +347,7 @@ export function NoteViewer({
               conceptLinks={note.conceptLinks}
               onViewDetailed={jumpToConcept}
               onExportSvg={onExportSvg}
+              onExportPng={onExportPng}
               exportBusy={exportBusy}
             />
           ) : (

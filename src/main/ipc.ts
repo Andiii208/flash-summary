@@ -44,6 +44,9 @@ import { FEEDBACK_FORM_URL } from '../shared/feedback'
 import { buildDiagnostics, type DiagnosticsTask } from './feedback/diagnostics'
 import { redact } from './logger'
 import type { Note } from '../shared/notes/schema'
+
+/** 批5: PNG 魔数——渲染层传来的位图必须真的是 PNG 才落盘。 */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 import { resolveCacheDir, attachmentsPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
@@ -1277,6 +1280,52 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         written.push(target)
       })
       return ok({ canceled: false, paths: written })
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 批5 (plan 2026-09-17 note-quality-upgrade item 3): export the knowledge tree
+  // as a bitmap. 光栅化在**渲染层**做（canvas 只能在那里用），渲染层调
+  // `treeToSvgDocument` 自己产 SVG 再画到 canvas，这里只负责写字节。
+  // 这样 SVG 文本不必经 IPC 往返，主进程也不需要解码器（零新依赖）。
+  // 入参是 PNG 的 base64：main 侧**校验魔数**后才落盘——渲染层是可信的，
+  // 但「渲染层传来的字节直接写盘」这种面不该无条件打开。
+  handle(ipc, 'notes:exportPng', async (_e, lessonId: unknown, base64: unknown) => {
+    try {
+      const id = str(lessonId, 'lessonId')
+      const data = str(base64, 'png')
+      const bytes = Buffer.from(data, 'base64')
+      if (bytes.length < 8 || bytes.subarray(0, 8).compare(PNG_SIGNATURE) !== 0) {
+        throw new Error('导出失败：收到的数据不是 PNG')
+      }
+      const lesson = ctx.db
+        .prepare(
+          `SELECT l.title, c.name AS course_name, c.teacher
+           FROM lessons l LEFT JOIN courses c ON c.id = l.course_id WHERE l.id = ?`
+        )
+        .get(id) as { title: string; course_name: string | null; teacher: string | null } | undefined
+      const fullName = noteExportBaseName({
+        courseName: lesson?.course_name,
+        teacher: lesson?.teacher,
+        lessonTitle: lesson?.title,
+        lessonId: id
+      })
+      const overridePath = process.env.SEU_PNG_PATH
+      if (overridePath != null && overridePath !== '') {
+        writeFileSync(overridePath, bytes)
+        return ok({ canceled: false, path: overridePath })
+      }
+      const win = BrowserWindow.getFocusedWindow()
+      const options: SaveDialogOptions = {
+        title: '导出思维导图为 PNG',
+        defaultPath: join(ctx.exportsDir(), `${fullName}.png`),
+        filters: [{ name: 'PNG', extensions: ['png'] }]
+      }
+      const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
+      if (canceled || filePath == null) return ok({ canceled: true })
+      writeFileSync(filePath, bytes)
+      return ok({ canceled: false, path: filePath })
     } catch (e) {
       return err(e)
     }

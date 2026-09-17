@@ -9,6 +9,7 @@ import type { NoteAttachmentInfo } from '../../shared/bridge'
 import type { ViewBlock } from '../../shared/notes/views'
 import { MdLite } from './MdLite'
 import { InlineText } from './InlineText'
+import { CodeBlock } from './CodeBlock'
 import { Dialog } from '../ui/Dialog'
 
 export interface NoteBlocksProps {
@@ -305,9 +306,8 @@ function FormulaList({ items }: { items: Note['formulasAndSteps'] }): JSX.Elemen
         <div key={i} class={`formula-item kind-${item.kind}`}>
           <span class="formula-tag">{labels[item.kind]}</span>
           {item.kind === 'code' ? (
-            <pre class="formula-code">
-              <code>{item.content}</code>
-            </pre>
+            /* 批4 D8=B: 共享 CodeBlock（≥3 行才编号、行号走 CSS 计数器不进文本） */
+            <CodeBlock code={item.content} class="formula-code" />
           ) : (
             /* 批4: 公式/操作正文走 MdLite——操作多步渲染成有序列表而非一长行 */
             <div class="formula-content">

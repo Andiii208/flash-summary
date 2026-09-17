@@ -210,6 +210,8 @@ export interface NotesBridge {
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
   /** M3.3 (map expansion): the knowledge tree as a standalone paper-white SVG. */
   exportSvg(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
+  /** 批5 (2026-09-17): 位图导出——光栅化在渲染层（canvas），main 只管写字节。 */
+  exportPng(lessonId: string, base64: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   /** M4.1 (map expansion): course-level map aggregated from every lesson's latest tree. */
   courseTree(courseId: string): Promise<ApiResult<{ tree: TreeNode; lessons: number; skipped: number }>>
   /** 2026-09-04: keyframe/PPT attachments for note views. */
@@ -227,6 +229,8 @@ export interface NotesBridge {
       /** 批1 (2026-09-17): 转写摘引可核验率；null/缺省 = 没有可判的摘引。 */
       transcriptHitRate?: { hits: number; total: number } | null
       droppedRefs?: number
+      /** 批3 (2026-09-17): 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
+      normalizationDropped?: Record<string, number>
     }>
   >
   /** 批5 (plan 2026-09-07 v07): feedback-driven polish — revises the latest note into version N+1. */

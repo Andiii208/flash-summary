@@ -153,6 +153,18 @@
   word-break: break-word;
 }
 .ph-doc code { font-family: 'JetBrains Mono', Consolas, ui-monospace, monospace; background: #f0f2f8; padding: 0 1mm; border-radius: 1mm; color: #2f3fd0; font-size: 9.5pt; }
+/* 批4 D8=B: 讲义里的代码块行号（同样走 CSS 计数器，不进文本）。 */
+.ph-doc .code-block .code-line { display: block; }
+.ph-doc .code-block.code-numbered { counter-reset: code-line; }
+.ph-doc .code-block.code-numbered .code-line::before {
+  counter-increment: code-line;
+  content: counter(code-line);
+  display: inline-block;
+  width: 6mm;
+  margin-right: 2mm;
+  text-align: right;
+  color: #8b93a5;
+}
 .ph-doc pre code { background: none; padding: 0; border: 0; color: #262b36; font-size: 9.5pt; }
 .ph-doc .md-lite strong { font-weight: 700; color: #14161f; }
 

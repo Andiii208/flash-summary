@@ -13,8 +13,15 @@ function esc(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
 
-/** Render the tree (always fully expanded, terms sub-lines on) as SVG text. */
-export function treeToSvg(tree: TreeNode, links: ConceptLink[], title: string): string {
+/** 一份导出文档：SVG 文本 + 画布尺寸（光栅化 PNG 时要用，避免重复算布局）。 */
+export interface SvgDocument {
+  svg: string
+  width: number
+  height: number
+}
+
+/** Render the tree (always fully expanded, terms sub-lines on) as SVG text + size. */
+export function treeToSvgDocument(tree: TreeNode, links: ConceptLink[], title: string): SvgDocument {
   const layout = computeMindMapLayout(tree, new Set(), { showTerms: true, links })
   const parts: string[] = []
   parts.push('<?xml version="1.0" encoding="UTF-8"?>')
@@ -52,5 +59,10 @@ export function treeToSvg(tree: TreeNode, links: ConceptLink[], title: string): 
     parts.push('</g>')
   }
   parts.push('</svg>')
-  return parts.join('')
+  return { svg: parts.join(''), width: layout.width, height: layout.height }
+}
+
+/** Render the tree (always fully expanded, terms sub-lines on) as SVG text. */
+export function treeToSvg(tree: TreeNode, links: ConceptLink[], title: string): string {
+  return treeToSvgDocument(tree, links, title).svg
 }

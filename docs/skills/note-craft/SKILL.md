@@ -112,6 +112,7 @@ Note {
     而是 `katex.render(tex, ref容器)` —— 容器由 Preact 创建，字符串从不经过我们的手。
   - 畸形 LaTeX 降级显示原文，一份笔记不该因一条公式写错而整块渲染失败。
 - 判断字段是否 markdown：`looksLikeMarkdown`（含表格判据 `hasTable`，**判据只有一份**，从 md-lite 导出）；纯散文投影为 paragraph 块。
+- **代码块**：屏幕端与 PDF 讲义共用 `components/CodeBlock.tsx`（此前各写一遍 `<pre><code>`，PDF 端连底色都没有）。行号规则只有一个事实源：**≥3 行才编号**，且行号走 **CSS 计数器**——不进入文本节点，复制出去的代码不带行号。
 
 ## 5. 思维导图
 
@@ -119,6 +120,13 @@ Note {
 - 交互（Map Expansion 2026-09-05）：视图内子工具栏（层级控制=collapsedSetForMaxDepth 纯函数 + 标题搜索：命中高亮/展开祖先/滚动定位，与回忆模式互斥）、Ctrl+滚轮指针锚点缩放 0.4-3x、空白拖拽平移、节点点击折叠（caret+后代计数胶囊）、ℹ️ 浮层（关联概念+锚定 quiz 翻面+跳详细笔记）、双击下钻焦点模式（面包屑返回，折叠集全路径空间 fullToRel/relToFull 映射）、回忆模式（depth≥2 同色遮罩逐个揭示）、导出 SVG。
 - 课程级：`notes:courseTree` 聚合各课最新版树（`mergeCourseTree` 纯函数，第N节课序复用 course-order），模态 CourseMapDialog；**不跨课时概念链接、不进 PDF**。
 - **关联线几何**（2026-09-17）：跨列走层级贝塞尔（与树边同形）；同列/重叠走**两者之间竖走廊的正交折线**——此前的中心直线必然穿过两个节点框。只保证不穿端点矩形（全局路由成本远超收益）。
+- **关系模式**（2026-09-17）：同一视图内的**第二种呈现**——把 `conceptLinks` 当主结构画成概念关系图（`shared/notes/relation-layout.ts`，纯函数）。刻意**不新增第六视图**：spec §5 修订批注① 把五视图钉死了，模式切换是纯呈现层改动。
+  - 布局确定性：按链接建联通分量 → 分量内节点**按 term 排序**均匀排在圆上（半径随节点数增长）→ 分量按「节点数降序 + 首 term」左到右排列。无迭代、无随机、无 d3，因此可测、可回归、截图稳定。
+  - 边**不受 ≤5 条限制**（这正是关系模式要解决的问题）；端点裁剪到盒边界；无向去重（A→B 与 B→A 只画一次）；解析不到的概念/自环一律不进图（归一层之后的二次防线）。
+  - 关系词就是「命题」的关系项——§8 的**命题审计**保证它不是名词填充。两者是配套的：审计管数据质量，关系模式管可见性。
+  - 没有可解析的关系边时**不显示**切换按钮（按下去只会看到一张空图）。
+
+- **导图导出**：SVG 走 main 侧 `treeToSvg`（`notes:exportSvg`）；**PNG 在渲染层光栅化**（`renderer/rasterize-svg.ts` + `CodeBlock` 同级的共享渲染件）——`treeToSvgDocument` 是纯函数，渲染层直接用它产 SVG 再画进 canvas，于是 SVG 文本不必经 IPC 往返、main 不需要任何图像编码器（零新依赖），main 只解码 base64 + **校验 PNG 魔数** + 落盘。默认 2× 缩放，先铺纸白底。测试缝 `SEU_PNG_PATH`。
 - **边收集是索引而非全量扫描**：按父路径建一次 Map（原实现对每个节点全量 `filter` + 逐段比 `path`，课程级导图会明显吃 CPU）。性能门禁见 `tests/mindmap-layout.test.ts`。
 
 ## 6. PDF 讲义（printToPDF）
@@ -155,6 +163,9 @@ Note {
     报成缺口会逼模型编例子。
   - **容忍部分形状**：渲染层会在 mock/降级路径下传缺字段的笔记，`noteHealth` 绝不能因此抛错
     （曾导致 app-shell 整个 shell 崩溃）。
+- **归一化丢弃计数可见**（2026-09-17）：`parseNoteWithDiagnostics` 额外回报 `quiz` / `conceptLinks` / `transcriptRefs` / `evidence` / `treeTerms` / `timelineEvidence` 各被归一层丢了**几项**，生成 toast 里显示「N 项格式不合法已丢弃」。
+    起因：这些字段的非法项此前全被静默丢弃，用户只看到「内容有点少」，体检也只会说「空」——**区分不了「模型没写」与「写了但被拦下」**，而这是两种完全不同的问题。
+    实现刻意用「原始数组长度 vs 归一化后长度」的**差分**，而不是给每个 zod transform 加计数器：判定谓词只有一份（在归一层里），这里不复制它们——复制就会漂移。
 - **存量升级**：`notes:courseHealth(courseId)` IPC + 笔记库课程组「升级旧笔记」对话框。
   默认勾选口径 = **`warnCount > 0` 或 `promptVersion < CURRENT_PROMPT_VERSION`**（2026-09-17 扩）；
   确认后逐课串行 `notes:regenerate`（复用转写零下载）。

@@ -5,6 +5,7 @@ import { bindTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime }
 import { computeMindMapLayout, sublineFirstBaseline, sublineLinesOf, titleBaseline } from '../../shared/notes/mindmap-layout'
 import { MdLite } from './MdLite'
 import { InlineText } from './InlineText'
+import { CodeBlock } from './CodeBlock'
 
 export interface PrintHandoutData {
   note: Note
@@ -91,9 +92,7 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
             <div key={i} class={`ph-formula kind-${item.kind}`}>
               <span class="ph-formula-tag">{labelOf(item.kind)}</span>
               {item.kind === 'code' ? (
-                <pre>
-                  <code>{item.content}</code>
-                </pre>
+                <CodeBlock code={item.content} />
               ) : (
                 /* 批4: 公式/操作走 MdLite——操作步骤里的「1. **xx**：…」渲染成
                    有序列表+加粗，多步不再折成一长行（与屏幕端同待遇）。 */

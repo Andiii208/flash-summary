@@ -521,3 +521,64 @@ function clickButtonM(host: HTMLElement, label: string): void {
     button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   })
 }
+
+describe('批5 关系模式 + PNG 导出（2026-09-17）', () => {
+  const CONCEPTS = [
+    { term: '学习率', definition: '步长参数，过大震荡过小慢。'.repeat(3), refs: [] },
+    { term: '过拟合', definition: '训练高测试低，本质是容量过大。'.repeat(3), refs: [] },
+    { term: '正则化', definition: '通过惩罚大权重抑制过拟合的手段。'.repeat(3), refs: [] }
+  ]
+  const LINKS = [
+    { from: '学习率', to: '过拟合', label: '因果' },
+    { from: '正则化', to: '过拟合', label: '对比' }
+  ]
+
+  function mount(props: Record<string, unknown>): HTMLElement {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    act(() => render(<MindMap tree={TREE} {...props} />, host))
+    return host
+  }
+
+  it('有关系边时出现「关系模式」开关；没有时不出现（按下去只会看到空图）', () => {
+    const withLinks = mount({ concepts: CONCEPTS, conceptLinks: LINKS })
+    const toggle = [...withLinks.querySelectorAll('button')].find((b) => b.textContent === '关系模式')
+    expect(toggle).toBeDefined()
+
+    const withoutLinks = mount({ concepts: CONCEPTS, conceptLinks: [] })
+    expect([...withoutLinks.querySelectorAll('button')].some((b) => b.textContent === '关系模式')).toBe(false)
+  })
+
+  it('切换到关系模式：画出概念节点与全部关系边（不再受 ≤5 条虚线限制）', () => {
+    const host = mount({ concepts: CONCEPTS, conceptLinks: LINKS })
+    // 切换前是层级树，没有关系层
+    expect(host.querySelector('[data-testid="mindmap-relation-layer"]')).toBeNull()
+    const toggle = [...host.querySelectorAll('button')].find((b) => b.textContent === '关系模式') as HTMLButtonElement
+    act(() => toggle.click())
+    const layer = host.querySelector('[data-testid="mindmap-relation-layer"]')
+    expect(layer).not.toBeNull()
+    // 三个概念节点 + 两条带关系词的边
+    expect(layer!.querySelectorAll('.mindmap-relation-node')).toHaveLength(3)
+    expect(layer!.querySelectorAll('.mindmap-relation-line')).toHaveLength(2)
+    const labels = [...layer!.querySelectorAll('.mindmap-link-label')].map((el) => el.textContent).sort()
+    expect(labels).toEqual(['因果', '对比'])
+    // 再点一次回到层级树
+    act(() => toggle.click())
+    expect(host.querySelector('[data-testid="mindmap-relation-layer"]')).toBeNull()
+  })
+
+  it('导出 PNG 按钮：只在给了回调时出现，busy 时禁用并显示「导出中…」', () => {
+    const idle = mount({ onExportPng: () => undefined })
+    const png = [...idle.querySelectorAll('button')].find((b) => b.textContent === '导出 PNG')
+    expect(png).toBeDefined()
+    expect((png as HTMLButtonElement).disabled).toBe(false)
+
+    const busy = mount({ onExportPng: () => undefined, exportBusy: 'png' })
+    const busyBtn = [...busy.querySelectorAll('button')].find((b) => b.textContent === '导出中…')
+    expect(busyBtn).toBeDefined()
+    expect((busyBtn as HTMLButtonElement).disabled).toBe(true)
+
+    const none = mount({})
+    expect([...none.querySelectorAll('button')].some((b) => b.textContent === '导出 PNG')).toBe(false)
+  })
+})

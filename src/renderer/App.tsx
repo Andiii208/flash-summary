@@ -22,6 +22,8 @@ import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
 import { CourseMapDialog, type CourseMapInfo } from './components/CourseMapDialog'
 import { NoteUpgradeDialog } from './components/NoteUpgradeDialog'
+import { treeToSvgDocument } from '../shared/notes/mindmap-svg'
+import { svgToPngBase64 } from './rasterize-svg'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { ManualAdd } from './components/ManualAdd'
 import { BiliImportDialog } from './components/BiliImportDialog'
@@ -566,6 +568,11 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onExportObsidian={state.currentLesson !== '' && state.note != null ? () => state.exportNoteObsidian(state.currentLesson) : undefined}
               onExportAnki={state.currentLesson !== '' && state.note != null ? () => state.exportNoteAnki(state.currentLesson) : undefined}
               onExportSvg={state.currentLesson !== '' && state.note != null ? () => state.exportNoteSvg(state.currentLesson) : undefined}
+              onExportPng={
+                state.currentLesson !== '' && state.note != null
+                  ? () => state.exportNotePng(state.currentLesson, state.note as Note)
+                  : undefined
+              }
               onCopy={state.copyNote}
               polishBusy={state.notePolishBusy}
               onPolish={state.currentLesson !== '' ? (feedback) => state.polishNote(state.currentLesson, feedback) : undefined}
@@ -793,6 +800,8 @@ interface AppState {
   exportNoteAnki: (lessonId: string) => void
   /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
   exportNoteSvg: (lessonId: string) => void
+  /** 批5: 位图导出（渲染层光栅化）。 */
+  exportNotePng: (lessonId: string, note: Note) => void
   /** M4.1 (map expansion): open the course-level mind map dialog. */
   openCourseMap: (courseId: string) => void
   courseMap: CourseMapInfo | null
@@ -2035,6 +2044,40 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast, withExportBusy]
   )
 
+  /**
+   * 批5 (plan 2026-09-17 item 3): 导图位图导出。
+   *
+   * 分工：渲染层用 `treeToSvgDocument` 自己产 SVG（纯函数，不必经 IPC 往返）→
+   * canvas 光栅化（canvas 只在渲染层有）→ 把 PNG base64 交给 main 落盘。
+   * main 侧只解码 + 校验魔数 + 写文件，于是**零新依赖**（无需图像编码器）。
+   */
+  const runExportNotePng = useCallback(
+    (lessonId: string, note: Note): void => {
+      withExportBusy('png', async () => {
+        try {
+          const doc = treeToSvgDocument(note.knowledgeTree, note.conceptLinks, note.knowledgeTree.title)
+          const raster = await svgToPngBase64(doc.svg, doc.width, doc.height)
+          const res = await bridge.notes.exportPng(lessonId, raster.base64)
+          if (!res.ok) {
+            toast(res.error ?? '导出失败', 'error')
+            return
+          }
+          if (res.value?.canceled) return
+          const filePath = res.value?.path ?? ''
+          toast(`已导出：${filePath}`, 'success', {
+            actionLabel: '打开所在文件夹',
+            onAction: () => {
+              void bridge.notes.revealFile(filePath)
+            }
+          })
+        } catch (e) {
+          toast((e as Error).message || '导出失败', 'error')
+        }
+      })
+    },
+    [bridge, toast, withExportBusy]
+  )
+
   /** M4.1 (map expansion): aggregate the course's latest trees into one map. */
   const [courseMapBusy, setCourseMapBusy] = useState(false)
   const openCourseMap = useCallback(
@@ -2092,7 +2135,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
               : ''
           // F2 (review): fabricated refs are dropped before persisting — say so.
           const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
-          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}`, 'success')
+          // 批3: 归一层丢弃计数——「模型没写」与「写了但被拦下」是两种问题，后者此前
+          // 在界面上完全不可见（用户只看到「内容有点少」）。
+          const normalizedTotal = Object.values(result.normalizationDropped ?? {}).reduce((acc, n) => acc + n, 0)
+          const normalSuffix = normalizedTotal > 0 ? `，${normalizedTotal} 项格式不合法已丢弃` : ''
+          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}`, 'success')
           await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
@@ -2277,6 +2324,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   )
   const exportNoteAnki = useCallback((lessonId: string): void => guardExport(() => runExportNoteAnki(lessonId)), [guardExport, runExportNoteAnki])
   const exportNoteSvg = useCallback((lessonId: string): void => guardExport(() => runExportNoteSvg(lessonId)), [guardExport, runExportNoteSvg])
+  const exportNotePng = useCallback((lessonId: string, note: Note): void => guardExport(() => runExportNotePng(lessonId, note)), [guardExport, runExportNotePng])
   const exportNotePdf = useCallback((lessonId: string): void => guardExport(() => runExportNotePdf(lessonId)), [guardExport, runExportNotePdf])
   const copyNote = useCallback((): void => guardExport(runCopyNote), [guardExport, runCopyNote])
 
@@ -2406,6 +2454,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     exportCourseObsidian,
     exportNoteAnki,
     exportNoteSvg,
+    exportNotePng,
     openCourseMap,
     courseMap,
     closeCourseMap: () => setCourseMap(null),

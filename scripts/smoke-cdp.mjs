@@ -121,7 +121,7 @@ const EXPECTED_BRIDGE = {
   bilibili: ['login', 'loginStatus', 'logout', 'session', 'resolve', 'import'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
-  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
+  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'exportPng', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
   settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'acceptDisclaimer', 'optOutCopyrightNotice', 'onMigrateProgress'],
   log: ['rendererError'],

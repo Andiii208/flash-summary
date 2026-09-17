@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
@@ -291,6 +291,9 @@ describe('notes:regenerate (2026-09-04)', () => {
       transcriptHitRate: null,
       refStats: { total: 0, droppedAt: 0, clearedText: 0, quoted: 0, quotedVerified: 0, offNeighborhood: 0 },
       droppedRefs: 0,
+      // 批3: 归一层丢弃计数。这份夹具的 timeline evidence 是合法的 kf:kf-1，
+      // 也没有 quiz/conceptLinks/terms，所以一项没丢。
+      normalizationDropped: {},
       health: { warnCount: 5, grade: 'weak', repaired: false }
     })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
@@ -538,6 +541,111 @@ describe('批3 生成质量闭环：有界返修（2026-09-17）', () => {
       note_json: string
     }
     expect(row.note_json).not.toContain('不存在的关键帧')
+  })
+})
+
+describe('批3 归一化丢弃计数可见化（2026-09-17 item 3）', () => {
+  it('模型编的 quiz / 关联 / terms 被归一层丢掉的条数如实回报（不再静默）', async () => {
+    const ctx = makeCtx()
+    seedKeyframe()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-17T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+    // 三处故意非法：quiz 缺 answer、conceptLinks 指向不存在的概念、terms 引用未定义概念。
+    const dirty = JSON.stringify({
+      ...JSON.parse(RICH_NOTE),
+      quiz: [
+        { question: '合法题?', answer: '合法答案。', source: 'concept', term: '学习率' },
+        { question: '缺答案的题?', source: 'concept', term: '学习率' },
+        { question: '', answer: '空问题。', source: 'concept', term: '学习率' }
+      ],
+      conceptLinks: [
+        { from: '学习率', to: '数据处理', label: '前提' },
+        { from: '学习率', to: '不存在的概念', label: '对比' }
+      ]
+    })
+    const chatJson = vi.fn(async () => dirty)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as {
+      ok: boolean
+      value?: { normalizationDropped: Record<string, number> }
+    }
+    expect(res.ok).toBe(true)
+    // 2 条非法 quiz 与 1 条无法解析的关联都被拦下，且**数目可见**。
+    expect(res.value?.normalizationDropped.quiz).toBe(2)
+    expect(res.value?.normalizationDropped.conceptLinks).toBe(1)
+  })
+
+  it('全部合法时报空对象（不制造假警报）', async () => {
+    const ctx = makeCtx()
+    seedKeyframe()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-17T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+    const chatJson = vi.fn(async () => RICH_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { normalizationDropped: Record<string, number> } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.normalizationDropped).toEqual({})
+  })
+})
+
+describe('notes:exportPng (批5, plan 2026-09-17 item 3)', () => {
+  /** 一段真 PNG 字节（魔数对、后面随意）——handler 只校验魔数。 */
+  const PNG_BASE64 = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('rest')]).toString('base64')
+
+  it('把渲染层光栅化好的 PNG 写到 SEU_PNG_PATH', async () => {
+    const ctx = makeCtx()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-17T00:00:00Z')"
+    ).run(VALID_NOTE)
+    registerIpc(ctx, ipc as never)
+    const target = join(dir, 'map.png')
+    const prev = process.env.SEU_PNG_PATH
+    process.env.SEU_PNG_PATH = target
+    try {
+      const res = (await invoke('notes:exportPng', 'l1', PNG_BASE64)) as { ok: boolean; value?: { canceled: boolean; path?: string } }
+      expect(res.ok).toBe(true)
+      expect(res.value).toEqual({ canceled: false, path: target })
+      const bytes = readFileSync(target)
+      // 字节原样落盘（没有被二次编码/损坏）
+      expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    } finally {
+      if (prev == null) delete process.env.SEU_PNG_PATH
+      else process.env.SEU_PNG_PATH = prev
+    }
+  })
+
+  it('拒绝非 PNG 字节 —— 渲染层可信，但「把传来的字节直接写盘」这种面不该无条件打开', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const target = join(dir, 'bad.png')
+    const prev = process.env.SEU_PNG_PATH
+    process.env.SEU_PNG_PATH = target
+    try {
+      const notPng = Buffer.from('这不是 PNG').toString('base64')
+      const res = (await invoke('notes:exportPng', 'l1', notPng)) as { ok: boolean; error?: string }
+      expect(res.ok).toBe(false)
+      expect(res.error).toContain('不是 PNG')
+      expect(existsSync(target)).toBe(false)
+    } finally {
+      if (prev == null) delete process.env.SEU_PNG_PATH
+      else process.env.SEU_PNG_PATH = prev
+    }
+  })
+
+  it('空字节流也拒绝（截断的 base64 不该产出 0 字节文件）', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:exportPng', 'l1', '')) as { ok: boolean }
+    expect(res.ok).toBe(false)
   })
 })
 

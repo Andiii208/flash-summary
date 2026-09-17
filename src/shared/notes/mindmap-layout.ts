@@ -85,7 +85,12 @@ function isWideChar(ch: string): boolean {
 }
 
 /** Estimate a node's box width from its title length (CJK ≈ full width). */
-function nodeWidth(title: string): number {
+/**
+ * 节点盒宽估算（CJK≈1、ASCII≈0.55，夹在 64..NODE_MAX_WIDTH）。
+ * 批5: 导出——关系模式（`relation-layout.ts`）要复用同一套文字度量，否则两处
+ * 宽度估算会各自漂移。
+ */
+export function nodeWidth(title: string): number {
   const units = [...title].reduce((acc, ch) => acc + (isWideChar(ch) ? 1 : 0.55), 0)
   return Math.min(NODE_MAX_WIDTH, Math.max(64, Math.round(units * CHAR_UNIT_W + 24)))
 }

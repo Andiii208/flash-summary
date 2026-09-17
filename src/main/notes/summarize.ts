@@ -7,7 +7,13 @@
 import { readFileSync } from 'fs'
 import type { Db } from '../db/open'
 import { resolveLibraryPath } from '../library/paths'
-import { parseNote, type Note } from './schema'
+import {
+  parseNote,
+  parseNoteWithDiagnostics,
+  type Note,
+  type NormalizationDropCounts,
+  type ParsedNote
+} from './schema'
 import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidence'
 import { cleanSegments, formatTimedTranscript } from '../../shared/notes/transcript-clean'
 import type { CleanSegment } from '../../shared/notes/transcript-clean'
@@ -180,7 +186,7 @@ export async function generateNote(
   transcriptText: string,
   images: SummarizeImage[],
   signal?: AbortSignal
-): Promise<Note> {
+): Promise<ParsedNote> {
   const system = { role: 'system', content: SYSTEM_PROMPT } as const
   let answer: string
   try {
@@ -208,9 +214,9 @@ export async function generateNote(
     )
   }
   try {
-    return parseNote(answer)
+    return parseNoteWithDiagnostics(answer)
   } catch {
-    return parseNote(stripFences(answer))
+    return parseNoteWithDiagnostics(stripFences(answer))
   }
 }
 
@@ -377,6 +383,8 @@ export async function summarizeLesson(
       transcriptHitRate: { hits: number; total: number } | null
       refStats: RefVerifyStats
       droppedRefs: number
+      /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
+      normalizationDropped: NormalizationDropCounts
       /** 批3: 生成闭环结果——返修后的体检结果与是否真的返修过。 */
       health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean }
     }
@@ -390,10 +398,12 @@ export async function summarizeLesson(
   if ('error' in inputs) return { error: inputs.error }
   try {
     const generated = await generateNote(client, binding.model, sourceHeader(db, lessonId) + inputs.transcriptText, inputs.images, signal)
+    // 批3: 归一层静默丢弃了哪些项——「模型没写」与「写了但被拦下」是两种问题。
+    const normalizationDropped = generated.dropped
     // F2 (review) + batch 1: refs are validated against EVERY real attachment,
     // not just the ones that fit the token cap — the cap only limits what the
     // model sees, it must not turn a real citation into a "fabrication".
-    const { note: evidenceChecked, dropped } = dropUnknownEvidence(generated, inputs.allRefs)
+    const { note: evidenceChecked, dropped } = dropUnknownEvidence(generated.note, inputs.allRefs)
     // Batch 1: the transcript anchors are now verifiable — quotes that cannot
     // be found in the transcript are cleared, out-of-range times dropped.
     const verified = verifyNoteRefs(evidenceChecked, inputs.segments)
@@ -437,6 +447,8 @@ export async function summarizeLesson(
       transcriptHitRate: transcriptRefHitRate(stats),
       refStats: stats,
       droppedRefs: dropped,
+      /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
+      normalizationDropped,
       health: { warnCount: warnCountBefore, grade: noteHealth(note).grade, repaired }
     }
   } catch (err) {

@@ -1695,6 +1695,20 @@ button.concept-ref:hover { color: var(--accent); }
 .formula-content .md-para { margin: 0; }
 .formula-content .md-list { margin: 0; padding-left: 20px; }
 .formula-content .md-list li { margin-bottom: 3px; }
+/* 批4 D8=B: 代码块行号。走 CSS 计数器——**不进入文本节点**，复制出去的代码不带行号。
+   ≥3 行才编号（短片段上行号是纯噪声），由 CodeBlock 决定是否加 .code-numbered。 */
+.code-block .code-line { display: block; }
+.code-block.code-numbered { counter-reset: code-line; }
+.code-block.code-numbered .code-line::before {
+  counter-increment: code-line;
+  content: counter(code-line);
+  display: inline-block;
+  width: 2.2em;
+  margin-right: 0.8em;
+  text-align: right;
+  color: var(--text-muted);
+  user-select: none;
+}
 .formula-code { margin: 0; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
 .formula-code code { font-family: var(--font-mono); font-size: var(--font-size-sm); color: var(--text); }
 .formula-explain { margin: 0; font-size: var(--font-size-sm); color: var(--text-muted); line-height: 1.6; }
@@ -1732,6 +1746,11 @@ button.concept-ref:hover { color: var(--accent); }
 
 /* ---- 思维导图 ---- */
 .mindmap-scroll { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 8px; }
+/* 批5 关系模式：概念关系图。节点与边沿用同一套视觉令牌（低饱和填充、层级靠字重
+   与留白），只是主结构从层级树换成关系图——不新增第四种色，符合 SKILL §5 纪律。 */
+.mindmap-relation-box { fill: var(--surface-2); stroke: var(--border); }
+.mindmap-relation-term { font-size: 13px; fill: var(--text); font-weight: 600; }
+.mindmap-relation-line { stroke: color-mix(in srgb, var(--accent) 46%, transparent); stroke-width: 1.6; }
 .mindmap-edge { stroke: color-mix(in srgb, var(--accent) 22%, transparent); stroke-width: 1.6; transition: d 180ms ease-out; }
 /* 批D: edge prominence fades with depth — trunk reads stronger than twigs.
    （用 color-mix 拉开梯度：soft-2 只有 16% 底，叠 opacity 分不出层） */

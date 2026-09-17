@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import type { JSX } from 'preact'
 import type { Concept, ConceptLink, QuizItem, TreeNode } from '../../shared/notes/schema'
 import { collapsedSetForMaxDepth, computeMindMapLayout, titleBaseline, type LayoutNode } from '../../shared/notes/mindmap-layout'
+import { computeRelationLayout } from '../../shared/notes/relation-layout'
 import { QuizCards } from './NoteBlocks'
 import { InlineText } from './InlineText'
 
@@ -105,13 +106,24 @@ export interface MindMapProps {
   onViewDetailed?: (term: string) => void
   /** M3.3: export the whole map as a standalone paper-white SVG file. */
   onExportSvg?: () => void
+  /** 批5: 位图导出——光栅化在渲染层完成，这里只发指令。 */
+  onExportPng?: () => void
   /** 健康巡查 2026-09-12 批5: the in-flight export kind (busy state). */
   exportBusy?: string | null
 }
 
 const EMPTY_LINKS: ConceptLink[] = []
 
-export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_LINKS, onViewDetailed, onExportSvg, exportBusy = null }: MindMapProps): JSX.Element {
+export function MindMap({
+  tree,
+  concepts = [],
+  quiz = [],
+  conceptLinks = EMPTY_LINKS,
+  onViewDetailed,
+  onExportSvg,
+  onExportPng,
+  exportBusy = null
+}: MindMapProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
   const [view, setView] = useState<View>(IDENTITY_VIEW)
@@ -130,6 +142,15 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
   /** M3.2 focus: full path of the subtree shown as the map root ('' = whole map). */
   const [focusPath, setFocusPath] = useState('')
 
+  /**
+   * 批5: 关系模式——同一视图内的第二种呈现。把 `conceptLinks` 当主结构画成概念
+   * 关系图（不再是树上几条 ≤5 条的虚线）。刻意**不新增第六视图**：spec §5 修订
+   * 批注① 把五视图钉死了，模式切换是纯呈现层改动。
+   */
+  const [relationMode, setRelationMode] = useState(false)
+  const relationLayout = useMemo(() => computeRelationLayout(concepts, conceptLinks), [concepts, conceptLinks])
+  const canShowRelations = relationLayout.edges.length > 0
+
   // M3.2: the layout root — the focused subtree, or the whole tree.
   const focusTree = useMemo(() => (focusPath === '' ? tree : (subtreeAt(tree, focusPath) ?? tree)), [tree, focusPath])
 
@@ -143,6 +164,12 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
     }
     return computeMindMapLayout(focusTree, focusCollapsed, { links: conceptLinks })
   }, [tree, collapsed, focusPath, conceptLinks, focusTree])
+
+  /**
+   * 缩放/平移与 viewBox 的尺寸来源：关系模式下换成关系图的画布尺寸，其余逻辑
+   * （指针锚点缩放、拖拽平移、键盘）**完全复用**——两种呈现共用同一套视口。
+   */
+  const frame = relationMode && relationLayout.nodes.length > 0 ? relationLayout : layout
 
   // M2.2/M3.2: node terms keyed by LAYOUT path (relative to the focus root).
   const termsByPath = useMemo(() => {
@@ -239,11 +266,11 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
       const rect = (rootRef.current ?? container).getBoundingClientRect()
       const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5
       const fy = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5
-      setView((prev) => zoomAt(prev, prev.scale * Math.exp(-e.deltaY * 0.002), fx, fy, layout.width, layout.height))
+      setView((prev) => zoomAt(prev, prev.scale * Math.exp(-e.deltaY * 0.002), fx, fy, frame.width, frame.height))
     }
     container.addEventListener('wheel', onWheel, { passive: false })
     return () => container.removeEventListener('wheel', onWheel)
-  }, [layout.width, layout.height])
+  }, [frame.width, frame.height])
 
   // M1.3: background drag pans via the viewBox offset. A drag starting on a
   // node stays a click so collapse keeps its single-click semantics.
@@ -279,10 +306,10 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
   const canvasKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
     if (e.key === '+' || e.key === '=') {
       e.preventDefault()
-      setView((prev) => zoomAt(prev, prev.scale * 1.2, 0.5, 0.5, layout.width, layout.height))
+      setView((prev) => zoomAt(prev, prev.scale * 1.2, 0.5, 0.5, frame.width, frame.height))
     } else if (e.key === '-') {
       e.preventDefault()
-      setView((prev) => zoomAt(prev, prev.scale / 1.2, 0.5, 0.5, layout.width, layout.height))
+      setView((prev) => zoomAt(prev, prev.scale / 1.2, 0.5, 0.5, frame.width, frame.height))
     } else if (e.key === '0') {
       e.preventDefault()
       setView(IDENTITY_VIEW)
@@ -383,9 +410,26 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
         )}
         {recall && <span class="mindmap-recall-hint">先回忆再揭示：凭记忆说出这个分支讲过什么</span>}
         <span class="mindmap-toolbar-divider" aria-hidden="true" />
+        {/* 批5: 关系模式——同一视图内的第二种呈现。没有可解析的关系边时按钮不出现
+            （按下去只会看到一张空图）。 */}
+        {canShowRelations && (
+          <button
+            class={`btn small${relationMode ? ' primary' : ''}`}
+            aria-pressed={relationMode}
+            title="把概念之间的关联当主结构画出来（不再是树上几条虚线）"
+            onClick={() => setRelationMode((prev) => !prev)}
+          >
+            关系模式
+          </button>
+        )}
         {onExportSvg != null && (
           <button class="btn small" onClick={onExportSvg} disabled={exportBusy != null}>
             {exportBusy === 'svg' ? '导出中…' : '导出 SVG'}
+          </button>
+        )}
+        {onExportPng != null && (
+          <button class="btn small" onClick={onExportPng} disabled={exportBusy != null}>
+            {exportBusy === 'png' ? '导出中…' : '导出 PNG'}
           </button>
         )}
         <span class="mindmap-toolbar-spacer" aria-hidden="true" />
@@ -429,12 +473,51 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
       >
       <svg
         ref={rootRef}
-        width={layout.width}
-        height={layout.height}
-        viewBox={`${view.x} ${view.y} ${layout.width / view.scale} ${layout.height / view.scale}`}
+        width={frame.width}
+        height={frame.height}
+        viewBox={`${view.x} ${view.y} ${frame.width / view.scale} ${frame.height / view.scale}`}
         role="img"
         aria-label={`知识导图：${tree.title}`}
       >
+        {relationMode && relationLayout.nodes.length > 0 ? (
+          /* 批5 关系模式：`conceptLinks` 当主结构。边全部可见（不再受 ≤5 条限制），
+             关系词就是「命题」的关系项——体检的命题审计保证它不是名词填充。 */
+          <g data-testid="mindmap-relation-layer">
+            {relationLayout.edges.map((edge, index) => (
+              <g key={`rel-${index}`}>
+                <path d={edge.d} class="mindmap-relation-line" fill="none" />
+                {edge.label !== '' && (
+                  <g transform={`translate(${edge.lx}, ${edge.ly})`}>
+                    <rect
+                      x={-(edge.label.length * 6.5 + 10) / 2}
+                      y={-9}
+                      width={edge.label.length * 6.5 + 10}
+                      height={18}
+                      rx={9}
+                      class="mindmap-link-label-box"
+                    />
+                    <text text-anchor="middle" y={3.5} class="mindmap-link-label">
+                      {edge.label}
+                    </text>
+                  </g>
+                )}
+              </g>
+            ))}
+            {relationLayout.nodes.map((node) => (
+              <g key={`relnode-${node.id}`} class="mindmap-relation-node">
+                <rect x={node.x} y={node.y} width={node.width} height={node.height} rx={8} class="mindmap-relation-box" />
+                <text x={node.x + 12} y={node.y + 22} class="mindmap-relation-term">
+                  {node.lines.map((line, i) => (
+                    <tspan key={i} x={node.x + 12} dy={i === 0 ? 0 : 18}>
+                      {line}
+                    </tspan>
+                  ))}
+                </text>
+              </g>
+            ))}
+          </g>
+        ) : (
+          <>
         {layout.edges.map((edge) => (
           <path
             key={`${edge.from}-${edge.to}`}
@@ -563,6 +646,8 @@ export function MindMap({ tree, concepts = [], quiz = [], conceptLinks = EMPTY_L
             </g>
           )
         })}
+          </>
+        )}
       </svg>
       {/* M2.2 popover: fixed backdrop closes on any outside click; the card
           itself lives in scroll-content coordinates (closed on pan/zoom). */}
