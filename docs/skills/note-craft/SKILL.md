@@ -207,6 +207,7 @@ Note {
   - `node scripts/note-pdf-verify.mjs` —— 往**副本**注入一份含 LaTeX 公式/表格/例子/关联的样例笔记，走真实「导出 PDF 讲义」按钮流，扫 PDF 字节确认 **KaTeX 字体子集已嵌入（= 公式是矢量文本而非图片）**，并顺带核验迁移在真实库副本上生效。
   - `node scripts/note-regen-e2e.mjs --keep` —— 在**副本**上跑真实重生成（真实模型）：库副本 + 真实 userData 的 `Local State`（DPAPI 缝）→ 逐课调 `window.seuSummary.notes.regenerate`。**单课上限必须大于两次串联的聊天超时**（生成 + 返修，而 `CHAT_TIMEOUT_MS=600_000`/次）——脚本取 25 分钟，否则你观察到的只是自己被掐断，不是应用的结果。
   - `npx vite-node scripts/note-fusion-verify.ts` —— 造一份**忠实素材**（把关键帧 JPEG 另存为 PNG 当「平台 PPT 页」，现实中两路拍同一块屏幕）后直接调 main 的真实 `loadSummarizeInputs`，核验「撞图关键帧被丢弃 + PPT 页拿到 `atInferred` 时间」。**真实库 ppt_pages 恒为 0，真 PPT 素材不存在，必须造材。**
+  - `node scripts/note-coursemap-verify.mjs [--page=4] [--no-import]` —— 课程级导图验收：在副本上真实导入同一门课**另一个分P**（导入只建课时行，**跑管线要另发任务**），等第二份笔记生成后打开课程导图并截图 + 量几何。**真实库每门课只有 1 节有笔记时，跨课时合并是空操作，必须先造出第二节课。**
   - 教训：**「渲染器写了」不等于「渲染得到」**。批4 的 KaTeX 一度是空转的——规则 4 禁止一切 Markdown 标记，把 formula 的 content 也禁了，模型永远不会写 `$...$`；批4 的表格一度只在 detail 视图验，而表格其实在方法论视图。**新增渲染能力必须配一条真实数据的 DOM 探针**。
 - **组件测试环境缝**：`tests/components/setup.ts` 补 `document.compatMode`——happy-dom 不实现它，
   而 KaTeX 在**模块加载时**据此判定并永久禁用渲染。真实渲染进程 `index.html` 第一行就是

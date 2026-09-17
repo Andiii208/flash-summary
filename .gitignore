@@ -29,6 +29,7 @@ tmp-chunk-*
 .ui-shots-audit/
 .ui-shots-audit2/
 .ui-shots*/
+.coursemap-verify/
 
 # one-off real-data e2e artifacts (screenshots, svg, library copy)
 .tmp-e2e-shots/
