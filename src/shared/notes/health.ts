@@ -7,7 +7,16 @@
 import type { Note } from './schema'
 import { bigramDice } from './transcript-clean'
 
-export type HealthField = 'overview' | 'concepts' | 'timeline' | 'examCues' | 'questionsAndGaps' | 'quiz' | 'evidence'
+export type HealthField =
+  | 'overview'
+  | 'concepts'
+  | 'timeline'
+  | 'examCues'
+  | 'questionsAndGaps'
+  | 'quiz'
+  | 'evidence'
+  /** 批1 (2026-09-17): 转写摘引可核验率——与 visually-anchored 的 evidence 分列。 */
+  | 'transcript'
 
 export interface HealthFinding {
   field: HealthField
@@ -30,7 +39,8 @@ export const HEALTH_FIELD_LABELS: Record<HealthField, string> = {
   examCues: '考点',
   questionsAndGaps: '疑问与缺口',
   quiz: '自测题',
-  evidence: '证据引用'
+  evidence: '证据引用',
+  transcript: '转写摘引'
 }
 
 const MIN_OVERVIEW_CHARS = 150
@@ -100,14 +110,36 @@ function evidenceFindings(hitRate: { hits: number; total: number } | null | unde
   ]
 }
 
+/**
+ * 转写锚可核验率（批1, plan 2026-09-17 note-quality upgrade）：摘引能不能在转写里
+ * 找到。与视觉锚并列但**口径不同**——这条只在 main 侧算得出来（渲染层没有转写），
+ * 所以由调用方从 `verifyNoteRefs` 的统计里带进来。
+ */
+function transcriptFindings(hitRate: { hits: number; total: number } | null | undefined): HealthFinding[] {
+  if (hitRate == null || hitRate.total === 0) return []
+  if (hitRate.hits / hitRate.total >= HIT_RATE_TARGET) return []
+  return [
+    {
+      field: 'transcript',
+      level: 'warn',
+      message: `转写摘引可核验 ${hitRate.hits}/${hitRate.total}（目标 ≥60%），部分引文在转写里找不到原文`
+    }
+  ]
+}
+
 /** 体检主入口：warn 0=良好 / 1-2=待改进（fair） / ≥3=薄弱（weak）。 */
-export function noteHealth(note: Note, hitRate?: { hits: number; total: number } | null): HealthReport {
+export function noteHealth(
+  note: Note,
+  hitRate?: { hits: number; total: number } | null,
+  transcriptHitRate?: { hits: number; total: number } | null
+): HealthReport {
   const findings = [
     ...overviewFindings(note),
     ...conceptFindings(note),
     ...timelineFindings(note),
     ...honestEmptyFindings(note),
-    ...evidenceFindings(hitRate)
+    ...evidenceFindings(hitRate),
+    ...transcriptFindings(transcriptHitRate)
   ]
   const warnCount = findings.filter((f) => f.level === 'warn').length
   const grade: HealthReport['grade'] = warnCount === 0 ? 'good' : warnCount <= 2 ? 'fair' : 'weak'

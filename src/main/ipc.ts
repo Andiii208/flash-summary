@@ -23,7 +23,7 @@ import { PIPELINE_STAGES, stagePercent, type Stage } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachmentManifest, readAttachmentData } from './notes/attachments'
-import { summarizeLesson, loadSummarizeInputs } from './notes/summarize'
+import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor } from './notes/summarize'
 import { polishNote, loadValidRefs } from './notes/polish'
 import { FEEDBACK_TAGS } from '../shared/feedback-tags'
 import { printToPdfFile } from './notes/pdf-export'
@@ -1132,7 +1132,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         try {
           const note = parseNote(row.note_json)
           const hitRate = evidenceHitRate(note, loadValidRefs(ctx.db, row.lessonId))
-          const health = noteHealth(note, hitRate)
+          // 批1: 转写摘引可核验率——渲染层没有转写，只能在这里算。
+          const transcriptHitRate = transcriptHitRateFor(ctx.db, row.lessonId, note)
+          const health = noteHealth(note, hitRate, transcriptHitRate)
           return { lessonId: row.lessonId, lessonTitle: row.lessonTitle, version: row.version, warnCount: health.warnCount, grade: health.grade }
         } catch {
           return { lessonId: row.lessonId, lessonTitle: row.lessonTitle, version: row.version, warnCount: 3, grade: 'weak' as const }

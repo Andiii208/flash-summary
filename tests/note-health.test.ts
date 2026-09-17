@@ -104,6 +104,22 @@ describe('noteHealth 体检 (批3 2026-09-08)', () => {
     expect(noteHealth(noteFixture(), null).findings.find((f) => f.field === 'evidence')).toBeUndefined()
   })
 
+  it('批1: 转写摘引可核验率低于 60% → warn；与视觉锚分列互不干扰', () => {
+    // 视觉锚达标、摘引全编造 → 只出 transcript 一条 warn。
+    const onlyTranscript = noteHealth(noteFixture(), { hits: 8, total: 8 }, { hits: 1, total: 4 })
+    expect(onlyTranscript.findings.find((f) => f.field === 'transcript')?.level).toBe('warn')
+    expect(onlyTranscript.findings.find((f) => f.field === 'evidence')).toBeUndefined()
+    expect(onlyTranscript.warnCount).toBe(1)
+
+    // 摘引达标 → 静默。
+    expect(noteHealth(noteFixture(), null, { hits: 9, total: 10 }).findings.find((f) => f.field === 'transcript')).toBeUndefined()
+    // 没有可判的摘引（null / 分母 0）→ 静默，不冤判。
+    expect(noteHealth(noteFixture(), null, null).findings.find((f) => f.field === 'transcript')).toBeUndefined()
+    expect(noteHealth(noteFixture(), null, { hits: 0, total: 0 }).findings.find((f) => f.field === 'transcript')).toBeUndefined()
+    // 第三个参数省略 = 旧调用方，行为逐字不变。
+    expect(noteHealth(noteFixture(), { hits: 8, total: 8 }).warnCount).toBe(0)
+  })
+
   it('评级边界：0 warn=good / 1-2=fair / ≥3=weak', () => {
     expect(noteHealth(noteFixture({ overview: '太短。' })).grade).toBe('fair')
     const weak = noteHealth(

@@ -7,7 +7,7 @@
  */
 import type { Db } from '../db/open'
 import type { Note } from './schema'
-import { cleanTranscript } from '../../shared/notes/transcript-clean'
+import { cleanTranscriptTimed } from '../../shared/notes/transcript-clean'
 
 export interface QaContext {
   lessonId: string
@@ -29,8 +29,10 @@ export function assembleContext(db: Db, lessonId: string, note: Note | null): Qa
   if (transcriptRow != null) {
     try {
       // 质量批2: 清洗后派生（语气词/近空段/相邻重复），原始 segments 落库不动。
+      // 批1 (2026-09-17): 带时间锚——追问的 system prompt 本就要求「引用材料
+      // 中的时间点」，而素材里此前一个时间点都没有。
       const segments = JSON.parse(transcriptRow.segments_json) as Array<{ at?: number; text?: string }>
-      transcriptText = cleanTranscript(segments).slice(0, MAX_TRANSCRIPT_CHARS)
+      transcriptText = cleanTranscriptTimed(segments).slice(0, MAX_TRANSCRIPT_CHARS)
     } catch {
       transcriptText = ''
     }

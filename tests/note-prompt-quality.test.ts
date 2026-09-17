@@ -42,9 +42,20 @@ describe('SYSTEM_PROMPT 内容质量规约 (批1 2026-09-08)', () => {
     expect(SYSTEM_PROMPT).toContain('关键帧画面与上下文')
   })
 
-  it('9.7 evidence few-shot 合法形态 + 仅关键帧素材时禁 ppt 引用 (1.3b 收口)', () => {
-    expect(NOTE_QUALITY_PROMPT).toContain('"kind":"keyframe","ref":"kf:<证据ID>"')
+  it('9.7 evidence ref 是机器标识而非描述：合法示例 + 反例 + 仅关键帧素材时禁 ppt 引用', () => {
+    // 批1 (2026-09-17) 修正：旧断言钉的是 `ref":"kf:<证据ID>"`——该形态过不了
+    // 自己的归一层 EVIDENCE_REF_PATTERN（`<`/`>` 不在 [\w.-] 内），会被静默丢弃。
+    // few-shot 里没有任何合法取值等于没教，故断言改为合法示例 + 实测失败形态的反例。
+    expect(NOTE_QUALITY_PROMPT).toContain('"kind":"keyframe","ref":"kf:k7"')
+    expect(NOTE_QUALITY_PROMPT).toContain('描述性文字不是证据 ID')
+    expect(NOTE_QUALITY_PROMPT).not.toContain('kf:<证据ID>')
     expect(SYSTEM_PROMPT).toContain('禁止输出任何 ppt: 引用')
+  })
+
+  it('9.7 时间线 refs 时间必须落在条目 at 的同一段讲解内（批1 新增）', () => {
+    expect(NOTE_QUALITY_PROMPT).toContain('应落在该条目 at 的同一段讲解内')
+    // 旧 few-shot 用 at:750 配 refs.at:10 示范了「ref 时间与条目无关」，必须已消失。
+    expect(NOTE_QUALITY_PROMPT).not.toContain('"refs":[{"at":10,')
   })
 
   it('9.8 conceptLinks label 关系词白名单（挂账「label 偏噪声」收口）', () => {

@@ -2085,9 +2085,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             return
           }
           const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
+          // 批1: 转写摘引可核验率（与视觉锚分列，口径不同）——同样无可判时隐藏。
+          const quoteSuffix =
+            result.transcriptHitRate != null && result.transcriptHitRate.total > 0
+              ? `，摘引可核验 ${result.transcriptHitRate.hits}/${result.transcriptHitRate.total}`
+              : ''
           // F2 (review): fabricated refs are dropped before persisting — say so.
           const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
-          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${dropSuffix}`, 'success')
+          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}`, 'success')
           await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
@@ -2116,8 +2121,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             return
           }
           const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
+          // 批1: 与重生成同形——转写摘引可核验率，无可判时隐藏。
+          const quoteSuffix =
+            result.transcriptHitRate != null && result.transcriptHitRate.total > 0
+              ? `，摘引可核验 ${result.transcriptHitRate.hits}/${result.transcriptHitRate.total}`
+              : ''
           const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
-          toast(`已生成第 ${result.version} 版润色笔记${hitSuffix}${dropSuffix}`, 'success')
+          toast(`已生成第 ${result.version} 版润色笔记${hitSuffix}${quoteSuffix}${dropSuffix}`, 'success')
           await loadNote(lessonId)
           await loadNoteIndex()
         } finally {

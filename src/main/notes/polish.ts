@@ -12,9 +12,10 @@ import type { Db } from '../db/open'
 import { parseNote, type Note } from './schema'
 import { dropUnknownEvidence, evidenceHitRate } from '../../shared/notes/evidence'
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
-import { saveNoteVersion, stripFences } from './summarize'
+import { saveNoteVersion, stripFences, loadCleanSegments } from './summarize'
 import { feedbackTagInstructions } from '../../shared/feedback-tags'
-import { cleanTranscript } from '../../shared/notes/transcript-clean'
+import { cleanTranscriptTimed } from '../../shared/notes/transcript-clean'
+import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
 
 /** Same reading-measure cap as qa (24k chars) — polish never needs more. */
 const MAX_TRANSCRIPT_CHARS = 24_000
@@ -53,7 +54,12 @@ function loadTranscript(db: Db, lessonId: string): string {
   if (row == null) return ''
   try {
     // 质量批2: 清洗后派生（语气词/近空段/相邻重复），原始 segments 落库不动。
-    return cleanTranscript(JSON.parse(row.segments_json) as Array<{ text?: string }>).slice(0, MAX_TRANSCRIPT_CHARS)
+    // 批1 (2026-09-17): 改用带时间锚的形态——润色同样要输出 at 与摘引，
+    // 没有时间锚它只能照抄原笔记里的猜测值。
+    return cleanTranscriptTimed(JSON.parse(row.segments_json) as Array<{ at?: number; text?: string }>).slice(
+      0,
+      MAX_TRANSCRIPT_CHARS
+    )
   } catch {
     return ''
   }
@@ -89,7 +95,16 @@ export async function polishNote(
   client: OpenAiCompatibleClient,
   lessonId: string,
   feedback: { tags: string[]; text: string }
-): Promise<{ version: number; hitRate: { hits: number; total: number }; droppedRefs: number } | { error: string }> {
+): Promise<
+  | {
+      version: number
+      hitRate: { hits: number; total: number }
+      /** 批1: 转写摘引可核验率（null = 模型没产出可判的摘引）。 */
+      transcriptHitRate: { hits: number; total: number } | null
+      droppedRefs: number
+    }
+  | { error: string }
+> {
   const binding = db.prepare("SELECT model FROM capability_bindings WHERE capability = 'multimodal'").get() as
     | { model: string }
     | undefined
@@ -114,10 +129,14 @@ export async function polishNote(
       answer = stripFences(answer)
       polished = parseNote(answer)
     }
-    const { note, dropped } = dropUnknownEvidence(polished, new Set(refsOnly))
+    const { note: evidenceChecked, dropped } = dropUnknownEvidence(polished, new Set(refsOnly))
+    // 批1: 润色通道走的是同一条下游管线（parseNote → dropUnknownEvidence →
+    // saveNoteVersion），摘引核验当然也要一样——否则润色成了编造摘引的后门。
+    const segments = loadCleanSegments(db, lessonId) ?? []
+    const { note, stats } = verifyNoteRefs(evidenceChecked, segments)
     const version = saveNoteVersion(db, lessonId, note, `${binding.model} (润色)`)
     const hitRate = evidenceHitRate(note, validRefs)
-    return { version, hitRate, droppedRefs: dropped }
+    return { version, hitRate, transcriptHitRate: transcriptRefHitRate(stats), droppedRefs: dropped }
   } catch (err) {
     return { error: `润色失败: ${(err as Error).message}` }
   }

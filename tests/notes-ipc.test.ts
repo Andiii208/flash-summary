@@ -223,13 +223,121 @@ describe('notes:regenerate (2026-09-04)', () => {
     registerIpc(ctx, ipc as never)
     const res = (await invoke('notes:regenerate', 'l1')) as {
       ok: boolean
-      value?: { version: number; images: number; hitRate: { hits: number; total: number } }
+      value?: {
+        version: number
+        images: number
+        hitRate: { hits: number; total: number }
+        transcriptHitRate: { hits: number; total: number } | null
+        refStats: Record<string, number>
+        droppedRefs: number
+      }
     }
     expect(res.ok).toBe(true)
     // Roadmap 1.3: the cited evidence ref resolves against the sent images.
-    expect(res.value).toEqual({ version: 1, images: 1, hitRate: { hits: 1, total: 1 }, droppedRefs: 0 })
+    // 批1 (2026-09-17): 视觉锚（hitRate）与转写锚（transcriptHitRate）分列。
+    // 本例转写 '转写' 只有 2 字、被近空段规则剔光，笔记也没有摘引 → 无从判断，
+    // 所以转写锚为 null、refStats 全 0，且**不应**误删任何东西。
+    expect(res.value).toEqual({
+      version: 1,
+      images: 1,
+      hitRate: { hits: 1, total: 1 },
+      transcriptHitRate: null,
+      refStats: { total: 0, droppedAt: 0, clearedText: 0, quoted: 0, quotedVerified: 0, offNeighborhood: 0 },
+      droppedRefs: 0
+    })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
     expect(row).toEqual({ version: 1, model: 'mimo-v2.5' })
+  })
+
+  it('批1: 转写带时间锚喂给模型，编造的摘引被清空、越界时间被丢弃', async () => {
+    const ctx = makeCtx()
+    seedKeyframe()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(
+      JSON.stringify([
+        { at: 0, text: '我们这节课讲梯度下降的收敛条件。' },
+        { at: 120, text: '学习率过大时损失会震荡甚至发散。' }
+      ])
+    )
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+
+    // 真摘引（可核验）+ 编造摘引 + 越界时间，三态齐备。
+    const noteJson = JSON.stringify({
+      ...JSON.parse(VALID_NOTE),
+      timeline: [
+        {
+          at: 120,
+          title: '学习率过大',
+          detail: '学习率过大时损失震荡，演示里从 0.1 调到 1.0 后直接发散。',
+          refs: [
+            { at: 120, text: '学习率过大时损失会震荡甚至发散' },
+            { at: 99999, text: '这段转写里根本不存在的内容啊啊啊' }
+          ],
+          evidence: []
+        }
+      ]
+    })
+    const chatJson = vi.fn(async () => noteJson)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as {
+      ok: boolean
+      value?: {
+        transcriptHitRate: { hits: number; total: number } | null
+        refStats: Record<string, number>
+      }
+    }
+    expect(res.ok).toBe(true)
+    // 越界的那条整条丢弃；留下的真摘引命中 → 1/1。
+    expect(res.value?.transcriptHitRate).toEqual({ hits: 1, total: 1 })
+    expect(res.value?.refStats.droppedAt).toBe(1)
+
+    // 且模型收到的是**带时间锚**的转写（本批的核心修复）。
+    const firstCall = chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>]
+    const userText = JSON.stringify(firstCall[0].at(-1)?.content)
+    expect(userText).toContain('[00:00]')
+    expect(userText).toContain('[02:00]')
+  })
+
+  it('批1: 摘引匹配不上转写时清空 text、保留 at（降级而非报错）', async () => {
+    const ctx = makeCtx()
+    seedKeyframe()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '这是真实存在的转写内容，讲的是矩阵乘法。' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+
+    const noteJson = JSON.stringify({
+      ...JSON.parse(VALID_NOTE),
+      timeline: [
+        {
+          at: 10,
+          title: '矩阵乘法',
+          detail: '矩阵乘法的维度必须满足左列等于右行，否则无法相乘。',
+          refs: [{ at: 10, text: '讲者说了一句转写里完全没有的漂亮话啊啊' }],
+          evidence: []
+        }
+      ]
+    })
+    const chatJson = vi.fn(async () => noteJson)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { refStats: Record<string, number> } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.refStats.clearedText).toBe(1)
+    expect(res.value?.refStats.droppedAt).toBe(0)
+
+    const stored = db.prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1').get('l1') as {
+      note_json: string
+    }
+    const persisted = JSON.parse(stored.note_json) as { timeline: Array<{ refs: Array<{ at: number; text: string }> }> }
+    // 定位（at）保住，摘引清空——退化为「定位到该分钟」，不是删掉整条。
+    expect(persisted.timeline[0]?.refs[0]).toEqual({ at: 10, text: '' })
   })
 
   it('fails with a readable error when the transcript is missing', async () => {

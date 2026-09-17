@@ -9,7 +9,10 @@ import type { Db } from '../db/open'
 import { resolveLibraryPath } from '../library/paths'
 import { parseNote, type Note } from './schema'
 import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidence'
-import { cleanTranscript } from '../../shared/notes/transcript-clean'
+import { cleanSegments, formatTimedTranscript } from '../../shared/notes/transcript-clean'
+import type { CleanSegment } from '../../shared/notes/transcript-clean'
+import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
+import type { RefVerifyStats } from '../../shared/notes/ref-verify'
 import type { ChatPart, OpenAiCompatibleClient } from '../providers/openai-client'
 
 /** Max images embedded in the multimodal summarize call (token guard, U4). */
@@ -43,14 +46,28 @@ export const NOTE_QUALITY_PROMPT =
   '9.4 examCues 每条具体到「考什么、怎么答」（如「手推 xx 的推导过程，注意 yy 成立条件」），禁止「要掌握 xx」「重点复习 xx」式空话；本讲确实没有考试相关信息时允许空数组，禁止为凑数编造。' +
   '9.5 questionsAndGaps 只写讲者在转写中真实留下的悬念、作业要求、含糊带过或「以后再讲」的内容，没有就输出空数组，禁止编造思考题。' +
   '9.6 术语纠错：转写由语音识别产生，含同音错词（如「月华数据集」应为「鸢尾花数据集」、「三网库」应为 scikit-learn）；所有字段必须使用结合关键帧画面与上下文判断出的正确写法，错词不得出现在笔记任何字段中。' +
-  '9.7 evidence 引用只有一种合法形态——ref 原样取自「证据ID」清单。正确示例：{"at":750,"title":"超参数调整演示","detail":"模型宽度从 32 改为 64 后测试集精度由 0.97 回落至 0.87，容量过大导致过拟合。","refs":[{"at":10,"text":"模型宽度从32改为64，看下有什么效果"}],"evidence":[{"kind":"keyframe","ref":"kf:<证据ID>"}]}；若「证据ID」清单里只有 kf: 开头的关键帧而没有 ppt: 课件页，禁止输出任何 ppt: 引用。' +
+  '9.7 evidence 的 ref 是机器标识，不是对画面的描述：只能原样复制用户消息「证据ID」清单里的标识串（形如 ppt:12 或 kf:k7）。' +
+  '正确示例：{"at":750,"title":"超参数调整演示","detail":"模型宽度从 32 改为 64 后测试集精度由 0.97 回落至 0.87，容量过大导致过拟合。","refs":[{"at":745,"text":"模型宽度从32改为64，看下有什么效果"}],"evidence":[{"kind":"keyframe","ref":"kf:k7"}]}。' +
+  '反例（等于没引用，会被直接丢弃）："ref":"超参数调整演示幻灯片"——描述性文字不是证据 ID。' +
+  '时间线条目的 refs 时间应落在该条目 at 的同一段讲解内，不得使用无关位置的时间。' +
+  '若「证据ID」清单里只有 kf: 开头的关键帧而没有 ppt: 课件页，禁止输出任何 ppt: 引用。' +
   '9.8 conceptLinks 的 label 必须是关系词（前提、对比、易混、推广、步骤、因果、包含），禁止「参数、提升、方法」类名词填充。'
 
 /** 完整 system prompt = 形状规约 + 内容质量规约。 */
 export const SYSTEM_PROMPT = NOTE_SHAPE_PROMPT + NOTE_QUALITY_PROMPT
 
 /** Load the images + transcript text that feed a summarize call. */
-export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: string): { transcriptText: string; images: SummarizeImage[] } | { error: string } {
+export interface SummarizeInputs {
+  /** Timed transcript: `[mm:ss] 文本` lines (batch 1). */
+  transcriptText: string
+  /** Cleaned segments — the same material, structured, for ref verification. */
+  segments: CleanSegment[]
+  images: SummarizeImage[]
+  /** Every real evidence ref of this lesson — the validity set (batch 1). */
+  allRefs: Set<string>
+}
+
+export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: string): SummarizeInputs | { error: string } {
   const transcriptRow = db.prepare('SELECT segments_json FROM transcripts WHERE lesson_id = ?').get(lessonId) as
     | { segments_json: string }
     | undefined
@@ -67,15 +84,21 @@ export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: strin
     ...pptRows.map((p) => ({ ref: `ppt:${p.page_index}`, path: resolveLibraryPath(libraryRoot, p.file_path), at: null })),
     ...keyframeRows.map((k) => ({ ref: `kf:${k.id}`, path: resolveLibraryPath(libraryRoot, k.file_path), at: Math.round(k.timestamp_seconds) }))
   ].slice(0, MAX_SUMMARIZE_IMAGES)
+  // Batch 1: validity is judged against every real attachment, not just the
+  // ones that fit the token cap — a real ref the model could not have seen
+  // must not be deleted as fabricated.
+  const allRefs = new Set<string>([
+    ...pptRows.map((p) => `ppt:${p.page_index}`),
+    ...keyframeRows.map((k) => `kf:${k.id}`)
+  ])
 
-  let transcriptText = ''
+  let segments: CleanSegment[]
   try {
-    // 质量批2: 清洗后派生（语气词/近空段/相邻重复），原始 segments 落库不动。
-    transcriptText = cleanTranscript(JSON.parse(transcriptRow.segments_json) as Array<{ text: string }>)
+    segments = cleanSegments(JSON.parse(transcriptRow.segments_json) as Array<{ at?: number; text?: string }>)
   } catch {
     return { error: '转写数据损坏，请重跑任务' }
   }
-  return { transcriptText, images }
+  return { transcriptText: formatTimedTranscript(segments), segments, images, allRefs }
 }
 
 /** Post-image instruction: refs must quote the captioned evidence ids verbatim. */
@@ -160,6 +183,33 @@ export async function generateNote(
 /** Versions kept per lesson — F6 promised a cap of 10, polish makes it matter. */
 const KEEP_VERSIONS = 10
 
+/**
+ * 读时清洗某课时的转写分片（批1）。summarize / polish / 体检三处共用，
+ * 保证核验用的分片与喂给模型的是**同一份**素材。
+ */
+export function loadCleanSegments(db: Db, lessonId: string): CleanSegment[] | null {
+  const row = db.prepare('SELECT segments_json FROM transcripts WHERE lesson_id = ?').get(lessonId) as
+    | { segments_json: string }
+    | undefined
+  if (row == null) return null
+  try {
+    return cleanSegments(JSON.parse(row.segments_json) as Array<{ at?: number; text?: string }>)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 读时重算某课时的转写锚命中率（批1）。渲染层没有转写，所以这条指标只能在
+ * main 侧算——体检与课程升级对话框共用此入口。只读，不改任何数据。
+ */
+export function transcriptHitRateFor(db: Db, lessonId: string, note: Note): { hits: number; total: number } | null {
+  const segments = loadCleanSegments(db, lessonId)
+  if (segments == null) return null
+  return transcriptRefHitRate(verifyNoteRefs(note, segments).stats)
+}
+
+
 /** Insert the note as a new version row (pruning beyond KEEP_VERSIONS); returns the version number. */
 export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: string): number {
   const versionRow = db.prepare('SELECT MAX(version) AS v FROM notes WHERE lesson_id = ?').get(lessonId) as { v: number | null }
@@ -202,7 +252,18 @@ export async function summarizeLesson(
   lessonId: string,
   libraryRoot: string,
   signal?: AbortSignal
-): Promise<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs: number } | { error: string }> {
+): Promise<
+  | {
+      version: number
+      images: number
+      hitRate: { hits: number; total: number }
+      /** Transcript-anchor hit rate (null when there was nothing to judge). */
+      transcriptHitRate: { hits: number; total: number } | null
+      refStats: RefVerifyStats
+      droppedRefs: number
+    }
+  | { error: string }
+> {
   const binding = db.prepare("SELECT model FROM capability_bindings WHERE capability = 'multimodal'").get() as
     | { model: string }
     | undefined
@@ -211,14 +272,18 @@ export async function summarizeLesson(
   if ('error' in inputs) return { error: inputs.error }
   try {
     const generated = await generateNote(client, binding.model, sourceHeader(db, lessonId) + inputs.transcriptText, inputs.images, signal)
-    // F2 (review): only refs the model actually saw may persist.
-    const validRefs = new Set(inputs.images.map((image) => image.ref))
-    const { note, dropped } = dropUnknownEvidence(generated, validRefs)
+    // F2 (review) + batch 1: refs are validated against EVERY real attachment,
+    // not just the ones that fit the token cap — the cap only limits what the
+    // model sees, it must not turn a real citation into a "fabrication".
+    const { note: evidenceChecked, dropped } = dropUnknownEvidence(generated, inputs.allRefs)
+    // Batch 1: the transcript anchors are now verifiable — quotes that cannot
+    // be found in the transcript are cleared, out-of-range times dropped.
+    const { note, stats } = verifyNoteRefs(evidenceChecked, inputs.segments)
     const version = saveNoteVersion(db, lessonId, note, binding.model)
-    // Citation quality signal (roadmap 1.3): refs are judged against the
-    // images actually sent — the model never saw attachments beyond the cap.
+    // Citation quality signals (roadmap 1.3 + batch 1): the compliance reading
+    // deliberately uses the images actually sent — the model never saw the rest.
     const hitRate = evidenceHitRate(note, inputs.images)
-    return { version, images: inputs.images.length, hitRate, droppedRefs: dropped }
+    return { version, images: inputs.images.length, hitRate, transcriptHitRate: transcriptRefHitRate(stats), refStats: stats, droppedRefs: dropped }
   } catch (err) {
     return { error: `笔记生成失败: ${(err as Error).message}` }
   }

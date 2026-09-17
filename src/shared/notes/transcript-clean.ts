@@ -5,12 +5,36 @@
  * 语气词（呃/嗯/啊/是吧），偶发近空段（120s 分片只剩「嗯。」）。
  * 不做术语纠错——模型侧关键帧交叉验证（质量批1 §9.6）已实证有效，规则
  * 清洗反而有误杀风险。
+ *
+ * 批1 (plan 2026-09-17 note-quality-upgrade): 清洗结果保留 `at`，并新增
+ * `cleanTranscriptTimed` 产出 `[mm:ss]` 时间锚——此前时间被整个丢弃，模型
+ * 却要输出精确秒级 `at` 与「忠实摘引」。
  */
+import { formatTime } from './format'
 
 /** One raw transcript segment（at 不参与清洗，字段可选以便调用方直传）。 */
 export interface RawSegment {
+  /** Seconds from lesson start. Absent on legacy/hand-made input. */
+  at?: number
   text?: string
 }
+
+/** A cleaned segment — text after filler/empty/duplicate removal, `at` carried through. */
+export interface CleanSegment {
+  at?: number
+  text: string
+}
+
+/**
+ * 时间锚窗宽（批1, plan 2026-09-17 note-quality-upgrade batch 1)。素材层此前把 `at`
+ * 整个丢掉，模型却要输出精确到秒的 `at` 与「忠实摘引」——无从核验，只能编。
+ *
+ * 窗口同时解决两件事：SEU 的 ASR 分片是 120s（`openai-client.ts`「≤120s audio」），
+ * 落在 30s 桶里各占一格、时间不变；B站字幕是逐句 cue（约 2-3.5s/条，见
+ * `tests/bilibili-client.test.ts`），45 分钟上千条，逐条打时间戳会让每课多出约
+ * 一万字符——按窗合流后收敛到 ~90 条。
+ */
+export const TIME_WINDOW_SECONDS = 30
 
 /** 句尾/标点前位置的自由语气词。 */
 const FILLER = '(?:呃|嗯|啊|是吧|对吧|好吧)'
@@ -63,16 +87,68 @@ function isDuplicate(previous: string, text: string): boolean {
 
 /**
  * 清洗后拼接：语气词压缩 → 近空段剔除（清洗后 <5 字，如整段只剩「嗯。」）
- * → 相邻高度相似去重 → '\n' 拼接。非相邻的重复内容保留（课程合法回顾）。
+ * → 相邻高度相似去重。非相邻的重复内容保留（课程合法回顾）。
+ *
+ * `at` 原样带出（不参与清洗判断）——批1 起上游需要时间锚。
  */
-export function cleanTranscript(segments: RawSegment[]): string {
-  const cleaned: string[] = []
+export function cleanSegments(segments: RawSegment[]): CleanSegment[] {
+  const cleaned: CleanSegment[] = []
   for (const segment of segments) {
     const text = stripFillers(typeof segment.text === 'string' ? segment.text : '')
     if (text.length < NEAR_EMPTY_CHARS) continue
     const previous = cleaned[cleaned.length - 1]
-    if (previous != null && isDuplicate(previous, text)) continue
-    cleaned.push(text)
+    if (previous != null && isDuplicate(previous.text, text)) continue
+    const at = typeof segment.at === 'number' && Number.isFinite(segment.at) ? segment.at : undefined
+    cleaned.push(at == null ? { text } : { at, text })
   }
-  return cleaned.join('\n')
+  return cleaned
 }
+
+/** 纯文本拼接（无时间锚）——qa/旧调用方与既有测试的口径。 */
+export function cleanTranscript(segments: RawSegment[]): string {
+  return cleanSegments(segments)
+    .map((segment) => segment.text)
+    .join('\n')
+}
+
+/**
+ * 带时间锚的拼接（批1）：按 `TIME_WINDOW_SECONDS` 合流后，每窗一行
+ * `[mm:ss] 文本`，窗外/无 at 的段退化为纯文本行。
+ *
+ * 行首时间取该窗**首段的真实 at**（而非桶起点），这样 B站字幕保留秒级精度、
+ * SEU 各分片仍落在自己的桶里——两种粒度的锚点都诚实。
+ */
+export function formatTimedTranscript(segments: ReadonlyArray<CleanSegment>): string {
+  const lines: string[] = []
+  let windowKey: number | null = null
+  let windowAt: number | null = null
+  let windowTexts: string[] = []
+  const flush = (): void => {
+    if (windowTexts.length === 0) return
+    const body = windowTexts.join(' ')
+    lines.push(windowAt == null ? body : `[${formatTime(windowAt)}] ${body}`)
+    windowTexts = []
+  }
+  for (const segment of segments) {
+    if (segment.at == null) {
+      flush()
+      windowKey = null
+      windowAt = null
+      lines.push(segment.text)
+      continue
+    }
+    const key = Math.floor(segment.at / TIME_WINDOW_SECONDS)
+    if (windowKey != null && key !== windowKey) flush()
+    if (windowTexts.length === 0) windowAt = segment.at
+    windowKey = key
+    windowTexts.push(segment.text)
+  }
+  flush()
+  return lines.join('\n')
+}
+
+/** 便捷入口：清洗 + 时间锚一次到位（polish / qa 等只取文本的消费点）。 */
+export function cleanTranscriptTimed(segments: RawSegment[]): string {
+  return formatTimedTranscript(cleanSegments(segments))
+}
+
