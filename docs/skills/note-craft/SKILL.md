@@ -52,6 +52,8 @@ Note {
 - 投影：`src/shared/notes/views.ts`（`projectNote` 纯文本层 + `projectNoteBlocks` 块层）。
 - **改 schema 必须同时考虑**：归一层、两个投影、markdown 导出、PrintHandout、obsidian、anki、四组测试。
 - **新字段一律可选带默认值**：旧笔记必须零迁移加载（`terms` / `conceptLinks` / `example` 都是这个手法）。
+- **长转写走全域抽稀**：`sampleTranscriptLines`（polish / qa 共用）在超预算时按行抽稀，**覆盖整节课的首中尾**——此前是 `slice(0, 24000)`，45 分钟以上的课后半段对模型完全不存在。
+- **prompt 条款**：形状 8 条 + 质量 9.1–9.11。其中 **9.11「去 AI 味」**（批6）三条：**去路标**（禁「值得注意的是/综上所述/本节主要介绍」——它们在语音转写里根本不存在，出现即模型加的）、**具体优先**（定义与 detail 必须落到本讲的具体数字/参数/演示结果）、**不均匀化**（讲得多的地方写得多，禁止为了整齐而填充）。动条款必须动 `tests/note-prompt-quality.test.ts`。
 - **工艺版本**：`CURRENT_PROMPT_VERSION` / `CURRENT_SCHEMA_VERSION`（`shared/notes/schema.ts`）。
   **改 prompt 或 schema 时必须同时 +1**——存量升级入口靠它识别「旧工艺产出但侥幸没 warn」
   的笔记（见 §8）。

@@ -14,7 +14,7 @@ import { dropUnknownEvidence, evidenceHitRate } from '../../shared/notes/evidenc
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
 import { saveNoteVersion, stripFences, loadCleanSegments, loadSummarizeInputs, buildUserParts } from './summarize'
 import { feedbackTagInstructions } from '../../shared/feedback-tags'
-import { cleanTranscriptTimed } from '../../shared/notes/transcript-clean'
+import { cleanTranscriptTimed, sampleTranscriptLines } from '../../shared/notes/transcript-clean'
 import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
 
 /** Same reading-measure cap as qa (24k chars) — polish never needs more. */
@@ -57,8 +57,10 @@ function loadTranscript(db: Db, lessonId: string): string {
     // 质量批2: 清洗后派生（语气词/近空段/相邻重复），原始 segments 落库不动。
     // 批1 (2026-09-17): 改用带时间锚的形态——润色同样要输出 at 与摘引，
     // 没有时间锚它只能照抄原笔记里的猜测值。
-    return cleanTranscriptTimed(JSON.parse(row.segments_json) as Array<{ at?: number; text?: string }>).slice(
-      0,
+    // 批3 item 5: 超预算时**全域抽稀**而不是只截前 N 字符——45 分钟以上的课，
+    // 后半段此前对模型完全不存在，按反馈补细节只能拿前半段硬凑。
+    return sampleTranscriptLines(
+      cleanTranscriptTimed(JSON.parse(row.segments_json) as Array<{ at?: number; text?: string }>),
       MAX_TRANSCRIPT_CHARS
     )
   } catch {

@@ -73,6 +73,16 @@ describe('SYSTEM_PROMPT 内容质量规约 (批1 2026-09-08)', () => {
     expect(SYSTEM_PROMPT).toContain('concepts:[{term,definition,example,refs}]')
   })
 
+  it('批6 9.11 去 AI 味：去路标 / 具体优先 / 不均匀化', () => {
+    expect(NOTE_QUALITY_PROMPT).toContain('9.11')
+    expect(NOTE_QUALITY_PROMPT).toContain('去路标')
+    expect(NOTE_QUALITY_PROMPT).toContain('值得注意的是')
+    expect(NOTE_QUALITY_PROMPT).toContain('它们在语音转写里根本不存在')
+    expect(NOTE_QUALITY_PROMPT).toContain('具体优先')
+    expect(NOTE_QUALITY_PROMPT).toContain('不均匀化')
+    expect(NOTE_QUALITY_PROMPT).toContain('禁止为了整齐而填充')
+  })
+
   it('批2: 润色通道同样带 example 纪律（不能成为编造例子的后门）', () => {
     expect(POLISH_SYSTEM_PROMPT).toContain('example')
     expect(POLISH_SYSTEM_PROMPT).toContain('禁止为凑字段编造')

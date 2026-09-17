@@ -152,3 +152,38 @@ export function cleanTranscriptTimed(segments: RawSegment[]): string {
   return formatTimedTranscript(cleanSegments(segments))
 }
 
+/**
+ * 长转写的**全域采样**（批3, plan 2026-09-17 item 5）：超预算时不再只截前 N 字符。
+ *
+ * 起因：polish / qa 此前都是 `text.slice(0, 24000)`——45 分钟以上的课，后半段对模型
+ * 完全不存在，于是「按反馈补细节」只能拿前半段的素材硬凑。改为**逐行按步长抽稀**，
+ * 预算内覆盖整节课的首、中、尾，而不是只要开头。
+ *
+ * 抽稀是确定性的（不随机），因此可测、可回归。
+ */
+export function sampleTranscriptLines(text: string, maxChars: number): string {
+  if (maxChars <= 0) return ''
+  if (text.length <= maxChars) return text
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const total = lines.reduce((acc, line) => acc + line.length + 1, 0)
+  // 步长使「抽出的行总长约等于预算」——上下文越长，抽得越稀，但覆盖面不变。
+  const step = Math.max(1, Math.ceil(total / maxChars))
+  const kept: string[] = []
+  let used = 0
+  for (let i = 0; i < lines.length; i += step) {
+    const line = lines[i] as string
+    if (used + line.length + 1 > maxChars) break
+    kept.push(line)
+    used += line.length + 1
+  }
+  // 头尾保底：抽稀后若首行或末行没被采样到，补上——「本讲从哪开始、讲到哪结束」
+  // 是最不该丢的两端。
+  const first = lines[0] as string
+  const last = lines[lines.length - 1] as string
+  if (kept[0] !== first && used + first.length + 1 <= maxChars) {
+    kept.unshift(first)
+    used += first.length + 1
+  }
+  if (kept[kept.length - 1] !== last && used + last.length + 1 <= maxChars) kept.push(last)
+  return kept.join('\n')
+}
