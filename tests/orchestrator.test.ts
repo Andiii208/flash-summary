@@ -7,7 +7,7 @@ import { TaskRepository, runTask } from '../src/main/tasks/queue'
 import { createExecutors, streamFetchArgs, type OrchestratorDeps } from '../src/main/tasks/orchestrator'
 import type { SchoolClient } from '../src/main/school/client'
 import type { OpenAiCompatibleClient } from '../src/main/providers/openai-client'
-import type { Grid8x8 } from '../src/main/media/phash'
+import type { Grid8x8 } from '../src/shared/phash'
 
 let db: Db
 let dir: string

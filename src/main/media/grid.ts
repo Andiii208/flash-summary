@@ -1,17 +1,40 @@
 /**
- * Decode a jpeg into an 8x8 luminance grid by block-mean downsampling
+ * Decode an image into an 8x8 luminance grid by block-mean downsampling
  * (app-context's keyframe dedupe input; extracted so the pipeline tests can
  * run the real implementation instead of a stub).
+ *
+ * 批1 (plan 2026-09-17 note-quality-upgrade): 关键帧是 JPEG、平台 PPT 页是 PNG，
+ * 视觉融合要把两者比对，所以解码器按**文件魔数**分派而不是看扩展名。
+ * pngjs 是 `phash.ts` 头注释里本来就写明的搭档解码器（MIT、零依赖）。
  */
 import { readFileSync } from 'fs'
-import type { Grid8x8 } from './phash'
+import { PNG } from 'pngjs'
+import type { Grid8x8 } from '../../shared/phash'
 
-export function decodeGrid8x8(filePath: string): Grid8x8 {
+/** 8-byte PNG signature; anything else is handed to the JPEG decoder. */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+interface DecodedImage {
+  /** RGBA bytes, 4 per pixel — both decoders are normalised to this layout. */
+  data: Uint8Array | number[]
+  width: number
+  height: number
+}
+
+function decodeImage(buffer: Buffer): DecodedImage {
+  if (buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+    const png = PNG.sync.read(buffer)
+    return { data: png.data, width: png.width, height: png.height }
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const jpeg = require('jpeg-js') as {
-    decode: (b: Buffer, o?: { useTArray?: boolean }) => { data: Uint8Array | number[]; width: number; height: number }
+    decode: (b: Buffer, o?: { useTArray?: boolean }) => DecodedImage
   }
-  const img = jpeg.decode(readFileSync(filePath), { useTArray: true })
+  return jpeg.decode(buffer, { useTArray: true })
+}
+
+export function decodeGrid8x8(filePath: string): Grid8x8 {
+  const img = decodeImage(readFileSync(filePath))
   const cellW = img.width / 8
   const cellH = img.height / 8
   const grid: Grid8x8 = []

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { averageHash, hammingDistance, isDuplicate, dedupeKeyframes, type Grid8x8 } from '../src/main/media/phash'
+import { averageHash, hammingDistance, isDuplicate, dedupeKeyframes, type Grid8x8 } from '../src/shared/phash'
 
 function solidGrid(v: number): Grid8x8 {
   return Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => v))

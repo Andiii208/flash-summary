@@ -25,7 +25,7 @@ import { resolveCapability, validateProvider, type ProviderSettings, type Capabi
 import { OpenAiCompatibleClient } from './providers/openai-client'
 import { ffmpegPath, ffprobePath } from './media/binaries'
 import { decodeGrid8x8 } from './media/grid'
-import type { Grid8x8 } from './media/phash'
+import type { Grid8x8 } from '../shared/phash'
 import { cleanStaleCache, cleanStaleCrashDumps, pruneStaleSignedUrlHandoffs } from './tasks/cache-clean'
 import { getSetting, setSetting, readSettings, SETTINGS_KEYS, type AppSettings } from './settings/store'
 import { readLibraryPointer } from './library/pointer'

@@ -13,6 +13,8 @@ import { cleanSegments, formatTimedTranscript } from '../../shared/notes/transcr
 import type { CleanSegment } from '../../shared/notes/transcript-clean'
 import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
 import type { RefVerifyStats } from '../../shared/notes/ref-verify'
+import { fuseVisualEvidence } from '../../shared/notes/visual-fusion'
+import { buildVisualCandidates } from './visual-hash'
 import type { ChatPart, OpenAiCompatibleClient } from '../providers/openai-client'
 
 /** Max images embedded in the multimodal summarize call (token guard, U4). */
@@ -25,6 +27,11 @@ export interface SummarizeImage {
   path: string
   /** Seconds from lesson start (keyframes only). */
   at: number | null
+  /**
+   * 批1b: 该时间是从关键帧匹配**推断**出来的（PPT 页本身没有时间戳），
+   * 不是实测值。caption 会写成「约 N 秒」，避免把推断当实测。
+   */
+  atInferred?: boolean
 }
 
 /** 形状规约（2026-09-04 起 8 条：JSON 结构/格式/锚定）——质量批1 未改动。 */
@@ -79,11 +86,6 @@ export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: strin
   const pptRows = db
     .prepare('SELECT page_index, file_path FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index')
     .all(lessonId) as Array<{ page_index: number; file_path: string }>
-  // PPT pages first, then keyframes; cap the total to protect tokens (U4).
-  const images: SummarizeImage[] = [
-    ...pptRows.map((p) => ({ ref: `ppt:${p.page_index}`, path: resolveLibraryPath(libraryRoot, p.file_path), at: null })),
-    ...keyframeRows.map((k) => ({ ref: `kf:${k.id}`, path: resolveLibraryPath(libraryRoot, k.file_path), at: Math.round(k.timestamp_seconds) }))
-  ].slice(0, MAX_SUMMARIZE_IMAGES)
   // Batch 1: validity is judged against every real attachment, not just the
   // ones that fit the token cap — a real ref the model could not have seen
   // must not be deleted as fabricated.
@@ -98,6 +100,34 @@ export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: strin
   } catch {
     return { error: '转写数据损坏，请重跑任务' }
   }
+
+  // 批1b: PPT × 关键帧融合。两条通道拍同一块屏幕——PPT 清晰但无时间，关键帧有
+  // 时间但模糊。融合后：关键帧与 PPT 页撞图的留 PPT（更清晰），不撞的全留（板书/
+  // 演示/软件操作是 PPT 里没有的信息），并用撞上的关键帧给 PPT 页反推时间。
+  const fused = fuseVisualEvidence(buildVisualCandidates(pptRows, keyframeRows, libraryRoot), {
+    maxImages: MAX_SUMMARIZE_IMAGES
+  })
+  const byRef = new Map<string, SummarizeImage>([
+    ...pptRows.map((p) => [
+      `ppt:${p.page_index}`,
+      { ref: `ppt:${p.page_index}`, path: resolveLibraryPath(libraryRoot, p.file_path), at: null }
+    ] as const),
+    ...keyframeRows.map((k) => [
+      `kf:${k.id}`,
+      { ref: `kf:${k.id}`, path: resolveLibraryPath(libraryRoot, k.file_path), at: Math.round(k.timestamp_seconds) }
+    ] as const)
+  ])
+  const images = fused.selected
+    .map((ref) => {
+      const image = byRef.get(ref)
+      if (image == null) return null
+      // 反推出来的时间必须与实测时间在数据上可区分：PPT 页的 at 来自关键帧推断，
+      // 显式标记，避免渲染层把它当实测时间展示。
+      const inferred = fused.inferredTimes.get(ref)
+      return inferred == null ? image : { ...image, at: inferred, atInferred: true }
+    })
+    .filter((image): image is SummarizeImage => image != null)
+
   return { transcriptText: formatTimedTranscript(segments), segments, images, allRefs }
 }
 
@@ -113,7 +143,8 @@ function evidenceInstruction(total: number): string {
 /** Caption before each image so the model can cite the exact evidence id. */
 function imageCaption(image: SummarizeImage, position: number, total: number): string {
   const kind = image.ref.startsWith('ppt:') ? 'PPT 课件页' : '课堂关键帧'
-  const time = image.at == null ? '' : ` | 时间：${image.at}秒`
+  // 批1b: PPT 页的时间是推断值（由撞图的关键帧反推），标「约」以免被当成实测。
+  const time = image.at == null ? '' : ` | 时间：${image.atInferred === true ? '约 ' : ''}${image.at}秒`
   return `[图片 ${position}/${total}] 类型：${kind} | 证据ID：${image.ref}${time}`
 }
 

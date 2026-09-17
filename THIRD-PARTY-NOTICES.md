@@ -71,6 +71,7 @@ ffmpeg 的源码可从下列任一位置获得：
 | [zod](https://zod.dev/) | 笔记数据结构校验 | MIT | [`zod-MIT.txt`](LICENSES/zod-MIT.txt) |
 | [qrcode](https://github.com/soldair/node-qrcode) | 二维码生成（B 站登录） | MIT | [`qrcode-MIT.txt`](LICENSES/qrcode-MIT.txt) |
 | [jpeg-js](https://github.com/jpeg-js/jpeg-js) | JPEG 解码（关键帧感知哈希） | BSD-3-Clause | [`jpeg-js-BSD-3-Clause.txt`](LICENSES/jpeg-js-BSD-3-Clause.txt) |
+| [pngjs](https://github.com/pngjs/pngjs) | PNG 解码（平台 PPT 页感知哈希；PPT×关键帧视觉融合） | MIT | [`pngjs-MIT.txt`](LICENSES/pngjs-MIT.txt) |
 | [Tailwind CSS](https://tailwindcss.com/) | 样式构建（产物已并入应用 CSS） | MIT | [`tailwindcss-MIT.txt`](LICENSES/tailwindcss-MIT.txt) |
 | [LXGW WenKai Screen](https://github.com/lxgw/LxgwWenKai-Screen) | 中文字体 | MIT | [`lxgw-wenkai-screen-webfont-MIT.txt`](LICENSES/lxgw-wenkai-screen-webfont-MIT.txt) |
 | [Noto Sans SC](https://fonts.google.com/noto)（via `@fontsource`） | 中文字体 | OFL-1.1 | [`fontsource-noto-sans-sc-OFL-1.1.txt`](LICENSES/fontsource-noto-sans-sc-OFL-1.1.txt) |
