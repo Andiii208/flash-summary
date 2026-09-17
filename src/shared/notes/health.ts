@@ -75,6 +75,12 @@ function conceptFindings(note: Note): HealthFinding[] {
   if (circular.length > 0) {
     findings.push({ field: 'concepts', level: 'warn', message: `${circular.length} 条概念定义疑似循环定义（用术语自身解释自身）` })
   }
+  // 批2: example 的**存在率**只做 info，不报 warn——讲者没给例子时省略该字段是
+  // 正确行为（宁空勿编），把它算成缺口会逼模型编例子。
+  const withExample = note.concepts.filter((c) => c.example != null && c.example.trim() !== '').length
+  if (withExample === 0) {
+    findings.push({ field: 'concepts', level: 'info', message: '概念均无具体例子——本讲若讲过实例可重新生成补上' })
+  }
   return findings
 }
 

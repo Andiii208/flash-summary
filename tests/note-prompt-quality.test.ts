@@ -63,6 +63,21 @@ describe('SYSTEM_PROMPT 内容质量规约 (批1 2026-09-08)', () => {
     expect(SYSTEM_PROMPT).toContain('禁止「参数、提升、方法」类名词填充')
   })
 
+  it('批2 9.9/9.10: concept example 必须具体、宁空勿编、不得引用外部案例', () => {
+    expect(NOTE_QUALITY_PROMPT).toContain('9.9')
+    expect(NOTE_QUALITY_PROMPT).toContain('具体')
+    expect(NOTE_QUALITY_PROMPT).toContain('省略该字段')
+    expect(NOTE_QUALITY_PROMPT).toContain('禁止为了凑字段而编造')
+    expect(NOTE_QUALITY_PROMPT).toContain('不得引用讲者没提过的外部案例')
+    // 形状段必须告知模型该字段存在，否则 9.9 无从遵守
+    expect(SYSTEM_PROMPT).toContain('concepts:[{term,definition,example,refs}]')
+  })
+
+  it('批2: 润色通道同样带 example 纪律（不能成为编造例子的后门）', () => {
+    expect(POLISH_SYSTEM_PROMPT).toContain('example')
+    expect(POLISH_SYSTEM_PROMPT).toContain('禁止为凑字段编造')
+  })
+
   it('形状规则钉住（批1 未破坏 2026-09-04 契约）', () => {
     expect(SYSTEM_PROMPT).toContain('整数秒')
     expect(SYSTEM_PROMPT).toContain('原样选用用户消息里给出的「证据ID」')

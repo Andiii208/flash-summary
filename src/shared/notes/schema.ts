@@ -35,6 +35,12 @@ export type TimelineEntry = z.infer<typeof TimelineEntrySchema>
 export const ConceptSchema = z.object({
   term: z.string(),
   definition: z.string(),
+  /**
+   * 批2 (plan 2026-09-17 note-quality upgrade): 本讲出现的**具体**例子/应用场景
+   * （含数字与参数）。可选——讲者没给例子就省略，宁空勿编（同 examCues 纪律）。
+   * 作为可选字段，旧笔记零迁移即可加载。
+   */
+  example: z.string().optional(),
   refs: z.array(TranscriptRefSchema).default([])
 })
 

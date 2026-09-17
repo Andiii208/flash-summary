@@ -10,6 +10,16 @@ function treeLines(node: TreeNode, depth: number, out: string[]): void {
   for (const child of node.children) treeLines(child, depth + 1, out)
 }
 
+/**
+ * 批2 (plan 2026-09-17 note-quality upgrade): 概念行 + 可选的具体例子。
+ * 没有 example 就只出一行——宁空勿编，缺失的字段不该在导出里留空壳。
+ */
+function conceptLines(concept: Note['concepts'][number]): string[] {
+  const head = `- **${concept.term}**：${concept.definition}`
+  const example = concept.example != null ? concept.example.trim() : ''
+  return example === '' ? [head] : [head, `  - 例：${example}`]
+}
+
 function timelineSection(note: Note): string[] {
   const lines = ['## 时间线', '']
   for (const entry of note.timeline) {
@@ -61,7 +71,7 @@ export function noteToMarkdown(note: Note, title: string): string {
   treeLines(note.knowledgeTree, 0, tree)
   const lines: string[] = [`# ${title}`, '', note.overview.trim(), '', '## 知识结构', '', ...tree]
   lines.push('', ...timelineSection(note))
-  lines.push('', '## 概念', '', ...note.concepts.map((c) => `- **${c.term}**：${c.definition}`))
+  lines.push('', '## 概念', '', ...note.concepts.flatMap(conceptLines))
   const formulas = formulaSection(note)
   if (formulas.length > 0) lines.push('', '## 公式、代码与操作步骤', '', ...formulas)
   lines.push(...listSection('考试与作业提示', note.examCues))

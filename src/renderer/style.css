@@ -1673,6 +1673,10 @@ span.timeline-stamp { cursor: default; }
 .concept-card { position: relative; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .concept-term { font-weight: 650; color: var(--accent); font-size: var(--font-size-md); }
 .concept-def { margin: 0; font-size: var(--font-size-sm); line-height: 1.6; color: var(--text); }
+/* 批2: 概念卡的具体例子。低饱和软底 + 小号，靠留白分层而不是加框加线
+   （SKILL §5 视觉纪律）。 */
+.concept-example { margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: var(--font-size-sm); line-height: 1.6; color: var(--text-secondary); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
+.concept-example-tag { flex-shrink: 0; font-size: var(--font-size-xs); font-weight: 650; color: var(--accent); }
 .concept-ref { position: absolute; top: 8px; right: 10px; font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--text-muted); }
 /* 批6: 概念卡时间戳成为定位按钮——可点击外观必须有响应。 */
 button.concept-ref { background: none; border: none; cursor: pointer; font-family: inherit; padding: 0; }

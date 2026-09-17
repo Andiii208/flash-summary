@@ -91,19 +91,38 @@ function timelineSection(note: Note, attachments: ObsidianAttachment[]): string[
 
 function conceptSection(note: Note): string[] {
   if (note.concepts.length === 0) return []
-  return ['## 概念', '', ...note.concepts.map((c) => `- **${wikilink(c.term)}**：${c.definition}`)]
+  return [
+    '## 概念',
+    '',
+    // 批2: 具体例子有就带上（宁空勿编，字段缺失时该行不出现）
+    ...note.concepts.map((c) =>
+      c.example != null && c.example.trim() !== ''
+        ? `- **${wikilink(c.term)}**：${c.definition}
+    - 例：${c.example.trim()}`
+        : `- **${wikilink(c.term)}**：${c.definition}`
+    )
+  ]
 }
 
 /**
  * SR cards (plugin syntax, README-verified): concept cards single-line
  * `[[term]]::definition`; quiz cards multi-line `Q / ? / A` with a blank
  * line between cards. The deck tag sits on the heading line.
+ *
+ * 批2 (plan 2026-09-17, D7=A): 概念卡的背面带上 example（例子是记忆钩子）。
+ * `::` 是**单行**语法（SKILL §11 已钉，不能跨行），所以例子并进同一行而不是
+ * 换成多行 `?` 形态——保持插件已验证的语法不变。没有 example 就照旧。
  */
 function flashcardSection(note: Note, meta: ObsidianMeta): string[] {
   if (note.concepts.length === 0 && note.quiz.length === 0) return []
   const deck = `#flashcards/${tagSafe(meta.course)}/${tagSafe(meta.lesson)}`
   const lines: string[] = ['', `## 自测 ${deck}`, '']
-  for (const concept of note.concepts) lines.push(`${wikilink(concept.term)}::${concept.definition.replace(/\s*\n\s*/g, ' ')}`, '')
+  const flat = (text: string): string => text.replace(/\s*\n\s*/g, ' ').trim()
+  for (const concept of note.concepts) {
+    const example = concept.example != null ? flat(concept.example) : ''
+    const back = example === '' ? flat(concept.definition) : `${flat(concept.definition)} 例：${example}`
+    lines.push(`${wikilink(concept.term)}::${back}`, '')
+  }
   for (const item of note.quiz) lines.push(item.question, '?', item.answer, '')
   return lines
 }

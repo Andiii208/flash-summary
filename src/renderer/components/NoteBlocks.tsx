@@ -51,6 +51,14 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
               <p class="concept-def">
                 <InlineText text={c.definition} />
               </p>
+              {/* 批2: 具体例子（讲者没给例子就没有这一行）。必须走 InlineText——
+                  AGENTS 硬规定：笔记字段的用户可见文本一律经 MdLite/InlineText。 */}
+              {c.example != null && c.example.trim() !== '' && (
+                <p class="concept-example">
+                  <span class="concept-example-tag">例</span>
+                  <InlineText text={c.example} />
+                </p>
+              )}
               {c.refs.length > 0 && (
                 <button
                   class="concept-ref"

@@ -92,9 +92,47 @@ describe('noteHealth 体检 (批3 2026-09-08)', () => {
   it('诚实空节 → info 级，不拉低评级', () => {
     const report = noteHealth(noteFixture({ examCues: [], questionsAndGaps: [], quiz: [] }))
     const infos = report.findings.filter((f) => f.level === 'info')
-    expect(infos.map((f) => f.field).sort()).toEqual(['examCues', 'questionsAndGaps', 'quiz'])
+    // 批2: 夹具的概念没有 example，所以 concepts 也多一条 info（同属「诚实缺失」类，
+    // 不拉低评级——报成 warn 会逼模型编例子）。
+    expect(infos.map((f) => f.field).sort()).toEqual(['concepts', 'examCues', 'questionsAndGaps', 'quiz'])
     expect(report.warnCount).toBe(0)
     expect(report.grade).toBe('good')
+  })
+
+  it('批2: 概念例子只做 info，缺席不拉低评级；有任何一条例子即静默', () => {
+    const noExample = noteHealth(noteFixture())
+    expect(noExample.findings.find((f) => f.field === 'concepts' && f.level === 'info')?.message).toContain('具体例子')
+    expect(noExample.warnCount).toBe(0)
+
+    const withExample = noteHealth(
+      noteFixture({
+        concepts: [
+          {
+            term: '学习率',
+            definition:
+              '优化算法中的步长参数，控制每次参数更新的幅度；过大会导致损失震荡难以收敛，过小则收敛速度极慢，通常需要配合学习率调度器动态调整。',
+            example: '演示里把学习率从 0.1 调到 1.0，损失曲线直接发散。'
+          }
+        ]
+      })
+    )
+    expect(withExample.findings.find((f) => f.field === 'concepts' && f.level === 'info')).toBeUndefined()
+  })
+
+  it('批2: example 为空白字符串等同于没有（不让空壳字段骗过体检）', () => {
+    const report = noteHealth(
+      noteFixture({
+        concepts: [
+          {
+            term: '学习率',
+            definition:
+              '优化算法中的步长参数，控制每次参数更新的幅度；过大会导致损失震荡难以收敛，过小则收敛速度极慢，通常需要配合学习率调度器动态调整。',
+            example: '   '
+          }
+        ]
+      })
+    )
+    expect(report.findings.find((f) => f.field === 'concepts' && f.level === 'info')).toBeDefined()
   })
 
   it('证据命中率低于 60% → warn；达标/无引用 → 静默', () => {

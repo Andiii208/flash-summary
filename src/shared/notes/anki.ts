@@ -23,8 +23,17 @@ function sanitizeField(text: string): string {
   return text.replace(/[\t\r\n]+/g, ' ').trim()
 }
 
+/**
+ * 批2 (plan 2026-09-17, D7=A): 概念卡背面带上具体例子——例子是记忆钩子，
+ * 而卡面只有一句定义时最容易变成「认得但想不起来」。没有 example 就照旧只给定义。
+ */
+function conceptBack(concept: Note['concepts'][number]): string {
+  const example = concept.example != null ? concept.example.trim() : ''
+  return example === '' ? concept.definition : `${concept.definition}\n例：${example}`
+}
+
 function conceptRows(note: Note, lessonTitle: string): string[] {
-  return note.concepts.map((c) => [sanitizeField(c.term), sanitizeField(c.definition), sanitizeField(lessonTitle)].join('\t'))
+  return note.concepts.map((c) => [sanitizeField(c.term), sanitizeField(conceptBack(c)), sanitizeField(lessonTitle)].join('\t'))
 }
 
 function quizRows(note: Note, lessonTitle: string): string[] {

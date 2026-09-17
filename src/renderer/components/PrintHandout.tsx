@@ -71,6 +71,13 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
                 <span class="ph-concept-def">
                   <InlineText text={c.definition} />
                 </span>
+                {/* 批2: 具体例子（缺失时整行不出现） */}
+                {c.example != null && c.example.trim() !== '' && (
+                  <span class="ph-concept-example">
+                    <span class="ph-concept-example-tag">例</span>
+                    <InlineText text={c.example} />
+                  </span>
+                )}
               </div>
             ))}
           </div>

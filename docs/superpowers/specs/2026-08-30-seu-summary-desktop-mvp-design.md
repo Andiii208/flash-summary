@@ -76,15 +76,21 @@ All views are filtered and reorganized from the same structured note. The model 
 The note schema contains:
 
 - Lesson overview
-- Knowledge structure tree
+- Knowledge structure tree (nodes may anchor concept terms)
 - Timeline of the lesson
-- Concepts and definitions
+- Concepts and definitions (optional concrete example per concept)
 - Formulas, code, and operation steps
 - Methodology analysis
 - Exam and assignment cues
 - Questions and gaps
 - Timestamped transcript references
 - PPT and keyframe evidence references
+- Self-quiz items (anchored to a concept term or an exam cue)
+- Concept relation links (from/to resolving to a concept term or a node title)
+
+> **清单维护批注（2026-09-17）**：本清单此前已落后于实现——`quiz`、`conceptLinks`、
+> `terms` 与时间线条目的 `evidence` 都不在旧清单里，批2 又新增了 `Concept.example`。
+> 本次一并补齐，并把「清单须随实现更新」当作常态维护项（AGENTS 的一致性纪律）。
 
 Markdown export is a secondary exchange format. PDF export is not included in MVP.
 
@@ -189,7 +195,9 @@ The selected application form is an Electron desktop application:
 6. A failed or interrupted task resumes without redownloading, retranscribing, or re-extracting already successful outputs.
 7. After success, original videos and audio are deleted while the transcript, PPT, keyframes, notes, and Q&A remain in the library.
 8. Multiple providers can be configured, with independent ASR, multimodal, and text model bindings; keys are encrypted with DPAPI.
-9. Structured notes support detailed, standard, key-points, and methodology views and retain timestamped references.
+9. Structured notes support detailed, standard, key-points, methodology, and mind-map views and retain timestamped references.
+   - Revision (2026-09-17): 「four views」→ 五个视图。§5 的修订批注①在 2026-09-04 已把视图由四扩为五，
+     本条此前一直没跟上（spec 内部漂移），本次对齐。
 10. School session expiry, download failure, ASR failure, and unsupported visual model input produce clear messages with a next action.
 
 ## 12. Deferred Work

@@ -36,7 +36,7 @@ export interface SummarizeImage {
 
 /** 形状规约（2026-09-04 起 8 条：JSON 结构/格式/锚定）——质量批1 未改动。 */
 const NOTE_SHAPE_PROMPT =
-  '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],quiz:[{question,answer,source,term}],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。要求：1) 所有 at 字段必须是距课时开始的整数秒（例如 750，不要 mm:ss、不要文字）。2) evidence 的 ref 必须原样选用用户消息里给出的「证据ID」（形如 ppt:0 或 kf:xxx），禁止编造其他文字引用；kind 只能是 ppt 或 keyframe；timeline 每条尽量搭配与其画面内容对应的关键帧证据。3) overview 与 methodology 的值用 Markdown 组织：先一句总起，再用 ## 小节标题与 - 列表分层（overview 建议「本讲主线」「前置知识」等小节；methodology 建议「解题思路」「通用套路」「易错点」等小节），不要输出代码围栏。4) 除 overview 与 methodology 外的所有字段（detail、definition、content、explanation、examCues、questionsAndGaps、question、answer、节点 title 等）一律输出纯文本：禁止 **加粗**、*斜体*、# 标题、- 列表符号等一切 Markdown 标记，有序步骤直接写「1. 2. 3.」编号加句号。5) formula/code/operation 只用于 formulasAndSteps。6) quiz 是自测题数组（5-8 题）：每题 question 是提问、answer 是完整答案；source 只能是 concept 或 examCue——锚定本讲某个概念时 source=concept 且必须带 term（原样使用该概念的 term 字段），锚定某个考点时 source=examCue（可省 term）；题目必须能在本讲内容中找到答案，禁止超纲凑数；quiz 放在 JSON 末位，先保证其他字段质量。7) knowledgeTree 是思维导图数据：根节点 title 是本讲课时主题；第一层 3-6 个主分支，对应本讲的主要板块；整体 3-4 层，细节放叶子层；节点 title 用名词短语（概念或主题名），不超过 20 字；必须覆盖全讲所有主要板块，不得遗漏；每个节点可带 terms 数组，原样引用本讲 concepts 里出现的 term（禁止编造 concepts 中不存在的词），标出该节点分支涉及的概念。8) conceptLinks 是概念关联数组（最多 5 条，没有强关联就输出空数组）：每条 {from,to,label}，from 和 to 必须原样取自本讲 concepts 的 term 或 knowledgeTree 的节点标题，禁止编造。'
+  '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,example,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],quiz:[{question,answer,source,term}],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。要求：1) 所有 at 字段必须是距课时开始的整数秒（例如 750，不要 mm:ss、不要文字）。2) evidence 的 ref 必须原样选用用户消息里给出的「证据ID」（形如 ppt:0 或 kf:xxx），禁止编造其他文字引用；kind 只能是 ppt 或 keyframe；timeline 每条尽量搭配与其画面内容对应的关键帧证据。3) overview 与 methodology 的值用 Markdown 组织：先一句总起，再用 ## 小节标题与 - 列表分层（overview 建议「本讲主线」「前置知识」等小节；methodology 建议「解题思路」「通用套路」「易错点」等小节），不要输出代码围栏。4) 除 overview 与 methodology 外的所有字段（detail、definition、content、explanation、examCues、questionsAndGaps、question、answer、节点 title 等）一律输出纯文本：禁止 **加粗**、*斜体*、# 标题、- 列表符号等一切 Markdown 标记，有序步骤直接写「1. 2. 3.」编号加句号。5) formula/code/operation 只用于 formulasAndSteps。6) quiz 是自测题数组（5-8 题）：每题 question 是提问、answer 是完整答案；source 只能是 concept 或 examCue——锚定本讲某个概念时 source=concept 且必须带 term（原样使用该概念的 term 字段），锚定某个考点时 source=examCue（可省 term）；题目必须能在本讲内容中找到答案，禁止超纲凑数；quiz 放在 JSON 末位，先保证其他字段质量。7) knowledgeTree 是思维导图数据：根节点 title 是本讲课时主题；第一层 3-6 个主分支，对应本讲的主要板块；整体 3-4 层，细节放叶子层；节点 title 用名词短语（概念或主题名），不超过 20 字；必须覆盖全讲所有主要板块，不得遗漏；每个节点可带 terms 数组，原样引用本讲 concepts 里出现的 term（禁止编造 concepts 中不存在的词），标出该节点分支涉及的概念。8) conceptLinks 是概念关联数组（最多 5 条，没有强关联就输出空数组）：每条 {from,to,label}，from 和 to 必须原样取自本讲 concepts 的 term 或 knowledgeTree 的节点标题，禁止编造。'
 
 /**
  * 内容质量规约（批1, plan 2026-09-08 note-quality-overhaul）：形状之外规定
@@ -58,7 +58,9 @@ export const NOTE_QUALITY_PROMPT =
   '反例（等于没引用，会被直接丢弃）："ref":"超参数调整演示幻灯片"——描述性文字不是证据 ID。' +
   '时间线条目的 refs 时间应落在该条目 at 的同一段讲解内，不得使用无关位置的时间。' +
   '若「证据ID」清单里只有 kf: 开头的关键帧而没有 ppt: 课件页，禁止输出任何 ppt: 引用。' +
-  '9.8 conceptLinks 的 label 必须是关系词（前提、对比、易混、推广、步骤、因果、包含），禁止「参数、提升、方法」类名词填充。'
+  '9.8 conceptLinks 的 label 必须是关系词（前提、对比、易混、推广、步骤、因果、包含），禁止「参数、提升、方法」类名词填充。' +
+  '9.9 concepts 的 example 字段是本讲出现的**具体**例子或应用场景：必须写出转写里的真实数字、参数、数据或操作（如「把学习率从 0.1 调到 1.0 后损失直接发散」），禁止「例如在实际应用中」「比如在某些场景下」这类空话；讲者在本讲没有给出例子时**省略该字段**，禁止为了凑字段而编造。' +
+  '9.10 example 只用本讲内容，不得引用讲者没提过的外部案例或教材章节。'
 
 /** 完整 system prompt = 形状规约 + 内容质量规约。 */
 export const SYSTEM_PROMPT = NOTE_SHAPE_PROMPT + NOTE_QUALITY_PROMPT
