@@ -12,7 +12,7 @@ import type { Db } from '../db/open'
 import { parseNote, type Note } from './schema'
 import { dropUnknownEvidence, evidenceHitRate } from '../../shared/notes/evidence'
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
-import { saveNoteVersion, stripFences, loadCleanSegments } from './summarize'
+import { saveNoteVersion, stripFences, loadCleanSegments, loadSummarizeInputs, buildUserParts } from './summarize'
 import { feedbackTagInstructions } from '../../shared/feedback-tags'
 import { cleanTranscriptTimed } from '../../shared/notes/transcript-clean'
 import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
@@ -95,7 +95,8 @@ export async function polishNote(
   db: Db,
   client: OpenAiCompatibleClient,
   lessonId: string,
-  feedback: { tags: string[]; text: string }
+  feedback: { tags: string[]; text: string },
+  libraryRoot: string
 ): Promise<
   | {
       version: number
@@ -116,10 +117,15 @@ export async function polishNote(
   const refsOnly = validRefs.map((r) => r.ref)
   const userText = buildPolishUserParts(latest.note, { tags: feedback.tags, text: feedback.text.slice(0, MAX_FEEDBACK_TEXT_CHARS) }, loadTranscript(db, lessonId), refsOnly)
   try {
+    // 批3: 补发少量画面素材。POLISH_SYSTEM_PROMPT 第 6 条本来就要求「转写同音错词
+    // 结合画面纠正为正确术语写法」，但此前是纯文本调用——承诺兑现不了。这里复用
+    // 生成侧的取图（含批1b 的 PPT×关键帧融合），只取预算内的几张。
+    const inputs = loadSummarizeInputs(db, lessonId, libraryRoot)
+    const images = 'error' in inputs ? [] : inputs.images
     let answer = await client.chatJson(
       [
         { role: 'system', content: POLISH_SYSTEM_PROMPT },
-        { role: 'user', content: userText }
+        { role: 'user', content: images.length > 0 ? buildUserParts(userText, images) : userText }
       ],
       binding.model
     )

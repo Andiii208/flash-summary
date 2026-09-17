@@ -1121,13 +1121,13 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (course == null) return err(new Error('课程不存在'))
       const rows = ctx.db
         .prepare(
-          `SELECT l.id AS lessonId, l.title AS lessonTitle, n.version, n.note_json
+          `SELECT l.id AS lessonId, l.title AS lessonTitle, n.version, n.note_json, n.prompt_version AS promptVersion
            FROM lessons l
            JOIN notes n ON n.lesson_id = l.id
            WHERE l.course_id = ? AND n.version = (SELECT MAX(version) FROM notes WHERE lesson_id = l.id)
            ORDER BY l.title`
         )
-        .all(id) as Array<{ lessonId: string; lessonTitle: string; version: number; note_json: string }>
+        .all(id) as Array<{ lessonId: string; lessonTitle: string; version: number; note_json: string; promptVersion: number }>
       const report = rows.map((row) => {
         try {
           const note = parseNote(row.note_json)
@@ -1135,9 +1135,23 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
           // 批1: 转写摘引可核验率——渲染层没有转写，只能在这里算。
           const transcriptHitRate = transcriptHitRateFor(ctx.db, row.lessonId, note)
           const health = noteHealth(note, hitRate, transcriptHitRate)
-          return { lessonId: row.lessonId, lessonTitle: row.lessonTitle, version: row.version, warnCount: health.warnCount, grade: health.grade }
+          return {
+            lessonId: row.lessonId,
+            lessonTitle: row.lessonTitle,
+            version: row.version,
+            warnCount: health.warnCount,
+            grade: health.grade,
+            promptVersion: row.promptVersion
+          }
         } catch {
-          return { lessonId: row.lessonId, lessonTitle: row.lessonTitle, version: row.version, warnCount: 3, grade: 'weak' as const }
+          return {
+            lessonId: row.lessonId,
+            lessonTitle: row.lessonTitle,
+            version: row.version,
+            warnCount: 3,
+            grade: 'weak' as const,
+            promptVersion: row.promptVersion
+          }
         }
       })
       return ok(report)
@@ -1420,7 +1434,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       polishInFlight.add(id)
       try {
         const client = ctx.chatFor('multimodal')
-        const result = await polishNote(ctx.db, client, id, parsed)
+        // 批3: 传 libraryRoot —— 润色要补发少量关键帧（它 prompt 里本来就承诺
+        // 「转写同音错词结合画面纠正」，而代码此前从不发图）。
+        const result = await polishNote(ctx.db, client, id, parsed, ctx.libraryRoot)
         if ('error' in result) return err(new Error(result.error))
         return ok(result)
       } finally {

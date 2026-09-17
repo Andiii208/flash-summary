@@ -4,13 +4,15 @@
  * warn = 重新生成可改进的内容缺口；info = 诚实空节的说明（非错误，不拉低
  * 评级——考点/缺口「没有就是没有」，宁空勿编）。不做评分排名与趋势。
  */
-import type { Note } from './schema'
+import type { Note, TreeNode } from './schema'
 import { bigramDice } from './transcript-clean'
 
 export type HealthField =
   | 'overview'
   | 'concepts'
   | 'timeline'
+  /** 批3 (2026-09-17): 知识结构形状（分支数/层数/标题长度）。 */
+  | 'knowledgeTree'
   | 'examCues'
   | 'questionsAndGaps'
   | 'quiz'
@@ -36,6 +38,7 @@ export const HEALTH_FIELD_LABELS: Record<HealthField, string> = {
   overview: '概览',
   concepts: '概念',
   timeline: '时间线',
+  knowledgeTree: '知识结构',
   examCues: '考点',
   questionsAndGaps: '疑问与缺口',
   quiz: '自测题',
@@ -48,6 +51,14 @@ const MIN_DEFINITION_CHARS = 60
 const REPEAT_SIMILARITY = 0.8
 const CIRCULAR_MAX_CHARS = 25
 const HIT_RATE_TARGET = 0.6
+/** 批3: 时间线 detail 的字数下限（与 prompt 规约 9.2 同源）。 */
+const MIN_DETAIL_CHARS = 60
+/** 批3: 自测题题数下限（与 prompt 形状规则 6 的 5-8 同源）。 */
+const MIN_QUIZ_ITEMS = 5
+/** 批3: 知识树形状下限（与形状规则 7 同源）。 */
+const MIN_TREE_BRANCHES = 3
+const MIN_TREE_DEPTH = 3
+const MAX_NODE_TITLE_CHARS = 20
 
 function overviewFindings(note: Note): HealthFinding[] {
   const overview = note.overview.trim()
@@ -61,7 +72,11 @@ function overviewFindings(note: Note): HealthFinding[] {
 }
 
 function conceptFindings(note: Note): HealthFinding[] {
-  if (note.concepts.length === 0) return []
+  // 批3 补洞：此前数组为空时直接 return []，于是一份**概念全空**的笔记只要概览
+  // 够长就能评 good（体检形同虚设）。必填分节缺失必须是 warn。
+  if (note.concepts.length === 0) {
+    return [{ field: 'concepts', level: 'warn', message: '概念为空——本讲未产出任何概念，笔记只剩概览' }]
+  }
   const findings: HealthFinding[] = []
   const total = note.concepts.reduce((sum, c) => sum + c.definition.trim().length, 0)
   const average = Math.round(total / note.concepts.length)
@@ -85,14 +100,63 @@ function conceptFindings(note: Note): HealthFinding[] {
 }
 
 function timelineFindings(note: Note): HealthFinding[] {
-  if (note.timeline.length === 0) return []
+  // 批3 补洞：同 concepts——时间线全空此前静默跳过。
+  if (note.timeline.length === 0) {
+    return [{ field: 'timeline', level: 'warn', message: '时间线为空——本讲未产出任何时间线索目' }]
+  }
+  const findings: HealthFinding[] = []
   const repeated = note.timeline.filter((entry) => {
     const detail = entry.detail.trim()
     const title = entry.title.trim()
     return detail === '' || detail === title || bigramDice(detail, title) >= REPEAT_SIMILARITY
   })
-  if (repeated.length === 0) return []
-  return [{ field: 'timeline', level: 'warn', message: `${repeated.length} 条时间线 detail 疑似复读标题或为空，缺具体数字与结论` }]
+  if (repeated.length > 0) {
+    findings.push({ field: 'timeline', level: 'warn', message: `${repeated.length} 条时间线 detail 疑似复读标题或为空，缺具体数字与结论` })
+  }
+  // 批3: prompt 9.2 要求 detail ≥60 字，此前只查「复读标题」不查字数。
+  const tooShort = note.timeline.filter((entry) => {
+    const detail = entry.detail.trim()
+    return detail !== '' && detail !== entry.title.trim() && detail.length < MIN_DETAIL_CHARS
+  })
+  if (tooShort.length > 0) {
+    findings.push({ field: 'timeline', level: 'warn', message: `${tooShort.length} 条时间线 detail 不足 ${MIN_DETAIL_CHARS} 字，只描述没细节` })
+  }
+  return findings
+}
+
+/** 批3: 知识树形状（形状规则 7 的「第一层 3-6 分支 / 整体 3-4 层 / 标题 ≤20 字」）。 */
+function treeFindings(note: Note): HealthFinding[] {
+  const root = note.knowledgeTree
+  const findings: HealthFinding[] = []
+  if (root.children.length < MIN_TREE_BRANCHES) {
+    findings.push({ field: 'knowledgeTree', level: 'warn', message: `知识结构只有 ${root.children.length} 个主分支（规约 ${MIN_TREE_BRANCHES}-6 个），覆盖面不足` })
+  }
+  const depth = treeDepth(root)
+  if (depth < MIN_TREE_DEPTH) {
+    findings.push({ field: 'knowledgeTree', level: 'warn', message: `知识结构只有 ${depth} 层（规约 ${MIN_TREE_DEPTH}-4 层），细节没下沉到叶子` })
+  }
+  const longTitles = collectLongTitles(root, []).length
+  if (longTitles > 0) {
+    findings.push({ field: 'knowledgeTree', level: 'warn', message: `${longTitles} 个节点标题超过 ${MAX_NODE_TITLE_CHARS} 字，导图会撑成整句` })
+  }
+  return findings
+}
+
+function treeDepth(node: TreeNode): number {
+  if (node.children.length === 0) return 1
+  return 1 + Math.max(...node.children.map(treeDepth))
+}
+
+function collectLongTitles(node: TreeNode, out: string[]): string[] {
+  if (node.title.trim().length > MAX_NODE_TITLE_CHARS) out.push(node.title)
+  for (const child of node.children) collectLongTitles(child, out)
+  return out
+}
+
+/** 批3: 自测题题数（形状规则 6 的 5-8 题）。空数组走「诚实空节」的 info。 */
+function quizFindings(note: Note): HealthFinding[] {
+  if (note.quiz.length === 0 || note.quiz.length >= MIN_QUIZ_ITEMS) return []
+  return [{ field: 'quiz', level: 'warn', message: `自测题只有 ${note.quiz.length} 题（规约 ${MIN_QUIZ_ITEMS}-8 题），题量不足` }]
 }
 
 /** 诚实空节：信息级说明，不拉低评级。 */
@@ -143,7 +207,9 @@ export function noteHealth(
     ...overviewFindings(note),
     ...conceptFindings(note),
     ...timelineFindings(note),
+    ...treeFindings(note),
     ...honestEmptyFindings(note),
+    ...quizFindings(note),
     ...evidenceFindings(hitRate),
     ...transcriptFindings(transcriptHitRate)
   ]

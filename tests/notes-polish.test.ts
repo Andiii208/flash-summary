@@ -87,13 +87,50 @@ describe('polishNote (批5)', () => {
     chatJson: vi.fn(async () => answer)
   })
 
+  it('批3: 补发画面素材——兑现 prompt 里「结合画面纠正同音错词」的承诺', async () => {
+    seedLesson()
+    seedLatestNote()
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+    // loadSummarizeInputs 要求该课时有转写行（取图与取转写是同一入口）。
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-08T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 120, text: '本讲讲的是梯度下降与学习率的关系。' }]))
+    // 真写一个 4 字节「JPEG」到 libraryRoot，让 buildUserParts 能读到并内嵌。
+    const fakeJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0])
+    const { writeFileSync } = await import('fs')
+    writeFileSync(join(dir, 'kf.jpg'), fakeJpeg)
+    const client = clientOf(JSON.stringify(MIN_NOTE))
+    await polishNote(db, client as never, 'l1', { tags: ['lacks_detail'], text: '' }, dir)
+    const messages = (client.chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>])[0]
+    const userContent = messages.find((m) => m.role === 'user')?.content
+    expect(Array.isArray(userContent)).toBe(true)
+    expect((userContent as Array<{ type: string }>).some((part) => part.type === 'image_url')).toBe(true)
+  })
+
+  it('批3: 没有可用画面时退回纯文本（向后兼容，不产生空图消息）', async () => {
+    seedLesson()
+    seedLatestNote()
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+    // seedLesson 只插了 keyframes 行，文件并不存在 → 读不到字节。
+    const client = clientOf(JSON.stringify(MIN_NOTE))
+    await polishNote(db, client as never, 'l1', { tags: ['lacks_detail'], text: '' }, dir)
+    const messages = (client.chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>])[0]
+    const userContent = messages.find((m) => m.role === 'user')?.content
+    // 图片读不出时 buildUserParts 只保留文字部分，绝不产生指向空文件的 image part。
+    if (Array.isArray(userContent)) {
+      expect((userContent as Array<{ type: string }>).some((part) => part.type === 'image_url')).toBe(false)
+    } else {
+      expect(typeof userContent).toBe('string')
+    }
+  })
+
   it('inserts the revised note as version N+1 with a polish-marked model', async () => {
     seedLesson()
     seedLatestNote()
     db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
     const revised = parseNote(JSON.stringify({ ...MIN_NOTE, overview: '润色后的更完整概览' }))
     const client = clientOf(JSON.stringify(revised))
-    const result = await polishNote(db, client as never, 'l1', { tags: ['too_brief'], text: '' })
+    const result = await polishNote(db, client as never, 'l1', { tags: ['too_brief'], text: '' }, dir)
     if (!('error' in result)) {
       expect(result.version).toBe(2)
       const row = db.prepare('SELECT model, note_json FROM notes WHERE lesson_id = ? AND version = 2').get('l1') as { model: string; note_json: string }
@@ -115,7 +152,7 @@ describe('polishNote (批5)', () => {
       })
     )
     const client = clientOf(JSON.stringify(fabricated))
-    const result = await polishNote(db, client as never, 'l1', { tags: ['lacks_detail'], text: '' })
+    const result = await polishNote(db, client as never, 'l1', { tags: ['lacks_detail'], text: '' }, dir)
     expect('droppedRefs' in result && result.droppedRefs).toBe(1)
     const row = db.prepare('SELECT note_json FROM notes WHERE lesson_id = ? AND version = 2').get('l1') as { note_json: string }
     expect(row.note_json).not.toContain('made-up')
@@ -124,14 +161,14 @@ describe('polishNote (批5)', () => {
   it('refuses when the lesson has no note yet', async () => {
     seedLesson()
     db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'm')").run()
-    const result = await polishNote(db, { chatJson: async () => '' } as never, 'l1', { tags: ['too_brief'], text: '' })
+    const result = await polishNote(db, { chatJson: async () => '' } as never, 'l1', { tags: ['too_brief'], text: '' }, dir)
     expect('error' in result && result.error).toContain('还没有笔记')
   })
 
   it('refuses when no multimodal model is bound', async () => {
     seedLesson()
     seedLatestNote()
-    const result = await polishNote(db, { chatJson: async () => '' } as never, 'l1', { tags: ['too_brief'], text: '' })
+    const result = await polishNote(db, { chatJson: async () => '' } as never, 'l1', { tags: ['too_brief'], text: '' }, dir)
     expect('error' in result && result.error).toContain('未绑定')
   })
 })

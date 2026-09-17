@@ -105,6 +105,19 @@ export interface TreeNode {
   terms?: string[]
 }
 
+/**
+ * 批3 (plan 2026-09-17 note-quality upgrade): 当前笔记工艺版本。
+ *
+ * **改动 prompt 或笔记 schema 时必须同时 +1**。存量升级入口（NoteUpgradeDialog）
+ * 靠它把「旧工艺产出、但体检侥幸没 warn」的笔记也纳入建议范围；只看 warnCount
+ * 会漏掉这类笔记，用户看着「体检：良好」却不知道那是旧工艺的产物。
+ *
+ * 常量住在 shared 是因为渲染层也要读它（main 不能被渲染层 import）。
+ * 0 表示「该列启用之前生成的」，所以存量笔记天然算旧版本。
+ */
+export const CURRENT_PROMPT_VERSION = 2
+export const CURRENT_SCHEMA_VERSION = 2
+
 export const NoteSchema = z.object({
   overview: z.string(),
   knowledgeTree: TreeNodeSchema,

@@ -49,6 +49,49 @@ const VALID_NOTE = JSON.stringify({
   questionsAndGaps: []
 })
 
+// 批3 (2026-09-17): 这份夹具以前叫「丰富」，其实是 knowledgeTree 零子节点、
+// timeline/concepts/quiz 全空的空壳——它能评 good **完全依赖体检「数组为空即跳过」
+// 的漏洞**（该漏洞在批3 已修）。现在它必须真的满足规约。
+const RICH_NOTE = JSON.stringify({
+  overview: `## 本讲主线\n${'很长的主线叙述，覆盖本讲完整的知识推进与演示结果。'.repeat(6)}`,
+  knowledgeTree: {
+    title: '机器学习工程实践',
+    children: [
+      { title: '数据处理', children: [{ title: '加载与划分', children: [{ title: '张量批处理', children: [] }] }] },
+      { title: '模型构建', children: [{ title: '线性分类器', children: [{ title: '前向传播', children: [] }] }] },
+      { title: '训练调优', children: [{ title: '超参数搜索', children: [{ title: '容量控制', children: [] }] }] }
+    ]
+  },
+  timeline: [
+    {
+      at: 0,
+      title: '超参数调整演示',
+      detail:
+        '把模型宽度从 32 改到 64 之后，测试集精度由 0.97 回落到 0.87，训练集精度却继续上升，说明在这个数据量下容量过大已经明显过拟合。',
+      refs: [],
+      evidence: []
+    }
+  ],
+  concepts: [
+    {
+      term: '学习率',
+      definition:
+        '优化算法中的步长参数，控制每次参数更新的幅度；过大会导致损失震荡难以收敛，过小则收敛速度极慢，通常需要配合学习率调度器在训练过程中动态调整。'
+    }
+  ],
+  methodology: 'm',
+  examCues: ['手推交叉熵损失的梯度公式'],
+  questionsAndGaps: ['讲者留下的作业：完成模块化重构'],
+  quiz: [
+    { question: '学习率过大有什么后果?', answer: '损失震荡难以收敛。', source: 'concept', term: '学习率' },
+    { question: '容量过大在本数据集上的表现是什么?', answer: '训练精度上升而测试精度回落。', source: 'concept', term: '学习率' },
+    { question: '讲者建议的宽度取值是多少?', answer: '先压回 32。', source: 'concept', term: '学习率' },
+    { question: '过拟合在本讲的判据是什么?', answer: '训练与测试精度走势背离。', source: 'concept', term: '学习率' },
+    { question: '讲者给出的容量控制手段是什么?', answer: '减小模型宽度。', source: 'concept', term: '学习率' }
+  ]
+})
+
+
 let db: Db
 let dir: string
 let ipc: FakeIpc
@@ -237,13 +280,18 @@ describe('notes:regenerate (2026-09-04)', () => {
     // 批1 (2026-09-17): 视觉锚（hitRate）与转写锚（transcriptHitRate）分列。
     // 本例转写 '转写' 只有 2 字、被近空段规则剔光，笔记也没有摘引 → 无从判断，
     // 所以转写锚为 null、refStats 全 0，且**不应**误删任何东西。
+    // 批3: health 是本批新增字段。这份夹具并不合规（概览 4 字、无概念、知识树只有
+    // 一层），所以返修环被触发了一次；但 mock 每次都返回同一份笔记 → warn 数没下降
+    // → 返修被拒绝（这正是「只采纳真正改善的返修」的守卫）。所以 repaired=false，
+    // 体检结论照实报 weak。
     expect(res.value).toEqual({
       version: 1,
       images: 1,
       hitRate: { hits: 1, total: 1 },
       transcriptHitRate: null,
       refStats: { total: 0, droppedAt: 0, clearedText: 0, quoted: 0, quotedVerified: 0, offNeighborhood: 0 },
-      droppedRefs: 0
+      droppedRefs: 0,
+      health: { warnCount: 5, grade: 'weak', repaired: false }
     })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
     expect(row).toEqual({ version: 1, model: 'mimo-v2.5' })
@@ -361,6 +409,135 @@ describe('notes:regenerate (2026-09-04)', () => {
     const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('运行中')
+  })
+})
+
+describe('批3 生成质量闭环：有界返修（2026-09-17）', () => {
+  /** 体检完全达标的稿（复用 RICH_NOTE 的口径，作用域内自持一份）。 */
+  const RICH = RICH_NOTE
+
+  function seedRegenerate(): void {
+    seedKeyframe()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+  }
+
+  const THIN = JSON.stringify({
+    overview: '太短。',
+    knowledgeTree: { title: 'root', children: [] },
+    methodology: '方法',
+    examCues: [],
+    questionsAndGaps: []
+  })
+
+  it('首稿不达标 → 返修一次；返修稿达标则采纳（repaired=true, warn 归零）', async () => {
+    const ctx = makeCtx()
+    seedRegenerate()
+    const chatJson = vi.fn(async () => THIN).mockResolvedValueOnce(THIN).mockResolvedValueOnce(RICH)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as {
+      ok: boolean
+      value?: { health: { warnCount: number; grade: string; repaired: boolean }; images: number }
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value?.health).toEqual({ warnCount: 0, grade: 'good', repaired: true })
+    // 恰好两次：生成 + 返修（返修不再触发第三次）。
+    expect(chatJson).toHaveBeenCalledTimes(2)
+
+    // 落库的是**返修后**的稿（概览已被写足）。
+    const row = db.prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1').get('l1') as {
+      note_json: string
+    }
+    expect(row.note_json).toContain('本讲主线')
+  })
+
+  it('返修不发图 —— 第二次调用的 user 内容是纯文本，没有 image part', async () => {
+    const ctx = makeCtx()
+    seedRegenerate()
+    const chatJson = vi.fn(async () => THIN).mockResolvedValueOnce(THIN).mockResolvedValueOnce(RICH)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    await invoke('notes:regenerate', 'l1')
+
+    const generationMessages = (chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>])[0]
+    const generationUser = generationMessages.find((m) => m.role === 'user')?.content as Array<{ type: string }>
+    expect(generationUser.some((part) => part.type === 'image_url')).toBe(true)
+
+    // 返修那一次是单条 string user 消息（buildRepairUserParts），因此天然无图 ——
+    // 省掉第二次多模态费用。
+    const repairMessages = (chatJson.mock.calls[1] as unknown as [Array<{ role: string; content: unknown }>])[0]
+    expect(typeof repairMessages.find((m) => m.role === 'user')?.content).toBe('string')
+    expect(repairMessages.some((m) => Array.isArray(m.content))).toBe(false)
+  })
+
+  it('返修没能改善时保留原稿（不为了好看而牺牲诚实）', async () => {
+    const ctx = makeCtx()
+    seedRegenerate()
+    // 两次都返回同一份薄笔记 → warn 数不下降 → 拒绝返修。
+    const chatJson = vi.fn(async () => THIN)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { health: { warnCount: number; repaired: boolean } } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.health.repaired).toBe(false)
+    expect(res.value?.health.warnCount).toBeGreaterThan(0)
+
+    const row = db.prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1').get('l1') as {
+      note_json: string
+    }
+    expect(row.note_json).toContain('太短。')
+  })
+
+  it('首稿已达标则完全不做返修（省一次模型调用）', async () => {
+    const ctx = makeCtx()
+    seedRegenerate()
+    const chatJson = vi.fn(async () => RICH)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { health: { warnCount: number; repaired: boolean } } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.health).toEqual({ warnCount: 0, grade: 'good', repaired: false })
+    expect(chatJson).toHaveBeenCalledTimes(1)
+  })
+
+  it('返修稿同样过证据过滤与摘引核验（返修不是编造的后门）', async () => {
+    const ctx = makeCtx()
+    seedRegenerate()
+    const forged = JSON.stringify({
+      ...JSON.parse(RICH),
+      timeline: [
+        {
+          at: 0,
+          title: '伪造引用',
+          detail: '这一段里引用了一个不存在的证据和一个转写里没有的摘引，用来验证返修稿也要过同一套核验。',
+          refs: [{ at: 0, text: '这句话在转写里根本找不到啊啊啊' }],
+          evidence: [{ kind: 'keyframe', ref: 'kf:不存在的关键帧' }]
+        }
+      ]
+    })
+    const chatJson = vi.fn(async () => THIN).mockResolvedValueOnce(THIN).mockResolvedValueOnce(forged)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { droppedRefs: number } }
+    expect(res.ok).toBe(true)
+    // 伪造的视觉证据在落库前就被丢掉（两条路径共用 dropUnknownEvidence）。
+    const row = db.prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1').get('l1') as {
+      note_json: string
+    }
+    expect(row.note_json).not.toContain('不存在的关键帧')
   })
 })
 
@@ -580,16 +757,6 @@ describe('notes:polish (批5, plan 2026-09-07 v07)', () => {  function seedTrans
 })
 
 describe('notes:courseHealth (质量批4, plan 2026-09-08 note-quality-overhaul)', () => {
-  const RICH_NOTE = JSON.stringify({
-    overview: `## 本讲主线\n${'很长的主线叙述，覆盖本讲完整的知识推进与演示结果。'.repeat(6)}`,
-    knowledgeTree: { title: 'r', children: [] },
-    timeline: [],
-    concepts: [],
-    methodology: 'm',
-    examCues: ['手推交叉熵损失的梯度公式'],
-    questionsAndGaps: ['讲者留下的作业：完成模块化重构'],
-    quiz: []
-  })
   const THIN_NOTE = JSON.stringify({
     overview: '太短。',
     knowledgeTree: { title: 'r', children: [] },
@@ -623,11 +790,20 @@ describe('notes:courseHealth (质量批4, plan 2026-09-08 note-quality-overhaul)
     const rows = res.value ?? []
     expect(rows).toHaveLength(3)
     expect(rows.find((r) => r.lessonId === 'l1')).toMatchObject({ version: 2, warnCount: 0, grade: 'good' })
-    expect(rows.find((r) => r.lessonId === 'l2')).toMatchObject({ version: 1, warnCount: 1, grade: 'fair' })
+    // l2 的薄笔记在批3 之后是 5 个 warn（此前只有 1 个——体检太浅）。逐条对应：
+    // 概览过短 / 概念为空 / 时间线为空 / 知识树主分支不足 / 知识树层数不足。
+    expect(rows.find((r) => r.lessonId === 'l2')).toMatchObject({ version: 1, warnCount: 5, grade: 'weak' })
     expect(rows.find((r) => r.lessonId === 'l3')).toMatchObject({ warnCount: 3, grade: 'weak' })
-    // 默认勾选口径 = warn>0（D2=A）——排除已达标的 l1。
+    // 默认勾选口径（批3 扩为两条）：warn>0 **或** 工艺版本落后。
+    // 这里的 seedNote 不带 prompt_version → 落库默认 0 = 旧版本，所以三门课都入选；
+    // 为了把「warn 这条规则」单独验出来，本条只用当前版本戳 l1 之外的两门。
     const { defaultSelection } = await import('../src/renderer/components/NoteUpgradeDialog')
-    expect(defaultSelection(rows as NonNullable<typeof res.value>)).toEqual(['l2', 'l3'])
+    const { CURRENT_PROMPT_VERSION } = await import('../src/shared/notes/schema')
+    const nowCurrent = rows.map((r) => ({ ...r, promptVersion: CURRENT_PROMPT_VERSION }))
+    expect(defaultSelection(nowCurrent, CURRENT_PROMPT_VERSION)).toEqual(['l2', 'l3'])
+    // 存量笔记（0）即使体检达标也会被建议升级——这正是批3 补的那条规则。
+    // 顺序沿用入参顺序（rows 按课时标题排），所以是 l2/l3/l1。
+    expect(defaultSelection(rows as NonNullable<typeof res.value>, CURRENT_PROMPT_VERSION)).toEqual(['l2', 'l3', 'l1'])
   })
 
   it('notes:list rows carry courseId (升级入口的分组定位键)', async () => {

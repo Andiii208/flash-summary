@@ -12,6 +12,7 @@ import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidenc
 import { cleanSegments, formatTimedTranscript } from '../../shared/notes/transcript-clean'
 import type { CleanSegment } from '../../shared/notes/transcript-clean'
 import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
+import { noteHealth } from '../../shared/notes/health'
 import type { RefVerifyStats } from '../../shared/notes/ref-verify'
 import { fuseVisualEvidence } from '../../shared/notes/visual-fusion'
 import { buildVisualCandidates } from './visual-hash'
@@ -216,6 +217,83 @@ export async function generateNote(
 /** Versions kept per lesson — F6 promised a cap of 10, polish makes it matter. */
 const KEEP_VERSIONS = 10
 
+// 批3: 工艺版本常量的唯一事实源在 shared/notes/schema.ts（渲染层也要读它）；
+// 这里 import + 再导出，让 main 侧调用点不必记两个路径。
+import { CURRENT_PROMPT_VERSION, CURRENT_SCHEMA_VERSION } from '../../shared/notes/schema'
+export { CURRENT_PROMPT_VERSION, CURRENT_SCHEMA_VERSION }
+
+/** 批3: 返修用的 system prompt。 */
+export const REPAIR_SYSTEM_PROMPT =
+  '你是课程笔记修订器。用户会给你一份已生成的笔记 JSON、以及体检发现的**具体问题清单**。' +
+  '你的任务只修这些问题，不要重写、不要新增体检没提到的改动。' +
+  '要求：1) 输出完整的修订后 JSON，结构与原笔记完全相同；' +
+  '2) 所有 at 保持整数秒，evidence 与 refs 沿用原文，禁止编造新的证据ID或摘引；' +
+  '3) 把字数不足的字段写足——依据是转写摘录里的真实内容，不是想象；' +
+  '4) 若某个问题在转写里确实找不到依据（例如本讲根本没给例子），**保持原样不要编造**，宁可让这条问题继续存在；' +
+  '5) 除 overview 与 methodology 用 Markdown 组织外，其余字段纯文本，禁止 Markdown 标记。'
+
+/** 返修输入：待修笔记 + 体检问题清单 + 带时间转写。 */
+function buildRepairUserParts(note: Note, findings: ReadonlyArray<{ level: string; message: string }>, transcriptText: string): string {
+  const problems = findings.filter((f) => f.level === 'warn').map((f, i) => `${i + 1}. ${f.message}`)
+  return [
+    '【体检发现的问题】',
+    ...problems,
+    '',
+    '【当前笔记 JSON】',
+    JSON.stringify(note),
+    '',
+    '【课程转写摘录】（修订的事实依据，不得超出这个范围）',
+    transcriptText
+  ].join('\n')
+}
+
+/**
+ * 批3：一次有界返修。**不发图**——体检报的基本是「写短了 / 复读了标题 / 缺具体数字」
+ * 这类问题，靠带时间的转写就能修；重发图片会让多模态费用接近翻倍。
+ *
+ * 返回 null 表示返修没能改善（调用失败 / 解析失败 / warn 数没下降），调用方保留原稿。
+ * **门禁只用于内部提质，绝不用于拦截交付**——生成失败比一份及格的笔记更糟。
+ */
+async function repairOnce(
+  client: OpenAiCompatibleClient,
+  model: string,
+  note: Note,
+  findings: ReadonlyArray<{ level: string; message: string }>,
+  transcriptText: string,
+  segments: CleanSegment[],
+  allRefs: ReadonlySet<string>,
+  signal?: AbortSignal
+): Promise<{ note: Note; stats: RefVerifyStats; warnCount: number } | null> {
+  let answer: string
+  try {
+    answer = await client.chatJson(
+      [
+        { role: 'system', content: REPAIR_SYSTEM_PROMPT },
+        { role: 'user', content: buildRepairUserParts(note, findings, transcriptText) }
+      ],
+      model,
+      undefined,
+      signal
+    )
+  } catch {
+    return null
+  }
+  let repaired: Note
+  try {
+    repaired = parseNote(answer)
+  } catch {
+    try {
+      repaired = parseNote(stripFences(answer))
+    } catch {
+      return null
+    }
+  }
+  // 返修稿同样过证据过滤与摘引核验——返修不能成为编造的后门。
+  const { note: evidenceChecked } = dropUnknownEvidence(repaired, allRefs)
+  const verified = verifyNoteRefs(evidenceChecked, segments)
+  return { note: verified.note, stats: verified.stats, warnCount: noteHealth(verified.note).warnCount }
+}
+
 /**
  * 读时清洗某课时的转写分片（批1）。summarize / polish / 体检三处共用，
  * 保证核验用的分片与喂给模型的是**同一份**素材。
@@ -247,14 +325,19 @@ export function transcriptHitRateFor(db: Db, lessonId: string, note: Note): { hi
 export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: string): number {
   const versionRow = db.prepare('SELECT MAX(version) AS v FROM notes WHERE lesson_id = ?').get(lessonId) as { v: number | null }
   const version = (versionRow.v ?? 0) + 1
-  db.prepare('INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+  // 批3: 记下产出这份笔记的工艺版本，存量升级入口据此判断「要不要建议重生成」。
+  db.prepare(
+    'INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at, prompt_version, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
     `${lessonId}-v${version}`,
     lessonId,
     version,
     JSON.stringify(note),
     'openai-compatible',
     model,
-    new Date().toISOString()
+    new Date().toISOString(),
+    CURRENT_PROMPT_VERSION,
+    CURRENT_SCHEMA_VERSION
   )
   // F6 (design-review): keep only the newest KEEP_VERSIONS rows — regeneration
   // and polish append versions, and the table grew without bound before this.
@@ -294,6 +377,8 @@ export async function summarizeLesson(
       transcriptHitRate: { hits: number; total: number } | null
       refStats: RefVerifyStats
       droppedRefs: number
+      /** 批3: 生成闭环结果——返修后的体检结果与是否真的返修过。 */
+      health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean }
     }
   | { error: string }
 > {
@@ -311,12 +396,49 @@ export async function summarizeLesson(
     const { note: evidenceChecked, dropped } = dropUnknownEvidence(generated, inputs.allRefs)
     // Batch 1: the transcript anchors are now verifiable — quotes that cannot
     // be found in the transcript are cleared, out-of-range times dropped.
-    const { note, stats } = verifyNoteRefs(evidenceChecked, inputs.segments)
-    const version = saveNoteVersion(db, lessonId, note, binding.model)
+    const verified = verifyNoteRefs(evidenceChecked, inputs.segments)
     // Citation quality signals (roadmap 1.3 + batch 1): the compliance reading
     // deliberately uses the images actually sent — the model never saw the rest.
-    const hitRate = evidenceHitRate(note, inputs.images)
-    return { version, images: inputs.images.length, hitRate, transcriptHitRate: transcriptRefHitRate(stats), refStats: stats, droppedRefs: dropped }
+    const hitRate = evidenceHitRate(verified.note, inputs.images)
+    const transcriptHitRate = transcriptRefHitRate(verified.stats)
+
+    // Batch 3: 生成质量闭环——体检发现缺口时做**一次**有界返修，不发图。
+    // 只有当返修真的把 warn 数压下来才采纳（否则保留原稿），所以这条路只可能
+    // 改善、不可能变差；且无论结果如何都照常出笔记（反门控）。
+    let note = verified.note
+    let stats = verified.stats
+    let warnCountBefore = noteHealth(note, hitRate, transcriptHitRate).warnCount
+    let repaired = false
+    if (warnCountBefore > 0) {
+      const health = noteHealth(note, hitRate, transcriptHitRate)
+      const attempt = await repairOnce(
+        client,
+        binding.model,
+        note,
+        health.findings,
+        inputs.transcriptText,
+        inputs.segments,
+        inputs.allRefs,
+        signal
+      )
+      if (attempt != null && attempt.warnCount < warnCountBefore) {
+        note = attempt.note
+        stats = attempt.stats
+        warnCountBefore = attempt.warnCount
+        repaired = true
+      }
+    }
+
+    const version = saveNoteVersion(db, lessonId, note, binding.model)
+    return {
+      version,
+      images: inputs.images.length,
+      hitRate: evidenceHitRate(note, inputs.images),
+      transcriptHitRate: transcriptRefHitRate(stats),
+      refStats: stats,
+      droppedRefs: dropped,
+      health: { warnCount: warnCountBefore, grade: noteHealth(note).grade, repaired }
+    }
   } catch (err) {
     return { error: `笔记生成失败: ${(err as Error).message}` }
   }

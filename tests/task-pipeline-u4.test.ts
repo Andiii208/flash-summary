@@ -12,12 +12,54 @@ import { ffmpegPath } from '../src/main/media/binaries'
 import { DEFAULT_CHUNK_SECONDS } from '../src/main/media/audio-split'
 import { ProviderError } from '../src/main/providers/openai-client'
 
+/**
+ * 一份**体检完全达标**的笔记（批3 2026-09-17）。
+ *
+ * 这些用例验证的是「图片怎么发 / caption 怎么写 / 视觉被拒时怎么降级」，不是返修。
+ * 夹具若不合规，批3 的返修环会多打一次模型（那是**正确**的产品行为），从而搅乱
+ * 这些用例的调用次数与 captured 断言。所以夹具必须是合规笔记——返修路径本身
+ * 另有专门的用例覆盖（见 notes-ipc 的批3 用例）。
+ */
 const validNote = {
-  overview: '概览',
-  knowledgeTree: { title: 'root', children: [] },
+  overview:
+    '## 本讲主线\n' +
+    '本讲完整走了一遍线性分类模型的工程实践流程，覆盖环境搭建、数据加载、模型构建、训练评估与超参数调优的每个环节，并在每一步给出可复现的演示结果。'.repeat(2) +
+    '\n## 前置知识\n需要了解基础的张量操作、训练循环结构以及简单的数据预处理方法。',
+  knowledgeTree: {
+    title: '机器学习工程实践',
+    children: [
+      { title: '数据处理', children: [{ title: '加载与划分', children: [{ title: '张量批处理', children: [] }] }] },
+      { title: '模型构建', children: [{ title: '线性分类器', children: [{ title: '前向传播', children: [] }] }] },
+      { title: '训练调优', children: [{ title: '超参数搜索', children: [{ title: '容量控制', children: [] }] }] }
+    ]
+  },
+  timeline: [
+    {
+      at: 0,
+      title: '超参数调整演示',
+      detail:
+        '把模型宽度从 32 改到 64 之后，测试集精度由 0.97 回落到 0.87，训练集精度却继续上升，说明在这个数据量下容量过大已经明显过拟合。',
+      refs: [],
+      evidence: []
+    }
+  ],
+  concepts: [
+    {
+      term: '学习率',
+      definition:
+        '优化算法中的步长参数，控制每次参数更新的幅度；过大会导致损失震荡难以收敛，过小则收敛速度极慢，通常需要配合学习率调度器在训练过程中动态调整。'
+    }
+  ],
   methodology: '方法',
-  examCues: [],
-  questionsAndGaps: []
+  examCues: ['手推交叉熵损失的梯度公式'],
+  questionsAndGaps: ['讲者留下的作业：完成模块化重构'],
+  quiz: [
+    { question: '学习率过大有什么后果?', answer: '损失震荡难以收敛。', source: 'concept', term: '学习率' },
+    { question: '容量过大在本数据集上的表现是什么?', answer: '训练精度上升而测试精度回落。', source: 'concept', term: '学习率' },
+    { question: '讲者建议的宽度取值是多少?', answer: '先压回 32。', source: 'concept', term: '学习率' },
+    { question: '过拟合在本讲的判据是什么?', answer: '训练与测试精度走势背离。', source: 'concept', term: '学习率' },
+    { question: '讲者给出的容量控制手段是什么?', answer: '减小模型宽度。', source: 'concept', term: '学习率' }
+  ]
 }
 
 let db: Db

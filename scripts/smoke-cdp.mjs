@@ -343,7 +343,7 @@ async function main() {
       const db = new Database(dbFile, { readonly: true })
       try {
         const migrations = db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n
-        record('L4 all ten migrations applied', migrations === 10, `schema_migrations rows ${migrations}`)
+        record('L4 all eleven migrations applied', migrations === 11, `schema_migrations rows ${migrations}`)
         const courseRows = db.prepare('SELECT COUNT(*) AS n FROM courses').get().n
         record('L4 empty library has zero courses', courseRows === 0, `courses ${courseRows}`)
       } finally {

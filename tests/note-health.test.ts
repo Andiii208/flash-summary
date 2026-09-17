@@ -7,11 +7,37 @@ import { noteHealth, HEALTH_FIELD_LABELS } from '../src/shared/notes/health'
 import { parseNote, type Note } from '../src/shared/notes/schema'
 
 function noteFixture(overrides: Partial<Record<string, unknown>> = {}): Note {
+  // 批3 (2026-09-17) 起这份夹具必须**真的**满足规约：此前体检不查知识树形状、
+  // 不查 detail 字数、不查题量，「丰富笔记 → good」其实是靠体检太浅才通过的。
+  // 现在它是「一份合规笔记长什么样」的范本。
   const base = {
     overview:
       '## 本讲主线\n本讲以鸢尾花数据集为例，用 PyTorch 完整走了一遍线性分类模型的工程实践流程，覆盖从环境搭建到超参数调优的每个环节。\n## 前置知识\n需要了解基础的张量操作、训练循环结构以及简单的数据预处理方法。\n## 学完能做什么\n独立完成数据加载、模型构建、训练评估与调参的模块化程序，并能针对精度不达标的情况系统性地排查原因。',
-    knowledgeTree: { title: '机器学习工程实践', children: [] },
-    timeline: [{ at: 0, title: '超参数调整演示', detail: '模型宽度从 32 改为 64 后测试集精度由 0.97 回落至 0.87，说明容量过大在本数据集上会过拟合。', refs: [], evidence: [] }],
+    knowledgeTree: {
+      title: '机器学习工程实践',
+      children: [
+        { title: '数据处理', children: [{ title: '加载与划分', children: [{ title: '张量批处理', children: [] }] }] },
+        { title: '模型构建', children: [{ title: '线性分类器', children: [{ title: '前向传播', children: [] }] }] },
+        { title: '训练调优', children: [{ title: '超参数搜索', children: [{ title: '容量控制', children: [] }] }] }
+      ]
+    },
+    timeline: [
+      {
+        at: 0,
+        title: '超参数调整演示',
+        detail:
+          '把模型宽度从 32 改到 64 之后，测试集精度由 0.97 回落到 0.87，训练集精度却继续上升，说明在这个数据量下容量过大已经明显过拟合，讲者据此建议先把宽度压回 32。',
+        refs: [],
+        evidence: []
+      },
+      {
+        at: 120,
+        title: '学习率对照实验',
+        detail: '学习率从 0.1 调到 1.0 之后损失曲线在第三个 epoch 直接发散，调回 0.01 则收敛变慢但稳定，讲者的结论是先用 0.1 再配余弦退火。',
+        refs: [],
+        evidence: []
+      }
+    ],
     concepts: [
       {
         term: '学习率',
@@ -23,7 +49,13 @@ function noteFixture(overrides: Partial<Record<string, unknown>> = {}): Note {
     methodology: '## 解题思路\n先搭最小可运行管线再逐步调参。',
     examCues: ['手推交叉熵损失的梯度公式'],
     questionsAndGaps: ['讲者留下的作业：完成模块化重构'],
-    quiz: [{ question: '学习率过大有什么后果?', answer: '损失震荡难以收敛。', source: 'concept' as const, term: '学习率' }]
+    quiz: [
+      { question: '学习率过大有什么后果?', answer: '损失震荡难以收敛。', source: 'concept' as const, term: '学习率' },
+      { question: '容量过大在本数据集上的表现是什么?', answer: '训练精度继续上升而测试精度回落。', source: 'concept' as const, term: '学习率' },
+      { question: '讲者建议的宽度取值是多少?', answer: '先压回 32。', source: 'concept' as const, term: '学习率' },
+      { question: '损失发散出现在第几个 epoch?', answer: '第三个。', source: 'concept' as const, term: '学习率' },
+      { question: '讲者最后推荐的调度策略是什么?', answer: '先用 0.1 再配余弦退火。', source: 'concept' as const, term: '学习率' }
+    ]
   }
   return parseNote(JSON.stringify({ ...base, ...overrides }))
 }
@@ -173,5 +205,60 @@ describe('noteHealth 体检 (批3 2026-09-08)', () => {
   it('字段标签单一事实源', () => {
     expect(HEALTH_FIELD_LABELS.overview).toBe('概览')
     expect(HEALTH_FIELD_LABELS.questionsAndGaps).toBe('疑问与缺口')
+    expect(HEALTH_FIELD_LABELS.knowledgeTree).toBe('知识结构')
+  })
+})
+
+describe('批3 体检补洞（2026-09-17）', () => {
+  it('概念全空不再评 good —— 这正是修复前的漏洞', () => {
+    // 修复前：conceptFindings 在数组为空时直接 return []，于是一份**没有概念**
+    // 的笔记只要概览够长就 warnCount=0 → good，体检形同虚设。
+    const report = noteHealth(noteFixture({ concepts: [] }))
+    expect(report.findings.find((f) => f.field === 'concepts' && f.level === 'warn')?.message).toContain('概念为空')
+    expect(report.grade).not.toBe('good')
+  })
+
+  it('时间线全空不再评 good', () => {
+    const report = noteHealth(noteFixture({ timeline: [] }))
+    expect(report.findings.find((f) => f.field === 'timeline' && f.level === 'warn')?.message).toContain('时间线为空')
+    expect(report.grade).not.toBe('good')
+  })
+
+  it('时间线 detail 不足 60 字 → warn（此前只查复读标题，不查字数）', () => {
+    const report = noteHealth(
+      noteFixture({ timeline: [{ at: 0, title: '模型宽度调整', detail: '宽度从 32 改到 64 之后精度回落了。', refs: [], evidence: [] }] })
+    )
+    expect(report.findings.find((f) => f.field === 'timeline' && f.message.includes('不足'))).toBeDefined()
+  })
+
+  it('知识树形状：主分支不足 / 层数不足 / 标题过长 → 各自 warn', () => {
+    const flat = noteHealth(noteFixture({ knowledgeTree: { title: '主题', children: [] } }))
+    expect(flat.findings.find((f) => f.field === 'knowledgeTree' && f.message.includes('主分支'))).toBeDefined()
+    expect(flat.findings.find((f) => f.field === 'knowledgeTree' && f.message.includes('层'))).toBeDefined()
+
+    const longTitle = noteHealth(
+      noteFixture({
+        knowledgeTree: {
+          title: '机器学习工程实践',
+          children: [
+            { title: '这是一个明显超过二十个字上限的节点标题用来验证体检', children: [{ title: '子', children: [{ title: '孙', children: [] }] }] },
+            { title: '分支二', children: [{ title: '子', children: [{ title: '孙', children: [] }] }] },
+            { title: '分支三', children: [{ title: '子', children: [{ title: '孙', children: [] }] }] }
+          ]
+        }
+      })
+    )
+    expect(longTitle.findings.find((f) => f.field === 'knowledgeTree' && f.message.includes('标题超过'))).toBeDefined()
+  })
+
+  it('自测题非空但不足 5 题 → warn；空数组仍走「诚实空节」的 info', () => {
+    const few = noteHealth(
+      noteFixture({ quiz: [{ question: '学习率过大有什么后果?', answer: '损失震荡。', source: 'concept', term: '学习率' }] })
+    )
+    expect(few.findings.find((f) => f.field === 'quiz' && f.level === 'warn')?.message).toContain('题量不足')
+
+    const none = noteHealth(noteFixture({ quiz: [] }))
+    expect(none.findings.find((f) => f.field === 'quiz' && f.level === 'info')).toBeDefined()
+    expect(none.findings.find((f) => f.field === 'quiz' && f.level === 'warn')).toBeUndefined()
   })
 })

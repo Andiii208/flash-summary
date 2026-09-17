@@ -6,11 +6,19 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { NoteHealthInfo } from '../../shared/bridge'
+import { CURRENT_PROMPT_VERSION } from '../../shared/notes/schema'
 import { Dialog } from '../ui/Dialog'
 
-/** D2=A 默认勾选口径：体检不达标（warn>0）的课时；损坏档（weak 3 项）天然入选。 */
-export function defaultSelection(items: NoteHealthInfo[]): string[] {
-  return items.filter((item) => item.warnCount > 0).map((item) => item.lessonId)
+/**
+ * 默认勾选口径（批3 2026-09-17 扩一条）：体检不达标（warn>0）的课时，**或者**
+ * 由更早工艺版本产出的课时（`promptVersion < CURRENT_PROMPT_VERSION`，含启用该列
+ * 之前生成的存量笔记 = 0）。
+ *
+ * 为什么加第二条：只看 warnCount 会漏掉「旧 prompt 生成、但侥幸没有 warn」的笔记——
+ * 用户看着「体检：良好」，却不知道它其实是旧工艺的产物，永远不会被建议升级。
+ */
+export function defaultSelection(items: NoteHealthInfo[], currentPromptVersion: number): string[] {
+  return items.filter((item) => item.warnCount > 0 || (item.promptVersion ?? 0) < currentPromptVersion).map((item) => item.lessonId)
 }
 
 const GRADE_LABELS: Record<NoteHealthInfo['grade'], string> = { good: '良好', fair: '待改进', weak: '薄弱' }
@@ -32,7 +40,7 @@ export function NoteUpgradeDialog({ open, courseLabel, loading, items, busy, sta
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   // Items arrive async — reseed the default selection whenever they land.
   useEffect(() => {
-    if (!loading) setSelected(new Set(defaultSelection(items)))
+    if (!loading) setSelected(new Set(defaultSelection(items, CURRENT_PROMPT_VERSION)))
   }, [items, loading])
   const toggle = (lessonId: string): void => {
     setSelected((prev) => {

@@ -178,6 +178,11 @@ export interface NoteHealthInfo {
   /** warn 级发现数；note_json 损坏时以 3（weak 下限）上报。 */
   warnCount: number
   grade: 'good' | 'fair' | 'weak'
+  /**
+   * 批3 (2026-09-17): 产出该笔记的工艺版本（0 = 本列启用之前的存量笔记）。
+   * 升级入口据此把「旧 prompt 但侥幸没 warn」的笔记也纳入建议范围。
+   */
+  promptVersion?: number
 }
 
 /** 批B: one recent Q&A exchange across lessons (qa:recent, newest first). */
