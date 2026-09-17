@@ -1,7 +1,7 @@
 /**
  * Standalone SVG export of a knowledge tree (M3.3, map expansion 2026-09-05).
  * Pure string builder over the shared layout — forced paper-white palette per
- * note-craft SKILL §6 (print discipline: white even under the dark theme),
+ * note-craft SKILL §6 (PDF 讲义：打印纪律——暗色主题下也强制纸白),
  * mirroring PrintHandout's hardcoded print colors. No dependencies; the only
  * model-sourced strings are XML-escaped before they touch the document.
  */

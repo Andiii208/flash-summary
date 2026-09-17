@@ -1,14 +1,37 @@
 ---
 name: note-craft
 description: SEU Summary 笔记系统的工艺规范——数据契约、证据对齐、五视图投影、视觉纪律、PDF 排版与测试要求。凡改动笔记生成/展示/导出链路的会话必须先读本文件。
-version: 1.1.0
+version: 2.0.0
 ---
 
 # SEU Summary 笔记工艺（Note Craft）
 
 > 2026-09-04 由 Note Revolution 计划沉淀。方法论转化自官方 document-skills（pdf 的矢量铁律/分页质量门/色彩纪律、pptx 的反 AI 味清单），实现事实以本仓库代码为准。
+>
+> **2026-09-17 v2.0.0**：按 plan `docs/plans/2026-09-17-note-quality-upgrade.md` 重写为
+> 「五阶段 + 每阶段门禁」，补写 PPT×关键帧融合，修订 §9 方法论参照并新增外部方法论
+> 吸收登记。定位经 Andiii 裁定收窄为**「把总结做好」**——**不做学习/教学功能**（见 §13）。
 
-## 0. 数据契约（单一事实源）
+## 0. 工艺五阶段（先看这张图，再看细节）
+
+```
+素材      转写（带 [mm:ss] 时间锚）+ 视觉（PPT×关键帧融合）
+  ↓ 门禁：素材两路都能降级（PPT 常为空、关键帧可被风控拒绝）
+生成      SYSTEM_PROMPT = 形状规约 8 条 + 内容质量规约 9.x
+  ↓ 门禁：JSON 解析成功
+核验      dropUnknownEvidence（全量证据集）+ verifyNoteRefs（摘引/时间可核验）
+  ↓ 门禁：warnCount 可计算
+返修      noteHealth(warnCount>0) → **一次**有界返修，不发图
+  ↓ 门禁：返修稿的 warnCount 必须**下降**，否则保留原稿
+投影      五视图 / markdown / PDF / Obsidian / Anki / 导图 SVG
+```
+
+**两条贯穿始终的纪律**：
+1. **门禁只用于内部提质，绝不用于拦截交付**。返修失败、核验失败都**照常出笔记**
+   （降级为现状 + 体检徽标提示）。生成失败弹窗比一份及格的笔记更糟。
+2. **降级而非报错**。任何一路素材/核验不可用，都退到下一档而不是让整份笔记失败。
+
+## 1. 数据契约（单一事实源）
 
 一个结构化 JSON 驱动全部视图——**绝不生成多份独立总结**。
 
@@ -17,7 +40,7 @@ Note {
   overview, methodology          ← LLM 按 markdown 组织（## 小节 + - 列表）
   knowledgeTree: TreeNode        ← 思维导图的唯一数据源；节点可带 terms（锚定 concepts term，归一层丢弃编造项）
   timeline: [{at, title, detail, refs[], evidence[]}]
-  concepts: [{term, definition, refs[]}]
+  concepts: [{term, definition, example?, refs[]}]   ← 批2 起 example 可选（宁空勿编）
   formulasAndSteps: [{kind: formula|code|operation, content, explanation, refs[]}]
   examCues[], questionsAndGaps[]
   quiz[], conceptLinks[]         ← 关联线 from/to 必须解析到 term 或节点标题，否则整条丢弃
@@ -27,25 +50,50 @@ Note {
 
 - 定义：`src/shared/notes/schema.ts`（zod + 归一层：coerceAt 时间戳、normalizeEvidence kind 修复、**ref 格式过滤**、JSON 修复）。
 - 投影：`src/shared/notes/views.ts`（`projectNote` 纯文本层 + `projectNoteBlocks` 块层）。
-- **改 schema 必须同时考虑**：归一层、两个投影、markdown 导出、PrintHandout、四组测试。
+- **改 schema 必须同时考虑**：归一层、两个投影、markdown 导出、PrintHandout、obsidian、anki、四组测试。
+- **新字段一律可选带默认值**：旧笔记必须零迁移加载（`terms` / `conceptLinks` / `example` 都是这个手法）。
+- **工艺版本**：`CURRENT_PROMPT_VERSION` / `CURRENT_SCHEMA_VERSION`（`shared/notes/schema.ts`）。
+  **改 prompt 或 schema 时必须同时 +1**——存量升级入口靠它识别「旧工艺产出但侥幸没 warn」
+  的笔记（见 §8）。
 
-## 1. 证据对齐（三层机制，不许绕过）
+## 2. 证据对齐（三层机制，不许绕过）
 
 模型输出的 evidence.ref 必须能解析到真实附件。三层、逐级降级：
 
 1. **发送端标注**：`buildUserParts` 在每张图前发 `[图片 N/M] 类型 | 证据ID：ppt:<页>或kf:<id> | 时间：N秒`，收尾指令要求原样引用。改 prompt 时不得删除标注或「禁止编造」指令。
 2. **归一端过滤**：`EVIDENCE_REF_PATTERN = /^(ppt:\d+|kf:[\w.-]+)$/`，编造的散文 ref 直接丢弃（不报错、不渲染死链）。
+   **few-shot 里给的值必须能过这条正则**——2026-09-17 之前示例写的是 `kf:<证据ID>`（`<`/`>` 不在字符类里），
+   **示范的正是它要禁止的东西**，等于没教。见 `tests/note-prompt-quality.test.ts` 的钉住断言。
 3. **渲染端兜底**：`bindTimelineImages`（`src/shared/notes/evidence.ts`）——ref 精确匹配 → timeline.at 就近关键帧（容差 `NEAREST_SECONDS = 90`）→ 无图纯文字卡。旧笔记无需重跑即可获得配图。
 
-附件类型事实：平台 PPT API 真实课程空返回，**实际素材 = 屏幕流关键帧**（10s 抽帧 + phash 去重，文件名内嵌秒）。
+**两个口径不许合并**（2026-09-17）：
+- **合法性判定**用**全量**证据集（`dropUnknownEvidence` 的入参）——绝不把模型没看到但真实存在的 ref 当编造删掉。
+- **遵循度指标**（`evidenceHitRate` 徽标）用**发送集**——否则一节 100 帧只发 20 张时命中率上限恒为 0.2，徽标永远报警、指标不可行动。
 
-## 2. 五视图投影规则
+### 2.1 PPT × 关键帧融合（2026-09-17 新增，改这一块必读）
+
+**事实**（代码已核实，改动前先复核）：
+- 关键帧抽自 `screen/PPT stream '1170195-5'`（`media/streams.ts`），**带时间**（文件名内嵌秒），保真度低（JPEG 截图）。
+- 平台 PPT 来自 `/v1/course/ai/ppt?courseId=`（`school/client.ts`）——注意是 **courseId 而不是 lessonId**：
+  deck 是**整门课**的，`orchestrator` 把它按同一个 lesson_id 存进**每一节课**；且 PPT 页**没有时间**
+  （`attachments` 里 `ppt:N` 的 at 原本写死 null）。
+- 平台 PPT 的获取是 best-effort、失败静默吞掉；真实课程常见空返回，此时**实际素材 = 关键帧**。
+
+**融合三规则**（`shared/notes/visual-fusion.ts`，纯函数；解码在 `main/notes/visual-hash.ts`）：
+1. **交叉去重**：关键帧与某张 PPT 页近乎相同 → 留 PPT 页（更清晰），该帧不再发；与任何 PPT 页都不匹配的关键帧**全部保留**（板书/现场演示/软件操作是 PPT 里没有的信息）。跨源阈值(3)**紧于**帧内去重(5)，免得「带讲者标注的幻灯片」被误判为冗余。
+2. **给 PPT 反推时间**：匹配上的关键帧带时间、PPT 页有顺序 → 给 PPT 页分配单调递增时间轴，`ppt:N` 从此可作带时间的证据。**推断值必须标 `atInferred` 且 caption 写「约 N 秒」**，不得与实测时间混同。
+3. **预算法**：只发本课时真正用到的 PPT 页（课程级 deck 必须靠匹配筛选）；超预算两边均分且互让余量，**绝不因冗余砍 PPT**。
+
+**降级与保守方向**：一张都没匹配上 ≡ 匹配无信息 → 退回按页序采样全部 PPT（不静默丢通道）；
+解码失败时关键帧照发（少发图是回归）、PPT 在有命中的情形下不发；PPT 为空时行为与融合前逐字一致。
+
+## 3. 五视图投影规则
 
 `VIEW_IDS = detailed | standard | key_points | methodology | mindmap`。
 
 | 视图 | 内容策略 |
 |---|---|
-| 详细笔记 | 概览(md) → 树 → 时间线卡片流(图+引文) → 概念卡 → 公式分块 → 考点/缺口 → 课堂画面图集 |
+| 详细笔记 | 概览(md) → 树 → 时间线卡片流(图+引文) → 概念卡(含 example) → 公式分块 → 考点/缺口 → 课堂画面图集 |
 | 标准总结 | 概览 + 树 + 前 8 概念 + 考点速览 |
 | 要点 | 考点卡 + 缺口卡 + 前 5 时间线 |
 | 方法论 | methodology(md) + operation/code 步骤（排除 formula） |
@@ -54,105 +102,162 @@ Note {
 - 空 section **必须省略**（不渲染空标题）。
 - 投影是纯函数，放 `src/shared/notes/`，测试在 `tests/notes-views.test.ts`。
 
-## 3. Markdown 渲染（md-lite）
+## 4. Markdown 渲染（md-lite）
 
-- 解析器：`src/shared/notes/md-lite.ts`——受支持集：`##` 标题、`-`/`*`/`1.` 列表、`>` 引用、`**粗体**`、`` `行内码` ``、空行分段。
-- **铁律：只产 token 数组，绝不产 HTML 字符串**。渲染层（`MdLite.tsx`）输出 Preact JSX，XSS 面为零。需要新语法时先扩 parser 测试。
-- 判断字段是否 markdown：`looksLikeMarkdown`；纯散文投影为 paragraph 块。
+- 解析器：`src/shared/notes/md-lite.ts`——受支持集：`##` 标题、`-`/`*`/`1.` 列表、`>` 引用、`**粗体**`、`` `行内码` ``、**表格**（`| a | b |` + 分隔行）、**行内公式 `$...$` 与块级 `$$...$$`**、空行分段。
+  - 公式定界符**两侧不贴空格**（`$x$` 是公式，「花了 $5 和 $10」不是）——避免误吃货币符号。
+  - 未闭合的 `$$` **必须降级为普通段落**：先前瞻找闭合再消费，绝不吞掉后面整篇内容。
+- **铁律：只产 token 数组，绝不产 HTML 字符串**。渲染层（`MdLite.tsx`）输出 Preact JSX，XSS 面为零。
+  - **公式不破例**：不用 `katex.renderToString()`（产 HTML 串、逼出 innerHTML），
+    而是 `katex.render(tex, ref容器)` —— 容器由 Preact 创建，字符串从不经过我们的手。
+  - 畸形 LaTeX 降级显示原文，一份笔记不该因一条公式写错而整块渲染失败。
+- 判断字段是否 markdown：`looksLikeMarkdown`（含表格判据 `hasTable`，**判据只有一份**，从 md-lite 导出）；纯散文投影为 paragraph 块。
 
-## 4. 思维导图
+## 5. 思维导图
 
 - 布局：`src/shared/notes/mindmap-layout.ts` 纯函数（左根、叶子按行、父居中、贝塞尔连线、CJK 宽度估算、折叠路径集、可选 terms 副行 `showTerms`、可选跨节点关联线 `links`——折叠端点不渲染）。**屏幕交互版（MindMap.tsx）与 PDF 静态版（PrintHandout）与 SVG 导出（mindmap-svg.ts）共用同一布局函数**——几何只有一个事实源；缩放/平移是 viewBox 变换，不碰几何。
-- 交互（Map Expansion 2026-09-05）：视图内子工具栏（层级控制=collapsedSetForMaxDepth 纯函数 + 标题搜索：命中高亮/展开祖先/滚动定位，与回忆模式互斥）、Ctrl+滚轮指针锚点缩放 0.4-3x、空白拖拽平移、节点点击折叠（caret+后代计数胶囊）、ℹ️ 浮层（关联概念+锚定 quiz 翻面+跳详细笔记）、双击下钻焦点模式（面包屑返回，折叠集全路径空间 fullToRel/relToFull 映射）、回忆模式（depth≥2 同色遮罩逐个揭示——提取练习）、导出 SVG。
+- 交互（Map Expansion 2026-09-05）：视图内子工具栏（层级控制=collapsedSetForMaxDepth 纯函数 + 标题搜索：命中高亮/展开祖先/滚动定位，与回忆模式互斥）、Ctrl+滚轮指针锚点缩放 0.4-3x、空白拖拽平移、节点点击折叠（caret+后代计数胶囊）、ℹ️ 浮层（关联概念+锚定 quiz 翻面+跳详细笔记）、双击下钻焦点模式（面包屑返回，折叠集全路径空间 fullToRel/relToFull 映射）、回忆模式（depth≥2 同色遮罩逐个揭示）、导出 SVG。
 - 课程级：`notes:courseTree` 聚合各课最新版树（`mergeCourseTree` 纯函数，第N节课序复用 course-order），模态 CourseMapDialog；**不跨课时概念链接、不进 PDF**。
+- **关联线几何**（2026-09-17）：跨列走层级贝塞尔（与树边同形）；同列/重叠走**两者之间竖走廊的正交折线**——此前的中心直线必然穿过两个节点框。只保证不穿端点矩形（全局路由成本远超收益）。
+- **边收集是索引而非全量扫描**：按父路径建一次 Map（原实现对每个节点全量 `filter` + 逐段比 `path`，课程级导图会明显吃 CPU）。性能门禁见 `tests/mindmap-layout.test.ts`。
 
-## 5. 视觉纪律（转化自 pptx/pdf skill，违反=返工）
+## 6. PDF 讲义（printToPDF）
+
+> 2026-09-17 从 v1.1.0 原样保留——这一节的四条铁律都是实跑踩出来的，删掉会重犯。
+
+- **架构铁律**：主窗口 `webContents.printToPDF`——不开第二个 BrowserWindow（本机存在第二渲染器永不 commit 的环境故障，PROGRESS 有案），零新依赖。
+- **DOM 铁律**：`#print-root` 必须是 `.app-shell` 的**兄弟节点**——print.css 在打印媒体下 `display:none` 整个 shell，嵌套在里面会被连带隐藏（真实踩坑：空白 23KB PDF）。
+- **时序铁律**：导出流程 = dialog → 渲染 handout → `waitForImages`（每张 img decode 完成）→ exportPdfWrite → 清空 root。图片未 decode 完就打印 = 空白图。
+- 排版规则（转化自 pdf skill）：A4；卡片/标题+首段 `break-inside: avoid`；H2 `break-after: avoid`；导图整页 `break-before: page`；封面 `break-after: page`；正文 ≥10.5pt；打印强制纸白（暗色主题下也白）；`printBackground: true` + 页码页脚；**矢量输出验证**：文本 ops > 0、字体子集嵌入、图片 DCT 数 = 附件数。
+- 2026-09-17 补：`print.css` 此前**没有任何表格与 `<pre>` 规则**（表格退化成无边框、代码块像普通文字），已补纸白底；公式经 KaTeX 输出 HTML+MathML，满足矢量铁律。
+- 测试缝：`SEU_PDF_PATH` 环境变量绕过原生保存对话框（e2e 专用，勿在产品路径删除）。
+
+## 7. 视觉纪律（转化自 pptx/pdf skill，违反=返工）
 
 - **三角色色彩**：BACKGROUND（表面）→ PRIMARY（靛蓝 accent）→ 琥珀/红仅作考点/缺口语义色。全文档 ≤5 色、同色系分层（透明度/深浅），禁彩虹。
 - **低饱和填充**：节点/卡片底色必须浅（--*-soft 令牌）；高饱和只允许出现在小标签/描边。
 - **禁止**：彩色边条/accent stripe、标题装饰下划线、emoji 图标、每页超过 3 个装饰元素、3 字体以上。
 - 层级靠**字号/字重/留白**，不靠加框加线。
 
-## 6. PDF 讲义（printToPDF）
+## 8. 体检与存量升级
 
-- **架构铁律**：主窗口 `webContents.printToPDF`——不开第二个 BrowserWindow（本机存在第二渲染器永不 commit 的环境故障，PROGRESS 有案），零新依赖。
-- **DOM 铁律**：`#print-root` 必须是 `.app-shell` 的**兄弟节点**——print.css 在打印媒体下 `display:none` 整个 shell，嵌套在里面会被连带隐藏（真实踩坑：空白 23KB PDF）。
-- **时序铁律**：导出流程 = dialog → 渲染 handout → `waitForImages`（每张 img decode 完成）→ exportPdfWrite → 清空 root。图片未 decode 完就打印 = 空白图。
-- 排版规则（转化自 pdf skill）：A4；卡片/标题+首段 `break-inside: avoid`；H2 `break-after: avoid`；导图整页 `break-before: page`；封面 `break-after: page`；正文 ≥10.5pt；打印强制纸白（暗色主题下也白）；`printBackground: true` + 页码页脚；**矢量输出验证**：文本 ops > 0、字体子集嵌入、图片 DCT 数 = 附件数。
-- 测试缝：`SEU_PDF_PATH` 环境变量绕过原生保存对话框（e2e 专用，勿在产品路径删除）。
+- `noteHealth(note, hitRate?, transcriptHitRate?)`（`src/shared/notes/health.ts`）→
+  `{ warnCount, grade: good|fair|weak, findings: [{field, level: warn|info}] }`。
+  - **检查项与 prompt 规约一一对应**：概览 ≥150 字 + `##` 小节；概念定义均长 ≥60 且非循环定义、
+    **概念为空报 warn**；时间线**为空报 warn**、detail 复读标题或为空报 warn、**detail <60 字报 warn**；
+    知识树分支数/层数/标题长度；quiz 非空但 <5 题；证据命中率 <60%；转写摘引可核验率 <60%；
+    概念关联 label 命题审计。
+  - **历史教训（2026-09-17）**：`conceptFindings`/`timelineFindings` 曾在数组为空时直接 `return []`，
+    于是一份**概念与时间线全空**的笔记只要概览够长就评 `good`——体检形同虚设。
+    而且**测试套件本身建在这个洞上**：courseHealth 的 `RICH_NOTE` 夹具名为「丰富」，实际是
+    knowledgeTree 零子节点、timeline/concepts/quiz 全空。**必填分节缺失必须是 warn**。
+  - **`example` 缺失只报 info**：讲者没给例子时省略该字段是正确行为（宁空勿编），
+    报成缺口会逼模型编例子。
+  - **容忍部分形状**：渲染层会在 mock/降级路径下传缺字段的笔记，`noteHealth` 绝不能因此抛错
+    （曾导致 app-shell 整个 shell 崩溃）。
+- **存量升级**：`notes:courseHealth(courseId)` IPC + 笔记库课程组「升级旧笔记」对话框。
+  默认勾选口径 = **`warnCount > 0` 或 `promptVersion < CURRENT_PROMPT_VERSION`**（2026-09-17 扩）；
+  确认后逐课串行 `notes:regenerate`（复用转写零下载）。
+- 真实库基线（2026-09-08，升级前）：1690406-L0 v1=fair(warn2)/1690625-L0 v3=fair(warn2)/bili-P3 v2=fair(warn1)；
+  **升级后（同日真机 e2e：副本+安装版 Local State 缝+真实 MiMo 重生成）三课全部 good(0 warn)**——
+  内容抽检：概览 147→705 字、概念定义均 45→109-134 字含芯片实例、考点 0→3 条具体化、ASR 错词纠正（74151）。
 
-## 7. 测试要求（纪律红线）
+## 9. Obsidian 结构化导出（2026-09-08，plan docs/plans/2026-09-08-obsidian-export.md）
+
+- **投影单一事实源**：`src/shared/notes/obsidian.ts`（projectObsidianNote / projectConceptIndex / projectVaultIndex）——只产 markdown 字符串；附件只列名不读字节，main 侧 `src/main/notes/obsidian-export.ts` 负责落盘与复制。
+- **文件布局**：`<vault>/Flash Summary/<课程名>/<课时名>.md` + `attachments/<lesson_id>-<原文件名>`；`_概念.md`（课程概念聚合，同名 term 归一归并，导出自动重建勿手改）；`_index.md`（全库结构约定，从 manifest 重建）。
+- **SR 卡纪律**：概念卡 `[[term]]::definition` **单行**；quiz 多行「问 / ? / 答」；牌组 = 行内 `#flashcards/<课程tag>/<课时tag>`（**frontmatter tags 插件不识别，必须行内**）；tagSafe 清洗空格与非法字符。
+  - 2026-09-17：概念卡的 example **并进同一行**（`definition 例：…`）而不是换成多行 `?` 形态——`::` 是单行语法，保持插件已验证的形态不变。
+- **幂等**：migration 010 `obsidian_exports`（lesson_id 主键）——同课时覆写、改名清旧文件、vault 切换不误删；`_index.md` 明示「直接改写会在下次导出被覆盖」。
+- **红线**：导出物零直链零密钥，B站只放公开 bvid；附件只带走笔记实际引用的（D4=A）。
+- **测试缝**：`SEU_OBSIDIAN_PATH` 绕过 vault 目录选择（一次性覆盖，不落 settings）。
+
+## 10. Anki 导出
+
+- `src/shared/notes/anki.ts` 纯投影 → TSV（Anki 原生文本导入，每行一卡、制表符分列）。
+- 两种卡：概念卡（term → 定义，**2026-09-17 起背面带 example**）、自测题卡（问 → 答）；来源列固定为课时标题。
+- 字段内**禁止制表符/换行**（会撑开行），`sanitizeField` 折叠为空格。
+
+## 11. 测试要求（纪律红线）
 
 - 每批提交四门禁全绿：`npm run lint && npm run typecheck && npm test` + `npm run smoke`。
 - 测试数**只增不减**；不许 skip/删断言/mock 被测关键路径。
-- 新增视图/块类型必须带：投影测试（notes-views）、渲染测试（note-viewer / print-handout）、纯函数直测（md-lite / mindmap-layout / evidence）。
+- 新增视图/块类型必须带：投影测试（notes-views）、渲染测试（note-viewer / print-handout）、纯函数直测（md-lite / mindmap-layout / evidence / ref-verify / visual-fusion）。
 - IPC 新通道：FakeIpc + `vi.mock('electron')` 模式（样板 `tests/notes-ipc.test.ts` / `tests/notes-pdf-ipc.test.ts`），并在 `scripts/smoke-cdp.mjs` 的桥面清单登记。
+- **新增 migration 要同步改两处硬编码**：`tests/db-migrations.test.ts` 的版本数组、`scripts/smoke-cdp.mjs` 的迁移计数断言。
+- **测试夹具必须真的合规**：一条规约收紧后，旧夹具若靠「检查太浅」通过，就要把它升级为
+  真正合规的范本，而不是放宽新检查（2026-09-17 的 `RICH_NOTE` / `validNote` 都是这样改的）。
 - 真实数据验证：改渲染/导出后必须跑 `node scripts/ui-shots.mjs`（真实库副本隔离）+ DOM 计数探针；PDF 导出跑完整按钮流 e2e 并检查产物结构（页数/图数/矢量文本）。
+- **组件测试环境缝**：`tests/components/setup.ts` 补 `document.compatMode`——happy-dom 不实现它，
+  而 KaTeX 在**模块加载时**据此判定并永久禁用渲染。真实渲染进程 `index.html` 第一行就是
+  `<!doctype html>`，所以这是测试环境缺口，不是产品问题。
 
-## 8. 已知边界（改动前先想）
+## 12. 已知边界（改动前先想）
 
-- ASR 时间戳粒度 = 120s 分片起点（精对齐受限，证据对齐靠三层机制补偿）。
+- ASR 时间戳粒度 = 120s 分片起点（精对齐受限，证据对齐靠三层机制补偿）。**B站字幕是秒级**——两种粒度的核验邻域阈值按源分档，不要一刀切。
 - 本地视频已删、平台播放页无时间参数——时间戳跳转视频**明确不做**。
 - 笔记无在线编辑器；版本历史全量留存但 UI 无版本切换。
-- QA 追问暂不发图（只有证据 ID 字符串）——升级为多模态时参照本文件 §1。
-- **B站源（2026-09-06 接入）**：transcripts.provider = `bilibili-subtitle`（B站字幕直插，秒级 `at`）或 `openai-compatible`（无字幕时 ASR 兜底）；提示词经 `sourceHeader` 注入「B站视频」语境行（措辞用视频/讲者），SEU 行为零变化；证据只有 `kf:`（360P 视频流抽帧，流被风控拒绝时 evidence 可为空，属合法态）；PPT 通道不存在。方案 docs/plans/2026-09-06-bilibili-source-integration.md。
+- 平台 PPT 是**课程级**端点、可能空返回；PPT 页的时间是**推断值**（见 §2.1）。
+- **B站源**：transcripts.provider = `bilibili-subtitle`（字幕直插，秒级 `at`）或 `openai-compatible`（ASR 兜底）；提示词经 `sourceHeader` 注入「B站视频」语境行，SEU 行为零变化；证据只有 `kf:`（流被风控拒绝时 evidence 可为空，属合法态）。
+- 笔记库 `notes:list` 有 `LIMIT 200` 上限且无搜索——已知缺口，属「笔记库」而非「笔记总结」，待单独处理。
 
-## 9. 方法论参照（GitHub 调研 2026-09-04）
+## 13. 定位边界：不做学习/教学功能（2026-09-17 Andiii 裁定）
 
-调研范围：`anthropics/skills` 官方仓库、`ComposioHQ/awesome-claude-skills`（74k★ 索引）、定向搜索 note/zettelkasten/cornell。**结论：社区没有可直接照搬的「LLM 笔记生成工艺」skill**——官方仓库的笔记产出类即本文件 §5/§6 已融合的 pdf/pptx；社区力量集中在集成编排与方法论生态。有价值的映射与启发如下：
+**产品定位是「把总结做好」。** Andiii 原话：「我不喜欢教学，把总结做好就够了」。
 
-### Cornell 5R ↔ 五视图映射（视图设计的理论锚点）
+**明确不做**（下一个会话不要再提，除非用户主动要求）：
+- 检索练习题型学（题型配比 / 禁是非题 / 会话内排序 / 诊断性作答解析）
+- 自测钩子化、Cornell Cue 自测化、`TreeNode.cues`
+- `Concept.misconception`（其价值主要来自「错误侦测题素材」）
+- 间隔重复调度器（FSRS/SRS）、掌握度追踪、错题本、今日队列、学习进度可视化
+- Anki 卡型扩张（Cloze 挖空 / 图像遮挡卡）
+- 「个人思考」等用户自写输入区
+- quiz 的任何升级——**quiz 维持现状（5-8 题 Q/A），本方案不动它**
 
-先例：`KenWuqianghao/Obsidian-Cornell-Notes-Generator`（LLM 从 lecture transcript 生成 Cornell 时间线笔记，与本产品场景同构）；生态参照 `latazadehomero/cornell-marginalia`（118★）、`TfTHacker/cornell-notes-learning-vault`（65★）。
+> 2026-09-08 那份完整的「复习闭环」方案（`docs/plans/2026-09-08-notes-experience-overhaul.md`）
+> 已被 Andiii 否为「太重了，和最初想法背道而驰」。被否的是**重量**，不是诊断
+> （那份文档 §一 的 Dunlosky 效用分级分析仍然有效，保留作调研存档）。
+> **若将来要重开学习科学线，应当单独立项，不要并进笔记质量方案。**
+
+## 14. 方法论参照（GitHub 调研）
+
+### 13.1 外部方法论吸收登记（2026-09-17）
+
+| 来源 | 仓库许可 | 吸收了什么 | 处置 |
+|---|---|---|---|
+| `FerroxLabs/wayland`（教育类目 140+ skill） | 仓库 AGPL-3.0，但文件 frontmatter 写 `license: Apache-2.0`、author 为第三方 → **冲突 + provenance 不明** | `concept-mapping` 的「**命题结构 + 命题审计**」（→ §7 的概念关联审计）；`note-synthesis` 的「表观矛盾不要人为消解」 | **只参考方法论、自写文本**。仓库许可冲突未澄清前不得搬运文本 |
+| `majiayu000/claude-skill-registry` | MIT | `cornell-notes` 的「Cue 是**按小节**组织的关键问题」这条结构洞察 | 可吸收，保留声明 |
+| `LeoYeAI/openclaw-master-skills` | MIT | `lecture-notes-master` 的「递归原子分解 + 每个原子笔记必须充实」（→ `Concept.example` 的论据） | 可吸收，保留声明 |
+| `LjyYano/skill-pack` | Apache-2.0 | `video-to-note` 的「字幕优先 / ASR 兜底」管线形态（与本产品同构，属独立先例） | 可吸收，保留声明 |
+| `https-deeplearning-ai/sc-agent-skills-files` | **无声明** | 未吸收（教学向） | 不可搬运 |
+
+**若将来确要吸收第三方文本**：先澄清 provenance，再在 `THIRD-PARTY-NOTICES.md` 登记 +
+许可文本进 `LICENSES/`（AGENTS 硬规定）。
+
+### 13.2 已评估不采纳（含教学向，防止重复提案）
+
+- 教学向（见 §13 的整份清单）：`active-recall-practice`、`generating-practice-questions`、
+  `flashcard-generation`、`anki-card-creator`、`spaced-repetition`、`feynman-technique`、`exam-prep-plan`。
+- `note-synthesis` 的「汇聚/扩展/张力/矛盾」四分类**未采纳为概念关联的 label 体系**：
+  那套是**跨来源**综合的分类，而本产品严格限定单课时内的概念关系（跨课时概念链接是既定
+  不做的边界）。单课时只有一份来源，「汇聚」无从谈起——照搬会是**类别错误**。保留了既有的
+  单课时关系词表，只补「必须真是关系」这条审计。
+- `tapestry/learn-this`（URL→提取→行动计划）：编排类，方法论视图已承载该职责。
+- qiaomu 的多源抓取/NotebookLM 上传管线：与「本地优先、自有管线」定位冲突。
+
+### 13.3 Cornell 5R ↔ 五视图映射（视图设计的理论锚点）
+
+先例：`KenWuqianghao/Obsidian-Cornell-Notes-Generator`（LLM 从 lecture transcript 生成 Cornell 时间线笔记，与本产品场景同构）；生态参照 `latazadehomero/cornell-marginalia`、`TfTHacker/cornell-notes-learning-vault`。
 
 | Cornell 结构 | 本产品对应 | 设计含义 |
 |---|---|---|
 | Notes 栏（课堂详录） | 详细笔记视图（时间线卡片） | 详录以时间为主轴，正是时间线卡片的形态依据 |
-| Cue 栏（关键词/自测问题） | 要点视图（考点/缺口卡） | Cue 的本质是「自测钩子」——要点卡文案应保持可自测的问句/关键词形态，而非陈述句 |
+| Cue 栏（关键词/自测问题） | 要点视图（考点/缺口卡） | Cue 的本质是「挂在小节上的关键问题」——**2026-09-17 起只作为结构参照，不做自测化**（§12） |
 | Summary（页底总结） | 标准总结视图 | 总结必须是**合上详录后能独立读懂**的封闭叙述 |
 | Reflect / Review | 方法论 + 疑问与缺口 | 反思层永远不与详录混排—— methodology 单独成视图的依据 |
 
-未来改 prompt 或视图时先对照此表；破坏映射（如把考点写成陈述句）即违背 Cornell 语义。
+### 13.4 Zettelkasten 原子化（概念卡的原则）
 
-### Zettelkasten 原子化（概念卡的原则）
+参照 `01110100chony/optimized-study`（Obsidian Zettelkasten + Claude 苏格拉底式，STEM 深度学习）。原则：概念卡**一卡一概念、自足可读**。当前 `concepts[]` 已是原子卡；2026-09-17 起补 `example` 让「自足」落到**具体实例**上（而不只是定义够长）。
 
-参照 `01110100chony/optimized-study`（Obsidian Zettelkasten + Claude 苏格拉底式，STEM 深度学习）。原则：概念卡**一卡一概念、自足可读**。当前 `concepts[]` 已是原子卡；若未来引入跨课时概念链接（当前明确不做——追问严格限课时），需先给概念稳定 ID，参照本文件 §8。
 
-### 未来候选：练习题生成（Quiz）
-
-`joeseesun/qiaomu-anything-to-notebooklm`（5.9k★）的输出形态清单含 Quiz——比「考点提示」更进一步的自测材料。候选方案：在要点视图增加「自测题」块（LLM 从 concepts+examCues 生成 Q/A 分离的练习题，先答后翻）。未排期；实现时须走 §7 测试纪律与本文件的数据契约扩展流程。
-
-### 已评估不采纳
-
-- `tapestry/learn-this`（URL→提取→行动计划）：编排类，与「学习后转行动」思想同向，但本产品的方法论视图已承载该职责，无需引入编排层。
-- qiaomu 的多源抓取/NotebookLM 上传管线：与本产品「本地优先、自有管线」定位冲突。
-
-## 10. 内容质量规约与体检（2026-09-08 质量攻坚批1-4，plan docs/plans/2026-09-08-note-quality-overhaul.md）
-
-真实库探针实证（2026-09-08）：旧 prompt 只管形状，SEU 课概念定义均 35-45 字、考点全空、evidence ref 全为非法散文——「形状对而内容平庸」是「笔记平平无奇」的直接来源。
-
-### 质量规约（prompt 行为契约）
-
-- `SYSTEM_PROMPT = NOTE_SHAPE_PROMPT + NOTE_QUALITY_PROMPT`（`src/main/notes/summarize.ts`）：形状 8 条（2026-09-04 起）+ 质量规约 9.1-9.8。动条款必须动 `tests/note-prompt-quality.test.ts` 的钉住断言。
-- 核心条款：概念定义 ≥60 字且「是什么+为什么/用在哪/与什么区分」三选二、禁循环定义；时间线 detail 禁复读 title、必须含具体数字/结论、refs 为忠实摘引；overview ≥150 字 ## 小节；考点具体到「考什么怎么答」且**宁空勿编**；转写同音错词结合关键帧纠正为正名（月华→鸢尾花 已实证）；evidence few-shot + 仅关键帧素材时禁 ppt: 引用（G0-2 的 0/8 根因收口）；conceptLinks label 关系词白名单。
-- POLISH 同步质量下限（第 6 条），保守修订纪律不变。
-
-### 转写清洗（load 时派生）
-
-- `src/shared/notes/transcript-clean.ts` 纯函数：标点/串尾语气词压缩（左边界刻意不设界——中文无以呃/嗯/啊为词内语素的词）、近空段（<5 字）剔除、相邻段精确+bigram Dice ≥0.85 去重（短段仅精确等防 B站字幕误杀）。
-- summarize/polish/qa 三消费点统一走清洗后文本；**原始 segments 落库不动**（refs 摘引需要原文）。
-
-### 体检与存量升级
-
-- `noteHealth(note, hitRate?)`（`src/shared/notes/health.ts`）→ `{ warnCount, grade: good|fair|weak, findings: [{field, level: warn|info}] }`：warn=重新生成可改进；info=诚实空节说明（宁空勿编，不拉低评级）。NoteViewer 工具体检徽标+findings 面板。
-- `notes:courseHealth(courseId)` IPC + 笔记库课程组「升级旧笔记」对话框（默认勾选 warn>0，逐课串行复用 notes:regenerate，零下载）。
-- 真实库基线（2026-09-08，升级前）：1690406-L0 v1=fair(warn2)/1690625-L0 v3=fair(warn2)/bili-P3 v2=fair(warn1)；**升级后（同日真机 e2e：副本+安装版 Local State 缝+真实 MiMo 重生成）三课全部 good(0 warn)**——内容抽检：概览 147→705 字、概念定义均 45→109-134 字含芯片实例、考点 0→3 条具体化、ASR 错词纠正（74151）；evidence 引用 0 条且零编造（droppedRefs=0，MiMo 引用遵循度仍偏弱留观察）。
-
-## 11. Obsidian 结构化导出（2026-09-08，plan docs/plans/2026-09-08-obsidian-export.md）
-
-- **投影单一事实源**：`src/shared/notes/obsidian.ts`（projectObsidianNote / projectConceptIndex / projectVaultIndex）——只产 markdown 字符串；附件只列名不读字节，main 侧 `src/main/notes/obsidian-export.ts` 负责落盘与复制。
-- **文件布局**：`<vault>/Flash Summary/<课程名>/<课时名>.md` + `attachments/<lesson_id>-<原文件名>`；`_概念.md`（课程概念聚合，同名 term 归一归并，导出自动重建勿手改）；`_index.md`（全库结构约定，从 manifest 重建）。
-- **SR 卡纪律**：概念卡 `[[term]]::definition` 单行；quiz 多行「问 / ? / 答」；牌组 = 行内 `#flashcards/<课程tag>/<课时tag>`（**frontmatter tags 插件不识别，必须行内**）；tagSafe 清洗空格与非法字符。
-- **幂等**：migration 010 `obsidian_exports`（lesson_id 主键）——同课时覆写、改名清旧文件、vault 切换不误删；`_index.md` 明示「直接改写会在下次导出被覆盖」。
-- **红线**：导出物零直链零密钥，B站只放公开 bvid；附件只带走笔记实际引用的（D4=A）。
-- **测试缝**：`SEU_OBSIDIAN_PATH` 绕过 vault 目录选择（一次性覆盖，不落 settings）。
