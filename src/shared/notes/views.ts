@@ -9,6 +9,7 @@
  */
 import type { Note, TimelineEntry, Concept, FormulaOrStep, TreeNode, QuizItem } from './schema'
 import { formatTime, labelOf } from './format'
+import { hasTable } from './md-lite'
 
 export type ViewId = 'detailed' | 'standard' | 'key_points' | 'methodology' | 'mindmap'
 
@@ -128,9 +129,11 @@ function flattenTree(node: { title: string; children: unknown[] }, depth = 0): s
 
 // ---------------- structured block projections ----------------
 
-/** Shared: does this string look like markdown (## / list / bold)? */
+/** Shared: does this string look like markdown (## / list / bold / table)? */
 export function looksLikeMarkdown(text: string): boolean {
-  return /(^|\n)\s{0,3}(#{1,4}\s|[-*]\s|\d+\.\s)/.test(text) || /\*\*[^*]+\*\*/.test(text)
+  // 批4: 补表格判据。此前只有「## / 列表 / 加粗」三条，一份**只有表格**的
+  // overview 会落到纯 `<p>` 分支，把 `|` 原样印出来。
+  return /(^|\n)\s{0,3}(#{1,4}\s|[-*]\s|\d+\.\s)/.test(text) || /\*\*[^*]+\*\*/.test(text) || hasTable(text)
 }
 
 function detailedBlocks(note: Note): BlockSection[] {

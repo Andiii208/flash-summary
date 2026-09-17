@@ -1,7 +1,43 @@
 import type { JSX } from 'preact'
+import { useEffect, useRef } from 'preact/hooks'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { parseMdLite, type MdInline } from '../../shared/notes/md-lite'
 
-/** Render one inline span list (**bold** / `code`) as Preact children.
+/**
+ * 批4 (plan 2026-09-17 note-quality upgrade): 公式渲染。
+ *
+ * 守住 md-lite 的铁律——**解析器只产 token、绝不产 HTML 字符串**。所以这里不用
+ * `katex.renderToString()`（那会产 HTML 串、逼我们用 innerHTML），而是
+ * `katex.render(tex, container)` 渲染进一个 ref 元素：容器由 Preact 创建，
+ * 字符串从不经过我们的手。
+ *
+ * 安全：KaTeX 的 `trust` 默认为 false（`\htmlClass`/`\includegraphics` 等被禁），
+ * 且不开 `strict: false`，畸形 LaTeX 会抛错——下面把错误降级为原文显示，
+ * 一份笔记不该因为一条公式写错而整块渲染失败。
+ */
+function useKatex(tex: string, displayMode: boolean): { ref: { current: HTMLSpanElement | null } } {
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const host = ref.current
+    if (host == null) return
+    host.textContent = ''
+    try {
+      katex.render(tex, host, { displayMode, throwOnError: true, output: 'htmlAndMathml' })
+    } catch {
+      host.textContent = displayMode ? `$$${tex}$$` : `$${tex}$`
+      host.classList.add('md-math-error')
+    }
+  }, [tex, displayMode])
+  return { ref }
+}
+
+function MathSpan({ tex, displayMode }: { tex: string; displayMode: boolean }): JSX.Element {
+  const { ref } = useKatex(tex, displayMode)
+  return displayMode ? <span ref={ref} class="md-math-block" /> : <span ref={ref} class="md-math" />
+}
+
+/** Render one inline span list (**bold** / `code` / $math$) as Preact children.
  *  批4: exported — InlineText reuses it for single-line note fields. */
 export function Inline({ spans }: { spans: MdInline[] }): JSX.Element {
   return (
@@ -9,6 +45,7 @@ export function Inline({ spans }: { spans: MdInline[] }): JSX.Element {
       {spans.map((span, i) => {
         if (span.t === 'bold') return <strong key={i}>{span.v}</strong>
         if (span.t === 'code') return <code key={i}>{span.v}</code>
+        if (span.t === 'math') return <MathSpan key={i} tex={span.v} displayMode={false} />
         return <span key={i}>{span.v}</span>
       })}
     </>
@@ -88,6 +125,8 @@ export function MdLite({ text }: { text: string }): JSX.Element {
                 </tbody>
               </table>
             )
+          case 'math':
+            return <MathSpan key={i} tex={block.tex} displayMode />
           default:
             return (
               <p key={i} class="md-para">

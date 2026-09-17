@@ -1061,6 +1061,12 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 .md-table th { background: var(--surface-2); color: var(--text); font-weight: 600; }
 .md-table td { color: var(--text-secondary); }
+/* 批4 (plan 2026-09-17 note-quality upgrade): 公式。KaTeX 自己带排版样式，
+   这里只管「行内基线对齐 / 块级居中独占一行」与渲染失败的降级外观。
+   暗色主题下 KaTeX 用的是 currentColor，跟着正文色走，不需要额外配色。 */
+.md-math { display: inline-block; }
+.md-math-block { display: block; margin: 10px 0; text-align: center; overflow-x: auto; }
+.md-math-error { font-family: Consolas, ui-monospace, monospace; color: var(--danger, #c0392b); }
 .about-version { color: var(--text); }
 .about-text-version { color: var(--text-muted); font-size: var(--font-size-sm); }
 .about-note {

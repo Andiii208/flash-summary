@@ -19,6 +19,8 @@ export type MdInline =
   | { t: 'text'; v: string }
   | { t: 'bold'; v: string }
   | { t: 'code'; v: string }
+  /** 批4: 行内公式 `$...$`。tex 是原始 LaTeX，渲染由渲染层交给 KaTeX。 */
+  | { t: 'math'; v: string }
 
 export type MdBlock =
   | { t: 'heading'; level: number; inline: MdInline[] }
@@ -26,17 +28,26 @@ export type MdBlock =
   | { t: 'quote'; inline: MdInline[] }
   | { t: 'table'; header: MdInline[][]; rows: MdInline[][][] }
   | { t: 'para'; inline: MdInline[] }
+  /** 批4: 块级公式 `$$...$$`（单行或跨行），居中独占一段。 */
+  | { t: 'math'; tex: string }
 
-/** Parse inline **bold** / `code` spans (no nesting between the two). */
+/**
+ * Parse inline **bold** / `code` / $math$ spans (no nesting between them).
+ *
+ * 批4: 行内公式的定界符是 `$...$`——**要求两侧不贴空格**（`$x$` 是公式，
+ * 「花了 $5 和 $10」不是），这是通用 markdown 数学插件的既有约定，避免把
+ * 货币符号误当公式。反斜杠转义的 `\$` 不算定界符。
+ */
 export function parseInline(text: string): MdInline[] {
   const spans: MdInline[] = []
-  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`/g
+  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\$([^\s$][^$]*[^\s$]|[^\s$])\$/g
   let last = 0
   let match: RegExpExecArray | null
   while ((match = pattern.exec(text)) != null) {
     if (match.index > last) spans.push({ t: 'text', v: text.slice(last, match.index) })
     if (match[1] != null) spans.push({ t: 'bold', v: match[1] })
-    else spans.push({ t: 'code', v: match[2] ?? '' })
+    else if (match[2] != null) spans.push({ t: 'code', v: match[2] })
+    else spans.push({ t: 'math', v: match[3] ?? '' })
     last = pattern.lastIndex
   }
   if (last < text.length) spans.push({ t: 'text', v: text.slice(last) })
@@ -54,6 +65,21 @@ const TABLE_SEP = /^\|?[\s:|-]*-[\s:|-]*\|?$/
 function splitRow(line: string): string[] {
   const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '')
   return trimmed.split('|').map((cell) => cell.trim())
+}
+
+/**
+ * 文本里是否含至少一张 markdown 表格（「一行带竖线 + 下一行是分隔行」）。
+ *
+ * 批4 (plan 2026-09-17 note-quality upgrade)：`views.looksLikeMarkdown` 此前只认
+ * 标题/列表/加粗，**不认表格**——一份只有表格的 overview 会走纯 `<p>` 分支把竖线
+ * 原样印出来。判据必须只有一份，所以放在解析器这里导出，由调用方复用。
+ */
+export function hasTable(text: string): boolean {
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (lines[i].includes('|') && TABLE_SEP.test(lines[i + 1].trimEnd())) return true
+  }
+  return false
 }
 
 /** Parse a block of markdown-lite text into structured blocks. */
@@ -99,6 +125,44 @@ export function parseMdLite(text: string): MdBlock[] {
       i--
       blocks.push({ t: 'table', header, rows })
       continue
+    }
+    // 批4: 块级公式 `$$...$$`（单行闭合或跨行），独占一段、居中渲染。
+    // 先于行内解析处理，否则 `$$` 会被行内规则当成两个空的 `$...$`。
+    // **先前瞻找闭合再消费**：未闭合时必须原样落到普通段落，绝不能把后面
+    // 整篇内容吞掉（一次就会毁掉整份笔记的渲染）。
+    if (line.trim().startsWith('$$')) {
+      const first = line.trim().slice(2)
+      const sameLine = first.indexOf('$$')
+      let tex: string | null = null
+      let consumedTo = i
+      let trailing = ''
+      if (sameLine >= 0) {
+        tex = first.slice(0, sameLine)
+        trailing = first.slice(sameLine + 2).trim()
+      } else {
+        const collected = [first]
+        for (let j = i + 1; j < lines.length; j++) {
+          const end = lines[j].indexOf('$$')
+          if (end >= 0) {
+            collected.push(lines[j].slice(0, end))
+            trailing = lines[j].slice(end + 2).trim()
+            tex = collected.join('\n')
+            consumedTo = j
+            break
+          }
+          collected.push(lines[j])
+        }
+      }
+      if (tex != null) {
+        flushPara()
+        flushList()
+        const trimmedTex = tex.trim()
+        if (trimmedTex !== '') blocks.push({ t: 'math', tex: trimmedTex })
+        i = consumedTo
+        if (trailing !== '') para.push(trailing)
+        continue
+      }
+      // 未闭合 → 交给下面的常规分支（落到段落），行为与普通文本一致。
     }
     const heading = line.match(HEADING)
     if (heading != null) {

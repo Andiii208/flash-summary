@@ -19,6 +19,10 @@ export default defineConfig({
         test: {
           name: 'components',
           environment: 'happy-dom',
+          // 批4: happy-dom 不实现 document.compatMode，而 KaTeX 在**模块加载时**
+          // 据此判定并永久禁用渲染（见 tests/components/setup.ts）。必须在被测模块
+          // import 之前补齐，所以走 setupFiles 而不是测试文件内。
+          setupFiles: ['tests/components/setup.ts'],
           include: ['tests/components/**/*.test.{ts,tsx}']
         }
       }

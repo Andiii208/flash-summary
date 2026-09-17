@@ -185,4 +185,15 @@ describe('looksLikeMarkdown', () => {
     expect(looksLikeMarkdown('1. 步骤')).toBe(true)
     expect(looksLikeMarkdown('这就是一句普通的中文句子。')).toBe(false)
   })
+
+  it('批4: 认出「只有表格」的文本（此前会落进纯段落分支，把竖线原样印出来）', () => {
+    const tableOnly = '| 组件 | 许可 |\n|---|---|\n| zod | MIT |'
+    expect(looksLikeMarkdown(tableOnly)).toBe(true)
+    // 含竖线但不是表格（下一行不是分隔行）仍算普通文本。
+    expect(looksLikeMarkdown('条件 a | 条件 b')).toBe(false)
+  })
+
+  it('批4: 公式不改变分块判据，但带公式的列表照样触发 markdown 分支', () => {
+    expect(looksLikeMarkdown('- 公式：$L = -\\sum y\\log p$')).toBe(true)
+  })
 })
