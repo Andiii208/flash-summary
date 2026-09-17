@@ -13,6 +13,8 @@ export type HealthField =
   | 'timeline'
   /** 批3 (2026-09-17): 知识结构形状（分支数/层数/标题长度）。 */
   | 'knowledgeTree'
+  /** 批5 (2026-09-17): 概念关联的命题审计（label 必须是关系词）。 */
+  | 'conceptLinks'
   | 'examCues'
   | 'questionsAndGaps'
   | 'quiz'
@@ -39,6 +41,7 @@ export const HEALTH_FIELD_LABELS: Record<HealthField, string> = {
   concepts: '概念',
   timeline: '时间线',
   knowledgeTree: '知识结构',
+  conceptLinks: '概念关联',
   examCues: '考点',
   questionsAndGaps: '疑问与缺口',
   quiz: '自测题',
@@ -127,6 +130,7 @@ function timelineFindings(note: Note): HealthFinding[] {
 /** 批3: 知识树形状（形状规则 7 的「第一层 3-6 分支 / 整体 3-4 层 / 标题 ≤20 字」）。 */
 function treeFindings(note: Note): HealthFinding[] {
   const root = note.knowledgeTree
+  if (root == null) return []
   const findings: HealthFinding[] = []
   if (root.children.length < MIN_TREE_BRANCHES) {
     findings.push({ field: 'knowledgeTree', level: 'warn', message: `知识结构只有 ${root.children.length} 个主分支（规约 ${MIN_TREE_BRANCHES}-6 个），覆盖面不足` })
@@ -157,6 +161,46 @@ function collectLongTitles(node: TreeNode, out: string[]): string[] {
 function quizFindings(note: Note): HealthFinding[] {
   if (note.quiz.length === 0 || note.quiz.length >= MIN_QUIZ_ITEMS) return []
   return [{ field: 'quiz', level: 'warn', message: `自测题只有 ${note.quiz.length} 题（规约 ${MIN_QUIZ_ITEMS}-8 题），题量不足` }]
+}
+
+/** 形状规则 9.8 的关系词白名单——唯一事实源，prompt 与体检共用同一份。 */
+export const CONCEPT_LINK_RELATIONS = ['前提', '对比', '易混', '推广', '步骤', '因果', '包含'] as const
+
+/**
+ * 批5 (plan 2026-09-17 note-quality upgrade): 概念关联的**命题审计**。
+ *
+ * 起因：PROGRESS 记录过「conceptLinks 3 条解析率 100%，但 label 偏噪声」。
+ * 这是**必然而非偶然**——归一化只校验 from/to 能否解析，label 是自由文本，
+ * 于是「参数」「提升」「方法」这类名词填充照样落库，画出来就是一条没有语义的虚线。
+ *
+ * 审计口径：一条链接要成立，label 必须是一个**关系词**（读得成「A ——关系—— B」
+ * 这样的可判定命题）。名词填充不是关系，判不合格。
+ *
+ * 为什么不照搬外部 skill 的「汇聚/扩展/张力/矛盾」四分类：那套是**跨来源**综合的
+ * 分类（多个讲义/教材对同一主题的关系），而本产品严格限定**单课时内**的概念关系
+ * （跨课时概念链接是既定不做的边界）。单课时里只有一份来源，「汇聚」无从谈起——
+ * 照搬会是类别错误。所以保留既有的单课时关系词表，补上「必须真是关系」这条审计。
+ */
+function conceptLinkFindings(note: Note): HealthFinding[] {
+  // 容忍部分形状：渲染层会在 mock/降级路径下传缺字段的笔记，体检绝不能因此
+  // 把整个界面炸掉（一次真实的 app-shell 崩溃就是这么来的）。
+  const links = note.conceptLinks ?? []
+  if (links.length === 0) return []
+  const relations: readonly string[] = CONCEPT_LINK_RELATIONS
+  const noisy = links.filter((link) => {
+    const label = (link.label ?? '').trim()
+    if (label === '') return true
+    return !relations.some((relation) => label === relation || label.includes(relation))
+  })
+  if (noisy.length === 0) return []
+  const samples = noisy.slice(0, 3).map((link) => `「${(link.label ?? '').trim() || '(空)'}」`).join('、')
+  return [
+    {
+      field: 'conceptLinks',
+      level: 'warn',
+      message: `${noisy.length}/${links.length} 条概念关联的 label 不是关系词（${samples}），读不成命题，在导图上只是一条没有语义的虚线`
+    }
+  ]
 }
 
 /** 诚实空节：信息级说明，不拉低评级。 */
@@ -208,6 +252,7 @@ export function noteHealth(
     ...conceptFindings(note),
     ...timelineFindings(note),
     ...treeFindings(note),
+    ...conceptLinkFindings(note),
     ...honestEmptyFindings(note),
     ...quizFindings(note),
     ...evidenceFindings(hitRate),

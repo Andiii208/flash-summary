@@ -220,9 +220,22 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
 
   // Assign x left-to-right by depth; collect bezier edges.
   for (const node of nodes) node.x = PADDING + node.depth * LEVEL_WIDTH
+  // 批5: 边收集从 O(n²) 改成按父路径索引一次。原实现对每个节点都全量 `nodes.filter`
+  // 并逐段比 path，课程级导图（几十课时合并、上百节点）会明显吃 CPU；实测没有基准
+  // 测试兜底，所以顺手补上（见 tests/mindmap-layout.test.ts 的性能门禁）。
+  const childEdges = new Map<string, LayoutNode[]>()
+  for (const node of nodes) {
+    const cut = node.path.lastIndexOf('/')
+    if (cut < 0) continue // 根节点没有父
+    const parentPath = node.path.slice(0, cut)
+    const bucket = childEdges.get(parentPath)
+    if (bucket == null) childEdges.set(parentPath, [node])
+    else bucket.push(node)
+  }
   for (const parent of nodes) {
-    const children = nodes.filter((n) => n.path.startsWith(`${parent.path}/`) && n.path.split('/').length === parent.path.split('/').length + 1)
-    for (const child of children) edges.push({ from: parent.id, to: child.id, d: edgePath(parent, child) })
+    for (const child of childEdges.get(parent.path) ?? []) {
+      edges.push({ from: parent.id, to: child.id, d: edgePath(parent, child) })
+    }
   }
 
   // M3.1: resolve cross-links — term first, then title, first match wins.
@@ -248,6 +261,19 @@ export function computeMindMapLayout(root: TreeNode, collapsed: ReadonlySet<stri
 /** M3.1: dashed connector between two sibling-independent node boxes plus
  *  its label anchor. Horizontally separated boxes use the hierarchical
  *  bezier shape; overlapping columns fall back to a center-to-center line. */
+/**
+ * M3.1 + 批5: dashed connector between two node boxes plus its label anchor.
+ *
+ * 两种情形：
+ *   - **横向分离**（分属不同列）：走层级贝塞尔，与树边同形，观感一致。
+ *   - **同列或重叠**（x 区间相交）：此前直接画一条中心到中心的**直线**——
+ *     而这条直线必然从两个节点框内部穿过去（重叠定义即如此），课程级导图里
+ *     看起来很脏。批5 改为**绕行侧廊道的正交折线**：从两端框的左右侧边出发，
+ *     在两者之间走一条竖走廊再拐回，绕开节点矩形。
+ *
+ * 只保证不穿**端点**矩形（无法保证不穿中间无关节点——那需要全局路由，成本远超
+ * 收益）；对「同列相邻两节点」这个实际最常见的重叠形态，绕行已经完全够用。
+ */
 function linkPath(a: LayoutNode, b: LayoutNode): { d: string; lx: number; ly: number } {
   const aRight = a.x + a.width
   const bRight = b.x + b.width
@@ -256,11 +282,20 @@ function linkPath(a: LayoutNode, b: LayoutNode): { d: string; lx: number; ly: nu
     const d = edgePath(left, right)
     return { d, lx: (left.x + left.width + right.x) / 2, ly: (left.y + left.height / 2 + right.y + right.height / 2) / 2 }
   }
-  const x1 = a.x + a.width / 2
-  const y1 = a.y + a.height / 2
-  const x2 = b.x + b.width / 2
-  const y2 = b.y + b.height / 2
-  return { d: `M ${x1} ${y1} L ${x2} ${y2}`, lx: (x1 + x2) / 2, ly: (y1 + y2) / 2 }
+  // 重叠：挑一条落在两者之间的竖走廊，从各自较近的侧边走。
+  const leftBox = a.x <= b.x ? a : b
+  const rightBox = a.x <= b.x ? b : a
+  const corridor = leftBox.x + leftBox.width + (rightBox.x - (leftBox.x + leftBox.width)) / 2
+  const fromY = a.y + a.height / 2
+  const toY = b.y + b.height / 2
+  const fromX = corridor <= a.x + a.width / 2 ? a.x : a.x + a.width
+  const toX = corridor <= b.x + b.width / 2 ? b.x : b.x + b.width
+  const d =
+    `M ${fromX} ${fromY}` +
+    ` L ${corridor} ${fromY}` +
+    ` L ${corridor} ${toY}` +
+    ` L ${toX} ${toY}`
+  return { d, lx: corridor, ly: (fromY + toY) / 2 }
 }
 
 function edgePath(parent: LayoutNode, child: LayoutNode): string {

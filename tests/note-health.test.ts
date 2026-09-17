@@ -3,7 +3,7 @@
  * 夹具对照真实库探针的两极：B站课（丰富）vs SEU 旧课（薄）。
  */
 import { describe, expect, it } from 'vitest'
-import { noteHealth, HEALTH_FIELD_LABELS } from '../src/shared/notes/health'
+import { noteHealth, HEALTH_FIELD_LABELS, CONCEPT_LINK_RELATIONS } from '../src/shared/notes/health'
 import { parseNote, type Note } from '../src/shared/notes/schema'
 
 function noteFixture(overrides: Partial<Record<string, unknown>> = {}): Note {
@@ -206,6 +206,49 @@ describe('noteHealth 体检 (批3 2026-09-08)', () => {
     expect(HEALTH_FIELD_LABELS.overview).toBe('概览')
     expect(HEALTH_FIELD_LABELS.questionsAndGaps).toBe('疑问与缺口')
     expect(HEALTH_FIELD_LABELS.knowledgeTree).toBe('知识结构')
+  })
+})
+
+describe('批5 概念关联的命题审计（2026-09-17）', () => {
+  // 起因：PROGRESS 记录「conceptLinks 3 条解析率 100%，但 label 偏噪声」。归一化只
+  // 校验 from/to 能否解析，label 是自由文本——「参数」「提升」这类名词填充照样落库，
+  // 画出来就是一条没有语义的虚线。审计口径：label 必须是**关系词**。
+  // 注意：归一层会**丢弃 from/to 解析不到的关联**（这正是 PROGRESS 记的「解析率
+  // 100%」——只有能解析的活下来）。所以夹具必须用真实存在的概念 term 或节点标题。
+  const ENDPOINTS = ['学习率', '数据处理', '模型构建', '训练调优']
+  const linkFixture = (labels: string[]): Note =>
+    noteFixture({
+      conceptLinks: labels.map((label, i) => ({ from: ENDPOINTS[i % ENDPOINTS.length]!, to: ENDPOINTS[(i + 1) % ENDPOINTS.length]!, label }))
+    })
+
+  it('关系词 label 全部合格 → 无 warn', () => {
+    const report = noteHealth(linkFixture(['前提', '对比', '因果']))
+    expect(report.findings.find((f) => f.field === 'conceptLinks')).toBeUndefined()
+    expect(report.warnCount).toBe(0)
+  })
+
+  it('名词填充 label → warn（这正是「label 偏噪声」的机械判据）', () => {
+    const report = noteHealth(linkFixture(['参数', '提升', '方法']))
+    const finding = report.findings.find((f) => f.field === 'conceptLinks')
+    expect(finding?.level).toBe('warn')
+    expect(finding?.message).toContain('不是关系词')
+    // 报出前三条样本，用户不用逐条翻
+    expect(finding?.message).toContain('参数')
+  })
+
+  it('空 label → warn；无关联线时静默', () => {
+    expect(noteHealth(linkFixture([''])).findings.find((f) => f.field === 'conceptLinks')).toBeDefined()
+    expect(noteHealth(noteFixture({ conceptLinks: [] })).findings.find((f) => f.field === 'conceptLinks')).toBeUndefined()
+  })
+
+  it('复合关系词（含关系语素）算合格，不误杀', () => {
+    const report = noteHealth(linkFixture(['互为前提', '步骤依赖']))
+    expect(report.findings.find((f) => f.field === 'conceptLinks')).toBeUndefined()
+  })
+
+  it('关系词白名单与字段标签都是单一事实源', () => {
+    expect(CONCEPT_LINK_RELATIONS).toContain('因果')
+    expect(HEALTH_FIELD_LABELS.conceptLinks).toBe('概念关联')
   })
 })
 

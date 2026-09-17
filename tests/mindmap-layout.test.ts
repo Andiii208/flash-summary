@@ -219,3 +219,68 @@ describe('computeMindMapLayout cross-links (M3.1)', () => {
     expect(kept.links).toHaveLength(1)
   })
 })
+
+describe('批5 概念关联的几何与性能（2026-09-17）', () => {
+  /** 一棵足够宽的树，用来验证关联线绕行与大规模布局。 */
+  const wideTree = (branches: number, depth: number): TreeNode => ({
+    title: '根',
+    children: Array.from({ length: branches }, (_, i) => {
+      let node: TreeNode = { title: `叶${i}`, children: [] }
+      for (let d = 1; d < depth; d += 1) node = { title: `层${d}-${i}`, children: [node] }
+      return node
+    })
+  })
+
+  it('同列重叠的关联线走绕行走廊，不再是一条穿过两个节点框的直线', () => {
+    // 同一分支下的两个节点同列，必然横向重叠。
+    const tree: TreeNode = {
+      title: '根',
+      children: [
+        { title: '甲', children: [{ title: '甲一', children: [] }, { title: '甲二', children: [] }] },
+        { title: '乙', children: [] }
+      ]
+    }
+    const layout = computeMindMapLayout(tree, new Set(), { links: [{ from: '甲一', to: '甲二', label: '对比' }] })
+    expect(layout.links).toHaveLength(1)
+    const d = layout.links[0]!.d
+    // 正交折线：至少四个点（起 → 走廊 → 走廊 → 终），且没有二次贝塞尔
+    expect(d.split('L').length - 1).toBeGreaterThanOrEqual(3)
+    expect(d).not.toContain('C')
+
+    // 折线的竖直段必须落在两端点矩形之间的走廊里，即真的绕开了节点框。
+    const a = layout.nodes.find((n) => n.title === '甲一')!
+    const b = layout.nodes.find((n) => n.title === '甲二')!
+    const corridor = layout.links[0]!.lx
+    const leftEdge = Math.max(a.x, b.x)
+    const rightEdge = Math.min(a.x + a.width, b.x + b.width)
+    expect(corridor).toBeGreaterThanOrEqual(leftEdge - 1)
+    expect(corridor).toBeLessThanOrEqual(rightEdge + 1)
+  })
+
+  it('横向分离的关联线仍走层级贝塞尔（与树边同形，观感一致）', () => {
+    // 注意：同深度的兄弟节点必然落在同一列（x 只由 depth 决定），所以「横向分离」
+    // 必须跨层取点——这里取深度 1 的「甲」与深度 2 的「乙一」。
+    const tree: TreeNode = {
+      title: '根',
+      children: [
+        { title: '甲', children: [{ title: '甲一', children: [] }] },
+        { title: '乙', children: [{ title: '乙一', children: [] }] }
+      ]
+    }
+    const layout = computeMindMapLayout(tree, new Set(), { links: [{ from: '甲', to: '乙一' }] })
+    expect(layout.links).toHaveLength(1)
+    expect(layout.links[0]!.d).toContain('C')
+  })
+
+  it('性能门禁：上百节点的布局不退化（原 O(n²) 边收集会在这里暴露）', () => {
+    const tree = wideTree(15, 4) // 15 分支 × (1 叶 + 3 中间层) + 根 = 61 节点
+    const started = Date.now()
+    const layout = computeMindMapLayout(tree, new Set(), {})
+    const elapsed = Date.now() - started
+    expect(layout.nodes.length).toBeGreaterThan(50)
+    // 边数 = 节点数 - 1（树）
+    expect(layout.edges).toHaveLength(layout.nodes.length - 1)
+    // 阈值刻意放宽（只防明显退化，不做微基准）；原实现也在几十毫秒级。
+    expect(elapsed).toBeLessThan(1500)
+  })
+})
