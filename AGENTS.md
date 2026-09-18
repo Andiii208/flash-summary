@@ -17,6 +17,7 @@ npm run lint && npm run typecheck && npm test
 ```
 
 - `npm run build` 为 electron-vite 构建（Phase 7 起含安装包打包）。
+- **改了 IPC 契约 / 桥面（`src/shared/bridge.ts`、`preload`、`ipc.ts` 的返回结构）时，四门禁之外必须另跑 `npm run smoke`**——它才是校验桥面形状的那道门（2026-09-18 实锤：批C1 把两条列表改成 `{items,total,limit}`，四门禁全绿而 smoke 30/32）。
 - 测试不许 skip/todo/删除断言/mock 被测关键路径来制造绿灯；测试数只增不减。
 
 ## 提交纪律
@@ -30,6 +31,7 @@ npm run lint && npm run typecheck && npm test
 - busy 视觉：慢操作一律「文案加省略号 + disabled」（如「添加中…」），hook 侧做 in-flight 守卫防连点；不新增第三种 busy 形态。
 - 模态层统一用共享 `ui/Dialog`（含滚动锁/Esc/居中遮罩）；自绘弹层必须挂 `useModalScrollLock`。
 - 笔记字段里的用户可见文本一律经 `MdLite`/`InlineText` 渲染——模型会自由输出 `**加粗**`，纯文本插值会印出字面星号。
+- **排版（间距/行高/字距/断点/基元/主题色）的唯一事实源是 `docs/skills/ui-layout/SKILL.md`**（2026-09-18 排版整改八批沉淀）：刻度 token 只取那几档、同一角色只允许一处定义、宽度断点只有 1180/1024——都有钉住测试（`tests/style-scale.test.ts` 等）。改 renderer 样式前先读它。
 
 ## 声明层纪律（2026-09-11 起，违反即「设计声明与实现漂移」复发）
 
