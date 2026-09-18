@@ -1,0 +1,114 @@
+---
+name: ui-layout
+description: SEU Summary 的排版与观感规范——刻度 token、六个共享基元、宽度断点、主题与一致性约定。凡改动 renderer 样式/布局/组件的会话必须先读本文件。
+version: 1.0.0
+---
+
+# SEU Summary 排版规范（UI Layout）
+
+> 2026-09-18 由排版整改计划（`docs/plans/2026-09-18-typography-layout-overhaul.md`，批0-批8）沉淀。
+> 整改前的状态是：**token 层只有色/圆角/阴影/字号/字体，间距/行高/字距一个都没有**——
+> 实测 `gap` 14 种取值、`padding` 约 40 种、`line-height` 11 种、`letter-spacing` 6 种，
+> 全是逐处手写；同一角色还有多套实现（卡片 11 种 padding、列表行 6 种、空态 5 种形状…）。
+> 本文件是那之后**唯一**的排版事实源；新增样式前先读它。
+
+## 1. 刻度（`src/renderer/style.css` 的 `:root`）
+
+| 类别 | token | 值 | 用在哪 |
+|---|---|---|---|
+| 间距 | `--space-hair` | 2px | 发丝缝：圆点/连接线/紧邻一对 |
+| | `--space-1` | 4px | 同一控件内部 |
+| | `--space-icon` | 6px | **只用于「图标 ↔ 文字」**（有钉住测试点名允许的选择器） |
+| | `--space-2` | 8px | 兄弟元素之间（默认） |
+| | `--space-3` | 12px | 卡片内部 / 卡片列表之间 |
+| | `--space-4` | 16px | 区块之间 / 大卡内边距 |
+| | `--space-5` | 24px | 内容区内边距 / 大分隔 |
+| 行高 | `--leading-none` | 1 | 单字符头像/徽标 |
+| | `--leading-tight` | 1.3 | 标题、单行强调 |
+| | `--leading-snug` | 1.5 | 密集行、元信息行、输入框 |
+| | `--leading-normal` | 1.6 | 默认 UI 文本（绝大多数） |
+| | `--leading-relaxed` | 1.7 | 散文（中文正文） |
+| | `--leading-loose` | 1.85 | 长文阅读列（`.note-body`） |
+| | `--leading-loose-dark` | 1.95 | 同上，**仅暗色**（光晕补偿） |
+| 字距 | `--tracking` | 0.5px | 默认标题字距 |
+| | `--tracking-wide` | 1px | 页标题/箴言 |
+| | `--tracking-seal` | 3px | 仅设置页页脚箴言（别处不得引用） |
+
+**纪律**：`gap` / `line-height` / `letter-spacing` 只能取上表的 token（`gap: 0` 例外）；
+`padding` 也走同一套刻度。这条由 `tests/style-scale.test.ts` 强制，新增裸值会红。
+
+## 2. 六个共享基元
+
+同一视觉角色**只允许一处定义**。成员把选择器挂进基元的选择器列表，**成员规则里不得
+再出现被基元接管的属性**（padding / border-radius / 字号 / 高度）——否则就是新的漂移。
+
+| 基元 | 规格 | 成员（选择器列表在 style.css 顶部基元块） |
+|---|---|---|
+| `.seg-tabs` | 14px / `8px 16px`，容器 `gap 4px + padding 4px`，允许换行 | `.tabs`（主导航）、`.note-tabs`（笔记视图切换） |
+| `.card` / `.card-lg` | padding 12px / 16px，圆角 `--radius` | 概念卡、公式卡、自测卡、时间线卡、体检面板、课程卡（大卡：任务状态条、设置块） |
+| `.row` / `.row-sm` | padding `8px 12px` / `8px 10px`，圆角 `--radius` | 历史行、笔记库行、考点卡 / provider 行、课程行、升级行 |
+| `.group-head` | 12.5px / 620 / `--text-secondary` | 笔记库分组标题、`MyStudyPanel` 组头（侧栏一级 `.sidebar-head h2` 是 14px/650，内容区小节标题见 `.subheading` 14px/620） |
+| `.count-pill` | 高 16px 药丸、等宽数字、`flex-shrink: 0` | 树节点数、笔记库计数、侧栏课程数、全部课程数 |
+| `.tag` | 高 18px 药丸（去掉半像素 padding） | `.chip`、`.badge`、`.formula-tag`、`.callout-tag`、`.quiz-tag`、`.bili-chip` |
+
+空态只有**两种**形态：卡（`.empty-state`，大区）与一行小字（`.msg`，小区）。
+
+## 3. 宽度断点（全站只有两个）
+
+| 断点 | 含义 | 做什么 |
+|---|---|---|
+| `@media (max-width: 1180px)` | 内容盒装不下 860（面板轴） | 内容区横向内边距 24 → 16；任务行的时间列收起（让位给失败原因，完整时间戳仍在 `title` 里） |
+| `@media (max-width: 1024px)` | 装不下 640（正文轴） | 正文列与题头改流式；App 侧 `matchMedia` 让侧栏**挂载时**默认收起（不监听 resize，免得夺走用户的手动展开） |
+
+新增断点前先问：能不能用现有的两个解决？`tests/style-scale.test.ts` 钉住了「只有
+1180 与 1024」——加第三个要同时改测试，也就是要过审。
+
+## 4. 主题（浅色 «宣纸» / 暗色 «墨面»）
+
+- 暗色 token 写在**两块**（`@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) }`
+  与 `:root[data-theme='dark']`），**值必须一致**（注释里已写明）。
+- **学科墨水是主题 token**：`--subject-ink-1..6`（浅色 = `shared/subject-ink.ts` 的 `SUBJECT_INKS`，
+  暗色 = 混 35% 白）。渲染层只注入**变量名**（`subjectInkVar`），切主题不需要 JS。
+  守卫：`tests/subject-ink.test.ts`（浅色逐值一致、暗色两处同值、对暗面 ≥4.5:1）。
+- **遮罩用 `--scrim`**，不写裸 rgba（暗色需要更重的遮罩才分得出层）。
+- 暗色下唯一需要动的排版参数是**正文行距**（`--leading-loose-dark`）——亮底暗字的光晕让
+  细衬线发虚；字号/字重不动（衬线字体在 400/700 之间的值会被合成加粗，反而更糊）。
+
+## 5. 一致性约定（都有钉住测试）
+
+- **课程行的三个动作键**顺序固定为「星标 → 导图 → 删除」（收藏最常用在前，破坏性动作最后），
+  侧栏与全屏浏览页必须一致；图标键一律带 `aria-label`。
+- **展开/收起**三处（侧栏、树视图、导图）统一为「由少到多」：全部收起 → … → 全部展开。
+- **工具行分组**用 `.toolbar-divider`（`aria-hidden`）把「维护 · 导出 · 主行动」分开。
+- **按钮标签不折行**（`.btn { white-space: nowrap }`），由容器负责换行（`flex-wrap`）。
+- **弹层**：确认类用共享 `ui/Dialog`（底部右下两键；额外行动键走 `extraActions` 靠左，
+  弹层只有一行按钮）；视图类自绘弹层用右上关闭键 + `aria-label`。弹窗有 `max-height: 86vh`
+  与唯一的滚动区 `.dialog-body`（**不要**再给子元素加 max-height/overflow）。
+- **时间口径**：时间戳用 `formatTime`（mm:ss）/ `formatStamp`（绝对）/ `formatRelativeStamp`
+  （一周内相对）；时长用 `formatDuration`（中文单位）。实现只有 `shared/format.ts` 与
+  `shared/notes/format.ts` 两处，不许再抄。
+
+## 6. 阅读排版（笔记正文）
+
+- 正文列 **640px**、字号 **15px**、行高 `--leading-loose`（实测 **42.7 全角字/行**；
+  中文舒适区 30-40 字，640 是「比历史 680 收窄、又不显得版心突然瘦了」的折中）。
+- 正文的字号与行高**只在 `.note-body` 声明一次**，段落规则继承——次级文字
+  （概念定义/步骤解释/自测答案）才拿得回自己的字号（此前被 `.note-section p` 的通配压掉）。
+- 题头（`.note-masthead`）与正文列**同轴**（640px）；超长标题（>28 字，B站视频名常见）
+  降一档到 17px/1.3，全文进 `title`。
+- markdown 标题三档：`md-h1` 16px / `md-h2` 15px / `md-h3-4` 14px 弱色。
+
+## 7. 怎么验收排版改动
+
+排版问题**不看代码猜，全部实拍实量**：
+
+```bash
+npm run build
+node scripts/ui-shots.mjs .ui-shots/xxx --light   # 或 --dark；13 张主流程截图
+```
+
+几何量测（探针在 `.ui-shots/probe-layout.mjs`，gitignored；若要长期用见方案 D9）：
+`node .ui-shots/probe-layout.mjs --width=960` 会打印内容盒/正文列宽度、行长（CJK 字/行）、
+工具行高、弹窗高度与溢出、空态按钮尺寸等。
+
+改排版的批次必须：四门禁全绿（lint/typecheck/test/build）→ 实拍对照 → 把关键数字写进提交信息。
