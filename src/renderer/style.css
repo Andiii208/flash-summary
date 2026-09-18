@@ -521,6 +521,11 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 }
 
 .tree-tools { display: flex; gap: var(--space-2); }
+/* 批6 (T41): 面板的行动条——主行动与其撤销动作同一行、同 gap、可换行。 */
+.panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+/* 批6 (T43): 工具行分组分隔线（导图工具栏已有 .mindmap-toolbar-divider，这里抽成
+   共用类，笔记工具行也用它把「维护 / 导出 / 主行动」三域分开）。 */
+.toolbar-divider, .mindmap-toolbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 .tree-tools .btn { flex: 1; }
 
 .content {
@@ -916,7 +921,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .dialog-title { margin: 0 0 8px; font-size: var(--font-size-lg); }
 .dialog-message { margin: 0 0 var(--space-4); color: var(--text-secondary); font-size: var(--font-size-md); line-height: var(--leading-normal); }
 .dialog-body { min-height: 0; overflow-y: auto; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* 批6: 额外行动键靠左，关闭/确认留在右（弹层只有一行按钮）。 */
+.dialog-actions-extra { margin-right: auto; }
 
 /* M3 批 D: provider form helpers */
 .provider-hint { margin: 2px 0 0; color: var(--text-muted); font-size: var(--font-size-xs); }

@@ -173,11 +173,12 @@ function TreeView({ node }: { node: TreeNode }): JSX.Element {
   return (
     <div class="tree-view" role="tree">
       <div class="tree-view-tools">
-        <button class="btn small ghost" onClick={() => setOverride({ open: true, seq: (override?.seq ?? 0) + 1 })}>
-          全部展开
-        </button>
+        {/* 批6 (T39): 与侧栏、导图统一为「由少到多」：全部收起 → 全部展开。 */}
         <button class="btn small ghost" onClick={() => setOverride({ open: false, seq: (override?.seq ?? 0) + 1 })}>
           全部收起
+        </button>
+        <button class="btn small ghost" onClick={() => setOverride({ open: true, seq: (override?.seq ?? 0) + 1 })}>
+          全部展开
         </button>
       </div>
       <TreeNodeRows key={override?.seq ?? 0} node={node} depth={0} defaultOpen={override?.open} />

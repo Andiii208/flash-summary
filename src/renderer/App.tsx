@@ -464,11 +464,13 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 {state.allCoursesOpen && (
                   <>
                     <div class="tree-tools">
-                      <button class="btn small ghost" onClick={state.expandAll}>
-                        全部展开
-                      </button>
+                      {/* 批6 (T39): 三处展开/收起统一为「由少到多」的同一顺序
+                          （全部收起 → … → 全部展开），与导图的深度控制同向。 */}
                       <button class="btn small ghost" onClick={state.collapseAll}>
                         全部收起
+                      </button>
+                      <button class="btn small ghost" onClick={state.expandAll}>
+                        全部展开
                       </button>
                     </div>
                     <CourseTree

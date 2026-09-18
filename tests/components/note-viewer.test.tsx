@@ -79,6 +79,7 @@ describe('NoteViewer', () => {
   })
 
   it('批3: the reading-view tree offers 全部展开/收起 (parity with the mind map)', () => {
+    // tools() 取树视图工具行里的两个按钮（批6 起顺序固定为 收起 → 展开）。
     const deep: Note = {
       ...NOTE,
       knowledgeTree: { title: '根', children: [{ title: '分支A', children: [{ title: '子节A1', children: [{ title: '叶子A1a', children: [] }] }] }] }
@@ -87,8 +88,10 @@ describe('NoteViewer', () => {
     // Default open depth is 2: 根/分支A/子节A1 visible, 叶子A1a folded away.
     expect(host.querySelector('.tree-view')).not.toBeNull()
     expect(host.textContent).not.toContain('叶子A1a')
-    const tool = (label: string): HTMLButtonElement =>
-      Array.from(host.querySelectorAll('.tree-view-tools button')).find((b) => b.textContent === label) as HTMLButtonElement
+    const tools = (): HTMLButtonElement[] => Array.from(host.querySelectorAll('.tree-view-tools button'))
+    const tool = (label: string): HTMLButtonElement => tools().find((b) => b.textContent === label) as HTMLButtonElement
+    // 批6 (T39): 顺序统一为「由少到多」——全部收起在前，全部展开在后。
+    expect(tools().map((b) => b.textContent)).toEqual(['全部收起', '全部展开'])
     click(tool('全部展开'))
     expect(host.textContent).toContain('叶子A1a')
     click(tool('全部收起'))

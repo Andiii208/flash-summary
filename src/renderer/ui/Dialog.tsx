@@ -24,6 +24,9 @@ export interface DialogProps {
   /** 声明批2: a blocking gate. Escape must not dismiss it — the only ways out
    *  are the two explicit actions (the backdrop already does nothing here). */
   persistent?: boolean
+  /** 批6: 额外的行动键（如诊断弹层的「复制诊断信息」），与关闭键同排靠左——
+   *  避免弹层出现第二行按钮。 */
+  extraActions?: preact.ComponentChildren
   onConfirm: () => void
   onCancel: () => void
 }
@@ -35,7 +38,7 @@ export interface DialogProps {
  * 批6: «view» kind — a pure viewer gets one close action and a backdrop
  * click; a «取消» next to «关闭» made the user hesitate over nothing.
  */
-export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, kind = 'confirm', children, confirmDisabled = false, cancelDisabled = false, cancelLabel = '取消', persistent = false, onConfirm, onCancel }: DialogProps): JSX.Element | null {
+export function Dialog({ open, title, message, confirmLabel = '确认', danger = false, kind = 'confirm', children, confirmDisabled = false, cancelDisabled = false, cancelLabel = '取消', persistent = false, extraActions, onConfirm, onCancel }: DialogProps): JSX.Element | null {
   const view = kind === 'view'
   // 健康巡查 2026-09-12 批6: Tab cycles inside the dialog and focus returns
   // to the trigger on close — aria-modal now holds for keyboard users too.
@@ -68,6 +71,7 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
             升级列表 320px）。现在统一由 .dialog-body 承担。 */}
         {children != null && <div class="dialog-body">{children}</div>}
         <div class="dialog-actions">
+          {extraActions != null && <span class="dialog-actions-extra">{extraActions}</span>}
           {view ? (
             <button class="btn primary" autoFocus onClick={onCancel}>
               {confirmLabel === '确认' ? '关闭' : confirmLabel}

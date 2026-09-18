@@ -179,7 +179,7 @@ export function CourseBrowser({
                 : `匹配 ${matches.length} 门 / 本地已收录 ${tree.length} 门 · 搜索只查本地已收录的课`}
             </p>
           </div>
-          <button class="btn small" onClick={onClose}>
+          <button class="btn small" onClick={onClose} aria-label="关闭全部课程">
             关闭
           </button>
         </div>
@@ -337,6 +337,7 @@ function CourseCard({ course, selectedLessonId, onSelectLesson, onClose, onToggl
         <button
           class={`pin-btn${course.isMine === true ? ' pinned' : ''}`}
           title={course.isMine === true ? '取消收藏标记' : '收藏这门课（排序置顶）'}
+          aria-label={course.isMine === true ? `取消收藏 ${course.name}` : `收藏课程 ${course.name}`}
           aria-pressed={course.isMine === true}
           onClick={() => onToggleMine(course.id, course.isMine !== true)}
         >

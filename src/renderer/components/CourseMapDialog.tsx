@@ -49,7 +49,7 @@ export function CourseMapDialog({ info, onClose }: { info: CourseMapInfo; onClos
               {info.lessons} 个课时{info.skipped > 0 ? ` · ${info.skipped} 条损坏笔记已跳过` : ''}
             </p>
           </div>
-          <button class="btn small" onClick={onClose}>
+          <button class="btn small" onClick={onClose} aria-label="关闭课程导图">
             关闭
           </button>
         </div>

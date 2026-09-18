@@ -231,10 +231,15 @@ export function NoteViewer({
                 {regenBusy ? '生成中…' : '重新生成'}
               </button>
             )}
+            {/* 批6 (T43): 工具行按「维护 · 导出 · 主行动」三域分组（与导图工具栏
+                同一套分隔线）。此前 7 个按钮平铺，4 个导出动作无从分辨主次。 */}
             {onCopy != null && note != null && (
-              <button class="btn small" onClick={onCopy}>
-                复制 Markdown
-              </button>
+              <>
+                <span class="toolbar-divider" aria-hidden="true" />
+                <button class="btn small" onClick={onCopy}>
+                  复制 Markdown
+                </button>
+              </>
             )}
             {onExportAnki != null && note != null && (
               <button class="btn small" onClick={onExportAnki} disabled={exportBusy != null}>
@@ -261,9 +266,12 @@ export function NoteViewer({
                 used to end 126px short with the green button second from the
                 left. */}
             {onExportPdf != null && (
-              <button class="btn small primary note-pdf-btn" onClick={onExportPdf} disabled={pdfBusy}>
-                {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
-              </button>
+              <>
+                <span class="toolbar-divider" aria-hidden="true" />
+                <button class="btn small primary note-pdf-btn" onClick={onExportPdf} disabled={pdfBusy}>
+                  {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
+                </button>
+              </>
             )}
           </div>
         </div>

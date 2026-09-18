@@ -108,11 +108,17 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, map
           {sameCourse && <span class="badge same">同课</span>}
           {course.lessons.length > 0 && <span class="course-count">{course.lessons.length}</span>}
         </button>
-        {deletable && (
-          <button class="pin-btn" title="删除这门课（未产生过笔记/任务）" aria-label={`删除课程 ${course.name}`} onClick={() => setPendingDelete(true)}>
-            <Trash2 size={13} strokeWidth={1.75} />
-          </button>
-        )}
+        {/* 批6 (T40): 三键顺序与全屏浏览页统一为「星标 → 导图 → 删除」——收藏最常用
+            在前，破坏性动作最后（远离其余两键）；此前两处顺序互为镜像。 */}
+        <button
+          class={`pin-btn${course.isMine === true ? ' pinned' : ''}`}
+          title={course.isMine === true ? '取消收藏标记' : '收藏这门课（排序置顶）'}
+          aria-label={course.isMine === true ? `取消收藏 ${course.name}` : `收藏课程 ${course.name}`}
+          aria-pressed={course.isMine === true}
+          onClick={() => onToggleMine(course.id, course.isMine !== true)}
+        >
+          <Star size={14} strokeWidth={1.75} fill={course.isMine === true ? 'currentColor' : 'none'} />
+        </button>
         {onCourseMap != null && (
           <button
             class="pin-btn"
@@ -124,14 +130,11 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, map
             <GitBranch size={13} strokeWidth={1.75} />
           </button>
         )}
-        <button
-          class={`pin-btn${course.isMine === true ? ' pinned' : ''}`}
-          title={course.isMine === true ? '取消收藏标记' : '收藏这门课（排序置顶）'}
-          aria-pressed={course.isMine === true}
-          onClick={() => onToggleMine(course.id, course.isMine !== true)}
-        >
-          <Star size={14} strokeWidth={1.75} fill={course.isMine === true ? 'currentColor' : 'none'} />
-        </button>
+        {deletable && (
+          <button class="pin-btn" title="删除这门课（未产生过笔记/任务）" aria-label={`删除课程 ${course.name}`} onClick={() => setPendingDelete(true)}>
+            <Trash2 size={13} strokeWidth={1.75} />
+          </button>
+        )}
       </div>
       <Dialog
         open={pendingDelete}

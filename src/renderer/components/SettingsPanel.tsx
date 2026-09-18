@@ -155,7 +155,9 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
             {props.settings == null ? '加载中…' : (props.settings.libraryRoot != null && props.settings.libraryRoot !== '' ? props.settings.libraryRoot : '—')}
           </code>
           <button class="btn small" onClick={props.onChooseLibrary} disabled={props.libraryBusy === true}>
-            {props.libraryBusy === true ? '迁移中…' : '更改'}
+            {/* 批6 (T42): 同一个「选文件夹」动作此前叫「更改」，而任务缓存那行叫
+                「浏览…」——统一为后者。 */}
+            {props.libraryBusy === true ? '迁移中…' : '浏览…'}
           </button>
           <button class="btn small" onClick={() => props.onOpenPath('library')}>
             打开

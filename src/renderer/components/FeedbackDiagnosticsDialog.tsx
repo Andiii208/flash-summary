@@ -35,6 +35,11 @@ export function FeedbackDiagnosticsDialog({
       confirmLabel="关闭"
       onConfirm={onClose}
       onCancel={onClose}
+      extraActions={
+        <button class="btn small" onClick={onCopy} disabled={busy || text === ''}>
+          {FEEDBACK_COPY_LABEL}
+        </button>
+      }
     >
       <p class="feedback-hint">{FEEDBACK_DIAGNOSTICS_HINT}</p>
       <div class="feedback-body">
@@ -42,12 +47,11 @@ export function FeedbackDiagnosticsDialog({
           {busy ? '正在整理诊断信息…' : text}
         </pre>
       </div>
+      {/* 批6: 隐私提醒固定在正文末尾（注释里本来就写着「底部固定一句隐私提醒」），
+          复制键进底部行动行——此前它孤零零留在正文里，弹层出现两行按钮。 */}
       <p class="feedback-sensitive" data-testid="feedback-sensitive-hint">
         {FEEDBACK_SENSITIVE_HINT}
       </p>
-      <button class="btn small" onClick={onCopy} disabled={busy || text === ''}>
-        {FEEDBACK_COPY_LABEL}
-      </button>
     </Dialog>
   )
 }

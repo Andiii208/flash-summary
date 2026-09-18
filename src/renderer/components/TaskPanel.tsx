@@ -134,15 +134,19 @@ export function TaskPanel({
         </>
       ) : (
         <>
-          {/* B1: queueing is allowed while another task runs. */}
-          <button class="btn primary" onClick={onCreateRun} disabled={busy}>
-            {busy ? '提交中…' : running ? '排队下一节' : '创建并运行'}
-          </button>
-          {running && (
-            <button class="btn danger" onClick={onCancel} disabled={busy}>
-              取消任务
+          {/* B1: queueing is allowed while another task runs.
+              批6 (T41): 行动按钮进同一行行动条——此前是两个裸按钮，只靠行内空白
+              分隔（无容器、无 gap、无对齐）。 */}
+          <div class="panel-actions">
+            <button class="btn primary" onClick={onCreateRun} disabled={busy}>
+              {busy ? '提交中…' : running ? '排队下一节' : '创建并运行'}
             </button>
-          )}
+            {running && (
+              <button class="btn danger" onClick={onCancel} disabled={busy}>
+                取消任务
+              </button>
+            )}
+          </div>
           {hasNoteAlready && !running && (
             <p class="msg rerun-hint">该课时已有笔记：只更新内容可在「笔记」页用重新生成；重新运行将重新下载并处理整节课。</p>
           )}
