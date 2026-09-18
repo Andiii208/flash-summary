@@ -41,9 +41,9 @@ function StudyGroup({ label, count, hint, children }: StudyGroupProps): JSX.Elem
   const toggle = (): void => setOpen((o) => !o)
   const showBody = count > 0 && (!collapsible || open)
   return (
-    <section class="flex flex-col gap-1.5">
+    <section class="study-group">
       <h3
-        class={`flex items-center gap-1.5 px-0.5 text-[12px] font-medium tracking-[1px] text-muted${collapsible ? ' cursor-pointer select-none' : ''}`}
+        class={`study-group-head group-head${collapsible ? ' cursor-pointer select-none' : ''}`}
         onClick={collapsible ? toggle : undefined}
         onKeyDown={
           collapsible
@@ -59,14 +59,14 @@ function StudyGroup({ label, count, hint, children }: StudyGroupProps): JSX.Elem
         role={collapsible ? 'button' : undefined}
         tabIndex={collapsible ? 0 : undefined}
       >
-        {collapsible && <span class="caret text-[10px]">{open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>}
+        {collapsible && <span class="caret">{open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>}
         {label}
-        {count > 0 && <span class="rounded-full bg-surface-2 px-1.5 py-px text-[11px] font-medium tracking-normal text-muted">{count}</span>}
+        {count > 0 && <span class="count-pill">{count}</span>}
       </h3>
       {showBody ? (
         children
       ) : count > 0 ? null : hint != null ? (
-        <p class="px-0.5 text-[11px] leading-relaxed text-muted">{hint}</p>
+        <p class="study-hint">{hint}</p>
       ) : null}
     </section>
   )
@@ -104,10 +104,10 @@ export function MyStudyPanel(props: MyStudyPanelProps): JSX.Element {
   const { mine, extracted, sameCourses } = props
   const empty = mine.length === 0 && extracted.length === 0 && sameCourses.length === 0
   return (
-    <div class="rounded-[var(--radius)] border border-border bg-surface p-2.5 flex flex-col gap-3">
-      <h3 class="px-0.5 text-[12px] font-medium tracking-[1px] text-muted">我的学习</h3>
+    <div class="study-panel">
+      <h3 class="study-group-head group-head">我的学习</h3>
       {empty ? (
-        <p class="px-0.5 text-[11px] leading-relaxed text-muted">
+        <p class="study-hint">
           在下方「全部课程」里找到你的课，点课程行右侧的星标收藏；生成笔记后它会自动出现在这里。
         </p>
       ) : (

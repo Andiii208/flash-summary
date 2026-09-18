@@ -158,7 +158,7 @@ describe('排版刻度（批0）', () => {
 
   it('--space-icon 是「图标↔文字」专用档，引用处必须能被点名（防止被当成通用 6px）', () => {
     // 只允许出现在明确的图标/标签容器上：按钮、复选框行、chip、树折叠头、例子标签、二维码。
-    const allowed = /\.(btn|lesson-chip-btn|dialog-check|tree-toggle|concept-example|bili-qr|capability-check)\b/
+    const allowed = /\.(btn|lesson-chip-btn|dialog-check|tree-toggle|concept-example|bili-qr|capability-check|study-group-head)\b/
     const bad: string[] = []
     const blocks = stripped.split('}')
     let offset = 0
