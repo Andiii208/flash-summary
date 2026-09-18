@@ -107,8 +107,18 @@ npm run build
 node scripts/ui-shots.mjs .ui-shots/xxx --light   # 或 --dark；13 张主流程截图
 ```
 
-几何量测（探针在 `.ui-shots/probe-layout.mjs`，gitignored；若要长期用见方案 D9）：
-`node .ui-shots/probe-layout.mjs --width=960` 会打印内容盒/正文列宽度、行长（CJK 字/行）、
-工具行高、弹窗高度与溢出、空态按钮尺寸等。
+几何量测用 `scripts/ui-probe.mjs`（与 ui-shots 同一套库隔离缝，只读）：
+
+```bash
+node scripts/ui-probe.mjs                 # 三个页面：内容轴 / 正文行长 / 工具行 / 弹层 / 任务行列宽
+node scripts/ui-probe.mjs --width=960     # 追加窄窗一轮（Emulation 覆盖视口，不改窗口）
+node scripts/ui-probe.mjs --empty         # 空库首启（侧栏引导卡 + 主区首启卡）
+node scripts/ui-probe.mjs --dialog        # 长文本弹层在 960×600 下的钳制与滚动
+node scripts/ui-probe.mjs --provider      # 绑定能力复选框组布局
+node scripts/ui-probe.mjs --mindmap       # 导图四态：首屏适应 / 放大后 / 适应后 / 窄窗适应
+```
+
+完整几何写 `.ui-shots/probe.json`（gitignored），终端打印关键数字摘要——
+**提交信息里的「修前 X → 修后 Y」就取这里**。
 
 改排版的批次必须：四门禁全绿（lint/typecheck/test/build）→ 实拍对照 → 把关键数字写进提交信息。

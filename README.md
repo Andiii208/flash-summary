@@ -95,7 +95,7 @@ src/
   shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
 tests/        104 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
 docs/skills/   工艺规范（note-craft 笔记工艺 / ui-layout 排版规范——改对应链路的会话先读）
-scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）
+scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）· ui-shots.mjs / ui-probe.mjs（排版实拍与几何探针）
 docs/
   plans/ROADMAP.md         阶段计划（8 阶段 + 验收命令）
   plans/2026-08-31-usability-upgrade.md  v0.2.0 升级计划（U1-U5）
