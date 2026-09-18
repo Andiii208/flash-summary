@@ -4,6 +4,7 @@ import { AudioLines, BookOpenCheck, CloudDownload, Download, Images, ScrollText,
 import type { LucideIcon } from 'lucide-preact'
 import type { TaskProgressInfo, TaskRowInfo } from '../../shared/bridge'
 import { humanizeTaskError } from '../../shared/errors'
+import { formatRelativeStamp, formatStamp } from '../../shared/format'
 import { PIPELINE_STAGES, STAGE_LABELS, stageLabel } from '../labels'
 import { ProgressBar } from './ProgressBar'
 import { EmptyState } from './EmptyState'
@@ -323,6 +324,13 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
               </span>
               {meta != null && <span class="history-meta">{meta}</span>}
             </div>
+            {/* 批7 (T48): 任务历史是应用里唯一没有「何时」的时间线（笔记库与追问
+                记录都有）——created_at 一直在查，只是从没渲染。 */}
+            {row.created_at != null && (
+              <span class="history-time" title={formatStamp(row.created_at)}>
+                {formatRelativeStamp(row.created_at)}
+              </span>
+            )}
             {row.error_message != null && (
               // A8 (plan 2026-09-13): the tooltip carries the same humanized
               // wording the row truncates — the raw message was unreachable

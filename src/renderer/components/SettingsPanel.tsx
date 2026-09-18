@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { AppSettingsInfo } from '../../shared/bridge'
+import { formatStamp } from '../../shared/format'
 import { ProviderPanel, type ProviderPanelProps } from './ProviderPanel'
 import { AboutPanel } from './AboutPanel'
 import type { SessionState } from './TopBar'
@@ -58,10 +59,12 @@ const SESSION_LABELS: Record<SessionState, string> = {
 function formatSessionInfo(info: SettingsPanelProps['sessionInfo'], session: SessionState): string | null {
   // 批5: an expired session must not present its past deadline as still valid.
   if (info.expiresAt != null) {
-    const when = new Date(info.expiresAt).toLocaleString()
+    // 批7 (T48): 与其它时间线同一实现（此前这里是无 locale 无选项的
+    // toLocaleString()，输出随系统区域变化）。
+    const when = formatStamp(info.expiresAt)
     return session === 'expired' ? `会话已于 ${when} 过期，请重新登录` : `会话有效期至 ${when}`
   }
-  if (info.savedAt != null) return `会话保存于 ${new Date(info.savedAt).toLocaleString()}（有效期未知）`
+  if (info.savedAt != null) return `会话保存于 ${formatStamp(info.savedAt)}（有效期未知）`
   return null
 }
 

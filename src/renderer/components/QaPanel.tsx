@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { QaRecentInfo } from '../../shared/bridge'
+import { formatRelativeStamp } from '../../shared/format'
 import { MdLite } from './MdLite'
 import { PageHeader } from './PageHeader'
 import { LessonChip, type LessonChipLesson } from './LessonChip'
@@ -39,22 +40,13 @@ export interface QaPanelProps {
   onOpenLesson?: (lessonId: string) => void
 }
 
-/** Short «YYYY-MM-DD HH:mm» stamp for the recent-QA rows. */
-function recentStamp(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
-}
-
-/** 批C: «刚刚/N 分钟前/…» for fresh exchanges, a full stamp once a week old. */
+/**
+ * 批C: «刚刚/N 分钟前/…» for fresh exchanges, a full stamp once a week old.
+ * 批7 (T48): 实现搬到 shared/format.ts（时间戳全应用一份），这里只留名字给既有
+ * 调用点与测试。
+ */
 export function qaTimeLabel(iso: string, now = new Date()): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const diffMs = now.getTime() - d.getTime()
-  if (diffMs < 60_000) return '刚刚'
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)} 分钟前`
-  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)} 小时前`
-  if (diffMs < 7 * 86_400_000) return `${Math.floor(diffMs / 86_400_000)} 天前`
-  return recentStamp(iso)
+  return formatRelativeStamp(iso, now)
 }
 
 /** Follow-up Q&A chat flow (no streaming in MVP — optimistic pending bubble). */

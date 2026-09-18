@@ -1277,6 +1277,8 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .history-state.seal-ok { color: var(--success); background: var(--success-soft); }
 .history-state.seal-bad { color: var(--danger); background: var(--danger-soft); }
 .history-state.seal-run { color: var(--accent); background: var(--accent-soft); }
+/* 批7 (T48): 任务历史行的时间列（等宽数字、不参与压缩、弱色）。 */
+.history-time { flex: none; font-size: var(--font-size-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .history-label {
   display: flex;
   flex-direction: column;
@@ -1851,6 +1853,9 @@ button.concept-ref:hover { color: var(--accent); }
 @media (max-width: 1180px) {
   /* 内容区让出横向内边距（24 → 16），工具行交给已有的 flex-wrap。 */
   .content { padding-left: var(--space-4); padding-right: var(--space-4); }
+  /* 批7: 任务行的时间列让位给「失败原因」——那一列才是用户要读的；完整时间戳
+     仍在 title 属性里（悬停可见）。 */
+  .history-time { display: none; }
 }
 
 @media (max-width: 1024px) {

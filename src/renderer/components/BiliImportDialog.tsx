@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import QRCode from 'qrcode'
 import type { BilibiliResolveResult, SeuSummaryBridge } from '../../shared/bridge'
+import { formatDuration } from '../../shared/format'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
 import { useFocusTrap } from '../ui/use-focus-trap'
 import { OWN_ACCOUNT_HINT } from './TopBar'
@@ -38,12 +39,14 @@ function togglePage(selected: number[], page: number): number[] {
   return selected.includes(page) ? selected.filter((p) => p !== page) : [...selected, page].sort((a, b) => a - b)
 }
 
-/** Rough study-time estimate for the selected pages («约 N 分钟»). */
-function totalMinutes(preview: PreviewState): number {
+/** Rough study-time estimate for the selected pages («约 N 分钟»).
+ *  批7 (T49): 时长口径统一到 shared/format.formatDuration（时间戳用 mm:ss、
+ *  时长用中文单位），不再自己算分钟。 */
+function totalDuration(preview: PreviewState): string {
   const seconds = preview.pages
     .filter((p) => preview.selected.includes(p.page))
     .reduce((sum, p) => sum + p.duration, 0)
-  return Math.max(1, Math.round(seconds / 60))
+  return formatDuration(Math.max(1, seconds))
 }
 
 /** Monogram fallback: first meaningful character (skip decorative punctuation like «【»). */
@@ -292,7 +295,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
                   清空
                 </button>
                 <span class="bili-meta bili-selected-note">
-                  已选 {preview.selected.length}/{pageCount} · 约 {totalMinutes(preview)} 分钟
+                  已选 {preview.selected.length}/{pageCount} · 约 {totalDuration(preview)}
                 </span>
               </div>
             )}

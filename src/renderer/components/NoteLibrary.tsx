@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { NoteIndexInfo } from '../../shared/bridge'
+import { formatStamp } from '../../shared/format'
 
 export interface NoteLibraryProps {
   entries: NoteIndexInfo[]
@@ -13,12 +14,6 @@ export interface NoteLibraryProps {
   /** 健康巡查 2026-09-12 批5: the in-flight export kind — the course-export
    *  button reads «导出中…» and disables while any export runs. */
   exportBusy?: string | null
-}
-
-/** «YYYY-MM-DD HH:mm» short stamp; invalid input degrades to «—» (批6). */
-function formatStamp(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 interface LibraryGroup {
