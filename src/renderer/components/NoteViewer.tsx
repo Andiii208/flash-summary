@@ -38,6 +38,8 @@ export interface NoteViewerProps {
   currentLessonId?: string
   /** 批B: cross-lesson library shown instead of the dead empty state. */
   library?: NoteIndexInfo[]
+  /** 批C: 笔记库总数（> library.length 即被截断）——标题据此写实。 */
+  libraryTotal?: number
   /** 批B: open a library entry = select that lesson globally. */
   onOpenLesson?: (lessonId: string) => void
   /** 质量批4: upgrade a course's stale notes from the library group head. */
@@ -81,6 +83,16 @@ export interface NoteViewerProps {
 }
 
 /** Five-view note reader: one note JSON, five projections (2026-09-04). */
+/**
+ * 批C (plan 2026-09-18 note-library-reachability): 标题必须写实——此前硬编码
+ * 「最近 200 条」，上限改了文案不会跟着改，而被截断时**从不告诉用户**：既不知道
+ * 有更早的笔记，也不知道去哪找。现在总数由数据算出来，截断时补一句出路。
+ */
+function libraryHeading(shown: number, total: number): string {
+  if (total > shown) return `全部笔记（共 ${total} 条 · 这里显示最近 ${shown} 条）— 更早的可在左侧课程树里按课程打开`
+  return `全部笔记（共 ${total} 条）— 点击一条即可查看与追问`
+}
+
 export function NoteViewer({
   note,
   attachmentManifest = [],
@@ -90,6 +102,7 @@ export function NoteViewer({
   lessonOptions,
   currentLessonId,
   library = [],
+  libraryTotal,
   onOpenLesson,
   onUpgradeCourse,
   onExportCourseObsidian,
@@ -335,7 +348,7 @@ export function NoteViewer({
             library.length > 0 && onOpenLesson != null ? (
               <>
                 <p class="msg">笔记在任务生成后自动显示；从左侧课程树点一个课时即可创建任务。</p>
-                <h3 class="subheading">全部笔记（最近 200 条）— 点击一条即可查看与追问</h3>
+                <h3 class="subheading">{libraryHeading(library.length, libraryTotal ?? library.length)}</h3>
                 <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
               </>
             ) : (

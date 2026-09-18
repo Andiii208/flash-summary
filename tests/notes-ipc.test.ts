@@ -688,22 +688,76 @@ describe('notes:list / qa:recent (批B, 2026-09-04)', () => {
       "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n3', 'l2', 2, ?, 'p', 'm', '2026-09-04T00:30:00Z')"
     ).run(VALID_NOTE)
     registerIpc(ctx, ipc as never)
+    // 批C: { items, total, limit }——total 是「一个课时一行」的总数（不受 limit 影响）。
     const res = (await ipc.invoke('notes:list')) as {
       ok: boolean
-      value?: Array<{ lessonId: string; version: number; courseName: string | null; teacher: string | null; lessonTitle: string | null }>
+      value?: { items: Array<{ lessonId: string; version: number; courseName: string | null; teacher: string | null; lessonTitle: string | null }>; total: number; limit: number }
     }
     expect(res.ok).toBe(true)
-    expect(res.value).toHaveLength(2)
-    expect(res.value?.[0]).toMatchObject({ lessonId: 'l2', version: 3, courseName: '课程', teacher: null, lessonTitle: '第2节课' })
-    expect(res.value?.[1]).toMatchObject({ lessonId: 'l1', version: 1, courseName: '课程', lessonTitle: '课时' })
+    expect(res.value?.items).toHaveLength(2)
+    expect(res.value?.total).toBe(2)
+    expect(res.value?.limit).toBe(200)
+    expect(res.value?.items[0]).toMatchObject({ lessonId: 'l2', version: 3, courseName: '课程', teacher: null, lessonTitle: '第2节课' })
+    expect(res.value?.items[1]).toMatchObject({ lessonId: 'l1', version: 1, courseName: '课程', lessonTitle: '课时' })
+  })
+
+  it('批C: notes:list 的关键词在主进程过滤，且只匹配列表可见字段', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '第2节课', '2026-09-04T00:00:00Z')").run()
+    db.prepare("UPDATE courses SET teacher = '汪海', classroom = '中山-312' WHERE id = 'c1'").run()
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('cn1', 'l1', 1, ?, 'p', 'm', '2026-09-04T01:00:00Z')").run(VALID_NOTE)
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('cn2', 'l2', 1, ?, 'p', 'm', '2026-09-04T02:00:00Z')").run(VALID_NOTE)
+    registerIpc(ctx, ipc as never)
+
+    // 命中课时名 → 只回那一行，且 total 是**过滤后**的总数。
+    const byLesson = (await ipc.invoke('notes:list', { keyword: '第2节' })) as {
+      value?: { items: Array<{ lessonId: string }>; total: number }
+    }
+    expect(byLesson.value?.items.map((i) => i.lessonId)).toEqual(['l2'])
+    expect(byLesson.value?.total).toBe(1)
+
+    // 命中教师名（列表里可见）→ 该教师的两条都回。
+    const byTeacher = (await ipc.invoke('notes:list', { keyword: '汪海' })) as { value?: { items: unknown[]; total: number } }
+    expect(byTeacher.value?.total).toBe(2)
+
+    // 教室（列表里**看不见**的字段）不参与匹配——搜到一条不显示该词的行会被当成 bug。
+    const byRoom = (await ipc.invoke('notes:list', { keyword: '中山' })) as { value?: { items: unknown[]; total: number } }
+    expect(byRoom.value?.total).toBe(0)
+
+    // 空关键词等于不过滤（不改变既有行为）。
+    const noFilter = (await ipc.invoke('notes:list', { keyword: '   ' })) as { value?: { total: number } }
+    expect(noFilter.value?.total).toBe(2)
+  })
+
+  it('批C: notes:list 支持 limit/offset 分页，total 不受影响', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '第2节课', '2026-09-04T00:00:00Z')").run()
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('pn1', 'l1', 1, ?, 'p', 'm', '2026-09-04T01:00:00Z')").run(VALID_NOTE)
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('pn2', 'l2', 1, ?, 'p', 'm', '2026-09-04T02:00:00Z')").run(VALID_NOTE)
+    registerIpc(ctx, ipc as never)
+
+    const first = (await ipc.invoke('notes:list', { limit: 1 })) as { value?: { items: Array<{ lessonId: string }>; total: number; limit: number } }
+    expect(first.value?.items).toHaveLength(1)
+    expect(first.value?.total).toBe(2)
+    expect(first.value?.limit).toBe(1)
+
+    const second = (await ipc.invoke('notes:list', { limit: 1, offset: 1 })) as { value?: { items: Array<{ lessonId: string }>; total: number } }
+    expect(second.value?.items).toHaveLength(1)
+    expect(second.value?.items[0]?.lessonId).not.toBe(first.value?.items[0]?.lessonId)
+    expect(second.value?.total).toBe(2)
+
+    // 硬帽子：渲染层传一个离谱的上限也不会一次拉爆。
+    const capped = (await ipc.invoke('notes:list', { limit: 99999 })) as { value?: { limit: number } }
+    expect(capped.value?.limit).toBe(500)
   })
 
   it('notes:list returns an empty list on an empty library', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
-    const res = (await ipc.invoke('notes:list')) as { ok: boolean; value?: unknown[] }
+    const res = (await ipc.invoke('notes:list')) as { ok: boolean; value?: { items: unknown[]; total: number } }
     expect(res.ok).toBe(true)
-    expect(res.value).toEqual([])
+    expect(res.value?.items).toEqual([])
+    expect(res.value?.total).toBe(0)
   })
 
   it('qa:recent returns exchanges with lesson/course identity, newest first', async () => {
@@ -919,9 +973,9 @@ describe('notes:courseHealth (质量批4, plan 2026-09-08 note-quality-overhaul)
     const ctx = makeCtx()
     seedNote('l1', 1, THIN_NOTE)
     registerIpc(ctx, ipc as never)
-    const res = (await ipc.invoke('notes:list')) as { ok: boolean; value?: Array<{ lessonId: string; courseId: string | null }> }
+    const res = (await ipc.invoke('notes:list')) as { ok: boolean; value?: { items: Array<{ lessonId: string; courseId: string | null }> } }
     expect(res.ok).toBe(true)
-    expect(res.value?.[0]).toMatchObject({ lessonId: 'l1', courseId: 'c1' })
+    expect(res.value?.items[0]).toMatchObject({ lessonId: 'l1', courseId: 'c1' })
   })
 
   it('fails with a readable error for a missing course', async () => {

@@ -132,7 +132,8 @@ export interface ProvidersBridge {
 
 export interface TasksBridge {
   create(lessonId: string): Promise<ApiResult<{ id: string }>>
-  list(lessonId?: string): Promise<ApiResult<TaskRowInfo[]>>
+  /** 批C: 分页列表（见 ListPage）——lessonId 为空时是全局列表。 */
+  list(lessonId?: string, page?: ListPageQuery): Promise<ApiResult<ListPage<TaskRowInfo>>>
   /** Fire-and-return execution (serialized in main, U4); progress via onProgress.
    *  A failed task re-run through this resumes from its failed stage. */
   runAsync(taskId: string): Promise<ApiResult<{ id: string; state: string }>>
@@ -170,6 +171,26 @@ export interface NoteIndexInfo {
   lessonTitle: string | null
 }
 
+/** 批C (plan 2026-09-18 note-library-reachability): 分页请求参数。 */
+export interface ListPageQuery {
+  limit?: number
+  offset?: number
+}
+
+/**
+ * 批C: 列表页结构。此前 notes:list / tasks:list 返回**纯数组**——渲染层无法知道
+ * 自己拿到的是不是全量，于是界面只好把「最近 200 条 / 最近 50 条」硬编码在文案里
+ * （上限改了文案不会跟着改），而**被截断时从不告诉用户**：既不知道有更早的记录，
+ * 也不知道去哪找。带上 total 之后 UI 才能如实说话。
+ */
+export interface ListPage<T> {
+  items: T[]
+  /** 满足条件的总数（不受 limit 影响）。 */
+  total: number
+  /** 本次请求的上限。 */
+  limit: number
+}
+
 /** 质量批4 (plan 2026-09-08 note-quality-overhaul): one lesson's health row. */
 export interface NoteHealthInfo {
   lessonId: string
@@ -197,8 +218,9 @@ export interface QaRecentInfo {
 
 export interface NotesBridge {
   latest(lessonId: string): Promise<ApiResult<unknown>>
-  /** 批B: every generated note across lessons (library list, newest first). */
-  list(): Promise<ApiResult<NoteIndexInfo[]>>
+  /** 批B: every generated note across lessons (library list, newest first).
+   *  批C: 分页 + 关键词（只匹配列表可见字段，见 main 侧注释）。 */
+  list(query?: ListPageQuery & { keyword?: string }): Promise<ApiResult<ListPage<NoteIndexInfo>>>
   /** 质量批4: per-lesson health of a course's latest notes (升级旧笔记 picker). */
   courseHealth(courseId: string): Promise<ApiResult<NoteHealthInfo[]>>
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>

@@ -171,6 +171,18 @@ describe('TaskPanel', () => {
     expect(onRetry).toHaveBeenCalledWith('t1')
   })
 
+  it('批C: 任务列表被截断时标题说出总数与显示条数', () => {
+    const history: TaskRowInfo[] = [
+      { id: 't1', lesson_id: 'l1', state: 'succeeded', failed_stage: null, error_message: null, error_kind: null, course_name: '网络信息编程', lesson_title: '第五讲', teacher: null, courTimes: null, classroom: null }
+    ]
+    const host = mount(
+      <TaskPanel currentLesson="" running={false} busy={false} progress={null} history={[]} globalHistory={history} globalHistoryTotal={88} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    const heading = host.querySelector('.subheading')?.textContent ?? ''
+    expect(heading).toContain('共 88 条')
+    expect(heading).toContain('这里显示最近 1 条')
+  })
+
   it('shows course/lesson names and humanized errors, and wires delete/clear (M1-2)', async () => {
     const history: TaskRowInfo[] = [
       { id: 't1', lesson_id: 'l1', state: 'failed', failed_stage: 'downloading_video', error_message: 'download failed: ERR_CONNECTION_RESET', error_kind: null, course_name: '网络信息编程', lesson_title: '第五讲', teacher: '汪海', courTimes: '周一 第3-4节', classroom: '中山-312' }

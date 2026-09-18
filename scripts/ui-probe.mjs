@@ -159,6 +159,7 @@ const MEASURE = `(() => {
     })),
     upgradeList: (() => { const e = document.querySelector('.note-upgrade-list'); if (e == null) return null; const d = document.querySelector('.dialog'); const lr = e.getBoundingClientRect(); const dr = d.getBoundingClientRect(); const body = document.querySelector('.dialog-body'); return { listW: Math.round(lr.width), dialogW: Math.round(dr.width), overflowPx: Math.round(lr.right - dr.right), dialogH: Math.round(dr.height), top: Math.round(dr.top), bottom: Math.round(dr.bottom), vh: innerHeight, fitsH: dr.top >= 0 && dr.bottom <= innerHeight, maxH: getComputedStyle(d).maxHeight, bodyScrolls: body != null && body.scrollHeight > body.clientHeight + 1 } })(),
     welcome: (() => { const w = document.querySelector('.welcome-guide'); if (w == null) return null; const btns = [...w.querySelectorAll('button')].map((b) => ({ text: b.textContent.trim(), ...row(b) })); return { boxW: Math.round(w.getBoundingClientRect().width), btns } })(),
+    subheadings: [...document.querySelectorAll('.subheading')].map((e) => e.textContent.trim()),
     emptyCards: [...document.querySelectorAll('.empty-state, .course-browser-empty, .msg')].slice(0, 5).map((e) => [e.className, getComputedStyle(e).padding, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)])
   }
 })()`
@@ -423,6 +424,7 @@ function summarize(out) {
     if (page.noteTitleInfo != null) lines.push(`题头标题 ${page.noteTitleInfo.fs}（${page.noteTitleInfo.len} 字 · ${page.noteTitleInfo.cls}）`)
     if (page.noteBtnCount > 0) lines.push(`工具行 ${page.noteBtnCount} 键 · ${page.actionsRows} 行 · 单键高 ${page.noteBtnBoxes[0]?.h} · 横向溢出 ${one(page.contentOverflowX)}`)
     if (page.countHeights?.length > 0) lines.push(`计数药丸高度 ${[...new Set(page.countHeights)].join('/')}`)
+    if (page.subheadings?.length > 0) lines.push(`小标题 ${page.subheadings.join(' | ')}`)
   }
   const welcome = out.initial?.welcome
   if (welcome != null) {

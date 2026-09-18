@@ -313,6 +313,8 @@ describe('NoteViewer', () => {
     expect(host.querySelector('.note-viewer .empty-state')).toBeNull()
     expect(host.querySelector('.note-viewer .msg')?.textContent).toContain('笔记在任务生成后自动显示')
     expect(host.querySelector('.subheading')?.textContent).toContain('全部笔记')
+    // 批C: 未截断时标题写总数（数字由数据算出来，不再硬编码「最近 200 条」）。
+    expect(host.querySelector('.subheading')?.textContent).toContain('共 1 条')
     // 批6: the course identity lives on the group head; the row carries the lesson.
     const group = host.querySelector('.note-library-group-head')
     expect(group?.textContent).toContain('算法导论 · 汪海')
@@ -329,6 +331,18 @@ describe('NoteViewer', () => {
     expect(row?.querySelector('.badge')?.getAttribute('title')).toBe('第 3 次生成')
     click(row)
     expect(onOpenLesson).toHaveBeenCalledWith('l2')
+  })
+
+  it('批C: 笔记库被截断时标题说出总数与出路（不再静默丢弃）', () => {
+    const library = [
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
+    ]
+    const host = mount(<NoteViewer note={null} library={library} libraryTotal={431} onOpenLesson={() => undefined} />)
+    const heading = host.querySelector('.subheading')?.textContent ?? ''
+    expect(heading).toContain('共 431 条')
+    expect(heading).toContain('这里显示最近 1 条')
+    // 出路：更早的笔记去哪找。
+    expect(heading).toContain('课程树')
   })
 
   it('keeps the plain empty hint when the library is empty', () => {

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { act } from 'preact/test-utils'
 import { App } from '../../src/renderer/App'
 import { mount, click } from '../helpers/preact'
-import { fakeState, makeBridge, ok } from '../helpers/fake-app-bridge'
+import { fakeState, makeBridge, ok, page } from '../helpers/fake-app-bridge'
 import type { Note } from '../../src/shared/notes/schema'
 import {
   COPYRIGHT_NOTICE_CHECK_LABEL,
@@ -83,7 +83,7 @@ describe('导出前的版权提醒', () => {
     // The note library must be non-empty at MOUNT: NoteViewer only renders it
     // in the «no note on screen» branch, and the index is not refetched later.
     ;(bridge.notes as unknown as { list: unknown }).list = vi.fn(async () =>
-      ok([{ lessonId: 'l1', version: 1, createdAt: '2026-09-11T00:00:00Z', courseId: 'c1', courseName: '数据结构', teacher: '张老师', lessonTitle: '第1讲' }])
+      ok(page([{ lessonId: 'l1', version: 1, createdAt: '2026-09-11T00:00:00Z', courseId: 'c1', courseName: '数据结构', teacher: '张老师', lessonTitle: '第1讲' }]))
     )
     mount(<App bridge={bridge} />)
 

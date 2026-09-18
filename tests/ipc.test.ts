@@ -700,11 +700,16 @@ describe('U1: course tree and task list', () => {
     await new Promise((r) => setTimeout(r, 5))
     const b = (await ipc.invoke('tasks:create', 'l2')) as { ok: boolean; value?: { id: string } }
 
-    const all = (await ipc.invoke('tasks:list')) as { ok: boolean; value?: Array<{ id: string }> }
-    expect(all.value?.map((t) => t.id)).toEqual([b.value!.id, a.value!.id])
+    // 批C: 列表返回 { items, total, limit }——total 让 UI 能如实说「共 N 条」。
+    const all = (await ipc.invoke('tasks:list')) as { ok: boolean; value?: { items: Array<{ id: string }>; total: number; limit: number } }
+    expect(all.value?.items.map((t) => t.id)).toEqual([b.value!.id, a.value!.id])
+    expect(all.value?.total).toBe(2)
+    expect(all.value?.limit).toBe(50)
 
-    const onlyL2 = (await ipc.invoke('tasks:list', 'l2')) as { ok: boolean; value?: Array<{ id: string }> }
-    expect(onlyL2.value?.map((t) => t.id)).toEqual([b.value!.id])
+    const onlyL2 = (await ipc.invoke('tasks:list', 'l2')) as { ok: boolean; value?: { items: Array<{ id: string }>; total: number } }
+    expect(onlyL2.value?.items.map((t) => t.id)).toEqual([b.value!.id])
+    // total 是**过滤后**的总数，不是全表。
+    expect(onlyL2.value?.total).toBe(1)
   })
 
   it('tasks:list joins course/lesson names, delete removes row+evidence, clearFinished sweeps (M1-2)', async () => {
@@ -721,14 +726,14 @@ describe('U1: course tree and task list', () => {
     db.prepare("UPDATE tasks SET state = 'failed', failed_stage = 'downloading_video', error_message = 'boom', error_kind = NULL WHERE id = ?").run(taskId)
 
     const listed = (await ipc.invoke('tasks:list')) as {
-      value?: Array<{ course_name?: string; lesson_title?: string; teacher?: string | null; courTimes?: string | null; classroom?: string | null }>
+      value?: { items: Array<{ course_name?: string; lesson_title?: string; teacher?: string | null; courTimes?: string | null; classroom?: string | null }> }
     }
-    expect(listed.value?.[0]?.course_name).toBe('网络信息编程')
-    expect(listed.value?.[0]?.lesson_title).toBe('第五讲')
+    expect(listed.value?.items[0]?.course_name).toBe('网络信息编程')
+    expect(listed.value?.items[0]?.lesson_title).toBe('第五讲')
     // F4: teacher/meeting-times/classroom ride along for the history rows.
-    expect(listed.value?.[0]?.teacher).toBe('汪海')
-    expect(listed.value?.[0]?.courTimes).toBe('周一 第3-4节')
-    expect(listed.value?.[0]?.classroom).toBe('中山-312')
+    expect(listed.value?.items[0]?.teacher).toBe('汪海')
+    expect(listed.value?.items[0]?.courTimes).toBe('周一 第3-4节')
+    expect(listed.value?.items[0]?.classroom).toBe('中山-312')
 
     // A still-running (pending) task cannot be deleted — cancel first.
     const running = (await ipc.invoke('tasks:create', 'l9')) as { value?: { id: string } }

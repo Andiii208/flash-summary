@@ -1,17 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiResult } from '../shared/api-result'
-import type {
-  SeuSummaryBridge,
-  CourseTreeInfo,
-  ProvidersListResult,
-  TaskRowInfo,
-  TaskProgressInfo,
-  AppSettingsInfo,
-  NoteAttachmentInfo, AttachmentManifestEntry,
-  NoteIndexInfo, NoteHealthInfo,
-  QaRecentInfo,
-  BilibiliResolveResult
-} from '../shared/bridge'
+import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { TreeNode } from '../shared/notes/schema'
 import type { SessionStateValue } from '../shared/types'
 
@@ -76,7 +65,8 @@ const api: SeuSummaryBridge = {
   },
   tasks: {
     create: (lessonId: string): Promise<ApiResult<{ id: string }>> => ipcRenderer.invoke('tasks:create', lessonId),
-    list: (lessonId?: string): Promise<ApiResult<TaskRowInfo[]>> => ipcRenderer.invoke('tasks:list', lessonId),
+    list: (lessonId?: string, page?: ListPageQuery): Promise<ApiResult<ListPage<TaskRowInfo>>> =>
+      ipcRenderer.invoke('tasks:list', lessonId, page),
     runAsync: (taskId: string): Promise<ApiResult<{ id: string; state: string }>> => ipcRenderer.invoke('tasks:runAsync', taskId),
     cancel: (taskId: string): Promise<ApiResult<{ cancelled: boolean }>> => ipcRenderer.invoke('tasks:cancel', taskId),
     remove: (taskId: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('tasks:delete', taskId),
@@ -89,7 +79,8 @@ const api: SeuSummaryBridge = {
   },
   notes: {
     latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
-    list: (): Promise<ApiResult<NoteIndexInfo[]>> => ipcRenderer.invoke('notes:list'),
+    list: (query?: ListPageQuery & { keyword?: string }): Promise<ApiResult<ListPage<NoteIndexInfo>>> =>
+      ipcRenderer.invoke('notes:list', query),
     courseHealth: (courseId: string): Promise<ApiResult<NoteHealthInfo[]>> => ipcRenderer.invoke('notes:courseHealth', courseId),
     exportMarkdown: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
       ipcRenderer.invoke('notes:exportMarkdown', lessonId),

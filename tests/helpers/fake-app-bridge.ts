@@ -10,7 +10,7 @@
  * stubs read it lazily at call time, which is what makes that work).
  */
 import { vi } from 'vitest'
-import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, SeuSummaryBridge, TaskRowInfo } from '../../src/shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, ListPage, NoteIndexInfo, ProvidersListResult, SeuSummaryBridge, TaskRowInfo } from '../../src/shared/bridge'
 import type { ApiResult } from '../../src/shared/api-result'
 import { DISCLAIMER_TEXT_VERSION } from '../../src/shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../../src/shared/copyright-notice'
@@ -37,6 +37,31 @@ export interface FakeAppState {
    *  Default false — the notice is armed, which is the honest fresh-install
    *  state and what the export tests need to drive. */
   copyrightNoticeOptOut: boolean
+}
+
+/**
+ * 批C: 两条分页列表的可注水夹具 + 页结构助手。
+ * `total` 默认等于 items 长度（未截断）；测试要验「被截断」时把它改大。
+ */
+export const TASK_ROWS: TaskRowInfo[] = []
+export const NOTE_ROWS: NoteIndexInfo[] = []
+export let TASK_TOTAL = 0
+export let NOTE_TOTAL = 0
+export function setListTotals(tasks: number, notes: number): void {
+  TASK_TOTAL = tasks
+  NOTE_TOTAL = notes
+}
+/**
+ * 批C: 测试里给分页列表注水的统一入口——`page(rows)`（未截断）或
+ * `page(rows, total)`（模拟被截断，total > rows.length）。
+ */
+export function page<T>(items: T[], total: number = items.length): ListPage<T> {
+  return { items, total, limit: Math.max(items.length, 1) }
+}
+
+function pageOf<T>(items: T[]): ListPage<T> {
+  const isTask = items === (TASK_ROWS as unknown[])
+  return { items, total: isTask ? Math.max(TASK_TOTAL, items.length) : Math.max(NOTE_TOTAL, items.length), limit: isTask ? 50 : 200 }
 }
 
 /** Mutable fixture state — assign after makeBridge() to steer a single test. */
@@ -93,7 +118,8 @@ export function makeBridge(): SeuSummaryBridge {
     },
     tasks: {
       create: vi.fn(async () => ok({ id: 't1' })),
-      list: vi.fn(async (): Promise<ApiResult<TaskRowInfo[]>> => ok([])),
+      // 批C: 分页结构 { items, total, limit }——total 默认等于 items 长度（未截断）。
+      list: vi.fn(async (): Promise<ApiResult<ListPage<TaskRowInfo>>> => ok(pageOf(TASK_ROWS))),
       run: vi.fn(async () => ok({})),
       runAsync: vi.fn(async () => ok({ id: 't1', state: 'running' })),
       cancel: vi.fn(async () => ok({ cancelled: true })),
@@ -103,7 +129,7 @@ export function makeBridge(): SeuSummaryBridge {
     },
     notes: {
       latest: vi.fn(async () => ok(null)),
-      list: vi.fn(async () => ok([])),
+      list: vi.fn(async (): Promise<ApiResult<ListPage<NoteIndexInfo>>> => ok(pageOf(NOTE_ROWS))),
       courseHealth: vi.fn(async () => ok([])),
       exportMarkdown: vi.fn(async () => ok({ canceled: true })),
       exportObsidian: vi.fn(async () => ok({ canceled: true, path: 'x.md', version: 1 })),

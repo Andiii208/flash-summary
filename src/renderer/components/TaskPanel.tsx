@@ -26,6 +26,8 @@ export interface TaskPanelProps {
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (shown while no lesson is selected). */
   globalHistory: TaskRowInfo[]
+  /** 批C: 全局任务总数（> globalHistory.length 即被截断）。 */
+  globalHistoryTotal?: number
   onCreateRun: () => void
   onRetry: (taskId: string) => void
   onCancel: () => void
@@ -66,6 +68,11 @@ function taskMetaLine(row: TaskRowInfo): string | null {
   return parts.length > 0 ? parts.join(' · ') : null
 }
 
+/** 批C: 与笔记库同一条纪律——标题里的数字由数据算出来，截断时说出来。 */
+function taskHeading(shown: number, total: number): string {
+  return total > shown ? `全部任务（共 ${total} 条 · 这里显示最近 ${shown} 条）` : `全部任务（共 ${total} 条）`
+}
+
 export function TaskPanel({
   currentLesson,
   lessonContext = null,
@@ -76,6 +83,7 @@ export function TaskPanel({
   progress,
   history,
   globalHistory,
+  globalHistoryTotal,
   onCreateRun,
   onRetry,
   onCancel,
@@ -119,7 +127,7 @@ export function TaskPanel({
               一个空列表不该顶着「最近 50 条」的招牌。 */}
           {globalHistory.length > 0 && (
             <>
-              <h3 class="subheading">全部任务（最近 50 条）</h3>
+              <h3 class="subheading">{taskHeading(globalHistory.length, globalHistoryTotal ?? globalHistory.length)}</h3>
               <HistoryList
                 history={globalHistory}
                 onRetry={onRetry}

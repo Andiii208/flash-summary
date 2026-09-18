@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { App } from '../../src/renderer/App'
 import { AboutPanel } from '../../src/renderer/components/AboutPanel'
 import { mount, click } from '../helpers/preact'
-import { fakeState, makeBridge, ok } from '../helpers/fake-app-bridge'
+import { fakeState, makeBridge, ok, page } from '../helpers/fake-app-bridge'
 import type { TaskRowInfo } from '../../src/shared/bridge'
 import {
   FEEDBACK_DIAGNOSTICS_TITLE,
@@ -83,7 +83,7 @@ describe('测试期问题反馈通道（声明批6）', () => {
 
   it('失败任务行给出「反馈这个错误」，点开是脱敏诊断文本 + 隐私提醒', async () => {
     const bridge = makeBridge()
-    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok([FAILED_ROW]))
+    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok(page([FAILED_ROW])))
     mount(<App bridge={bridge} />)
     await waitFor('.app-shell')
 
@@ -105,7 +105,7 @@ describe('测试期问题反馈通道（声明批6）', () => {
 
   it('诊断取不到时如实报错并收掉弹层，不留一个空壳对话框', async () => {
     const bridge = makeBridge()
-    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok([FAILED_ROW]))
+    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok(page([FAILED_ROW])))
     ;(bridge.feedback as unknown as { diagnostics: unknown }).diagnostics = vi.fn(async () => ({ ok: false, error: '任务已被删除' }))
     mount(<App bridge={bridge} />)
     await waitFor('.app-shell')
@@ -118,7 +118,7 @@ describe('测试期问题反馈通道（声明批6）', () => {
 
   it('成功任务不给「反馈这个错误」——只给失败的那些', async () => {
     const bridge = makeBridge()
-    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok([{ ...FAILED_ROW, state: 'succeeded', error_message: null }]))
+    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok(page([{ ...FAILED_ROW, state: 'succeeded', error_message: null }])))
     mount(<App bridge={bridge} />)
     await waitFor('.app-shell')
     await waitFor('.history-list')
@@ -127,7 +127,7 @@ describe('测试期问题反馈通道（声明批6）', () => {
 
   it('反馈通道不碰课时状态：点它不会顺带切换选中的课时', async () => {
     const bridge = makeBridge()
-    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok([FAILED_ROW]))
+    ;(bridge.tasks as unknown as { list: unknown }).list = vi.fn(async () => ok(page([FAILED_ROW])))
     mount(<App bridge={bridge} />)
     await waitFor('.app-shell')
     await waitFor('[data-testid="report-error"]')

@@ -558,6 +558,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 progress={state.progress}
                 history={state.history}
                 globalHistory={state.globalHistory}
+                globalHistoryTotal={state.globalHistoryTotal}
                 onCreateRun={state.createAndRun}
                 onRetry={state.retryTask}
                 onCancel={state.cancelTask}
@@ -577,6 +578,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               lessonOptions={state.currentCourseLessons}
               currentLessonId={state.currentLesson}
               library={state.noteIndex}
+              libraryTotal={state.noteIndexTotal}
               onOpenLesson={state.selectLesson}
               onUpgradeCourse={state.openNoteUpgrade}
               onExportCourseObsidian={state.exportCourseObsidian}
@@ -734,6 +736,8 @@ interface AppState {
   note: Note | null
   /** 批B: cross-lesson note library (notes tab empty state). */
   noteIndex: NoteIndexInfo[]
+  /** 批C: 笔记库总数（> noteIndex.length 即为被截断）。 */
+  noteIndexTotal: number
   /** 质量批4: 存量升级对话框数据 + 逐课运行状态（笔记库课程组入口）。 */
   noteUpgrade: { open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }
   noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }
@@ -753,6 +757,7 @@ interface AppState {
   history: TaskRowInfo[]
   /** Recent tasks across all lessons (serial queue visibility). */
   globalHistory: TaskRowInfo[]
+  globalHistoryTotal: number
   progress: TaskProgressInfo | null
   running: boolean
   submitBusy: boolean
@@ -925,6 +930,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [note, setNote] = useState<Note | null>(null)
   /** 批B: cross-lesson note library + recent Q&A (tab empty states). */
   const [noteIndex, setNoteIndex] = useState<NoteIndexInfo[]>([])
+  /** 批C: 列表的**总数**（不受 LIMIT 影响）——界面据此如实说明是否被截断。 */
+  const [noteIndexTotal, setNoteIndexTotal] = useState(0)
   const [qaRecent, setQaRecent] = useState<QaRecentInfo[]>([])
   /** 批C: courses whose catalog harvest is in flight (play-page navigation). */
   const [harvestInflight, setHarvestInflight] = useState<ReadonlySet<string>>(new Set())
@@ -961,6 +968,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [courseMap, setCourseMap] = useState<CourseMapInfo | null>(null)
   const [history, setHistory] = useState<TaskRowInfo[]>([])
   const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
+  const [globalHistoryTotal, setGlobalHistoryTotal] = useState(0)
   const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
   const [running, setRunning] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
@@ -1216,7 +1224,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   const loadHistory = useCallback(async (lessonId: string): Promise<void> => {
     const res = await bridge.tasks.list(lessonId)
-    if (res.ok && res.value != null && lessonRef.current === lessonId) setHistory(res.value)
+    if (res.ok && res.value != null && lessonRef.current === lessonId) setHistory(res.value.items)
   }, [bridge])
 
   const loadQaHistory = useCallback(async (lessonId: string): Promise<void> => {
@@ -1230,13 +1238,19 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   const loadGlobalHistory = useCallback(async (): Promise<void> => {
     const res = await bridge.tasks.list()
-    if (res.ok && res.value != null) setGlobalHistory(res.value)
+    if (res.ok && res.value != null) {
+      setGlobalHistory(res.value.items)
+      setGlobalHistoryTotal(res.value.total)
+    }
   }, [bridge])
 
   /** 批B: cross-lesson library + recent Q&A feed the tab empty states. */
   const loadNoteIndex = useCallback(async (): Promise<void> => {
     const res = await bridge.notes.list()
-    if (res.ok && res.value != null) setNoteIndex(res.value)
+    if (res.ok && res.value != null) {
+      setNoteIndex(res.value.items)
+      setNoteIndexTotal(res.value.total)
+    }
   }, [bridge])
 
   const loadQaRecent = useCallback(async (): Promise<void> => {
@@ -1342,7 +1356,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         // by the expired session instead of making the user hunt for them.
         const rows = await bridge.tasks.list()
         if (rows.ok && rows.value != null) {
-          const retryable = rows.value.filter((t) => t.state === 'failed' && t.error_kind === 'session_expired')
+          const retryable = rows.value.items.filter((t) => t.state === 'failed' && t.error_kind === 'session_expired')
           if (retryable.length > 0) {
             toast(`会话已恢复，${retryable.length} 个失败任务可重试`, 'success', {
               actionLabel: '去任务页',
@@ -1383,8 +1397,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     void (async () => {
       const res = await bridge.tasks.list()
       if (disposed || !res.ok || res.value == null) return
-      setGlobalHistory(res.value)
-      const active = res.value.find((t) => isActiveState(t.state))
+      setGlobalHistory(res.value.items)
+      setGlobalHistoryTotal(res.value.total)
+      const active = res.value.items.find((t) => isActiveState(t.state))
       if (active != null) {
         setRunning(true)
         setProgress({
@@ -1412,8 +1427,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         // B1: other tasks may still be queued — recompute from the fresh rows.
         void (async () => {
           const rows = await bridge.tasks.list()
-          setRunning(rows.ok && rows.value != null ? rows.value.some((t) => isActiveState(t.state)) : false)
-          const row = rows.ok && rows.value != null ? rows.value.find((t) => t.id === p.taskId) : undefined
+          setRunning(rows.ok && rows.value != null ? rows.value.items.some((t) => isActiveState(t.state)) : false)
+          const row = rows.ok && rows.value != null ? rows.value.items.find((t) => t.id === p.taskId) : undefined
           const doneLesson = row?.lesson_id ?? lid
           void loadNoteIndex()
           if (doneLesson !== '') {
@@ -1428,7 +1443,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       } else if (p.state === 'failed') {
         void (async () => {
           const rows = await bridge.tasks.list()
-          setRunning(rows.ok && rows.value != null ? rows.value.some((t) => isActiveState(t.state)) : false)
+          setRunning(rows.ok && rows.value != null ? rows.value.items.some((t) => isActiveState(t.state)) : false)
         })()
         toast(p.message, 'error')
         if (p.kind === 'session_expired') toast('会话已过期，登录后可重试此任务', 'error')
@@ -2425,11 +2440,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     showMoreCourses,
     note,
     noteIndex,
+    noteIndexTotal,
     qaRecent,
     harvestInflight,
     openLessonNotes,
     history,
     globalHistory,
+    globalHistoryTotal,
     progress,
     running,
     submitBusy,

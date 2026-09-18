@@ -47,6 +47,16 @@ import type { Note } from '../shared/notes/schema'
 
 /** 批5: PNG 魔数——渲染层传来的位图必须真的是 PNG 才落盘。 */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/**
+ * 批C (plan 2026-09-18 note-library-reachability): 列表分页。
+ * 默认值与整改前一致（笔记 200 / 任务 50），改的是「能不能如实说话」——
+ * 返回里带上 total，UI 才知道自己被截断了；要更多走 offset 分页，而不是把上限调大。
+ */
+const NOTE_LIST_LIMIT = 200
+const TASK_LIST_LIMIT = 50
+/** 硬帽子：渲染层传什么都不会一次拉爆（分页才是正路）。 */
+const LIST_LIMIT_MAX = 500
 import { resolveCacheDir, attachmentsPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
@@ -874,18 +884,33 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+  /**
+   * 批C (plan 2026-09-18 note-library-reachability): 列表分页参数。
+   * 默认值保持与整改前一致（笔记 200 / 任务 50），上限给一个硬帽子——渲染层传什么
+   * 都不可能一次拉爆（分页走 offset，不是把上限调大）。
+   */
+  const readPage = (raw: unknown, fallbackLimit: number): { limit: number; offset: number } => {
+    const obj = (raw ?? {}) as { limit?: unknown; offset?: unknown }
+    const rawLimit = typeof obj.limit === 'number' && Number.isFinite(obj.limit) ? Math.trunc(obj.limit) : fallbackLimit
+    const rawOffset = typeof obj.offset === 'number' && Number.isFinite(obj.offset) ? Math.trunc(obj.offset) : 0
+    return { limit: Math.min(LIST_LIMIT_MAX, Math.max(1, rawLimit)), offset: Math.max(0, rawOffset) }
+  }
+
   // tasks:list (U1): history so the UI can show past/failed tasks.
   // M1-2: JOIN lessons/courses so rows read as «课程名 · 课时名» — the raw
   // lesson id means nothing to a user.
-  handle(ipc, 'tasks:list', (_e, lessonId: unknown) => {
+  handle(ipc, 'tasks:list', (_e, lessonId: unknown, rawPage: unknown) => {
     try {
       const baseSelect =
         'SELECT t.id, t.lesson_id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name, c.teacher AS teacher, c.cour_times AS courTimes, c.classroom AS classroom FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id'
-      const rows = (
-        lessonId == null
-          ? ctx.db.prepare(`${baseSelect} ORDER BY t.created_at DESC LIMIT 50`).all()
-          : ctx.db.prepare(`${baseSelect} WHERE t.lesson_id = ? ORDER BY t.created_at DESC LIMIT 50`).all(str(lessonId, 'lessonId'))
-      ) as Array<{
+      const { limit, offset } = readPage(rawPage, TASK_LIST_LIMIT)
+      const scoped = lessonId != null
+      const scopeArgs = scoped ? [str(lessonId, 'lessonId')] : []
+      // 批C: 总数与页用**同一个 WHERE 子句**（口径漂移过一次就再也对不上）。
+      const total = (ctx.db.prepare(`SELECT COUNT(*) AS n FROM tasks t ${scoped ? 'WHERE t.lesson_id = ?' : ''}`).get(...scopeArgs) as { n: number }).n
+      const rows = ctx.db
+        .prepare(`${baseSelect} ${scoped ? 'WHERE t.lesson_id = ?' : ''} ORDER BY t.created_at DESC LIMIT ? OFFSET ?`)
+        .all(...scopeArgs, limit, offset) as Array<{
         id: string
         lesson_id: string
         state: string
@@ -900,7 +925,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         courTimes: string | null
         classroom: string | null
       }>
-      return ok(rows)
+      return ok({ items: rows, total, limit })
     } catch (e) {
       return err(e)
     }
@@ -1087,8 +1112,29 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 批B: cross-lesson note library — lets the notes tab show every generated
   // note before any lesson is selected. Read-only, newest first.
-  handle(ipc, 'notes:list', () => {
+  // 批C: 关键词过滤在主进程做（渲染层过滤只能过滤已取回的那 200 条——用户搜「某节课」
+  // 搜不到而那条笔记其实存在，等于对数据撒谎）；关键词**只匹配列表里看得见的字段**
+  // （课程名 / 教师 / 课时名）——搜「教室」却命中一条不显示教室的行会被当成 bug（plan D3）。
+  handle(ipc, 'notes:list', (_e, rawQuery: unknown) => {
     try {
+      const query = (rawQuery ?? {}) as { keyword?: unknown }
+      const keyword = typeof query.keyword === 'string' ? query.keyword.trim() : ''
+      const { limit, offset } = readPage(rawQuery, NOTE_LIST_LIMIT)
+      const where = keyword === '' ? '' : 'WHERE (c.name LIKE @kw OR c.teacher LIKE @kw OR l.title LIKE @kw)'
+      const filterParams = keyword === '' ? {} : { kw: `%${keyword}%` }
+      // 总数与页用同一个 WHERE 子句（口径漂移过一次就再也对不上）。
+      const total = (
+        ctx.db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM (
+               SELECT n.lesson_id FROM notes n
+               JOIN lessons l ON l.id = n.lesson_id
+               LEFT JOIN courses c ON c.id = l.course_id
+               ${where}
+               GROUP BY n.lesson_id)`
+          )
+          .get(filterParams) as { n: number }
+      ).n
       const rows = ctx.db
         .prepare(
           `SELECT n.lesson_id AS lessonId, MAX(n.version) AS version, MAX(n.created_at) AS createdAt,
@@ -1096,11 +1142,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
            FROM notes n
            JOIN lessons l ON l.id = n.lesson_id
            LEFT JOIN courses c ON c.id = l.course_id
+           ${where}
            GROUP BY n.lesson_id
            ORDER BY createdAt DESC
-           LIMIT 200`
+           LIMIT @limit OFFSET @offset`
         )
-        .all() as Array<{
+        .all({ ...filterParams, limit, offset }) as Array<{
         lessonId: string
         version: number
         createdAt: string
@@ -1109,7 +1156,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         courseName: string | null
         teacher: string | null
       }>
-      return ok(rows)
+      return ok({ items: rows, total, limit })
     } catch (e) {
       return err(e)
     }
