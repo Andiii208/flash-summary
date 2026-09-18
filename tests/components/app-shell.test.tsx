@@ -123,6 +123,26 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForSelector('.welcome-guide')
   })
 
+  it('批2: 零课程时主区承接三步引导，不再声称「从左侧课程树点击一个课时」', async () => {
+    const bridge = makeBridge()
+    fakeState.courses = []
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.welcome-guide-main')
+    // 侧栏紧凑版 + 主区首启卡：同一份三步内容，两个落点。
+    expect(host.querySelectorAll('.welcome-guide')).toHaveLength(2)
+    expect(host.querySelectorAll('.guide-steps')).toHaveLength(2)
+    // 负向红线：左侧一门课都没有时，主区不许再给「点左侧课程树」这种不成立的指引。
+    expect(host.textContent).not.toContain('先选择课时')
+    expect(host.textContent).not.toContain('从左侧课程树点击一个课时')
+  })
+
+  it('批2: 一条任务都没有时不渲染「全部任务（最近 50 条）」标题', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.task-panel')
+    expect(host.textContent).not.toContain('全部任务（最近 50 条）')
+  })
+
   it('echoes recorded qa history for the selected lesson, oldest first', async () => {
     const bridge = makeBridge()
     fakeState.qaHistory = [

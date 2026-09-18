@@ -172,3 +172,31 @@ describe('排版刻度（批0）', () => {
     expect(bad, `--space-icon 用在了非图标↔文字处：\n${bad.join('\n')}`).toEqual([])
   })
 })
+
+/** 取某条规则的声明体（第一个匹配的块）。 */
+function bodyOf(selector: string): string {
+  const re = new RegExp(`(?:^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`)
+  const m = re.exec(stripped)
+  expect(m, `style.css 必须定义 ${selector}`).not.toBeNull()
+  return m![1].replace(/\s+/g, ' ')
+}
+
+describe('首启与空库的排版合同（批2）', () => {
+  it('.empty-actions 允许换行——否则窄容器里的中文按钮会被逐字换行', () => {
+    expect(bodyOf('.empty-actions')).toContain('flex-wrap: wrap')
+  })
+
+  it('.btn 标签一律不折行（容器负责换行）', () => {
+    expect(bodyOf('.btn')).toContain('white-space: nowrap')
+  })
+
+  it('首启引导的按钮在侧栏里整宽竖排（269px 塞不下三个横排按钮）', () => {
+    expect(stripped).toContain('.sidebar .empty-actions { flex-direction: column')
+    expect(stripped).toContain('.sidebar .empty-actions .btn { width: 100%')
+  })
+
+  it('升级旧笔记弹窗不再让列表顶出弹窗外框（min-width 比内容盒还宽的旧账）', () => {
+    expect(bodyOf('.note-upgrade-list')).not.toContain('min-width')
+    expect(stripped).toContain('.dialog:has(.note-upgrade-list)')
+  })
+})

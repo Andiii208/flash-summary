@@ -114,17 +114,23 @@ export function TaskPanel({
               cancellable={running}
             />
           )}
-          <h3 class="subheading">全部任务（最近 50 条）</h3>
-          <HistoryList
-            history={globalHistory}
-            onRetry={onRetry}
-            disabled={running}
-            onCancel={onCancel}
-            onDelete={onDelete}
-            onClearFinished={onClearFinished}
-            onOpenNote={onOpenNote}
-            onReportError={onReportError}
-          />
+          {/* 批2: 一条任务都没有时不渲染「全部任务（最近 50 条）」标题——
+              一个空列表不该顶着「最近 50 条」的招牌。 */}
+          {globalHistory.length > 0 && (
+            <>
+              <h3 class="subheading">全部任务（最近 50 条）</h3>
+              <HistoryList
+                history={globalHistory}
+                onRetry={onRetry}
+                disabled={running}
+                onCancel={onCancel}
+                onDelete={onDelete}
+                onClearFinished={onClearFinished}
+                onOpenNote={onOpenNote}
+                onReportError={onReportError}
+              />
+            </>
+          )}
         </>
       ) : (
         <>

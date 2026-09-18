@@ -247,6 +247,9 @@
 }
 
 /* ---- 空态：只有两种形态——卡（.empty-state，大区）与一行小字（.msg，小区） ---- */
+.empty-state, .welcome-guide {
+  padding: var(--space-4) var(--space-5);
+}
 
 /* ---- base ---- */
 * { box-sizing: border-box; }
@@ -626,6 +629,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   gap: var(--space-icon);
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-sm);
+  /* 批2 (D6): 按钮标签一律不折行——不加这句，窄容器里的中文会被逐字换行
+     （首启引导按钮实测 115px 高的竖排字条）。容器负责换行。 */
+  white-space: nowrap;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -1363,7 +1369,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    tabs' line instead (measured: buttons shrank to 40-82px), and with no flex
    at all the wrapped group shrink-wrapped and ended 126px short (328→1062
    against the 328→1188 axis). */
-.note-actions { display: flex; gap: var(--space-2); flex: 1 1 100%; }
+.note-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); flex: 1 1 100%; }
 .note-actions .note-pdf-btn { margin-left: auto; }
 /* 批3 (plan 2026-09-08 note-quality-overhaul): 体检面板——findings 列表。
    warn 用琥珀语义色（考点/缺口语义色的既有约定），info 用弱化文本。 */
@@ -1383,7 +1389,11 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-health-panel .health-field { flex: none; font-weight: 600; color: var(--text); }
 .note-health-panel li.info .health-field { color: var(--text-muted); }
 /* 质量批4: 存量升级选择列表（Dialog 自定义 body）。 */
-.note-upgrade-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 320px; overflow: auto; margin: 8px 0 4px; min-width: 420px; }
+.note-upgrade-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 320px; overflow: auto; margin: var(--space-2) 0 var(--space-1); }
+/* 批2: 此前 min-width:420px 比弹窗内容盒(378px)还宽，实测列表右缘 864 顶出弹窗
+   外框 843（溢出 21px，压在遮罩上）。去掉硬 min-width，改由 :has() 与 consent
+   同档加宽。 */
+.dialog:has(.note-upgrade-list) { width: min(560px, calc(100vw - 48px)); }
 .note-upgrade-all { display: flex; gap: var(--space-2); align-items: center; font-size: var(--font-size-xs); color: var(--text-muted); }
 .note-upgrade-row { display: flex; gap: var(--space-2); align-items: center; font-size: var(--font-size-sm); border: 1px solid var(--border); }
 .note-upgrade-row.done { opacity: 0.55; }
@@ -1585,7 +1595,6 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
 .empty-state, .welcome-guide {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 26px 22px;
   text-align: center;
   background:
     radial-gradient(120% 90% at 50% 0%, var(--accent-soft) 0%, transparent 55%),
@@ -1593,7 +1602,10 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
   box-shadow: var(--shadow-sm);
 }
 .empty-state { margin: 0; }
-.welcome-guide { margin: 10px 0 16px; }
+.welcome-guide { margin: var(--space-2) 0 var(--space-4); }
+/* 批2: 内容列里的首启卡（零课程）——860px 上有余量，卡片更舒展，三个按钮横排。 */
+.welcome-guide-main { padding: var(--space-5); }
+.welcome-guide-main .guide-steps { margin: 0 auto var(--space-5); }
 .empty-mark { color: var(--brass); opacity: 0.85; margin-bottom: 6px; display: flex; justify-content: center; }
 .empty-state h3 { margin: 0 0 8px; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: var(--tracking); }
 .empty-state p { color: var(--text-muted); margin: 0 0 14px; font-size: var(--font-size-md); }
@@ -1604,9 +1616,13 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
   padding-left: 20px;
   color: var(--text-secondary);
 }
-.guide-steps li { margin: 5px 0; }
+.guide-steps li { margin: var(--space-1) 0; }
 .guide-steps li::marker { color: var(--accent); font-weight: 700; }
-.guide-actions, .empty-actions { display: flex; gap: var(--space-2); justify-content: center; }
+/* 批2: 首启引导的三个按钮在 269px 侧栏里被压成竖排字条（实测 62×115 / 57×115 /
+   85×115——标签逐字换行）。侧栏内改为整宽竖排；其余空态的按钮行允许换行。 */
+.empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; }
+.sidebar .empty-actions { flex-direction: column; align-items: stretch; }
+.sidebar .empty-actions .btn { width: 100%; }
 
 /* ---- manual fallback ---- */
 /* 2026-09-05: 2px side padding aligns the summary onto the sidebar text axis

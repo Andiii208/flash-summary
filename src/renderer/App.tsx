@@ -25,6 +25,7 @@ import { NoteUpgradeDialog } from './components/NoteUpgradeDialog'
 import { treeToSvgDocument } from '../shared/notes/mindmap-svg'
 import { svgToPngBase64 } from './rasterize-svg'
 import { WelcomeGuide } from './components/WelcomeGuide'
+import { PageHeader } from './components/PageHeader'
 import { ManualAdd } from './components/ManualAdd'
 import { BiliImportDialog } from './components/BiliImportDialog'
 import { ConsentDialog } from './components/ConsentDialog'
@@ -522,26 +523,42 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               </button>
             ))}
           </nav>
-          {tab === 'tasks' && (
-            <TaskPanel
-              currentLesson={state.currentLesson}
-              lessonContext={state.lessonContextOrIndex}
-              lessonOptions={state.currentCourseLessons}
-              onSelectLesson={state.switchLesson}
-              running={state.running}
-              busy={state.submitBusy}
-              progress={state.progress}
-              history={state.history}
-              globalHistory={state.globalHistory}
-              onCreateRun={state.createAndRun}
-              onRetry={state.retryTask}
-              onCancel={state.cancelTask}
-              onDelete={state.removeTask}
-              onClearFinished={state.clearFinishedTasks}
-              onOpenNote={state.openLessonNotes}
-              onReportError={state.reportError}
-            />
-          )}
+          {tab === 'tasks' &&
+            (showWelcome ? (
+              /* 批2（plan 2026-09-18 typography）: 零课程时主区承接三步引导。
+                 此前主区空态写「先选择课时：从左侧课程树点击一个课时」，而左侧一门
+                 课都没有（T2 两处空态自相矛盾），且引导被塞在 269px 侧栏里、主区
+                 962px 空着（T3）。侧栏保留同一份内容的紧凑版。 */
+              <section class="task-panel">
+                <PageHeader title="任务" />
+                <WelcomeGuide
+                  variant="main"
+                  onLogin={state.login}
+                  onOpenBili={state.openBili}
+                  onOpenSettings={() => setTab('settings')}
+                  busy={state.sessionBusy}
+                />
+              </section>
+            ) : (
+              <TaskPanel
+                currentLesson={state.currentLesson}
+                lessonContext={state.lessonContextOrIndex}
+                lessonOptions={state.currentCourseLessons}
+                onSelectLesson={state.switchLesson}
+                running={state.running}
+                busy={state.submitBusy}
+                progress={state.progress}
+                history={state.history}
+                globalHistory={state.globalHistory}
+                onCreateRun={state.createAndRun}
+                onRetry={state.retryTask}
+                onCancel={state.cancelTask}
+                onDelete={state.removeTask}
+                onClearFinished={state.clearFinishedTasks}
+                onOpenNote={state.openLessonNotes}
+                onReportError={state.reportError}
+              />
+            ))}
           {tab === 'notes' && (
             <NoteViewer
               note={state.note}
