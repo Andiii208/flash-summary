@@ -36,9 +36,23 @@
   --warning-soft: rgba(168, 85, 30, 0.12);
   --border: #e3dccc;
   --border-strong: #cfc8b4;
+  /* 批8 (T7/暗色): 六个「学科墨水」色升为**主题 token**——此前是渲染层内联注入的
+     十六进制值（只有浅色一套），切到暗色后 6 个色全部低于 3:1（最低 2.16:1），
+     课程行左侧的学科色条与字徽几乎看不见。现在浅/深各一套，注入点只给变量名。
+     浅色值必须与 src/shared/subject-ink.ts 的 SUBJECT_INKS 一致（有钉住测试）。 */
+  --subject-ink-1: #2f6b46;
+  --subject-ink-2: #8a6a2f;
+  --subject-ink-3: #a4552f;
+  --subject-ink-4: #3d5a80;
+  --subject-ink-5: #6d4456;
+  --subject-ink-6: #56683b;
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
+  /* 批8 (T35): 模态遮罩此前是两种裸 rgba（.dialog-backdrop 一种、三个自绘弹层
+     另一种），且不随主题变化——暗色下页面本身已近黑，45-50% 的黑色遮罩几乎不起
+     分层作用。 */
+  --scrim: rgba(10, 12, 18, 0.45);
   /* 批B: the single content column — every page shares one width and one
      left edge (导图视图是唯一破格例外). */
   --content-max: 860px;
@@ -62,6 +76,8 @@
   --leading-normal: 1.6;
   --leading-relaxed: 1.7;
   --leading-loose: 1.85;
+  /* 批8: 仅供暗色正文——亮底暗字的光晕（halation）让细衬线发虚，加大一档行距。 */
+  --leading-loose-dark: 1.95;
   --tracking: 0.5px;
   --tracking-wide: 1px;
   /* 仅供设置页页脚箴言——全站唯一装饰性字距，别处不得引用。 */
@@ -111,6 +127,15 @@
     --warning-soft: rgba(224, 163, 106, 0.13);
     --border: #2c332f;
     --border-strong: #3d453f;
+    --scrim: rgba(0, 0, 0, 0.62);
+    /* 暗色学科色：浅色值在暗面上只有 2.16-3.47:1 → 统一混入 35% 白，
+       实测 5.18-6.69:1（含 ≥4.5 文本档）。 */
+  --subject-ink-1: #789f87;
+  --subject-ink-2: #b39e78;
+  --subject-ink-3: #c49178;
+  --subject-ink-4: #8194ac;
+  --subject-ink-5: #a08591;
+  --subject-ink-6: #919d80;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.25);
     --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
     --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.4), 0 16px 36px rgba(0, 0, 0, 0.5);
@@ -147,6 +172,14 @@
   --warning-soft: rgba(224, 163, 106, 0.13);
   --border: #2c332f;
   --border-strong: #3d453f;
+  --scrim: rgba(0, 0, 0, 0.62);
+  /* 与上面 @media 块同值（两处必须同步改）。 */
+  --subject-ink-1: #789f87;
+  --subject-ink-2: #b39e78;
+  --subject-ink-3: #c49178;
+  --subject-ink-4: #8194ac;
+  --subject-ink-5: #a08591;
+  --subject-ink-6: #919d80;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.25);
   --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.4), 0 16px 36px rgba(0, 0, 0, 0.5);
@@ -827,7 +860,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    same modal language as CourseMapDialog: scroll lock, focus trap, Esc. ---- */
 .course-browser-overlay {
   position: fixed; inset: 0; z-index: 40;
-  background: rgba(18, 22, 20, 0.5);
+  background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   padding: 12px;
 }
@@ -899,7 +932,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(10, 12, 18, 0.45);
+  background: var(--scrim);
   display: grid;
   place-items: center;
   z-index: 60;
@@ -1844,6 +1877,17 @@ button.concept-ref:hover { color: var(--accent); }
 }
 
 /* ==========================================================================
+   批8（plan 2026-09-18 T33）：暗色下唯一需要动的排版参数。
+   整改前全站没有**任何**按主题调整的排版规则——而亮底暗字的光晕（halation）
+   会让 15px 细衬线正文读起来发虚，加大一档行距即可（字号/字重不动：衬线字体
+   在 400/700 之间的值会被合成加粗，反而更糊）。两处暗色入口都要写。
+   ========================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .note-body { line-height: var(--leading-loose-dark); }
+}
+:root[data-theme='dark'] .note-body { line-height: var(--leading-loose-dark); }
+
+/* ==========================================================================
    批5（plan 2026-09-18）：全站唯一一套宽度断点。
    整改前全仓只有 prefers-reduced-motion 的 @media —— 窗口到下限 960 时，
    860（面板轴）与 640（正文轴）两个 max-width 同时失效，只能靠 flex 硬挤
@@ -1926,7 +1970,7 @@ button.concept-ref:hover { color: var(--accent); }
 /* M4.1 (map expansion): course-level mind map dialog. */
 .course-map-overlay {
   position: fixed; inset: 0; z-index: 40;
-  background: rgba(18, 22, 20, 0.5);
+  background: var(--scrim);
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .course-map-card {
@@ -2093,7 +2137,7 @@ button.concept-ref:hover { color: var(--accent); }
         token 驱动、反截断、双主题兼容) ---- */
 .bili-dialog-overlay {
   position: fixed; inset: 0; z-index: 40;
-  background: rgba(18, 22, 20, 0.5);
+  background: var(--scrim);
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .bili-dialog-card {

@@ -5,7 +5,7 @@ import type { CourseTreeInfo } from '../../shared/bridge'
 import { courseMatchesQuery } from '../../shared/course-search'
 import { courseAvatarChar, courseSubParts } from '../../shared/course-display'
 import { orderMyCoursesFirst } from '../../shared/course-order'
-import { subjectInk } from '../../shared/subject-ink'
+import { subjectInkVar } from '../../shared/subject-ink'
 import { Dialog } from '../ui/Dialog'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
 import { useFocusTrap } from '../ui/use-focus-trap'
@@ -323,7 +323,7 @@ function CourseCard({ course, selectedLessonId, onSelectLesson, onClose, onToggl
   const parts = courseSubParts(course)
   const rest = course.teacher != null && course.teacher !== '' ? parts.slice(1) : parts
   return (
-    <article class="course-card" style={`--course-ink:${subjectInk(course.id)}`}>
+    <article class="course-card" style={`--course-ink:${subjectInkVar(course.id)}`}>
       <div class="course-card-head">
         <button class="course-card-main" aria-expanded={expanded} title={course.name} onClick={() => setExpanded((v) => !v)}>
           <span class="caret">{expanded ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>

@@ -17,3 +17,15 @@ function hashString(text: string): number {
 export function subjectInk(id: string): SubjectInk {
   return SUBJECT_INKS[hashString(id) % SUBJECT_INKS.length]
 }
+
+/**
+ * 批8: 学科墨水的 **CSS 变量名**（`--subject-ink-1..6`）。值住在 style.css 的
+ * 主题块里——浅色一套、暗色一套（浅色值在暗面上只有 2.16-3.47:1，几乎看不见）。
+ * 渲染层只注入变量名，切主题不需要 JS 参与。
+ *
+ * 漂移守卫：tests/subject-ink.test.ts 断言 CSS 里的浅色 token 与上面的
+ * SUBJECT_INKS 逐值一致、暗色 token 对 --surface 的对比度 ≥4.5。
+ */
+export function subjectInkVar(id: string): string {
+  return `var(--subject-ink-${(hashString(id) % SUBJECT_INKS.length) + 1})`
+}

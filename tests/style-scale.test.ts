@@ -63,7 +63,8 @@ const LEADING_TOKENS: Record<string, string> = {
   '--leading-snug': '1.5',
   '--leading-normal': '1.6',
   '--leading-relaxed': '1.7',
-  '--leading-loose': '1.85'
+  '--leading-loose': '1.85',
+  '--leading-loose-dark': '1.95'
 }
 const TRACKING_TOKENS: Record<string, string> = {
   '--tracking': '0.5px',
@@ -140,7 +141,7 @@ describe('排版刻度（批0）', () => {
     let m: RegExpExecArray | null
     while ((m = re.exec(stripped)) != null) {
       const value = m[1].trim()
-      if (!/^var\(--leading-[a-z]+\)$/.test(value)) bad.push(`${value} @ style.css:${lineOf(m.index)}`)
+      if (!/^var\(--leading-[a-z-]+\)$/.test(value)) bad.push(`${value} @ style.css:${lineOf(m.index)}`)
     }
     expect(bad, `line-height 未走刻度：\n${bad.join('\n')}`).toEqual([])
   })

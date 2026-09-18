@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks'
 import { ChevronDown, ChevronRight, GitBranch, Star, Trash2 } from 'lucide-preact'
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
-import { subjectInk } from '../../shared/subject-ink'
+import { subjectInkVar } from '../../shared/subject-ink'
 import { courseAvatarChar, courseSubLine } from '../../shared/course-display'
 import { Dialog } from '../ui/Dialog'
 
@@ -96,7 +96,7 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, map
   const deletable = course.lessons.length === 0 && course.noteCount === 0 && onRemoveCourse != null
   const [pendingDelete, setPendingDelete] = useState(false)
   return (
-    <div class="item course-item" style={`--course-ink:${subjectInk(course.id)}`}>
+    <div class="item course-item" style={`--course-ink:${subjectInkVar(course.id)}`}>
       <div class="course-row-head">
         <button class="course-head" onClick={() => onToggle(course.id)} aria-expanded={expanded} title={course.name}>
           <span class="caret">{expanded ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}</span>
