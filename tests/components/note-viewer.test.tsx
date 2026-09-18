@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NoteViewer } from '../../src/renderer/components/NoteViewer'
-import { mount, click } from '../helpers/preact'
+import { mount, click, input } from '../helpers/preact'
 import type { Note } from '../../src/shared/notes/schema'
 
 const NOTE: Note = {
@@ -343,6 +343,44 @@ describe('NoteViewer', () => {
     expect(heading).toContain('这里显示最近 1 条')
     // 出路：更早的笔记去哪找。
     expect(heading).toContain('课程树')
+  })
+
+  it('批C 批2: 笔记库搜索——输入回调、命中标题、无命中空态、命中组自动展开', () => {
+    const library = [
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
+      { lessonId: 'l2', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c2', courseName: '编译原理', teacher: '李雷', lessonTitle: '第二讲' }
+    ]
+    const onQuery = vi.fn()
+    const host = mount(<NoteViewer note={null} library={library} libraryTotal={2} libraryQuery="" onLibraryQuery={onQuery} onOpenLesson={() => undefined} />)
+    // 搜索框存在且口径写在 placeholder 里（只搜列表看得见的字段）。
+    const box = host.querySelector<HTMLInputElement>('.note-library-search')
+    expect(box).not.toBeNull()
+    expect(box?.getAttribute('placeholder')).toContain('课程 / 教师 / 课时')
+
+    // 输入 → 回调（过滤在主进程做，组件只上报）。
+    input(box, '编译')
+    expect(onQuery).toHaveBeenCalledWith('编译')
+
+    // 搜索时标题说匹配数（而不是「共 N 条」，那会被误读成库里的总数）。
+    const searching = mount(<NoteViewer note={null} library={[library[1]!]} libraryTotal={1} libraryQuery="编译" onLibraryQuery={onQuery} onOpenLesson={() => undefined} />)
+    expect(searching.querySelector('.subheading')?.textContent).toContain('「编译」匹配 1 条笔记')
+
+    // 无命中 → 一行空态，不留空白。
+    const empty = mount(<NoteViewer note={null} library={[]} libraryTotal={0} libraryQuery="不存在的词" onLibraryQuery={onQuery} onOpenLesson={() => undefined} />)
+    expect(empty.textContent).toContain('没有匹配的笔记')
+  })
+
+  it('批C 批2: 搜索时命中的分组一律展开（搜到了却看不见等于没搜到）', () => {
+    const library = [
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
+    ]
+    const host = mount(<NoteViewer note={null} library={library} libraryTotal={1} libraryQuery="" onLibraryQuery={() => undefined} onOpenLesson={() => undefined} />)
+    // 先手动收起该分组。
+    click(host.querySelector('.note-library-group-toggle'))
+    expect(host.querySelector('[data-testid="note-library-row"]')).toBeNull()
+    // 带搜索词重挂载：即使 collapsed 集合是空的，也要展开。
+    const searching = mount(<NoteViewer note={null} library={library} libraryTotal={1} libraryQuery="算法" onLibraryQuery={() => undefined} onOpenLesson={() => undefined} />)
+    expect(searching.querySelector('[data-testid="note-library-row"]')).not.toBeNull()
   })
 
   it('keeps the plain empty hint when the library is empty', () => {

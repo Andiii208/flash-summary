@@ -579,6 +579,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               currentLessonId={state.currentLesson}
               library={state.noteIndex}
               libraryTotal={state.noteIndexTotal}
+              libraryQuery={state.noteQuery}
+              onLibraryQuery={state.setNoteQuery}
               onOpenLesson={state.selectLesson}
               onUpgradeCourse={state.openNoteUpgrade}
               onExportCourseObsidian={state.exportCourseObsidian}
@@ -738,6 +740,9 @@ interface AppState {
   noteIndex: NoteIndexInfo[]
   /** 批C: 笔记库总数（> noteIndex.length 即为被截断）。 */
   noteIndexTotal: number
+  /** 批C 批2: 笔记库搜索词与 setter。 */
+  noteQuery: string
+  setNoteQuery: (value: string) => void
   /** 质量批4: 存量升级对话框数据 + 逐课运行状态（笔记库课程组入口）。 */
   noteUpgrade: { open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }
   noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }
@@ -932,6 +937,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [noteIndex, setNoteIndex] = useState<NoteIndexInfo[]>([])
   /** 批C: 列表的**总数**（不受 LIMIT 影响）——界面据此如实说明是否被截断。 */
   const [noteIndexTotal, setNoteIndexTotal] = useState(0)
+  /** 批C 批2: 笔记库搜索词（主进程过滤，见 ipc.ts notes:list）。 */
+  const [noteQuery, setNoteQuery] = useState('')
   const [qaRecent, setQaRecent] = useState<QaRecentInfo[]>([])
   /** 批C: courses whose catalog harvest is in flight (play-page navigation). */
   const [harvestInflight, setHarvestInflight] = useState<ReadonlySet<string>>(new Set())
@@ -1245,13 +1252,22 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   }, [bridge])
 
   /** 批B: cross-lesson library + recent Q&A feed the tab empty states. */
-  const loadNoteIndex = useCallback(async (): Promise<void> => {
-    const res = await bridge.notes.list()
-    if (res.ok && res.value != null) {
-      setNoteIndex(res.value.items)
-      setNoteIndexTotal(res.value.total)
-    }
-  }, [bridge])
+  const loadNoteIndex = useCallback(
+    async (keyword = ''): Promise<void> => {
+      const res = await bridge.notes.list(keyword === '' ? undefined : { keyword })
+      if (res.ok && res.value != null) {
+        setNoteIndex(res.value.items)
+        setNoteIndexTotal(res.value.total)
+      }
+    },
+    [bridge]
+  )
+
+  // 批C 批2: 搜索词变化 → 去抖重取（每次按键都打一次 IPC 没必要；库小但别浪费）。
+  useEffect(() => {
+    const timer = setTimeout(() => void loadNoteIndex(noteQuery.trim()), 200)
+    return () => clearTimeout(timer)
+  }, [noteQuery, loadNoteIndex])
 
   const loadQaRecent = useCallback(async (): Promise<void> => {
     const res = await bridge.qa.recent()
@@ -2441,6 +2457,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     note,
     noteIndex,
     noteIndexTotal,
+    noteQuery,
+    setNoteQuery,
     qaRecent,
     harvestInflight,
     openLessonNotes,

@@ -40,6 +40,9 @@ export interface NoteViewerProps {
   library?: NoteIndexInfo[]
   /** 批C: 笔记库总数（> library.length 即被截断）——标题据此写实。 */
   libraryTotal?: number
+  /** 批C 批2: 笔记库搜索词（主进程过滤）+ 变更回调。 */
+  libraryQuery?: string
+  onLibraryQuery?: (value: string) => void
   /** 批B: open a library entry = select that lesson globally. */
   onOpenLesson?: (lessonId: string) => void
   /** 质量批4: upgrade a course's stale notes from the library group head. */
@@ -88,7 +91,10 @@ export interface NoteViewerProps {
  * 「最近 200 条」，上限改了文案不会跟着改，而被截断时**从不告诉用户**：既不知道
  * 有更早的笔记，也不知道去哪找。现在总数由数据算出来，截断时补一句出路。
  */
-function libraryHeading(shown: number, total: number): string {
+function libraryHeading(shown: number, total: number, query = ''): string {
+  // 搜索时标题说匹配数——否则「共 2 条」会被误读成库里的总数。
+  const keyword = query.trim()
+  if (keyword !== '') return `「${keyword}」匹配 ${total} 条笔记`
   if (total > shown) return `全部笔记（共 ${total} 条 · 这里显示最近 ${shown} 条）— 更早的可在左侧课程树里按课程打开`
   return `全部笔记（共 ${total} 条）— 点击一条即可查看与追问`
 }
@@ -103,6 +109,8 @@ export function NoteViewer({
   currentLessonId,
   library = [],
   libraryTotal,
+  libraryQuery = '',
+  onLibraryQuery,
   onOpenLesson,
   onUpgradeCourse,
   onExportCourseObsidian,
@@ -125,6 +133,10 @@ export function NoteViewer({
   onPolish
 }: NoteViewerProps): JSX.Element {
   const [view, setView] = useState<ViewId>('detailed')
+  // 批C 批2: 搜索中即使零命中也要渲染列表本体——搜索框不能跟着消失（否则用户没法
+  // 清空查询），「尚无笔记」也会错误暗示库里一条都没有。
+  const searchingLibrary = libraryQuery.trim() !== ''
+  const showLibrary = library.length > 0 || searchingLibrary
   // M2.2: concept-card anchor for the mind map popover's «view in detail» jump.
   const [pendingAnchor, setPendingAnchor] = useState<string | null>(null)
   // 批3 (plan 2026-09-08 note-quality-overhaul): 内容体检面板开合；换笔记即收。
@@ -345,19 +357,25 @@ export function NoteViewer({
             // notes under a card claiming there are none) — a one-line hint
             // replaces the card and the list leads. The card stays for the
             // truly-empty case.
-            library.length > 0 && onOpenLesson != null ? (
+            onOpenLesson != null && showLibrary ? (
               <>
                 <p class="msg">笔记在任务生成后自动显示；从左侧课程树点一个课时即可创建任务。</p>
-                <h3 class="subheading">{libraryHeading(library.length, libraryTotal ?? library.length)}</h3>
-                <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
+                <h3 class="subheading">{libraryHeading(library.length, libraryTotal ?? library.length, libraryQuery)}</h3>
+                <NoteLibrary
+                  entries={library}
+                  query={libraryQuery}
+                  onQuery={onLibraryQuery} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
               </>
             ) : (
               <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
             )
-          ) : library.length > 0 && onOpenLesson != null ? (
+          ) : onOpenLesson != null && showLibrary ? (
             <>
               <p class="msg">或打开其他笔记：</p>
-              <NoteLibrary entries={library} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
+              <NoteLibrary
+                  entries={library}
+                  query={libraryQuery}
+                  onQuery={onLibraryQuery} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
             </>
           ) : null}
         </>

@@ -14,6 +14,9 @@ export interface NoteLibraryProps {
   /** 健康巡查 2026-09-12 批5: the in-flight export kind — the course-export
    *  button reads «导出中…» and disables while any export runs. */
   exportBusy?: string | null
+  /** 批C 批2: 搜索词（受控）——过滤在主进程做，这里只负责输入与展示。 */
+  query?: string
+  onQuery?: (value: string) => void
 }
 
 interface LibraryGroup {
@@ -47,8 +50,9 @@ function groupByCourse(entries: NoteIndexInfo[]): LibraryGroup[] {
  * 批6: course-grouped collapsible sections; v-badge explains itself.
  * 质量批4: per-course «升级旧笔记» entry in the group head.
  */
-export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian, exportBusy = null }: NoteLibraryProps): JSX.Element {
+export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian, exportBusy = null, query = '', onQuery }: NoteLibraryProps): JSX.Element {
   const groups = useMemo(() => groupByCourse(entries), [entries])
+  const searching = query.trim() !== ''
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const toggle = (label: string): void => {
     setCollapsed((prev) => {
@@ -60,8 +64,21 @@ export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCo
   }
   return (
     <div class="note-library" data-testid="note-library">
+      {/* 批C 批2: 搜索框跟着列表走（笔记库在「主页」与「已选课时」两处渲染，
+          放组件里两处都有）。口径写在 placeholder 里：只搜列表看得见的字段。 */}
+      {onQuery != null && (
+        <input
+          class="search-input note-library-search"
+          type="search"
+          placeholder="搜索笔记：课程 / 教师 / 课时…"
+          value={query}
+          onInput={(e) => onQuery((e.target as HTMLInputElement).value)}
+        />
+      )}
+      {searching && entries.length === 0 && <p class="msg">没有匹配的笔记</p>}
       {groups.map((group) => {
-        const isCollapsed = collapsed.has(group.label)
+        // 搜索时命中组一律展开——搜到了却看不见等于没搜到。
+        const isCollapsed = searching ? false : collapsed.has(group.label)
         return (
           <div key={group.label} class="note-library-group">
             <div class="note-library-group-head">

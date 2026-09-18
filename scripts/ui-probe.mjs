@@ -15,6 +15,7 @@
  *   --dialog       第三方许可弹层在 960×600 下的钳制与滚动（T36 取证）。
  *   --provider     绑定能力复选框组的布局（T30 取证）。
  *   --mindmap      导图：首屏适应窗口、放大后适应、窄窗适应三态（T15 取证）。
+ *   --note-search=词  笔记库搜索（主进程过滤）：量标题、命中行数与分组。
  *
  * 隔离：SEU_SUMMARY_DOCS_OVERRIDE 指向临时目录（拷贝 app.db 一份），真实
  * Library 与已安装版全程不碰——沿用 scripts/ui-shots.mjs 的同一条缝。
@@ -362,6 +363,25 @@ async function probeProvider(cdp, out) {
   await cdp.shot(join(ROOT, '.ui-shots', 'provider', 'capability.png'))
 }
 
+/** 笔记库搜索（批C 批2）：输入关键词 → 主进程过滤 → 标题/行数/分组。 */
+async function probeNoteSearch(cdp, out, keyword) {
+  await goHome(cdp)
+  await sleep(500)
+  await clickTab(cdp, '笔记')
+  await sleep(900)
+  const before = await cdp.json(`(() => ({ heading: document.querySelector('.subheading')?.textContent ?? '', rows: document.querySelectorAll('[data-testid="note-library-row"]').length, groups: document.querySelectorAll('.note-library-group').length }))()`)
+  const focused = await cdp.eval(`(() => { const el = document.querySelector('.note-library-search'); if (el == null) return false; el.focus(); return true })()`)
+  if (focused !== true) {
+    out.noteSearch = { error: 'no search box on the library view' }
+    return
+  }
+  // 真实浏览器输入路径（合成 value 写不进受控组件）。
+  await cdp.send('Input.insertText', { text: keyword })
+  await sleep(900)
+  out.noteSearch = await cdp.json(`(() => ({ keyword: ${JSON.stringify(keyword)}, before: ${JSON.stringify(before)}, heading: document.querySelector('.subheading')?.textContent ?? '', rows: document.querySelectorAll('[data-testid="note-library-row"]').length, groups: document.querySelectorAll('.note-library-group').length, empty: document.querySelector('.note-library .msg')?.textContent ?? null }))()`)
+  await cdp.shot(join(ROOT, '.ui-shots', 'note-search', 'filtered.png'))
+}
+
 /** 导图缩放几何。 */
 const MINDMAP_GEOMETRY = `(() => {
   const sc = document.querySelector('.mindmap-scroll')
@@ -431,6 +451,11 @@ function summarize(out) {
     lines.push(`首启按钮 ${welcome.btns.map((b) => `${b.w}×${b.h}`).join(' / ')}`)
     lines.push(`主区首启卡 ${out.initial.emptyCards?.map((c) => `${c[0].split(' ')[0]} ${c[2]}×${c[3]}`).join(' · ')}`)
   }
+  if (out.noteSearch != null) {
+    const n = out.noteSearch
+    if (n.error != null) lines.push(`笔记搜索：${n.error}`)
+    else lines.push(`笔记搜索「${n.keyword}」→ 标题「${n.heading}」· 行 ${n.before?.rows}→${n.rows} · 分组 ${n.before?.groups}→${n.groups}${n.empty != null ? ` · 空态「${n.empty}」` : ''}`)
+  }
   if (out.tasksPage != null) {
     const cols = (page) => page.history.map((r) => `${one(r.errW)}${r.timeHidden ? '(时间收起)' : ''}`).join('/')
     const times = out.tasksPage.history.map((r) => r.timeW)
@@ -483,6 +508,7 @@ async function main() {
       if (has('--dialog')) await probeLongDialog(cdp, out)
       if (has('--provider')) await probeProvider(cdp, out)
       if (has('--mindmap')) await probeMindmap(cdp, out)
+      if (argOf('--note-search=') != null) await probeNoteSearch(cdp, out, argOf('--note-search='))
       if (NARROW != null) await probeNarrow(cdp, out)
     }
   } finally {
