@@ -181,6 +181,8 @@ describe('TaskPanel', () => {
       <TaskPanel currentLesson="l1" running={false} busy={false} progress={null} history={history} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={onDelete} onClearFinished={onClearFinished} />
     )
     expect(host.querySelector('.history-lesson')?.textContent).toBe('网络信息编程 · 第五讲')
+    // 批4 (T45): 被省略号截断的那串人话必须就是 tooltip——此前给的是平台 lesson_id。
+    expect(host.querySelector('.history-lesson')?.getAttribute('title')).toBe('网络信息编程 · 第五讲')
     // F4: teacher / meeting-times / classroom secondary line.
     expect(host.querySelector('.history-meta')?.textContent).toBe('汪海 · 周一 第3-4节 · 中山-312')
     // Network code translated to user guidance; the tooltip carries the same

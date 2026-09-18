@@ -181,6 +181,13 @@ function bodyOf(selector: string): string {
   return m![1].replace(/\s+/g, ' ')
 }
 
+describe('长内容反截断合同（批4）', () => {
+  it('报错原文（含长 URL/JSON）所在的两处容器都允许任意断行', () => {
+    expect(bodyOf('.qa-error-msg')).toContain('overflow-wrap: anywhere')
+    expect(bodyOf('.error-boundary p')).toContain('overflow-wrap: anywhere')
+  })
+})
+
 describe('首启与空库的排版合同（批2）', () => {
   it('.empty-actions 允许换行——否则窄容器里的中文按钮会被逐字换行', () => {
     expect(bodyOf('.empty-actions')).toContain('flex-wrap: wrap')

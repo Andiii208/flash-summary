@@ -312,7 +312,9 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
               )
             })()}
             <div class="history-label">
-              <span class="history-lesson" title={row.lesson_id}>
+              {/* 批4 (T45): tooltip 必须是屏幕上被截断的那串人话——此前给的是平台
+                  lesson_id，悬停一个被省略的「学位英语 · 第 12 讲…」会显示一串无意义 id。 */}
+              <span class="history-lesson" title={taskLabel(row)}>
                 {taskLabel(row)}
               </span>
               {meta != null && <span class="history-meta">{meta}</span>}

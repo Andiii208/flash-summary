@@ -75,7 +75,9 @@ export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCo
                 aria-expanded={!isCollapsed}
                 onClick={() => toggle(group.label)}
               >
-                <span class="note-library-course">{group.label}</span>
+                <span class="note-library-course" title={group.label}>
+                  {group.label}
+                </span>
                 <span class="note-library-count">{group.items.length}</span>
               </button>
               {/* A2 (plan 2026-09-13): both actions in one right-flush cluster —

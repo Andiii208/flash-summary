@@ -1223,7 +1223,10 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 /* 批4: QA 失败气泡 + busy 提示 + 设置页加载错误行。 */
 .qa-error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.qa-error-msg { margin: 0; color: var(--danger); }
+/* 批4 (T46): 报错原文常含长 URL / JSON，pre-wrap 只在空格处折行会把气泡撑破。
+   同文件其它 5 处长串保护（.history-error/.note-library-lesson/.note-upgrade-title/
+   .bili-title/.bili-chip）都补了，这里与 ErrorBoundary 是仅有的两处漏点。 */
+.qa-error-msg { margin: 0; color: var(--danger); overflow-wrap: anywhere; }
 .qa-error .btn { align-self: flex-start; }
 .qa-busy-hint { font-size: var(--font-size-xs); color: var(--text-muted); margin: 4px 0 0; }
 .settings-load-error {
@@ -2050,7 +2053,7 @@ button.concept-ref:hover { color: var(--accent); }
   background: var(--surface);
 }
 .error-boundary h3 { margin: 0 0 8px; }
-.error-boundary p { color: var(--text-muted, #667085); margin: 0 0 16px; }
+.error-boundary p { color: var(--text-muted); margin: 0 0 var(--space-4); overflow-wrap: anywhere; }
 /* 批6: 复制详情/打开日志动作行 + 操作反馈小字。 */
 .error-boundary-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .error-boundary-note { margin: 10px 0 0; font-size: var(--font-size-sm); color: var(--text-muted, #667085); }
