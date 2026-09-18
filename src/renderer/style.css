@@ -899,7 +899,11 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   place-items: center;
   z-index: 60;
 }
+/* 批5 (T36): 高度钳制 + 内部滚动区（原来只有宽度，内容一长就顶出视口）。 */
 .dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: 86vh;
   width: min(420px, calc(100vw - 48px));
   background: var(--surface);
   border: 1px solid var(--border-strong);
@@ -910,7 +914,8 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 /* 批0: 此前写的是不存在的 var(--font-size-base)，声明失效 → 弹窗标题与正文同为 14px，
    全应用 20+ 个确认框的标题层级消失。取 --font-size-lg(16px) 恢复一级之差。 */
 .dialog-title { margin: 0 0 8px; font-size: var(--font-size-lg); }
-.dialog-message { margin: 0 0 16px; color: var(--text-secondary); font-size: var(--font-size-md); line-height: var(--leading-normal); }
+.dialog-message { margin: 0 0 var(--space-4); color: var(--text-secondary); font-size: var(--font-size-md); line-height: var(--leading-normal); }
+.dialog-body { min-height: 0; overflow-y: auto; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
 /* M3 批 D: provider form helpers */
@@ -1082,9 +1087,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 /* 声明批2: 首启「使用须知与免责声明」闸门。九条要能滚，但不能把弹窗撑成整屏。
    :has 选宽度，免去给 Dialog 加一个只服务一处的 class 透传。 */
 .dialog:has(.consent-body) { width: min(560px, calc(100vw - 48px)); }
+/* 批5 (T36): 滚动预算统一由 .dialog-body 承担（此处原先自带 46vh 上限，
+   与 .legal-scroll 62vh、.feedback-body 46vh、.note-upgrade-list 320px 四处各写一套）。 */
 .consent-body {
-  max-height: min(46vh, 360px);
-  overflow-y: auto;
   margin: 0 0 12px;
   padding: 10px 6px 2px 0;
   border-top: 1px solid var(--border);
@@ -1120,8 +1125,6 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    全文弹层要比确认框宽得多：法务文本在 420px 里每行只有十来个字。 */
 .dialog:has(.legal-scroll) { width: min(760px, calc(100vw - 48px)); }
 .legal-scroll {
-  max-height: min(62vh, 540px);
-  overflow-y: auto;
   margin: 0 0 16px;
   padding: 4px 10px 4px 0;
   border-top: 1px solid var(--border);
@@ -1207,8 +1210,6 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   background: #fff;
 }
 .feedback-body {
-  max-height: min(46vh, 360px);
-  overflow-y: auto;
   margin: 0 0 10px;
   padding: 10px;
   border: 1px solid var(--border);
@@ -1392,7 +1393,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-health-panel .health-field { flex: none; font-weight: 600; color: var(--text); }
 .note-health-panel li.info .health-field { color: var(--text-muted); }
 /* 质量批4: 存量升级选择列表（Dialog 自定义 body）。 */
-.note-upgrade-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 320px; overflow: auto; margin: var(--space-2) 0 var(--space-1); }
+.note-upgrade-list { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-2) 0 var(--space-1); }
 /* 批2: 此前 min-width:420px 比弹窗内容盒(378px)还宽，实测列表右缘 864 顶出弹窗
    外框 843（溢出 21px，压在遮罩上）。去掉硬 min-width，改由 :has() 与 consent
    同档加宽。 */
@@ -1831,6 +1832,24 @@ button.concept-ref:hover { color: var(--accent); }
 .mindmap-node, .mindmap-edge { animation: mindmap-in 180ms ease-out; }
 @media (prefers-reduced-motion: reduce) {
   .mindmap-node, .mindmap-edge { transition: none; animation: none; }
+}
+
+/* ==========================================================================
+   批5（plan 2026-09-18）：全站唯一一套宽度断点。
+   整改前全仓只有 prefers-reduced-motion 的 @media —— 窗口到下限 960 时，
+   860（面板轴）与 640（正文轴）两个 max-width 同时失效，只能靠 flex 硬挤
+   （实测：笔记工具行 25→43px 高、任务失败原因列 440→128px）。
+   断点只有两个：1180 = 内容盒装不下 860；1024 = 装不下 640。
+   ========================================================================== */
+@media (max-width: 1180px) {
+  /* 内容区让出横向内边距（24 → 16），工具行交给已有的 flex-wrap。 */
+  .content { padding-left: var(--space-4); padding-right: var(--space-4); }
+}
+
+@media (max-width: 1024px) {
+  /* 正文列改流式：max-width 在窄窗下本来就失效，明确写出来，避免「有时 640
+     有时全宽」的不可预期。侧栏的自动收起由 App 侧 matchMedia 负责（见 App.tsx）。 */
+  .note-body, .note-masthead { max-width: none; }
 }
 
 /* M1.2 (map expansion 2026-09-05): in-view toolbar — depth controls + search.

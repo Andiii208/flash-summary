@@ -63,7 +63,10 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
       <div class="dialog" role="alertdialog" aria-modal="true" aria-label={title} ref={dialogRef}>
         <h3 class="dialog-title">{title}</h3>
         {message != null && message !== '' && <p class="dialog-message">{message}</p>}
-        {children}
+        {/* 批5 (T36): 弹窗此前没有高度钳制、也没有滚动区——内容一长就顶出视口，
+            而滚动预算散落在四个子类里（consent 46vh / legal 62vh / feedback 46vh /
+            升级列表 320px）。现在统一由 .dialog-body 承担。 */}
+        {children != null && <div class="dialog-body">{children}</div>}
         <div class="dialog-actions">
           {view ? (
             <button class="btn primary" autoFocus onClick={onCancel}>

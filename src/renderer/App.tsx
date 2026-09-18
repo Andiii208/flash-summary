@@ -189,6 +189,12 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   useEffect(() => {
     savePersistedUi({ sidebarCollapsed })
   }, [sidebarCollapsed])
+  // 批5 (plan 2026-09-18): 窄窗（≤1024）默认收起侧栏，把 304px 让给内容列。
+  // 只在挂载时判定一次——监听 resize 会在用户手动展开后把它再次收走。
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    if (window.matchMedia('(max-width: 1024px)').matches) setSidebarCollapsed(true)
+  }, [])
   // 批4 (plan 2026-09-13): fullscreen course browser — opened from the
   // «全部课程» row's icon button or Ctrl+K (D6). Transient, never persisted:
   // a harvest/login round-trip landing on a full-screen overlay would hide

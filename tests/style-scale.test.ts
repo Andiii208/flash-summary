@@ -181,6 +181,24 @@ function bodyOf(selector: string): string {
   return m![1].replace(/\s+/g, ' ')
 }
 
+describe('窄窗断点与弹窗高度（批5）', () => {
+  it('弹窗有高度钳制、且滚动区只有一个（.dialog-body）', () => {
+    expect(bodyOf('.dialog')).toContain('max-height: 86vh')
+    expect(bodyOf('.dialog-body')).toContain('overflow-y: auto')
+  })
+
+  it('四处散落的滚动预算已清（否则会出现双层滚动条）', () => {
+    for (const sel of ['.consent-body', '.legal-scroll', '.feedback-body', '.note-upgrade-list']) {
+      expect(bodyOf(sel), `${sel} 不该再自带 max-height`).not.toContain('max-height')
+    }
+  })
+
+  it('全站只有两个宽度断点：1180（装不下 860）与 1024（装不下 640）', () => {
+    const breakpoints = [...stripped.matchAll(/@media\s*\(max-width:\s*(\d+)px\)/g)].map((m) => m[1])
+    expect([...new Set(breakpoints)].sort()).toEqual(['1024', '1180'])
+  })
+})
+
 describe('长内容反截断合同（批4）', () => {
   it('报错原文（含长 URL/JSON）所在的两处容器都允许任意断行', () => {
     expect(bodyOf('.qa-error-msg')).toContain('overflow-wrap: anywhere')

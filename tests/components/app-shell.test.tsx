@@ -62,8 +62,26 @@ function openQaTab(host: HTMLElement): void {
   click(tabs.find((b) => b.textContent === '追问') ?? null)
 }
 
+/**
+ * 批5: 窄窗自动收侧栏按 matchMedia('(max-width: 1024px)') 判定。happy-dom 的默认
+ * 视口落在窄侧，所以测试必须显式声明窗口宽度，否则每个用例都会撞上自动收起。
+ */
+function setNarrowViewport(narrow: boolean): void {
+  window.matchMedia = ((query: string) => ({
+    matches: narrow && query.includes('max-width'),
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false
+  })) as unknown as typeof window.matchMedia
+}
+
 describe('App shell (useAppState over a mocked bridge)', () => {
   beforeEach(() => {
+    setNarrowViewport(false)
     document.body.innerHTML = ''
     // 批C: the app persists its UI snapshot in sessionStorage (2026-09-05:
     // moved from localStorage so a cold start lands on the clean home) —
@@ -364,6 +382,17 @@ describe('App shell (useAppState over a mocked bridge)', () => {
       ).not.toBeNull()
     })
     expect(host).toBeTruthy()
+  })
+
+  it('批5: 窄窗（≤1024）挂载时侧栏默认收起，把宽度让给内容列', async () => {
+    setNarrowViewport(true)
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    expect(host.querySelector('aside.sidebar')?.className).toContain('collapsed')
+    // 手动展开仍然有效（自动收起只在挂载时判定一次）。
+    click(host.querySelector('.sidebar-collapse'))
+    await vi.waitFor(() => expect(host.querySelector('aside.sidebar')?.className).not.toContain('collapsed'))
   })
 
   it('健康巡查 2026-09-12 批8: the sidebar collapses and the choice survives a reload', async () => {
