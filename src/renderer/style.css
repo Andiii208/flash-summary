@@ -1357,6 +1357,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-library, .qa-recent { display: flex; flex-direction: column; gap: var(--space-2); max-width: var(--content-max); }
 /* 批6: 课程分组——组头（课程·教师+条数）可折叠，行内只剩课时名。 */
 .note-library-group { display: flex; flex-direction: column; gap: var(--space-1); }
+/* 批C 批3: 列表「显示更多」按钮（笔记库 / 任务列表共用；M3-2 的「分块 + 显式展开」）。 */
+.list-more { display: block; margin: var(--space-2) auto var(--space-1); }
+
 /* 批C 批2: 笔记库搜索框——与侧栏/浏览页同一个 .search-input 基元，只补下间距。 */
 .note-library-search { width: 100%; margin-bottom: var(--space-2); }
 .note-library-group-head {

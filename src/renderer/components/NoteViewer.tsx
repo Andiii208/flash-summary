@@ -43,6 +43,8 @@ export interface NoteViewerProps {
   /** 批C 批2: 笔记库搜索词（主进程过滤）+ 变更回调。 */
   libraryQuery?: string
   onLibraryQuery?: (value: string) => void
+  /** 批C 批3: 列表还没取完时给「显示更多」（按页加长）。 */
+  onLibraryMore?: () => void
   /** 批B: open a library entry = select that lesson globally. */
   onOpenLesson?: (lessonId: string) => void
   /** 质量批4: upgrade a course's stale notes from the library group head. */
@@ -111,6 +113,7 @@ export function NoteViewer({
   libraryTotal,
   libraryQuery = '',
   onLibraryQuery,
+  onLibraryMore,
   onOpenLesson,
   onUpgradeCourse,
   onExportCourseObsidian,
@@ -364,7 +367,10 @@ export function NoteViewer({
                 <NoteLibrary
                   entries={library}
                   query={libraryQuery}
-                  onQuery={onLibraryQuery} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
+                  onQuery={onLibraryQuery}
+                  total={libraryTotal}
+                  onMore={onLibraryMore}
+                  onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
               </>
             ) : (
               <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
@@ -375,7 +381,10 @@ export function NoteViewer({
               <NoteLibrary
                   entries={library}
                   query={libraryQuery}
-                  onQuery={onLibraryQuery} onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
+                  onQuery={onLibraryQuery}
+                  total={libraryTotal}
+                  onMore={onLibraryMore}
+                  onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
             </>
           ) : null}
         </>

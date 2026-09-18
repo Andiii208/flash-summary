@@ -383,6 +383,22 @@ describe('NoteViewer', () => {
     expect(searching.querySelector('[data-testid="note-library-row"]')).not.toBeNull()
   })
 
+  it('批C 批3: 列表没取完时给「显示更多」，取完了就不给', () => {
+    const library = [
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
+    ]
+    const onMore = vi.fn()
+    const truncated = mount(<NoteViewer note={null} library={library} libraryTotal={431} onLibraryMore={onMore} onOpenLesson={() => undefined} />)
+    const more = [...truncated.querySelectorAll('button')].find((b) => b.textContent?.includes('显示更多'))
+    expect(more?.textContent).toContain('还有 430 条')
+    click(more ?? null)
+    expect(onMore).toHaveBeenCalled()
+
+    // 取完了（total === entries.length）→ 没有按钮，不留一个「还有 0 条」。
+    const complete = mount(<NoteViewer note={null} library={library} libraryTotal={1} onLibraryMore={onMore} onOpenLesson={() => undefined} />)
+    expect([...complete.querySelectorAll('button')].some((b) => b.textContent?.includes('显示更多'))).toBe(false)
+  })
+
   it('keeps the plain empty hint when the library is empty', () => {
     const host = mount(<NoteViewer note={null} library={[]} onOpenLesson={() => undefined} />)
     expect(host.querySelector('[data-testid="note-library"]')).toBeNull()

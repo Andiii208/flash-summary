@@ -16,6 +16,9 @@
  *   --provider     绑定能力复选框组的布局（T30 取证）。
  *   --mindmap      导图：首屏适应窗口、放大后适应、窄窗适应三态（T15 取证）。
  *   --note-search=词  笔记库搜索（主进程过滤）：量标题、命中行数与分组。
+ *   --seed-notes=N  往**副本库**注入 N 个合成课时（各带一条笔记），用来验分页：
+ *                   「显示更多」在真实代码路径上是否按页加长。真实库只有个位数笔记，
+ *                   不造材就永远验不到 100 条那一页。
  *
  * 隔离：SEU_SUMMARY_DOCS_OVERRIDE 指向临时目录（拷贝 app.db 一份），真实
  * Library 与已安装版全程不碰——沿用 scripts/ui-shots.mjs 的同一条缝。
@@ -164,6 +167,26 @@ const MEASURE = `(() => {
     emptyCards: [...document.querySelectorAll('.empty-state, .course-browser-empty, .msg')].slice(0, 5).map((e) => [e.className, getComputedStyle(e).padding, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)])
   }
 })()`
+
+/**
+ * 批C 批3: 往副本库注入 N 个「课时 + 笔记」——只为把列表撑到分页阈值以上。
+ * 只动副本（临时目录），真实库不碰；note_json 给最小合法串（列表查询不解析它）。
+ */
+function seedNotes(dbPath, count) {
+  const Database = require('better-sqlite3')
+  const db = new Database(dbPath)
+  const now = new Date().toISOString()
+  db.prepare('INSERT OR IGNORE INTO courses (id, name, teacher, fetched_at) VALUES (?, ?, ?, ?)').run('probe-course', '分页造材课程', '探针', now)
+  const lesson = db.prepare('INSERT OR REPLACE INTO lessons (id, course_id, title, fetched_at) VALUES (?, ?, ?, ?)')
+  const note = db.prepare('INSERT OR REPLACE INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES (?, ?, 1, ?, ?, ?, ?)')
+  for (let i = 0; i < count; i++) {
+    const id = `probe-l${i}`
+    lesson.run(id, 'probe-course', `造材第 ${i + 1} 讲`, now)
+    note.run(`probe-n${i}`, id, '{}', 'probe', 'probe', now)
+  }
+  db.close()
+  console.log(`seeded ${count} synthetic lessons into the throwaway library`)
+}
 
 /** Copy app.db (WAL-safe by copy) into a throwaway docs dir; --empty skips it. */
 function prepareLibrary() {
@@ -363,6 +386,28 @@ async function probeProvider(cdp, out) {
   await cdp.shot(join(ROOT, '.ui-shots', 'provider', 'capability.png'))
 }
 
+/**
+ * 笔记库分页（批C 批3）：首屏行数 → 「显示更多」文案 → 点击后行数。
+ * 用 --seed-notes=N 把列表撑到页长以上才看得到按钮。
+ */
+async function probePaging(cdp, out) {
+  await goHome(cdp)
+  await sleep(500)
+  await clickTab(cdp, '笔记')
+  await sleep(1200)
+  const read = () =>
+    cdp.json(`(() => {
+      const more = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('显示更多'))
+      return { rows: document.querySelectorAll('[data-testid="note-library-row"]').length, more: more == null ? null : more.textContent.trim(), heading: document.querySelector('.subheading')?.textContent ?? '' }
+    })()`)
+  out.pagingBefore = await read()
+  const clicked = await cdp.eval(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent?.includes('显示更多')); if (b == null) return false; b.click(); return true })()`)
+  if (clicked === true) {
+    await sleep(1200)
+    out.pagingAfter = await read()
+  }
+}
+
 /** 笔记库搜索（批C 批2）：输入关键词 → 主进程过滤 → 标题/行数/分组。 */
 async function probeNoteSearch(cdp, out, keyword) {
   await goHome(cdp)
@@ -451,6 +496,10 @@ function summarize(out) {
     lines.push(`首启按钮 ${welcome.btns.map((b) => `${b.w}×${b.h}`).join(' / ')}`)
     lines.push(`主区首启卡 ${out.initial.emptyCards?.map((c) => `${c[0].split(' ')[0]} ${c[2]}×${c[3]}`).join(' · ')}`)
   }
+  if (out.pagingBefore != null) {
+    lines.push(`笔记库分页：首屏 ${out.pagingBefore.rows} 行 · 按钮「${out.pagingBefore.more ?? '无'}」· 标题「${out.pagingBefore.heading}」`)
+    if (out.pagingAfter != null) lines.push(`点「显示更多」后 ${out.pagingAfter.rows} 行 · 按钮「${out.pagingAfter.more ?? '无'}」`)
+  }
   if (out.noteSearch != null) {
     const n = out.noteSearch
     if (n.error != null) lines.push(`笔记搜索：${n.error}`)
@@ -483,6 +532,8 @@ function summarize(out) {
 async function main() {
   const out = {}
   const tmpDocs = prepareLibrary()
+  const seedArg = argOf('--seed-notes=')
+  if (seedArg != null && !has('--empty')) seedNotes(join(tmpDocs, 'SEU Summary', 'Library', 'app.db'), Number(seedArg))
   const outMain = join(ROOT, 'out', 'main', 'index.cjs')
   if (!existsSync(outMain)) {
     console.error('out/main/index.cjs missing — run `npm run build` first')
@@ -509,6 +560,7 @@ async function main() {
       if (has('--provider')) await probeProvider(cdp, out)
       if (has('--mindmap')) await probeMindmap(cdp, out)
       if (argOf('--note-search=') != null) await probeNoteSearch(cdp, out, argOf('--note-search='))
+      if (has('--paging')) await probePaging(cdp, out)
       if (NARROW != null) await probeNarrow(cdp, out)
     }
   } finally {

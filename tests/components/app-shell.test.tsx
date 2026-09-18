@@ -4,7 +4,7 @@ import { render } from 'preact'
 import { mount, click } from '../helpers/preact'
 import type { SeuSummaryBridge } from '../../src/shared/bridge'
 import type { ApiResult } from '../../src/shared/api-result'
-import { makeBridge, ok, fakeState } from '../helpers/fake-app-bridge'
+import { makeBridge, ok, fakeState, NOTE_ROWS, TASK_ROWS, setListTotals } from '../helpers/fake-app-bridge'
 
 /**
  * App-shell integration over a mocked bridge: the useAppState state machine
@@ -82,6 +82,10 @@ function setNarrowViewport(narrow: boolean): void {
 describe('App shell (useAppState over a mocked bridge)', () => {
   beforeEach(() => {
     setNarrowViewport(false)
+    // 批C: 分页夹具是模块级的，用例之间必须复位（否则「显示更多」的计数会串）。
+    NOTE_ROWS.length = 0
+    TASK_ROWS.length = 0
+    setListTotals(0, 0)
     document.body.innerHTML = ''
     // 批C: the app persists its UI snapshot in sessionStorage (2026-09-05:
     // moved from localStorage so a cold start lands on the clean home) —
@@ -152,6 +156,26 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // 负向红线：左侧一门课都没有时，主区不许再给「点左侧课程树」这种不成立的指引。
     expect(host.textContent).not.toContain('先选择课时')
     expect(host.textContent).not.toContain('从左侧课程树点击一个课时')
+  })
+
+  it('批C 批3: 点「显示更多」按页加长列表（不改主进程上限）', async () => {
+    NOTE_ROWS.push({ lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' })
+    setListTotals(0, 431)
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    // 笔记库在「笔记」页签（应用默认落在任务页）。
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library-search')
+    // 首屏页 = 100（主进程默认上限 200 之下的一页）。
+    const calls = (bridge.notes.list as unknown as { mock: { calls: unknown[][] } }).mock.calls
+    expect(calls[calls.length - 1]?.[0]).toMatchObject({ limit: 100 })
+
+    click([...host.querySelectorAll('button')].find((b) => b.textContent?.includes('显示更多')) ?? null)
+    await vi.waitFor(() => {
+      const next = (bridge.notes.list as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      expect(next[next.length - 1]?.[0]).toMatchObject({ limit: 200 })
+    })
   })
 
   it('批2: 一条任务都没有时不渲染「全部任务（最近 50 条）」标题', async () => {

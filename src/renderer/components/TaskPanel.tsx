@@ -28,6 +28,8 @@ export interface TaskPanelProps {
   globalHistory: TaskRowInfo[]
   /** 批C: 全局任务总数（> globalHistory.length 即被截断）。 */
   globalHistoryTotal?: number
+  /** 批C 批3: 「显示更多」（按页加长全局任务列表）。 */
+  onMoreHistory?: () => void
   onCreateRun: () => void
   onRetry: (taskId: string) => void
   onCancel: () => void
@@ -84,6 +86,7 @@ export function TaskPanel({
   history,
   globalHistory,
   globalHistoryTotal,
+  onMoreHistory,
   onCreateRun,
   onRetry,
   onCancel,
@@ -138,6 +141,12 @@ export function TaskPanel({
                 onOpenNote={onOpenNote}
                 onReportError={onReportError}
               />
+              {/* 批C 批3: 与笔记库同一套「分块 + 显式展开」（不做虚拟滚动）。 */}
+              {onMoreHistory != null && globalHistoryTotal != null && globalHistoryTotal > globalHistory.length && (
+                <button class="btn small ghost list-more" onClick={onMoreHistory}>
+                  显示更多（还有 {globalHistoryTotal - globalHistory.length} 条）
+                </button>
+              )}
             </>
           )}
         </>

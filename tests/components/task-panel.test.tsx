@@ -183,6 +183,20 @@ describe('TaskPanel', () => {
     expect(heading).toContain('这里显示最近 1 条')
   })
 
+  it('批C 批3: 任务列表没取完时给「显示更多」并回调', () => {
+    const history: TaskRowInfo[] = [
+      { id: 't1', lesson_id: 'l1', state: 'succeeded', failed_stage: null, error_message: null, error_kind: null, course_name: '网络信息编程', lesson_title: '第五讲', teacher: null, courTimes: null, classroom: null }
+    ]
+    const onMore = vi.fn()
+    const host = mount(
+      <TaskPanel currentLesson="" running={false} busy={false} progress={null} history={[]} globalHistory={history} globalHistoryTotal={88} onMoreHistory={onMore} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    const more = [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('显示更多'))
+    expect(more?.textContent).toContain('还有 87 条')
+    click(more ?? null)
+    expect(onMore).toHaveBeenCalled()
+  })
+
   it('shows course/lesson names and humanized errors, and wires delete/clear (M1-2)', async () => {
     const history: TaskRowInfo[] = [
       { id: 't1', lesson_id: 'l1', state: 'failed', failed_stage: 'downloading_video', error_message: 'download failed: ERR_CONNECTION_RESET', error_kind: null, course_name: '网络信息编程', lesson_title: '第五讲', teacher: '汪海', courTimes: '周一 第3-4节', classroom: '中山-312' }

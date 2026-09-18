@@ -17,6 +17,9 @@ export interface NoteLibraryProps {
   /** 批C 批2: 搜索词（受控）——过滤在主进程做，这里只负责输入与展示。 */
   query?: string
   onQuery?: (value: string) => void
+  /** 批C 批3: 满足条件的总数与「显示更多」（还有 M 条没取）。 */
+  total?: number
+  onMore?: () => void
 }
 
 interface LibraryGroup {
@@ -50,7 +53,7 @@ function groupByCourse(entries: NoteIndexInfo[]): LibraryGroup[] {
  * 批6: course-grouped collapsible sections; v-badge explains itself.
  * 质量批4: per-course «升级旧笔记» entry in the group head.
  */
-export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian, exportBusy = null, query = '', onQuery }: NoteLibraryProps): JSX.Element {
+export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian, exportBusy = null, query = '', onQuery, total, onMore }: NoteLibraryProps): JSX.Element {
   const groups = useMemo(() => groupByCourse(entries), [entries])
   const searching = query.trim() !== ''
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -148,6 +151,13 @@ export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCo
           </div>
         )
       })}
+      {/* 批C 批3: 「显示更多」沿用 M3-2 的「分块 + 显式展开」（不做虚拟滚动）。
+          还有多少条按总数算——数字由数据给，不硬编码。 */}
+      {onMore != null && total != null && total > entries.length && (
+        <button class="btn small ghost list-more" onClick={onMore}>
+          显示更多（还有 {total - entries.length} 条）
+        </button>
+      )}
     </div>
   )
 }

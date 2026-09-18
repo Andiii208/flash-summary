@@ -56,6 +56,12 @@ type MainTab = 'tasks' | 'notes' | 'qa' | 'settings'
 /** school:listCourses envelope value (paged refresh, B1). */
 type CourseListResult = { loaded: number; platformTotal: number; platformPages: number }
 
+/** 批C 批3: 分页步长（「显示更多」每次加一页）。与主进程默认上限的关系：
+ *  首次取的就是主进程默认值（笔记 200 / 任务 50）之外更小的**首屏页**，
+ *  用户点「显示更多」按页加长——列表越长越慢，所以不一次全给。 */
+const NOTE_PAGE = 100
+const TASK_PAGE = 50
+
 const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
   { id: 'tasks', label: '任务' },
   { id: 'notes', label: '笔记' },
@@ -559,6 +565,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 history={state.history}
                 globalHistory={state.globalHistory}
                 globalHistoryTotal={state.globalHistoryTotal}
+                onMoreHistory={state.showMoreTasks}
                 onCreateRun={state.createAndRun}
                 onRetry={state.retryTask}
                 onCancel={state.cancelTask}
@@ -581,6 +588,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               libraryTotal={state.noteIndexTotal}
               libraryQuery={state.noteQuery}
               onLibraryQuery={state.setNoteQuery}
+              onLibraryMore={state.showMoreNotes}
               onOpenLesson={state.selectLesson}
               onUpgradeCourse={state.openNoteUpgrade}
               onExportCourseObsidian={state.exportCourseObsidian}
@@ -743,6 +751,9 @@ interface AppState {
   /** 批C 批2: 笔记库搜索词与 setter。 */
   noteQuery: string
   setNoteQuery: (value: string) => void
+  /** 批C 批3: 「显示更多」——按页加长列表（不改主进程上限，走 limit 参数）。 */
+  showMoreNotes: () => void
+  showMoreTasks: () => void
   /** 质量批4: 存量升级对话框数据 + 逐课运行状态（笔记库课程组入口）。 */
   noteUpgrade: { open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }
   noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }
@@ -939,6 +950,15 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const [noteIndexTotal, setNoteIndexTotal] = useState(0)
   /** 批C 批2: 笔记库搜索词（主进程过滤，见 ipc.ts notes:list）。 */
   const [noteQuery, setNoteQuery] = useState('')
+  /** 批C 批3: 分页步长——「显示更多」每次加一页（沿用 M3-2 的「分块 + 显式展开」）。 */
+  const [noteLimit, setNoteLimit] = useState(NOTE_PAGE)
+  const [taskLimit, setTaskLimit] = useState(TASK_PAGE)
+  // 既有 7 处 `void loadNoteIndex()` / `loadGlobalHistory()` 想的是「按当前口径重取」，
+  // 所以把当前口径放 ref 里读，调用点不必逐个改签名。
+  const noteListRef = useRef({ keyword: '', limit: NOTE_PAGE })
+  noteListRef.current = { keyword: noteQuery.trim(), limit: noteLimit }
+  const taskLimitRef = useRef(TASK_PAGE)
+  taskLimitRef.current = taskLimit
   const [qaRecent, setQaRecent] = useState<QaRecentInfo[]>([])
   /** 批C: courses whose catalog harvest is in flight (play-page navigation). */
   const [harvestInflight, setHarvestInflight] = useState<ReadonlySet<string>>(new Set())
@@ -1244,7 +1264,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   }, [bridge])
 
   const loadGlobalHistory = useCallback(async (): Promise<void> => {
-    const res = await bridge.tasks.list()
+    const res = await bridge.tasks.list(undefined, { limit: taskLimitRef.current })
     if (res.ok && res.value != null) {
       setGlobalHistory(res.value.items)
       setGlobalHistoryTotal(res.value.total)
@@ -1252,22 +1272,20 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   }, [bridge])
 
   /** 批B: cross-lesson library + recent Q&A feed the tab empty states. */
-  const loadNoteIndex = useCallback(
-    async (keyword = ''): Promise<void> => {
-      const res = await bridge.notes.list(keyword === '' ? undefined : { keyword })
-      if (res.ok && res.value != null) {
-        setNoteIndex(res.value.items)
-        setNoteIndexTotal(res.value.total)
-      }
-    },
-    [bridge]
-  )
+  const loadNoteIndex = useCallback(async (): Promise<void> => {
+    const { keyword, limit } = noteListRef.current
+    const res = await bridge.notes.list({ ...(keyword === '' ? {} : { keyword }), limit })
+    if (res.ok && res.value != null) {
+      setNoteIndex(res.value.items)
+      setNoteIndexTotal(res.value.total)
+    }
+  }, [bridge])
 
-  // 批C 批2: 搜索词变化 → 去抖重取（每次按键都打一次 IPC 没必要；库小但别浪费）。
+  // 批C 批2/批3: 搜索词或分页步长变化 → 去抖重取（每次按键都打一次 IPC 没必要）。
   useEffect(() => {
-    const timer = setTimeout(() => void loadNoteIndex(noteQuery.trim()), 200)
+    const timer = setTimeout(() => void loadNoteIndex(), 200)
     return () => clearTimeout(timer)
-  }, [noteQuery, loadNoteIndex])
+  }, [noteQuery, noteLimit, loadNoteIndex])
 
   const loadQaRecent = useCallback(async (): Promise<void> => {
     const res = await bridge.qa.recent()
@@ -2459,6 +2477,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     noteIndexTotal,
     noteQuery,
     setNoteQuery,
+    showMoreNotes: () => setNoteLimit((n) => n + NOTE_PAGE),
+    showMoreTasks: () => setTaskLimit((n) => n + TASK_PAGE),
     qaRecent,
     harvestInflight,
     openLessonNotes,
