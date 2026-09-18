@@ -1410,12 +1410,13 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   border: none;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
-  padding: 14px 2px 20px;
-  margin-bottom: 4px;
+  /* 批3: 线上 24px / 线下 38px 的不对称（线看起来偏上）→ 上下各 16px。 */
+  padding: var(--space-4) 0;
+  margin-bottom: 0;
   background: transparent;
   box-shadow: none;
 }
-.note-section p { margin: 3px 0; font-size: var(--font-size-md); line-height: var(--leading-relaxed); white-space: pre-wrap; }
+.note-section p { margin: var(--space-1) 0; white-space: pre-wrap; }
 .note-section p.ts {
   font-family: var(--font-mono);
   color: var(--text-secondary);
@@ -1663,9 +1664,11 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
 
 /* ---- md-lite ---- */
 .md-lite { display: flex; flex-direction: column; gap: var(--space-2); }
-.md-lite .md-para { font-size: var(--font-size-md); line-height: var(--leading-relaxed); color: var(--text); margin: 0; }
-.md-lite .md-h { margin: 10px 0 2px; color: var(--text-secondary); font-weight: 650; font-size: var(--font-size-md); }
+.md-lite .md-para { color: var(--text); margin: 0; }
+.md-lite .md-h { margin: var(--space-2) 0 var(--space-1); color: var(--text); font-weight: 650; font-size: var(--font-size-md); }
 .md-lite .md-h1 { font-size: var(--font-size-lg); }
+.md-lite .md-h2 { font-size: 15px; }
+.md-lite .md-h3, .md-lite .md-h4 { font-size: var(--font-size-md); color: var(--text-secondary); }
 .md-lite .md-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: var(--space-1); }
 .md-lite .md-list li { font-size: var(--font-size-md); line-height: var(--leading-relaxed); color: var(--text); }
 .md-lite .md-list li::marker { color: var(--accent); }
@@ -1937,6 +1940,8 @@ button.concept-ref:hover { color: var(--accent); }
 .feedback-text {
   font-family: var(--font-ui);
   font-size: var(--font-size-sm);
+  /* 批3 (T18): 此前没写行高 → 回落 UA 的 normal(≈1.2)，比追问框(1.5)挤。 */
+  line-height: var(--leading-snug);
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1949,12 +1954,16 @@ button.concept-ref:hover { color: var(--accent); }
 .feedback-actions { display: flex; justify-content: flex-end; }
 
 /* ============ V4 试卷纸：笔记阅读面 ============ */
-/* Reading measure: 34-38 CJK chars/line, song serif body, kai titles,
-   mono stamps stay brass. Label chrome restores the sans explicitly. */
+/* Reading measure（批3 D2）: 640px @ 15px = 42.7 CJK chars/line。此前是
+   680px @ 14px = 48.3 字/行，而本注释自称目标 34-38 —— 声明与实现漂移，且
+   .note-body 上的 15.5px/1.85 从未生效（正文实由 .note-section p 与
+   .md-lite .md-para 各写一套 14px/1.7 渲染）。现在正文的字号与行高**只在这里
+   声明一次**，段落规则继承——次级文字（概念定义/步骤解释/自测答案）才拿得回
+   自己的字号。 */
 .note-body {
-  max-width: 680px;
+  max-width: 640px;
   font-family: var(--font-serif);
-  font-size: 15.5px;
+  font-size: 15px;
   line-height: var(--leading-loose);
 }
 /* 导图视图破格：吃满内容区宽度，横向大图少滚动。 */
@@ -1963,8 +1972,8 @@ button.concept-ref:hover { color: var(--accent); }
 .note-body .refs-toggle, .note-body .tree-view, .note-body .thumb-origin, .note-body .msg,
 .note-body .badge, .note-body .tree-count { font-family: var(--font-ui); }
 .note-section h3 {
-  font-size: 16px;
-  margin: 0 0 10px;
+  font-size: var(--font-size-lg);
+  margin: 0 0 var(--space-2);
   line-height: var(--leading-tight);
   font-family: var(--font-display);
   font-weight: 400;
@@ -1974,14 +1983,21 @@ button.concept-ref:hover { color: var(--accent); }
 /* 试卷头: 文武线 (thick-thin pair) framing the lesson identity. 批B: 靠左
    与内容列同轴（居中是旧「阅读列居中」的残留，与全局左缘冲突）。 */
 .note-masthead {
+  /* 批3 (D3): 题头与正文列同轴——此前文武线打在 860 轴上、正文在 680 轴上，
+     同屏两个右缘差 180px。2026-09-07 裁决定的是「五个视图里标题宽度恒定」，
+     收窄到正文列同样满足。 */
+  max-width: 640px;
   text-align: left;
-  padding: 16px 0 12px;
-  margin: 4px 0 18px;
+  padding: var(--space-4) 0 var(--space-3);
+  margin: var(--space-1) 0 var(--space-4);
   border-top: 3px double var(--accent);
   border-bottom: 1px solid var(--border);
 }
-.note-title {
-  margin: 0 0 4px;
+/* 批3: 题头标题的排版一直被 .content h2（0,1,1，页面标题规则）盖着——
+   同族同色只是巧合，字号/字距实际取的是页面标题那一套。作用域到 .note-masthead
+   后声明才真正生效。 */
+.note-masthead .note-title {
+  margin: 0 0 var(--space-1);
   font-family: var(--font-display);
   font-weight: 400;
   font-size: var(--font-size-xl);
@@ -1993,6 +2009,12 @@ button.concept-ref:hover { color: var(--accent); }
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   letter-spacing: var(--tracking);
+}
+/* 批3 (T9/T16): 长标题降一档——B站视频标题（含「！附课件代码 | 2025最新」这类
+   尾巴）在 20px 楷体下会占掉整个题头。降档只改字号与行高，全文仍在 title 属性里。 */
+.note-masthead .note-title-long {
+  font-size: 17px;
+  line-height: var(--leading-tight);
 }
 /* timeline stamps read as brass seals; best quote gets the brass rule */
 .timeline-stamp { font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--brass); background: var(--brass-soft); padding: 1px 8px; border-radius: 999px; font-weight: 600; border: none; cursor: pointer; }

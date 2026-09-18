@@ -288,12 +288,15 @@ export function NoteViewer({
         </div>
       )}
       {/* 批3 (plan 2026-09-07 v07): masthead lives OUTSIDE .note-body so the
-          lesson title keeps one constant width (the 860 axis) in every view —
-          the mindmap breakout (max-width:none) used to drag the title full
-          width while other views wrapped it at 680. */}
+          lesson title keeps one constant width in every view — the mindmap
+          breakout (max-width:none) used to drag the title full width.
+          批3 (plan 2026-09-18): 该宽度从 860 收到正文列 640（D3，同屏两个右缘
+          差 180px）；超长标题（B站视频名）降一档字号，全文进 title。 */}
       {note != null && lesson != null && (
         <header class="note-masthead">
-          <h2 class="note-title">{lesson.courseName}</h2>
+          <h2 class={`note-title${lesson.courseName.length > 28 ? ' note-title-long' : ''}`} title={lesson.courseName}>
+            {lesson.courseName}
+          </h2>
           <p class="note-meta">{[lesson.teacher, lesson.lessonTitle].filter((x): x is string => x != null && x !== '').join(' · ')}</p>
         </header>
       )}
