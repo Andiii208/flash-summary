@@ -38,6 +38,16 @@ node scripts/verify-asar.mjs "release/win-unpacked/resources/app.asar" out
 
 - [ ] 输出 `asar verification OK`；任何 MISSING / EXTRA / HASH MISMATCH 都必须停止发布。
 
+## 4.5 打包产物冒烟（验安装版真实加载路径）
+
+```bash
+node scripts/smoke-cdp.mjs --packaged
+```
+
+- [ ] 输出 `SMOKE PASSED: 32/32`。这一步与 `npm run smoke` 的区别：它启动的是
+  `release/win-unpacked/Flash Summary.exe`（安装版的加载路径，better-sqlite3 来自
+  `app.asar.unpacked`），而不是开发构建。0.7.5 起列为发布前必跑。
+
 ## 5. 打 tag 与发布
 
 ```bash

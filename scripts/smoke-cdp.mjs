@@ -27,6 +27,7 @@ import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 const ROOT = join(import.meta.dirname, '..')
+const PACKAGED = process.argv.includes('--packaged')
 const APP_TITLE = 'Flash Summary'
 const PROBE_LOG_LINE = 'renderer: smoke-probe-line'
 
@@ -156,8 +157,17 @@ const PROBES = [
 ]
 
 async function main() {
-  const outMain = join(ROOT, 'out', 'main', 'index.cjs')
-  if (!existsSync(outMain)) failFast('out/main/index.cjs missing — run `npm run build` first')
+  // `--packaged`: 跑**打包产物**（release/win-unpacked）而不是开发构建——安装版从
+  // app.asar.unpacked 加载 better-sqlite3，那条路径只有这样才能验（0.7.5 发布清单
+  // 第 3/4 步的配套检查）。
+  const packagedExe = join(ROOT, 'release', 'win-unpacked', 'Flash Summary.exe')
+  if (PACKAGED) {
+    if (!existsSync(packagedExe)) failFast(`${packagedExe} missing — run \`npm run dist\` first`)
+    console.log(`smoke: packaged product → ${packagedExe}`)
+  } else {
+    const outMain = join(ROOT, 'out', 'main', 'index.cjs')
+    if (!existsSync(outMain)) failFast('out/main/index.cjs missing — run `npm run build` first')
+  }
 
   const tmpDocs = mkdtempSync(join(tmpdir(), 'seu-smoke-docs-'))
   const tmpUserData = mkdtempSync(join(tmpdir(), 'seu-smoke-udata-'))
@@ -165,8 +175,9 @@ async function main() {
   let electron = null
 
   try {
-    const electronExe = require('electron')
-    electron = spawn(electronExe, ['.', '--no-sandbox', `--remote-debugging-port=${port}`], {
+    const electronExe = PACKAGED ? packagedExe : require('electron')
+    const launchArgs = PACKAGED ? ['--no-sandbox', `--remote-debugging-port=${port}`] : ['.', '--no-sandbox', `--remote-debugging-port=${port}`]
+    electron = spawn(electronExe, launchArgs, {
       cwd: ROOT,
       env: {
         ...process.env,
