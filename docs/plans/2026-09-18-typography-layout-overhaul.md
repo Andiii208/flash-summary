@@ -87,7 +87,7 @@
 
 > 两轴分离的触发条件：窗口 >1032px 时 `860` 与 `680` 两个右缘开始分离，默认窗口（实测视口 1266）下满额 180px；窗口 <1032px 时两者都被压到同一宽度，缺陷不可见（但这不代表窄窗没问题——见 2.A/2.C 的实测）。
 
-> 重跑方式：`node .ui-shots/probe-layout.mjs --width=960`（真实库）与 `--empty --shot`（空库首启）。脚本目前是 gitignored 的临时工具，见 D9。
+> 重跑方式：`node scripts/ui-probe.mjs --width=960`（真实库，追加窄窗一轮）与 `node scripts/ui-probe.mjs --empty --shot`（空库首启）。脚本已按 D9 落仓（当时是 gitignored 的临时工具，取证数字即出自它）。
 
 ---
 
