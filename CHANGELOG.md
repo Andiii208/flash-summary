@@ -2,7 +2,15 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.6] — 2026-09-18 · 笔记总结质量攻坚（六批）+ 排版系统化整改（八批）+ 笔记库检索
+
+本版本覆盖 0.7.5 之后的三批工作（0.7.6 自 2026-09-17 起一直是测试构建、未打 tag）：
+
+1. **笔记总结质量攻坚**（方案 `docs/plans/2026-09-17-note-quality-upgrade.md`，Andiii「都按照你推荐的去做吧」→ D1-D8 全推荐侧）：六批 + 两处收口，提交 `966d25d…6a2d7bd`。
+2. **排版系统化整改**（方案 `docs/plans/2026-09-18-typography-layout-overhaul.md`，Andiii「按计划一步步执行」→ D1-D11 全推荐侧；D12 判定的批9 讲义换皮延后）：十批，提交 `156f05c…0621977`。
+3. **笔记库可达性与检索**（方案 `docs/plans/2026-09-18-note-library-reachability.md`，Andiii「先 C 然后 A」→ D1-D7 全推荐侧）：四批，提交 `f5933ab…67d92ca`。
+
+**测试 898 → 1068（+170）**，smoke 32/32，CI 见各提交。新增工艺规范 `docs/skills/ui-layout/SKILL.md`。**状态：装机走查前**（走查清单见 PROGRESS）。
 
 ### Added
 - **笔记库可达性与检索（方案 docs/plans/2026-09-18-note-library-reachability.md）**：
@@ -16,7 +24,6 @@
     的「分块 + 显式展开」，不做虚拟滚动）。
   - 开发工具：`scripts/ui-probe.mjs` 新增 `--note-search=词`、`--paging`、`--seed-notes=N`
     （往副本库注入合成课时，用来验分页——真实库只有个位数笔记，不造材验不到）。
-
 ### Changed
 - **排版系统化整改（八批，方案 docs/plans/2026-09-18-typography-layout-overhaul.md）**：整改前 token 层只有色/圆角/阴影/字号/字体，**间距/行高/字距一个都没有**（实测 `gap` 14 种取值、`padding` 约 40 种、`line-height` 11 种、`letter-spacing` 6 种，全是逐处手写），同一角色还有多套实现（卡片 11 种 padding、列表行 6 种、空态 5 种形状）。
   - **建立刻度**：`--space-*` / `--leading-*` / `--tracking*` 三组 token，`gap`/`line-height`/`letter-spacing` 归到刻度（有钉住测试，裸值会红）。
@@ -27,10 +34,6 @@
   - **一致性**：课程三键顺序、展开/收起顺序、工具行分组、按钮不折行、弹层按钮行、时间与时长口径（`formatTime` 不再输出 `01:60`；任务历史补时间列）。
   - **暗色**：学科墨水升为主题 token（此前对暗面只有 2.16-3.47:1，几乎看不见 → 5.18-6.69:1）；遮罩收成 `--scrim`；正文行距暗色下加大一档。
   - 新增工艺规范 `docs/skills/ui-layout/SKILL.md`（刻度表 / 基元 / 断点 / 主题 / 一致性约定）。测试 1025 → 1059。
-
-## [0.7.6] — 2026-09-17 · 笔记总结质量攻坚（六批）+ 公式排版
-
-方案 docs/plans/2026-09-17-note-quality-upgrade.md（Andiii 批准「都按照你推荐的去做吧」，D1-D8 全推荐侧），六批 + 两处收口，测试 898 → 1025（+127），smoke 32/32，提交 966d25d…6a2d7bd。**测试构建，未打 tag。**
 
 ### Added
 - **公式排版**：笔记与 PDF 讲义里的 LaTeX 公式用 KaTeX 渲染（`$...$` 行内 / `$$...$$` 独立成行）。形状规约给出例外：`kind="formula"` 的 content 必须用 LaTeX 书写——否则渲染器渲染的语法模型永远不会写。讲义里公式仍是**矢量文本**（实测内嵌 KaTeX 字体子集，非图片）。
