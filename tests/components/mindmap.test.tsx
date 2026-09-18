@@ -109,7 +109,7 @@ describe('MindMap M1.2 工具栏', () => {
     const toolbar = host.querySelector('[data-testid="mindmap-toolbar"]')
     expect(toolbar).not.toBeNull()
     const labels = Array.from(toolbar!.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '重置视图', '回忆模式'])
+    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '适应窗口', '回忆模式'])
     expect(toolbar!.querySelector('.mindmap-search')).not.toBeNull()
   })
 
@@ -183,6 +183,14 @@ describe('MindMap M1.3 缩放与平移', () => {
   const viewBoxOf = (host: HTMLElement): number[] =>
     host.querySelector('svg')!.getAttribute('viewBox')!.split(/\s+/).map(Number)
 
+  /** 批3: 适应窗口按滚动容器的 clientWidth/Height 算缩放——happy-dom 里量到 0，
+   *  所以测试显式给一个可测视口（真实浏览器由布局给出）。 */
+  const stubViewport = (host: HTMLElement, width: number, height: number): void => {
+    const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
+    Object.defineProperty(container, 'clientWidth', { value: width, configurable: true })
+    Object.defineProperty(container, 'clientHeight', { value: height, configurable: true })
+  }
+
   const fireWheel = (host: HTMLElement, init: WheelEventInit): void => {
     const container = host.querySelector('.mindmap-scroll')!
     act(() => {
@@ -213,20 +221,28 @@ describe('MindMap M1.3 缩放与平移', () => {
     expect(viewBoxOf(host)).toEqual(afterZoom)
   })
 
-  it('zoom clamps at 3x and 重置视图 restores identity', () => {
+  it('zoom clamps at 3x, and 适应窗口 fits the whole map back into the viewport', () => {
     const host = mountMindMap(TREE)
+    const svg = host.querySelector('svg')!
+    const contentW = Number(svg.getAttribute('width'))
+    const contentH = Number(svg.getAttribute('height'))
     const [, , w0] = viewBoxOf(host)
     for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 })
     expect(viewBoxOf(host)[2]).toBeCloseTo(w0! / 3, 4)
-    const reset = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '重置视图')
+
+    stubViewport(host, 400, 300)
+    const fit = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '适应窗口')
     act(() => {
-      reset?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      fit?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-    expect(viewBoxOf(host)[2]).toBeCloseTo(w0!, 4)
-    expect(viewBoxOf(host)[0]).toBe(0)
+    // 批3 (T15): 适应窗口把整张图缩到装进视口（只缩小不放大，scale 夹在 0.4..1）。
+    const scale = contentW / viewBoxOf(host)[2]!
+    expect(scale).toBeCloseTo(Math.min(1, Math.max(0.4, Math.min(400 / contentW, 300 / contentH))), 4)
+    expect(contentW * scale).toBeLessThanOrEqual(400 + 0.5)
+    expect(contentH * scale).toBeLessThanOrEqual(300 + 0.5)
   })
 
-  it('keyboard +/-/0 zooms and resets while the canvas holds focus', () => {
+  it('keyboard +/-/0 zooms and fits while the canvas holds focus', () => {
     const host = mountMindMap(TREE)
     const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
     const [, , w0] = viewBoxOf(host)
@@ -234,10 +250,12 @@ describe('MindMap M1.3 缩放与平移', () => {
       container.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }))
     })
     expect(viewBoxOf(host)[2]).toBeLessThan(w0!)
+    // 0 = 适应窗口（批3 起不再是回到 1:1）。
+    stubViewport(host, 400, 300)
     act(() => {
       container.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }))
     })
-    expect(viewBoxOf(host)[2]).toBeCloseTo(w0!, 4)
+    expect(viewBoxOf(host)[2]).toBeGreaterThan(w0!)
   })
 
   it('background drag pans the viewBox; a drag on a node does not', () => {

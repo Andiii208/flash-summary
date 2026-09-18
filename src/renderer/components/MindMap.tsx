@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Concept, ConceptLink, QuizItem, TreeNode } from '../../shared/notes/schema'
-import { collapsedSetForMaxDepth, computeMindMapLayout, titleBaseline, type LayoutNode } from '../../shared/notes/mindmap-layout'
+import { collapsedSetForMaxDepth, computeMindMapLayout, labelBoxWidth, titleBaseline, type LayoutNode } from '../../shared/notes/mindmap-layout'
 import { computeRelationLayout } from '../../shared/notes/relation-layout'
 import { QuizCards } from './NoteBlocks'
 import { InlineText } from './InlineText'
@@ -16,6 +16,9 @@ interface View {
 const MIN_SCALE = 0.4
 const MAX_SCALE = 3
 const IDENTITY_VIEW: View = Object.freeze({ scale: 1, x: 0, y: 0 })
+/** 批3 (T13): 关系标签的字号——必须与 style.css 的 .mindmap-link-label 一致，
+ *  胶囊盒宽按同一套单位模型算（CJK = 1 个字宽）。 */
+const LABEL_FONT_SIZE = 11
 
 /** Zoom to `nextScale` keeping the layout point at viewport fractions fx/fy fixed. */
 function zoomAt(view: View, nextScale: number, fx: number, fy: number, layoutWidth: number, layoutHeight: number): View {
@@ -193,6 +196,33 @@ export function MindMap({
     [quiz, popoverTerms]
   )
 
+  /**
+   * 批3 (T15, D11): 把整张图装进视口。此前打开一张两课时的地图，svg 938×1420
+   * 而滚动视口只有 525 高——竖直只显示约 37%，用户得先滚再找。scale 夹在
+   * MIN_SCALE..1（不放大，只缩小到装得下），并把滚动位置居中到内容上。
+   */
+  const fitToViewport = useCallback((): boolean => {
+    const el = scrollRef.current
+    if (el == null || frame.width <= 0 || frame.height <= 0) return false
+    const vw = el.clientWidth
+    const vh = el.clientHeight
+    if (vw <= 0 || vh <= 0) return false
+    const target = Math.min(1, Math.max(MIN_SCALE, Math.min(vw / frame.width, vh / frame.height)))
+    setView(zoomAt(IDENTITY_VIEW, target, 0.5, 0.5, frame.width, frame.height))
+    if (typeof el.scrollTo === 'function') {
+      el.scrollTo({ left: Math.max(0, (frame.width - vw) / 2), top: Math.max(0, (frame.height - vh) / 2) })
+    }
+    return true
+  }, [frame.width, frame.height])
+
+  // 首屏自适应：只在首次量到内容尺寸时做一次（之后用户的缩放/平移不再被夺走）。
+  const fittedRef = useRef(false)
+  useEffect(() => {
+    if (fittedRef.current) return
+    // 量到尺寸才吃这一次机会：挂载首帧 clientWidth 可能还是 0。
+    if (fitToViewport()) fittedRef.current = true
+  }, [fitToViewport])
+
   // Any pan/zoom move closes the popover — the HTML card cannot track the
   // transformed SVG content.
   useEffect(() => {
@@ -312,7 +342,7 @@ export function MindMap({
       setView((prev) => zoomAt(prev, prev.scale / 1.2, 0.5, 0.5, frame.width, frame.height))
     } else if (e.key === '0') {
       e.preventDefault()
-      setView(IDENTITY_VIEW)
+      fitToViewport()
     }
   }
 
@@ -381,8 +411,8 @@ export function MindMap({
         </button>
         {/* 批3: 工具栏分组——折叠控制 · 视图 · 模式 · 导出，分隔线让功能域可扫读。 */}
         <span class="mindmap-toolbar-divider" aria-hidden="true" />
-        <button class="btn small" onClick={() => setView(IDENTITY_VIEW)}>
-          重置视图
+        <button class="btn small" onClick={fitToViewport} title="把整张图缩到刚好装进窗口（快捷键 0）">
+          适应窗口
         </button>
         <span class="mindmap-toolbar-divider" aria-hidden="true" />
         {/* M2.3: recall mode — masks tier-2+ titles for retrieval practice
@@ -489,9 +519,9 @@ export function MindMap({
                 {edge.label !== '' && (
                   <g transform={`translate(${edge.lx}, ${edge.ly})`}>
                     <rect
-                      x={-(edge.label.length * 6.5 + 10) / 2}
+                      x={-labelBoxWidth(edge.label, LABEL_FONT_SIZE) / 2}
                       y={-9}
-                      width={edge.label.length * 6.5 + 10}
+                      width={labelBoxWidth(edge.label, LABEL_FONT_SIZE)}
                       height={18}
                       rx={9}
                       class="mindmap-link-label-box"
@@ -533,7 +563,7 @@ export function MindMap({
             <path d={link.d} class="mindmap-link-line" fill="none" />
             {link.label !== '' && (
               <g transform={`translate(${link.lx}, ${link.ly})`}>
-                <rect x={-(link.label.length * 6.5 + 10) / 2} y={-9} width={link.label.length * 6.5 + 10} height={18} rx={9} class="mindmap-link-label-box" />
+                <rect x={-labelBoxWidth(link.label, LABEL_FONT_SIZE) / 2} y={-9} width={labelBoxWidth(link.label, LABEL_FONT_SIZE)} height={18} rx={9} class="mindmap-link-label-box" />
                 <text text-anchor="middle" y={3.5} class="mindmap-link-label">
                   {link.label}
                 </text>

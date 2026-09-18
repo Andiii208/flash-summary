@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   collapsedSetForMaxDepth,
   computeMindMapLayout,
+  labelBoxWidth,
   LEVEL_WIDTH,
   NODE_HEIGHT,
   PADDING,
   SUBLINE_HEIGHT,
   sublineFirstBaseline,
   sublineLinesOf,
-  titleBaseline
+  titleBaseline,
+  wrapTitleLines
 } from '../src/shared/notes/mindmap-layout'
 import type { TreeNode } from '../src/shared/notes/schema'
 
@@ -115,6 +117,35 @@ describe('computeMindMapLayout', () => {
     const node = layout.nodes[0]!
     expect(node.lines.join('')).toBe(mixed.title)
     expect(node.lines.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('批3 (T14): 拉丁词不被拦腰切开——断行以词为单位', () => {
+    // 76px 盒宽 → 可用 4 个单位；'Sigmoid Tanh' 里 Sigmoid 恰好占 3.85。
+    const lines = wrapTitleLines('Sigmoid Tanh', 76)
+    expect(lines.join('')).toBe('Sigmoid Tanh')
+    // 每个词完整落在某一行里，没有跨行的半个词。
+    for (const word of ['Sigmoid', 'Tanh']) {
+      expect(lines.some((line) => line.includes(word))).toBe(true)
+    }
+    // 空格的断行不产生行首空格。
+    for (const line of lines) expect(line.startsWith(' ')).toBe(false)
+  })
+
+  it('批3 (T14): 单个超长词放不下时才硬切（不撑破节点框）', () => {
+    const long = 'A'.repeat(30)
+    const lines = wrapTitleLines(long, 76)
+    expect(lines.join('')).toBe(long)
+    expect(lines.length).toBeGreaterThan(1)
+  })
+
+  it('批3 (T13): 关系标签盒宽按中文字宽算（旧估法 3 个汉字就溢出）', () => {
+    const label = '包含于'
+    const box = labelBoxWidth(label, 11)
+    // 中文字宽 = 字号 → 文字本身占 33px，盒宽必须容得下它（旧估法 3*6.5+10 = 29.5）。
+    expect(box).toBeGreaterThanOrEqual([...label].length * 11)
+    expect(box).toBeGreaterThan([...label].length * 6.5 + 10)
+    // ASCII 仍按 0.55 字宽估（拉丁标签不该被撑成中文那么宽）。
+    expect(labelBoxWidth('MUX', 11)).toBeLessThan(labelBoxWidth('包含于', 11))
   })
 
   it('closing punctuation never starts a line (禁则)', () => {

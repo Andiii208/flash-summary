@@ -6,7 +6,7 @@
  * model-sourced strings are XML-escaped before they touch the document.
  */
 import type { ConceptLink, TreeNode } from './schema'
-import { computeMindMapLayout, sublineFirstBaseline, sublineLinesOf, titleBaseline } from './mindmap-layout'
+import { computeMindMapLayout, labelBoxWidth, sublineFirstBaseline, sublineLinesOf, titleBaseline } from './mindmap-layout'
 
 /** XML-escape text content and attribute values. */
 function esc(text: string): string {
@@ -36,10 +36,12 @@ export function treeToSvgDocument(tree: TreeNode, links: ConceptLink[], title: s
   for (const link of layout.links) {
     parts.push(`<path d="${esc(link.d)}" fill="none" stroke="#9aa6d8" stroke-width="1.4" stroke-dasharray="5 4"/>`)
     if (link.label !== '') {
-      const labelWidth = link.label.length * 6.5 + 10
+      // 批3 (T13): 盒宽按中文字宽算（导出路径此前与屏幕端一样按拉丁字宽估，
+      // 中文标签 3 个字起就顶出胶囊）。字号 11 必须与屏幕端 .mindmap-link-label 一致。
+      const labelWidth = labelBoxWidth(link.label, 11)
       parts.push(
         `<g transform="translate(${link.lx}, ${link.ly})"><rect x="${-labelWidth / 2}" y="-9" width="${labelWidth}" height="18" rx="9" fill="#f4f5fa" stroke="#dfe3ee"/>` +
-          `<text text-anchor="middle" y="3.5" font-size="10" fill="#6a7286">${esc(link.label)}</text></g>`
+          `<text text-anchor="middle" y="3.5" font-size="11" fill="#6a7286">${esc(link.label)}</text></g>`
       )
     }
   }

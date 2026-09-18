@@ -1880,7 +1880,9 @@ button.concept-ref:hover { color: var(--accent); }
    clearly distinct from the solid hierarchical edges. */
 .mindmap-crosslink .mindmap-link-line { stroke: var(--accent); stroke-dasharray: 5 4; stroke-width: 1.4; opacity: 0.55; }
 .mindmap-link-label-box { fill: var(--surface); stroke: var(--border); }
-.mindmap-link-label { font-size: 10px; font-weight: 600; fill: var(--accent); }
+/* 批3 (T13): 字号与 MindMap.tsx 的 LABEL_FONT_SIZE 必须一致（胶囊盒宽按它算），
+   同时把 10px 归到 xs 刻度。 */
+.mindmap-link-label { font-size: 11px; font-weight: 600; fill: var(--accent); }
 
 /* M3.2 (map expansion): focus breadcrumb. */
 .mindmap-crumbs { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; margin-bottom: 8px; }

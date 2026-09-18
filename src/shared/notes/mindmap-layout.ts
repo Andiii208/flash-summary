@@ -102,30 +102,89 @@ const NO_LINE_START = new Set([...'）」』》】，。、；：？！…'])
  * 批E: wrap a title into the lines that fit the box width. Pure and
  * deterministic; the layout uses its length for the node height and the
  * renderers print the lines verbatim — long titles are never truncated.
+ *
+ * 批3 (T14): 断行以**词**为单位——此前逐字符断，拉丁词会被拦腰切开（实拍
+ * 见到「Sigmoid, Tan / h」）。CJK 逐字断，拉丁/数字连写视为一个不可分单位；
+ * 单个词长到放不下时才硬切。
  */
 export function wrapTitleLines(title: string, boxWidth: number): string[] {
-  const usable = Math.max(1, Math.floor((boxWidth - 24) / CHAR_UNIT_W))
+  const usable = Math.max(1, (boxWidth - 24) / CHAR_UNIT_W)
   const lines: string[] = []
   let current = ''
   let currentUnits = 0
-  for (const ch of [...title]) {
-    const unit = isWideChar(ch) ? 1 : 0.55
-    // 禁则字符跟紧前一行行尾，不单独成行首。
-    if (NO_LINE_START.has(ch) && current !== '') {
-      current += ch
+  const push = (): void => {
+    if (current !== '') lines.push(current)
+    current = ''
+    currentUnits = 0
+  }
+  for (const token of wrapTokens(title)) {
+    const unit = tokenUnits(token)
+    // 空格：补在当前行尾（断行自然发生在空格之后），既不吃行首也不丢字符
+    // ——lines.join('') 必须等于原文，这是「不截断」的既有约定。
+    if (token === ' ') {
+      if (current !== '') {
+        current += token
+        currentUnits += unit
+      }
       continue
     }
-    if (currentUnits + unit > usable && current !== '') {
-      lines.push(current)
-      current = ch
-      currentUnits = unit
-    } else {
-      current += ch
+    // 禁则字符跟紧前一行行尾：既不因它断行，也不让它起行。
+    if (NO_LINE_START.has(token) && current !== '') {
+      current += token
       currentUnits += unit
+      continue
     }
+    if (currentUnits + unit > usable && current !== '') push()
+    // 单个词本身就超宽：硬切（否则它会撑破节点框）。
+    if (unit > usable) {
+      for (const ch of [...token]) {
+        const chUnit = tokenUnits(ch)
+        if (currentUnits + chUnit > usable && current !== '') push()
+        current += ch
+        currentUnits += chUnit
+      }
+      continue
+    }
+    current += token
+    currentUnits += unit
   }
-  if (current !== '') lines.push(current)
+  push()
   return lines.length > 0 ? lines : ['']
+}
+
+/** Latin/digit runs stay whole; everything else is one unit per character. */
+function wrapTokens(title: string): string[] {
+  const tokens: string[] = []
+  let latin = ''
+  for (const ch of [...title]) {
+    if (/[A-Za-z0-9]/.test(ch)) {
+      latin += ch
+      continue
+    }
+    if (latin !== '') {
+      tokens.push(latin)
+      latin = ''
+    }
+    tokens.push(ch)
+  }
+  if (latin !== '') tokens.push(latin)
+  return tokens
+}
+
+/** Width units of one token (CJK = 1, ASCII ≈ 0.55), same model as nodeWidth. */
+function tokenUnits(token: string): number {
+  let units = 0
+  for (const ch of [...token]) units += isWideChar(ch) ? 1 : 0.55
+  return units
+}
+
+/**
+ * 批3 (T13): 关系标签胶囊的盒宽。此前按「每字符 6.5px」估（拉丁字宽），而标签是
+ * 中文（每字 ≈ 字号宽）——实测 3 个汉字起文字就顶出胶囊底色。这里与节点同一套
+ * 单位模型：CJK = 1 个字宽，ASCII ≈ 0.55。
+ */
+export function labelBoxWidth(label: string, fontSize: number): number {
+  return Math.ceil(tokenUnits(label) * fontSize) + 12
 }
 
 /** Node box height for the wrapped lines (single line keeps NODE_HEIGHT). */

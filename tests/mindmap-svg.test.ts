@@ -30,8 +30,14 @@ describe('treeToSvg (M3.3 导图 SVG 导出, 2026-09-05)', () => {
 
   it('renders term sub-lines and dashed cross-links with labels', () => {
     const svg = treeToSvg(TREE, [{ from: '极限', to: '计算', label: '前提' }], '第五讲')
-    // The narrow node wraps the sub-line; assert on the first wrapped chunk.
-    expect(svg).toContain('极限、收')
+    // The narrow node wraps the sub-line. 批3: 断行改成以词/禁则为单位后切点会移动，
+    // 故断言性质（确实换行、内容不丢）而不是某一个具体切点。
+    // 关系标签也用 11px，故取最后一处（子行在文档里靠后）。
+    const sublineStart = svg.lastIndexOf('font-size="11"')
+    const subline = svg.slice(sublineStart, svg.indexOf('</text>', sublineStart))
+    expect(subline.match(/<tspan/g)?.length).toBeGreaterThan(1)
+    expect(subline).toContain('极限')
+    expect(subline).toContain('收敛')
     expect(svg).toContain('stroke-dasharray="5 4"')
     expect(svg).toContain('>前提</text>')
   })
@@ -39,6 +45,6 @@ describe('treeToSvg (M3.3 导图 SVG 导出, 2026-09-05)', () => {
   it('omits the label element when a link carries no label', () => {
     const svg = treeToSvg(TREE, [{ from: '极限', to: '计算' }], '第五讲')
     expect(svg).toContain('stroke-dasharray="5 4"')
-    expect(svg).not.toContain('<rect x="-')
+    expect(svg).not.toContain('rx="9" fill="#f4f5fa" stroke="#dfe3ee"')
   })
 })
