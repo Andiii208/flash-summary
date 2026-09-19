@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import type { AppSettingsInfo, ProvidersListResult, SeuSummaryBridge } from '../../shared/bridge'
 import type { ToastKind } from '../components/ToastArea'
 
-type Toast = (message: string, kind?: ToastKind, action?: { actionLabel: string; onAction: () => void }) => void
+export type Toast = (message: string, kind?: ToastKind, action?: { actionLabel: string; onAction: () => void }) => void
 
 export interface ConfigDomain {
   providers: ProvidersListResult | null

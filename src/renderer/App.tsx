@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight, Maximize2, PanelLeftClose, PanelLeftOpen } from 'lucide-preact'
-import { render } from 'preact'
-import type { AppSettingsInfo, CourseTreeInfo, NoteAttachmentInfo, AttachmentManifestEntry, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
-import { noteToMarkdown } from '../shared/notes/markdown'
 import { withSessionRetry } from '../shared/session-retry'
 import { orderMyCoursesFirst, orderTreeLessonsByNumber } from '../shared/course-order'
 import { courseMatchesQuery } from '../shared/course-search'
@@ -14,16 +12,13 @@ import { CourseBrowser } from './components/CourseBrowser'
 import { MyStudyPanel } from './components/MyStudyPanel'
 import { TaskPanel } from './components/TaskPanel'
 import { NoteViewer, type LessonContext } from './components/NoteViewer'
-import { PrintHandout } from './components/PrintHandout'
 import { QaPanel, type QaEntry } from './components/QaPanel'
 import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
 import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
-import { CourseMapDialog, type CourseMapInfo } from './components/CourseMapDialog'
+import { CourseMapDialog } from './components/CourseMapDialog'
 import { NoteUpgradeDialog } from './components/NoteUpgradeDialog'
-import { treeToSvgDocument } from '../shared/notes/mindmap-svg'
-import { svgToPngBase64 } from './rasterize-svg'
 import { WelcomeGuide } from './components/WelcomeGuide'
 import { PageHeader } from './components/PageHeader'
 import { ManualAdd } from './components/ManualAdd'
@@ -33,34 +28,15 @@ import { CopyrightNoticeDialog } from './components/CopyrightNoticeDialog'
 import { FeedbackDiagnosticsDialog } from './components/FeedbackDiagnosticsDialog'
 import { useToasts } from './hooks/use-toasts'
 import { useConfigDomain } from './hooks/use-config-domain'
+import { useNotesDomain, type NotesDomain } from './hooks/use-notes-domain'
+import { useTasksDomain, isActiveState, type TasksDomain } from './hooks/use-tasks-domain'
 import { SettingsPanel } from './components/SettingsPanel'
-
-/** 2026-09-04: wait for every <img> in the print handout to decode before
- *  printing — printToPDF snapshots the live DOM, undecoded images come out blank. */
-function waitForImages(root: HTMLElement): Promise<void> {
-  const images = [...root.querySelectorAll('img')]
-  return Promise.all(
-    images.map((img) =>
-      img.complete
-        ? Promise.resolve()
-        : new Promise<void>((resolve) => {
-            img.addEventListener('load', () => resolve(), { once: true })
-            img.addEventListener('error', () => resolve(), { once: true })
-          })
-    )
-  ).then(() => undefined)
-}
 
 type MainTab = 'tasks' | 'notes' | 'qa' | 'settings'
 
 /** school:listCourses envelope value (paged refresh, B1). */
 type CourseListResult = { loaded: number; platformTotal: number; platformPages: number }
 
-/** 批C 批3: 分页步长（「显示更多」每次加一页）。与主进程默认上限的关系：
- *  首次取的就是主进程默认值（笔记 200 / 任务 50）之外更小的**首屏页**，
- *  用户点「显示更多」按页加长——列表越长越慢，所以不一次全给。 */
-const NOTE_PAGE = 100
-const TASK_PAGE = 50
 
 const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
   { id: 'tasks', label: '任务' },
@@ -723,7 +699,7 @@ function JumpConfirmDialog({
   )
 }
 
-interface AppState {
+interface AppState extends NotesDomain, TasksDomain {
   session: SessionState
   sessionInfo: { savedAt: string | null; expiresAt: number | null }
   sessionBusy: boolean
@@ -765,23 +741,6 @@ interface AppState {
   toggleAllCourses: () => void
   visibleCourses: number
   showMoreCourses: () => void
-  note: Note | null
-  /** 批B: cross-lesson note library (notes tab empty state). */
-  noteIndex: NoteIndexInfo[]
-  /** 批C: 笔记库总数（> noteIndex.length 即为被截断）。 */
-  noteIndexTotal: number
-  /** 批C 批2: 笔记库搜索词与 setter。 */
-  noteQuery: string
-  setNoteQuery: (value: string) => void
-  /** 批C 批3: 「显示更多」——按页加长列表（不改主进程上限，走 limit 参数）。 */
-  showMoreNotes: () => void
-  showMoreTasks: () => void
-  /** 质量批4: 存量升级对话框数据 + 逐课运行状态（笔记库课程组入口）。 */
-  noteUpgrade: { open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }
-  noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }
-  openNoteUpgrade: (courseId: string, label: string) => void
-  closeNoteUpgrade: () => void
-  runNoteUpgrade: (lessonIds: string[]) => void
   /** 批B: recent Q&A across lessons (qa tab empty state). */
   qaRecent: QaRecentInfo[]
     /** B4: neighbors of the selected lesson (sorted, same course). */
@@ -792,13 +751,6 @@ interface AppState {
     dismissJump: () => void
     /** 批C: courses whose catalog harvest is currently running. */
     harvestInflight: ReadonlySet<string>
-  history: TaskRowInfo[]
-  /** Recent tasks across all lessons (serial queue visibility). */
-  globalHistory: TaskRowInfo[]
-  globalHistoryTotal: number
-  progress: TaskProgressInfo | null
-  running: boolean
-  submitBusy: boolean
   qaEntries: QaEntry[]
   qaBusy: boolean
   providers: ProvidersListResult | null
@@ -847,51 +799,12 @@ interface AppState {
   biliImported: (courseId: string, lessonIds: string[]) => void
   /** A2: one click from a finished task to its note. */
   openLessonNotes: (lessonId: string) => void
-  /** A1: create + run with a pre-flight capability check. */
-  createAndRun: () => void
-  retryTask: (taskId: string) => void
-  /** 批4: 返回 Promise——TaskPanel 行级按钮据此在 IPC 在途期间置灰。 */
-  cancelTask: (taskId?: string) => Promise<void>
-  /** 批4: 返回 Promise——TaskPanel 行级按钮据此在 IPC 在途期间置灰。 */
-  removeTask: (taskId: string) => Promise<void>
-  clearFinishedTasks: () => void
   ask: (question: string) => void
   saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => void
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   providerTest: { ok: boolean; text: string } | null
   providerTestBusy: boolean
-  exportNote: (lessonId: string) => void
-  /** Obsidian 批1: structured vault export. */
-  exportNoteObsidian: (lessonId: string) => void
-  /** Obsidian 批2: whole-course vault export. */
-  exportCourseObsidian: (courseId: string, label: string) => void
-  /** 2026-09-04 roadmap 2.2: export Anki TSV decks (concepts + quiz). */
-  exportNoteAnki: (lessonId: string) => void
-  /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
-  exportNoteSvg: (lessonId: string) => void
-  /** 批5: 位图导出（渲染层光栅化）。 */
-  exportNotePng: (lessonId: string, note: Note) => void
-  /** M4.1 (map expansion): open the course-level mind map dialog. */
-  openCourseMap: (courseId: string) => void
-  courseMap: CourseMapInfo | null
-  closeCourseMap: () => void
-  copyNote: () => void
-  /** 2026-09-04: regenerate + attachments + PDF handout for the note views. */
-  attachmentManifest: AttachmentManifestEntry[]
-  getAttachment: (ref: string) => NoteAttachmentInfo | null | undefined
-  attachmentVersion: number
-  noteRegenBusy: boolean
-  regenerateNote: (lessonId: string) => void
-  /** 批5: feedback polish (busy + submit → new note version). */
-  notePolishBusy: boolean
-  polishNote: (lessonId: string, feedback: { tags: string[]; text: string }) => void
-  pdfBusy: boolean
-  /** 健康巡查 2026-09-12 批5: the in-flight export kind (null = idle). */
-  exportBusy: string | null
-  /** 健康巡查 2026-09-12 批5: course-map aggregation in flight. */
-  courseMapBusy: boolean
-  exportNotePdf: (lessonId: string) => void
   setCacheDir: (dir: string) => void
   /** C10: open the folder picker; result lands in the panel via chosenCacheDir. */
   chooseCacheDir: () => void
@@ -924,10 +837,6 @@ const RESTORE_PERCENT: Record<string, number> = {
   summarizing: 94
 }
 
-/** True while the task still belongs to the serial queue. */
-function isActiveState(state: string): boolean {
-  return state !== 'succeeded' && state !== 'failed'
-}
 
 /** A2: readable task identity (course · lesson) for toasts. */
 function taskLabelOf(row: TaskRowInfo): string {
@@ -970,62 +879,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   /** 全部课程分组默认折叠——「我的学习」是主语，目录是字典。 */
   const [allCoursesOpen, setAllCoursesOpen] = useState(persisted.allCoursesOpen ?? false)
   const [currentLesson, setCurrentLesson] = useState(persisted.currentLesson ?? '')
-  const [note, setNote] = useState<Note | null>(null)
-  /** 批B: cross-lesson note library + recent Q&A (tab empty states). */
-  const [noteIndex, setNoteIndex] = useState<NoteIndexInfo[]>([])
-  /** 批C: 列表的**总数**（不受 LIMIT 影响）——界面据此如实说明是否被截断。 */
-  const [noteIndexTotal, setNoteIndexTotal] = useState(0)
-  /** 批C 批2: 笔记库搜索词（主进程过滤，见 ipc.ts notes:list）。 */
-  const [noteQuery, setNoteQuery] = useState('')
-  /** 批C 批3: 分页步长——「显示更多」每次加一页（沿用 M3-2 的「分块 + 显式展开」）。 */
-  const [noteLimit, setNoteLimit] = useState(NOTE_PAGE)
-  const [taskLimit, setTaskLimit] = useState(TASK_PAGE)
-  // 既有 7 处 `void loadNoteIndex()` / `loadGlobalHistory()` 想的是「按当前口径重取」，
-  // 所以把当前口径放 ref 里读，调用点不必逐个改签名。
-  const noteListRef = useRef({ keyword: '', limit: NOTE_PAGE })
-  noteListRef.current = { keyword: noteQuery.trim(), limit: noteLimit }
-  const taskLimitRef = useRef(TASK_PAGE)
-  taskLimitRef.current = taskLimit
   const [qaRecent, setQaRecent] = useState<QaRecentInfo[]>([])
   /** 批C: courses whose catalog harvest is in flight (play-page navigation). */
   const [harvestInflight, setHarvestInflight] = useState<ReadonlySet<string>>(new Set())
-  /** F4 (review): attachment MANIFEST (identity only) + lazily resolved data.
-  /** 2026-09-04: lesson attachment identities for the note views. */
-  const [attachmentManifest, setAttachmentManifest] = useState<AttachmentManifestEntry[]>([])
-  /** Bumped per resolved image so lazy views re-render. */
-  const [attachmentVersion, setAttachmentVersion] = useState(0)
-  const [noteRegenBusy, setNoteRegenBusy] = useState(false)
-  // 质量批4 (plan 2026-09-08 note-quality-overhaul): 存量升级——对话框与逐课状态。
-  const [noteUpgrade, setNoteUpgrade] = useState<{ open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }>({
-    open: false,
-    courseId: '',
-    label: '',
-    loading: false,
-    items: []
-  })
-  const [noteUpgradeRun, setNoteUpgradeRun] = useState<{ busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }>({
-    busy: false,
-    running: new Set(),
-    done: new Set(),
-    failed: new Set()
-  })
-  // 批5: feedback polish busy state (independent of regenerate).
-  const [notePolishBusy, setNotePolishBusy] = useState(false)
-  const [pdfBusy, setPdfBusy] = useState(false)
-  // 健康巡查 2026-09-12 批5: one export in flight at a time — double-clicking
-  // an export button used to open two native save dialogs. The kind names the
-  // running export so its own button can read «导出中…»; the ref guard closes
-  // the same-tick double-click race the state alone would miss.
-  const [exportBusy, setExportBusy] = useState<string | null>(null)
-  const exportBusyRef = useRef<string | null>(null)
-  /** M4.1: open course-level mind map (null = closed). */
-  const [courseMap, setCourseMap] = useState<CourseMapInfo | null>(null)
-  const [history, setHistory] = useState<TaskRowInfo[]>([])
-  const [globalHistory, setGlobalHistory] = useState<TaskRowInfo[]>([])
-  const [globalHistoryTotal, setGlobalHistoryTotal] = useState(0)
-  const [progress, setProgress] = useState<TaskProgressInfo | null>(null)
-  const [running, setRunning] = useState(false)
-  const [submitBusy, setSubmitBusy] = useState(false)
   const [qaEntries, setQaEntries] = useState<QaEntry[]>([])
   const [qaBusy, setQaBusy] = useState(false)
   // G1 (review): toasts + the config/provider domain live in dedicated hooks.
@@ -1113,6 +969,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const cancelExportNotice = useCallback((): void => {
     setPendingExport(null)
   }, [])
+
+  // 批8 (plan 2026-09-19, D5): notes/tasks 两域从 useAppState 抽出——状态与回调搬进
+  // 专用 hook，这里只做组合。lessonRef 是两域与 qa 共用的「慢响应不得覆盖当前课时」尺。
+  const notes = useNotesDomain(bridge, toast, { lessonRef, guardExport, tree, currentLesson })
+  const tasks = useTasksDomain(bridge, toast, { lessonRef, currentLesson, providers, goSettings })
 
   // 声明批6: «反馈这个错误» —— 取回**已脱敏**的诊断文本供用户复制。应用不上报任何
   // 数据：文本只进本地状态，再由用户点「复制诊断信息」进他自己的剪贴板。
@@ -1214,76 +1075,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const refreshTreeRef = useRef(refreshTree)
   refreshTreeRef.current = refreshTree
 
-  // All three lesson-scoped loaders guard on lessonRef: a slow response for
-  // a previously selected lesson must not overwrite the current one's panel.
-  const loadNote = useCallback(async (lessonId: string): Promise<void> => {
-    const res = (await bridge.notes.latest(lessonId)) as ApiResult<Note | null>
-    if (res.ok && res.value != null && lessonRef.current === lessonId) setNote(res.value)
-  }, [bridge])
 
-  // F4 (review): per-ref attachment cache. getAttachment returns undefined
-  // while a fetch is in flight, and the view re-renders on arrival via
-  // attachmentVersion — one small IPC per image instead of one giant one.
-  const attachmentCache = useRef(new Map<string, NoteAttachmentInfo | null>())
-  const attachmentInflight = useRef(new Set<string>())
-  const loadAttachments = useCallback(
-    async (lessonId: string): Promise<void> => {
-      const res = await bridge.notes.attachments(lessonId)
-      if (res.ok && res.value != null && lessonRef.current === lessonId) setAttachmentManifest(res.value)
-    },
-    [bridge]
-  )
-  const resolveAttachment = useCallback(
-    (lessonId: string, ref: string): void => {
-      const cacheKey = `${lessonId}:${ref}`
-      if (attachmentCache.current.has(cacheKey) || attachmentInflight.current.has(cacheKey)) return
-      attachmentInflight.current.add(cacheKey)
-      void (async () => {
-        try {
-          const res = await bridge.notes.attachmentData(lessonId, ref)
-          const value = res.ok ? (res.value ?? null) : null
-          attachmentCache.current.set(cacheKey, value)
-        } finally {
-          attachmentInflight.current.delete(cacheKey)
-          // 批4: 一批附件全部解析完成后一次 bump——逐张 bump 会让每个关键帧都
-          // 触发整棵笔记树重渲染；in-flight 集合清空即这一批结束。
-          if (attachmentInflight.current.size === 0 && lessonRef.current === lessonId) {
-            setAttachmentVersion((v) => v + 1)
-          }
-        }
-      })()
-    },
-    [bridge]
-  )
-  const getAttachment = useCallback(
-    (ref: string): NoteAttachmentInfo | null | undefined => {
-      const lessonId = lessonRef.current
-      const cacheKey = `${lessonId}:${ref}`
-      const cached = attachmentCache.current.get(cacheKey)
-      if (cached !== undefined || attachmentCache.current.has(cacheKey)) return cached ?? null
-      if (lessonId !== '') resolveAttachment(lessonId, ref)
-      return undefined
-    },
-    [resolveAttachment]
-  )
-  /** PDF print needs EVERY image before rendering (waitForImages semantics). */
-  const loadAllAttachments = useCallback(
-    async (lessonId: string): Promise<NoteAttachmentInfo[]> => {
-      const results = await Promise.all(
-        attachmentManifest.map(async (entry) => {
-          const res = await bridge.notes.attachmentData(lessonId, entry.ref)
-          return res.ok ? (res.value ?? null) : null
-        })
-      )
-      return results.filter((a): a is NoteAttachmentInfo => a != null)
-    },
-    [bridge, attachmentManifest]
-  )
-
-  const loadHistory = useCallback(async (lessonId: string): Promise<void> => {
-    const res = await bridge.tasks.list(lessonId)
-    if (res.ok && res.value != null && lessonRef.current === lessonId) setHistory(res.value.items)
-  }, [bridge])
 
   const loadQaHistory = useCallback(async (lessonId: string): Promise<void> => {
     // Recorded exchanges live in the library (desc); show them oldest first.
@@ -1294,31 +1086,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     }
   }, [bridge])
 
-  const loadGlobalHistory = useCallback(async (): Promise<TaskRowInfo[]> => {
-    const res = await bridge.tasks.list(undefined, { limit: taskLimitRef.current })
-    if (res.ok && res.value != null) {
-      setGlobalHistory(res.value.items)
-      setGlobalHistoryTotal(res.value.total)
-      return res.value.items
-    }
-    return []
-  }, [bridge])
 
-  /** 批B: cross-lesson library + recent Q&A feed the tab empty states. */
-  const loadNoteIndex = useCallback(async (): Promise<void> => {
-    const { keyword, limit } = noteListRef.current
-    const res = await bridge.notes.list({ ...(keyword === '' ? {} : { keyword }), limit })
-    if (res.ok && res.value != null) {
-      setNoteIndex(res.value.items)
-      setNoteIndexTotal(res.value.total)
-    }
-  }, [bridge])
-
-  // 批C 批2/批3: 搜索词或分页步长变化 → 去抖重取（每次按键都打一次 IPC 没必要）。
-  useEffect(() => {
-    const timer = setTimeout(() => void loadNoteIndex(), 200)
-    return () => clearTimeout(timer)
-  }, [noteQuery, noteLimit, loadNoteIndex])
 
   const loadQaRecent = useCallback(async (): Promise<void> => {
     const res = await bridge.qa.recent()
@@ -1330,19 +1098,18 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setCurrentLesson(lessonId)
       lessonRef.current = lessonId
       setQaEntries([])
-      setAttachmentManifest([])
-      attachmentCache.current.clear()
-      void loadNote(lessonId)
-      void loadAttachments(lessonId)
-      void loadHistory(lessonId)
+      notes.clearLessonData()
+      void notes.loadNote(lessonId)
+      void notes.loadAttachments(lessonId)
+      void tasks.loadHistory(lessonId)
       void loadQaHistory(lessonId)
       // C9: land on the tab that matches the lesson's state — a processed
       // lesson opens its note, an unprocessed one opens the task creation.
       const fromTree = tree.some((c) => c.lessons.some((l) => l.id === lessonId && l.hasNote))
-      const fromIndex = noteIndex.some((e) => e.lessonId === lessonId)
+      const fromIndex = notes.noteIndex.some((e) => e.lessonId === lessonId)
       goTab(fromTree || fromIndex ? 'notes' : 'tasks')
     },
-    [loadNote, loadAttachments, loadHistory, loadQaHistory, tree, noteIndex, goTab]
+    [notes.loadNote, notes.loadAttachments, tasks.loadHistory, loadQaHistory, tree, notes.noteIndex, goTab]
   )
 
   /** A2: one click from a finished task to its note. */
@@ -1365,10 +1132,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const clearLesson = useCallback((): void => {
     setCurrentLesson('')
     lessonRef.current = ''
-    setNote(null)
     setQaEntries([])
-    setAttachmentManifest([])
-    attachmentCache.current.clear()
+    notes.clearLessonData()
   }, [])
 
   // 批A: the brand click — back to the start view (no lesson, tasks tab).
@@ -1385,14 +1150,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setCurrentLesson(lessonId)
       lessonRef.current = lessonId
       setQaEntries([])
-      setAttachmentManifest([])
-      attachmentCache.current.clear()
-      void loadNote(lessonId)
-      void loadAttachments(lessonId)
-      void loadHistory(lessonId)
+      notes.clearLessonData()
+      void notes.loadNote(lessonId)
+      void notes.loadAttachments(lessonId)
+      void tasks.loadHistory(lessonId)
       void loadQaHistory(lessonId)
     },
-    [loadNote, loadAttachments, loadHistory, loadQaHistory]
+    [notes.loadNote, notes.loadAttachments, tasks.loadHistory, loadQaHistory]
   )
 
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
@@ -1445,7 +1209,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     void refreshProviders()
     void refreshSettings()
     void refreshBiliSession()
-    void loadNoteIndex()
+    void notes.loadNoteIndex()
     void loadQaRecent()
     // 批C: resume the persisted lesson selection (loads note/attachments/
     // history/QA so tabs are coherent after a reload).
@@ -1453,9 +1217,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     if (savedLesson !== '') {
       setCurrentLesson(savedLesson)
       lessonRef.current = savedLesson
-      void loadNote(savedLesson)
-      void loadAttachments(savedLesson)
-      void loadHistory(savedLesson)
+      void notes.loadNote(savedLesson)
+      void notes.loadAttachments(savedLesson)
+      void tasks.loadHistory(savedLesson)
       void loadQaHistory(savedLesson)
     }
     // The renderer unloads during in-window navigations (harvest/未来登录) —
@@ -1463,12 +1227,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     void (async () => {
       // 批4: 启动口径统一——任务列表只经 loadGlobalHistory 拉一次（分页 limit），
       // 不再叠加一次全表拉取把分页状态覆盖回全量。
-      const items = await loadGlobalHistory()
+      const items = await tasks.loadGlobalHistory()
       if (disposed) return
       const active = items.find((t) => isActiveState(t.state))
       if (active != null) {
-        setRunning(true)
-        setProgress({
+        tasks.setRunning(true)
+        tasks.setProgress({
           taskId: active.id,
           state: active.state,
           stage: active.failed_stage,
@@ -1481,7 +1245,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     // 开销可忽略；下载字节数等高频事件不触发）。修存量 bug：failed 后历史行
     // 仍显示旧的活动状态+可点「取消」，运行中行全程停留在旧状态。
     const off = bridge.tasks.onProgress((p) => {
-      setProgress(p)
+      tasks.setProgress(p)
       const progressKey = `${p.taskId}:${p.state}:${p.stage ?? ''}`
       const keyChanged = lastProgressKeyRef.current !== progressKey
       if (keyChanged) lastProgressKeyRef.current = progressKey
@@ -1491,14 +1255,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         // 批4: 一次成功事件只拉一次任务列表——此前 key 变更路径与成功分支
         // 各发一次全量 tasks.list，且成功分支那份还是不带 limit 的全表。
         void (async () => {
-          const rows = await loadGlobalHistory()
-          setRunning(rows.some((t) => isActiveState(t.state)))
+          const rows = await tasks.loadGlobalHistory()
+          tasks.setRunning(rows.some((t) => isActiveState(t.state)))
           const row = rows.find((t) => t.id === p.taskId)
           const doneLesson = row?.lesson_id ?? lid
-          void loadNoteIndex()
+          void notes.loadNoteIndex()
           if (doneLesson !== '') {
-            void loadNote(doneLesson)
-            void loadHistory(doneLesson)
+            void notes.loadNote(doneLesson)
+            void tasks.loadHistory(doneLesson)
           }
           toast(`${row != null ? `「${taskLabelOf(row)}」任务完成` : `任务 ${p.taskId} 完成`}`, 'success', {
             actionLabel: '查看笔记',
@@ -1507,13 +1271,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         })()
       } else {
         if (keyChanged) {
-          void loadGlobalHistory()
-          if (lid !== '') void loadHistory(lid)
+          void tasks.loadGlobalHistory()
+          if (lid !== '') void tasks.loadHistory(lid)
         }
         if (p.state === 'failed') {
         void (async () => {
           const rows = await bridge.tasks.list()
-          setRunning(rows.ok && rows.value != null ? rows.value.items.some((t) => isActiveState(t.state)) : false)
+          tasks.setRunning(rows.ok && rows.value != null ? rows.value.items.some((t) => isActiveState(t.state)) : false)
         })()
         toast(p.message, 'error')
         if (p.kind === 'session_expired') toast('会话已过期，登录后可重试此任务', 'error')
@@ -1529,7 +1293,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     // fresh tree — depending on it directly re-runs the effect forever).
     // refreshTree goes through its ref too (健康巡查 2026-09-12 批7: its
     // identity flips with refreshBusy).
-  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, refreshBiliSession, loadNote, loadAttachments, loadHistory, loadQaHistory, loadGlobalHistory, loadNoteIndex, loadQaRecent, goTasks])
+  }, [bridge, toast, applyLocalTree, refreshProviders, refreshSettings, refreshBiliSession, notes.loadNote, notes.loadAttachments, tasks.loadHistory, loadQaHistory, tasks.loadGlobalHistory, notes.loadNoteIndex, loadQaRecent, goTasks])
 
   // 批C: write the UI snapshot back on every change — a navigation-induced
   // reload (harvest/login) resumes exactly where the user was. Stale course
@@ -1635,10 +1399,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       setSession('logged_out')
       setTree([])
       setCurrentLesson('')
-      setNote(null)
-      setAttachmentManifest([])
-      attachmentCache.current.clear()
-      setHistory([])
+      notes.clearLessonData()
+      tasks.clearLessonData()
       setQaEntries([])
       toast('已退出登录', 'info')
     })()
@@ -1696,14 +1458,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   const lessonContextOrIndex = useMemo<LessonContext | null>(() => {
     if (lessonContext != null) return lessonContext
     if (currentLesson === '') return null
-    const entry = noteIndex.find((e) => e.lessonId === currentLesson)
+    const entry = notes.noteIndex.find((e) => e.lessonId === currentLesson)
     if (entry == null) return null
     return {
       courseName: entry.courseName ?? entry.lessonId,
       teacher: entry.teacher ?? undefined,
       lessonTitle: entry.lessonTitle ?? entry.lessonId
     }
-  }, [lessonContext, noteIndex, currentLesson])
+  }, [lessonContext, notes.noteIndex, currentLesson])
 
   // 批A: the selected lesson's course (for the chip's sibling-lesson dropdown).
   const currentCourse = useMemo(() => {
@@ -1836,73 +1598,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast, refreshTree, selectLesson]
   )
 
-  const launch = useCallback(
-    async (taskId: string, queued: boolean): Promise<void> => {
-      // B1: a queued task gets no progress card yet — the serial queue will
-      // push progress events when its turn comes.
-      if (!queued) {
-        setProgress({ taskId, state: 'pending', stage: null, message: '排队中', percent: 0 })
-        setRunning(true)
-      }
-      const res = await bridge.tasks.runAsync(taskId)
-      if (!res.ok) {
-        if (!queued) setRunning(false)
-        toast(res.error ?? '启动失败', 'error')
-      }
-    },
-    [bridge, toast]
-  )
-
-  /** B1: how many tasks are queued/running right now (from the latest rows). */
-  const countActive = useCallback((): number => {
-    return globalHistory.filter((row) => isActiveState(row.state)).length
-  }, [globalHistory])
-
-  const createAndRun = useCallback((): void => {
-    if (currentLesson === '' || submitBusy) return
-    // A1: validate capability bindings BEFORE creating the task — a missing
-    // binding used to surface only at the summarizing stage (30+ min lost).
-    const caps = new Set((providers?.bindings ?? []).map((b) => b.capability))
-    const missing: string[] = []
-    if (!caps.has('asr')) missing.push('ASR 转写')
-    if (!caps.has('multimodal')) missing.push('多模态总结')
-    if (missing.length > 0) {
-      toast(`尚未绑定${missing.join('、')}模型，任务无法完成。请先在设置中配置 Provider。`, 'error', {
-        actionLabel: '去设置',
-        onAction: goSettings
-      })
-      return
-    }
-    // B1: queueing is allowed while a task runs — bounded, and one task per
-    // lesson so the same video is never downloaded twice in parallel.
-    const queued = running
-    const activeCount = countActive()
-    if (queued && activeCount >= 3) {
-      toast('已有 3 个任务在排队/运行，等一个完成再排吧', 'error')
-      return
-    }
-    if (globalHistory.some((row) => row.lesson_id === currentLesson && isActiveState(row.state))) {
-      toast('该课时已有任务在排队/运行中', 'error')
-      return
-    }
-    void (async () => {
-      setSubmitBusy(true)
-      try {
-        const created = await bridge.tasks.create(currentLesson)
-        if (!created.ok) {
-          toast(created.error ?? '创建任务失败', 'error')
-          return
-        }
-        await launch((created.value as { id: string }).id, queued)
-        if (queued) {
-          toast('已加入队列，当前任务完成后自动开始', 'success')
-          await loadGlobalHistory()
-        }
-      } finally {
-        setSubmitBusy(false)
-      }
-    })()
-  }, [bridge, currentLesson, running, submitBusy, providers, toast, goSettings, launch, countActive, globalHistory, loadGlobalHistory])
 
   /** B站导入落地 (plan 2026-09-06 M5 · 续链改造 2026-09-07): create one
    *  pending task row per selected P, launch the first — the main process
@@ -1930,73 +1625,15 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           taskIds.push((created.value as { id: string }).id)
         }
         if (taskIds.length === 0) return
-        await launch(taskIds[0]!, running)
+        await tasks.launch(taskIds[0]!, tasks.running)
         if (lessonIds[0] != null) selectLesson(lessonIds[0])
         goTasks()
         toast(`已导入 ${lessonIds.length} 个分P：完成一个自动开始下一个`, 'success')
       })()
     },
-    [bridge, providers, running, launch, refreshTree, toast, goSettings, goTasks, selectLesson]
+    [bridge, providers, tasks.running, tasks.launch, refreshTree, toast, goSettings, goTasks, selectLesson]
   )
 
-  const retryTask = useCallback(
-    (taskId: string): void => {
-      if (running) return
-      void launch(taskId, false)
-    },
-    [running, launch]
-  )
-
-  /** B5: cancel any queued/running task by id (row-level button too). */
-  const cancelTask = useCallback(
-    (taskId?: string): Promise<void> => {
-      const id = taskId ?? (running ? progress?.taskId : undefined)
-      if (id == null) return Promise.resolve()
-      return (async () => {
-        const res = await bridge.tasks.cancel(id)
-        if (!res.ok) {
-          toast(res.error ?? '取消失败', 'error')
-          return
-        }
-        await loadGlobalHistory()
-        const lid = lessonRef.current
-        if (lid !== '') void loadHistory(lid)
-      })()
-    },
-    [bridge, running, progress, toast, loadGlobalHistory, loadHistory]
-  )
-
-  // M1-2: delete one terminal history row / clear all terminal rows, then
-  // refresh the visible histories.
-  const removeTask = useCallback(
-    (taskId: string): Promise<void> => {
-      return (async () => {
-        const res = await bridge.tasks.remove(taskId)
-        if (!res.ok) {
-          toast(res.error ?? '删除失败', 'error')
-          return
-        }
-        await loadGlobalHistory()
-        const lid = lessonRef.current
-        if (lid !== '') void loadHistory(lid)
-      })()
-    },
-    [bridge, toast, loadGlobalHistory, loadHistory]
-  )
-
-  const clearFinishedTasks = useCallback((): void => {
-    void (async () => {
-      const res = await bridge.tasks.clearFinished()
-      if (!res.ok) {
-        toast(res.error ?? '清理失败', 'error')
-        return
-      }
-      toast(`已清理 ${res.value?.removed ?? 0} 条任务记录`, 'success')
-      await loadGlobalHistory()
-      const lid = lessonRef.current
-      if (lid !== '') void loadHistory(lid)
-    })()
-  }, [bridge, toast, loadGlobalHistory, loadHistory])
 
   const ask = useCallback(
     (question: string): void => {
@@ -2004,7 +1641,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       if (lid === '' || qaBusy) return
       // 批C: no-note soft guard — asking stays allowed (anti-gatekeeping),
       // but the answer's basis is stated up front instead of silently swapped.
-      if (note == null) toast('该课时尚无笔记，回答不基于笔记内容', 'info')
+      if (notes.note == null) toast('该课时尚无笔记，回答不基于笔记内容', 'info')
       // 批C: optimistic bubble — the user sees their question immediately.
       const stamp = new Date().toISOString()
       setQaEntries((es) => [...es, { question, answer: '', createdAt: stamp, pending: true }])
@@ -2032,418 +1669,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
         }
       })()
     },
-    [bridge, qaBusy, note, toast, loadQaRecent]
+    [bridge, qaBusy, notes.note, toast, loadQaRecent]
   )
 
-  /** 健康巡查 2026-09-12 批5: serialize the export family (markdown /
-   *  obsidian / anki / course-obsidian / svg) — native save dialogs must not
-   *  stack. While busy, every export button disables and the triggering one
-   *  reads «导出中…». PDF keeps its own pdfBusy (in-page render, pre-existing). */
-  const withExportBusy = useCallback((kind: string, run: () => Promise<void>): void => {
-    if (exportBusyRef.current != null) return
-    exportBusyRef.current = kind
-    setExportBusy(kind)
-    void run().finally(() => {
-      exportBusyRef.current = null
-      setExportBusy(null)
-    })
-  }, [])
-
-  const runExportNote = useCallback(
-    (lessonId: string): void => {
-      withExportBusy('markdown', async () => {
-        const res = await bridge.notes.exportMarkdown(lessonId)
-        if (!res.ok) {
-          toast(res.error ?? '导出失败', 'error')
-          return
-        }
-        if (res.value?.canceled) return
-        // 批E: close the loop — the exports folder is one click away.
-        const filePath = res.value?.path ?? ''
-        toast(`已导出：${filePath}`, 'success', {
-          actionLabel: '打开所在文件夹',
-          onAction: () => {
-            void bridge.notes.revealFile(filePath)
-          }
-        })
-      })
-    },
-    [bridge, toast, withExportBusy]
-  )
-
-  /** Obsidian 批1: structured export into the user's vault — first run asks
-   *  for the vault root once, later runs overwrite the same file silently. */
-  const runExportNoteObsidian = useCallback(
-    (lessonId: string): void => {
-      withExportBusy('obsidian', async () => {
-        const res = await bridge.notes.exportObsidian(lessonId)
-        if (!res.ok) {
-          toast(res.error ?? '导出失败', 'error')
-          return
-        }
-        if (res.value?.canceled) return
-        const filePath = res.value?.path ?? ''
-        toast(`已导出到 Obsidian 仓库（v${res.value?.version ?? '?'}）`, 'success', {
-          actionLabel: '打开所在文件夹',
-          onAction: () => {
-            void bridge.notes.revealFile(filePath)
-          }
-        })
-      })
-    },
-    [bridge, toast, withExportBusy]
-  )
-
-  /** Obsidian 批2: whole-course vault export (lessons + derived pages). */
-  const runExportCourseObsidian = useCallback(
-    (courseId: string, label: string): void => {
-      withExportBusy('course-obsidian', async () => {
-        const res = await bridge.notes.exportCourseObsidian(courseId)
-        if (!res.ok) {
-          toast(res.error ?? '导出失败', 'error')
-          return
-        }
-        if (res.value?.canceled) return
-        const exported = res.value?.exported ?? 0
-        const skipped = res.value?.skipped ?? 0
-        const skipSuffix = skipped > 0 ? `，${skipped} 个课时无笔记已跳过` : ''
-        toast(`已将《${label}》${exported} 个课时导出到 Obsidian 仓库（含概念聚合页）${skipSuffix}`, 'success')
-      })
-    },
-    [bridge, toast, withExportBusy]
-  )
-
-  /** 2026-09-04 roadmap 2.2: Anki TSV decks — toast carries a reveal action. */
-  const runExportNoteAnki = useCallback(
-    (lessonId: string): void => {
-      withExportBusy('anki', async () => {
-        const res = await bridge.notes.exportAnki(lessonId)
-        if (!res.ok) {
-          toast(res.error ?? '导出失败', 'error')
-          return
-        }
-        const value = res.value
-        if (value == null || value.canceled || value.paths.length === 0) return
-        toast(`已导出 ${value.paths.length} 个牌堆文件`, 'success', {
-          actionLabel: '打开所在文件夹',
-          onAction: () => void bridge.notes.revealFile(value.paths[0] ?? '')
-        })
-      })
-    },
-    [bridge, toast, withExportBusy]
-  )
-
-  /** M3.3 (map expansion): export the knowledge tree as a standalone SVG. */
-  const runExportNoteSvg = useCallback(
-    (lessonId: string): void => {
-      withExportBusy('svg', async () => {
-        const res = await bridge.notes.exportSvg(lessonId)
-        if (!res.ok) {
-          toast(res.error ?? '导出失败', 'error')
-          return
-        }
-        if (res.value?.canceled) return
-        const filePath = res.value?.path ?? ''
-        toast(`已导出：${filePath}`, 'success', {
-          actionLabel: '打开所在文件夹',
-          onAction: () => {
-            void bridge.notes.revealFile(filePath)
-          }
-        })
-      })
-    },
-    [bridge, toast, withExportBusy]
-  )
-
-  /**
-   * 批5 (plan 2026-09-17 item 3): 导图位图导出。
-   *
-   * 分工：渲染层用 `treeToSvgDocument` 自己产 SVG（纯函数，不必经 IPC 往返）→
-   * canvas 光栅化（canvas 只在渲染层有）→ 把 PNG base64 交给 main 落盘。
-   * main 侧只解码 + 校验魔数 + 写文件，于是**零新依赖**（无需图像编码器）。
-   */
-  const runExportNotePng = useCallback(
-    (lessonId: string, note: Note): void => {
-      withExportBusy('png', async () => {
-        try {
-          const doc = treeToSvgDocument(note.knowledgeTree, note.conceptLinks, note.knowledgeTree.title)
-          const raster = await svgToPngBase64(doc.svg, doc.width, doc.height)
-          const res = await bridge.notes.exportPng(lessonId, raster.base64)
-          if (!res.ok) {
-            toast(res.error ?? '导出失败', 'error')
-            return
-          }
-          if (res.value?.canceled) return
-          const filePath = res.value?.path ?? ''
-          toast(`已导出：${filePath}`, 'success', {
-            actionLabel: '打开所在文件夹',
-            onAction: () => {
-              void bridge.notes.revealFile(filePath)
-            }
-          })
-        } catch (e) {
-          toast((e as Error).message || '导出失败', 'error')
-        }
-      })
-    },
-    [bridge, toast, withExportBusy]
-  )
-
-  /** M4.1 (map expansion): aggregate the course's latest trees into one map. */
-  const [courseMapBusy, setCourseMapBusy] = useState(false)
-  const openCourseMap = useCallback(
-    (courseId: string): void => {
-      // 健康巡查 2026-09-12 批5: aggregation can take seconds on large
-      // courses — the button must say so and not re-trigger.
-      if (courseMapBusy) return
-      setCourseMapBusy(true)
-      void (async () => {
-        try {
-          const res = await bridge.notes.courseTree(courseId)
-          if (!res.ok) {
-            toast(res.error ?? '课程导图打开失败', 'error')
-            return
-          }
-          const value = res.value
-          if (value == null) return
-          // The merged tree's root title IS the course name (filled main-side).
-          setCourseMap({
-            courseName: value.tree.title,
-            tree: value.tree,
-            lessons: value.lessons,
-            skipped: value.skipped
-          })
-        } finally {
-          setCourseMapBusy(false)
-        }
-      })()
-    },
-    [bridge, toast, courseMapBusy]
-  )
-
-  /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
-  const regenerateNote = useCallback(
-    (lessonId: string): void => {
-      void (async () => {
-        setNoteRegenBusy(true)
-        try {
-          const res = await bridge.notes.regenerate(lessonId)
-          if (!res.ok) {
-            toast(res.error ?? '重新生成失败', 'error')
-            return
-          }
-          // Citation quality signal (roadmap 1.3): hidden when nothing cited.
-          const result = res.value
-          if (result == null) {
-            toast('重新生成失败：返回数据缺失', 'error')
-            return
-          }
-          const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
-          // 批1: 转写摘引可核验率（与视觉锚分列，口径不同）——同样无可判时隐藏。
-          const quoteSuffix =
-            result.transcriptHitRate != null && result.transcriptHitRate.total > 0
-              ? `，摘引可核验 ${result.transcriptHitRate.hits}/${result.transcriptHitRate.total}`
-              : ''
-          // F2 (review): fabricated refs are dropped before persisting — say so.
-          const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
-          // 批3: 归一层丢弃计数——「模型没写」与「写了但被拦下」是两种问题，后者此前
-          // 在界面上完全不可见（用户只看到「内容有点少」）。
-          const normalizedTotal = Object.values(result.normalizationDropped ?? {}).reduce((acc, n) => acc + n, 0)
-          const normalSuffix = normalizedTotal > 0 ? `，${normalizedTotal} 项格式不合法已丢弃` : ''
-          // 批3: 返修真的发生时把「N 项 → M 项」说出来——否则用户不知道系统改善过什么。
-          const repairSuffix =
-            result.health?.repaired === true && result.health.warnCountBeforeRepair != null
-              ? `，体检 ${result.health.warnCountBeforeRepair} 项 → ${result.health.warnCount} 项`
-              : ''
-          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}${repairSuffix}`, 'success')
-          await loadNote(lessonId)
-          await loadNoteIndex()
-        } finally {
-          setNoteRegenBusy(false)
-        }
-      })()
-    },
-    [bridge, toast, loadNote, loadNoteIndex]
-  )
-
-  /** 批5 (plan 2026-09-07 v07): feedback polish — send the user's feedback and
-   *  the latest note back to the model; the revision lands as version N+1. */
-  const polishNote = useCallback(
-    (lessonId: string, feedback: { tags: string[]; text: string }): void => {
-      void (async () => {
-        setNotePolishBusy(true)
-        try {
-          const res = await bridge.notes.polish(lessonId, feedback)
-          if (!res.ok) {
-            toast(res.error ?? '润色失败', 'error')
-            return
-          }
-          const result = res.value
-          if (result == null) {
-            toast('润色失败：返回数据缺失', 'error')
-            return
-          }
-          const hitSuffix = result.hitRate.total > 0 ? `，引用命中 ${result.hitRate.hits}/${result.hitRate.total}` : ''
-          // 批1: 与重生成同形——转写摘引可核验率，无可判时隐藏。
-          const quoteSuffix =
-            result.transcriptHitRate != null && result.transcriptHitRate.total > 0
-              ? `，摘引可核验 ${result.transcriptHitRate.hits}/${result.transcriptHitRate.total}`
-              : ''
-          const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
-          toast(`已生成第 ${result.version} 版润色笔记${hitSuffix}${quoteSuffix}${dropSuffix}`, 'success')
-          await loadNote(lessonId)
-          await loadNoteIndex()
-        } finally {
-          setNotePolishBusy(false)
-        }
-      })()
-    },
-    [bridge, toast, loadNote, loadNoteIndex]
-  )
-
-  /** 质量批4: open the upgrade picker — fetch the course's per-lesson health. */
-  const openNoteUpgrade = useCallback(
-    (courseId: string, label: string): void => {
-      setNoteUpgrade({ open: true, courseId, label, loading: true, items: [] })
-      setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Set() })
-      void (async () => {
-        const res = await bridge.notes.courseHealth(courseId)
-        if (res.ok && res.value != null) {
-          setNoteUpgrade((prev) => ({ ...prev, open: true, loading: false, items: res.value as NoteHealthInfo[] }))
-        } else {
-          setNoteUpgrade((prev) => ({ ...prev, open: false, loading: false }))
-          toast(res.error ?? '读取体检结果失败', 'error')
-        }
-      })()
-    },
-    [bridge, toast]
-  )
-
-  const closeNoteUpgrade = useCallback((): void => {
-    setNoteUpgrade((prev) => ({ ...prev, open: false }))
-    setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Set() })
-  }, [])
-
-  /** 质量批4: upgrade sequentially — one notes:regenerate per lesson (reuse
-   *  stored transcripts/keyframes; the handler's own guards apply per call). */
-  const runNoteUpgrade = useCallback(
-    (lessonIds: string[]): void => {
-      if (lessonIds.length === 0) return
-      void (async () => {
-        setNoteUpgradeRun({ busy: true, running: new Set(lessonIds), done: new Set(), failed: new Set() })
-        setNoteRegenBusy(true)
-        const done = new Set<string>()
-        const failed = new Set<string>()
-        try {
-          for (const lessonId of lessonIds) {
-            const res = await bridge.notes.regenerate(lessonId)
-            if (res.ok) {
-              done.add(lessonId)
-            } else {
-              failed.add(lessonId)
-            }
-          }
-          // 批4: 批量完成后刷一次笔记库——逐课各刷一次全库，批量升级时是 N 倍开销。
-          await loadNoteIndex()
-        } finally {
-          setNoteRegenBusy(false)
-          setNoteUpgradeRun({ busy: false, running: new Set(), done, failed })
-        }
-        const failedSuffix = failed.size > 0 ? `，${failed.size} 个课时失败（可重试）` : ''
-        if (done.size > 0) toast(`已升级 ${done.size} 个课时笔记，体检徽标可复核结果${failedSuffix}`, failed.size > 0 ? 'info' : 'success')
-        else toast('升级失败：所选课时都未能重新生成', 'error')
-      })()
-    },
-    [bridge, toast, loadNoteIndex]
-  )
-
-  /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
-  const runExportNotePdf = useCallback(
-    (lessonId: string): void => {
-      void (async () => {
-        if (note == null) return
-        setPdfBusy(true)
-        const printRoot = document.getElementById('print-root')
-        const previousTitle = document.title
-        try {
-          const dialog = await bridge.notes.exportPdfDialog(lessonId)
-          if (!dialog.ok) {
-            toast(dialog.error ?? '导出失败', 'error')
-            return
-          }
-          if (dialog.value?.canceled || dialog.value?.path == null) return
-
-          const course = tree.find((c) => c.lessons.some((l) => l.id === lessonId))
-          const lessonInfo = course?.lessons.find((l) => l.id === lessonId)
-          // Render the handout, then let every image decode before printing.
-          // F4: the print path resolves the FULL manifest first.
-          const printAttachments = await loadAllAttachments(lessonId)
-          render(
-            <PrintHandout
-              note={note}
-              attachments={printAttachments}
-              courseName={course?.name ?? ''}
-              lessonTitle={lessonInfo?.title ?? lessonId}
-              teacher={course?.teacher}
-              courTimes={course?.courTimes}
-              classroom={course?.classroom}
-              generatedAt={new Date().toLocaleString('zh-CN')}
-            />,
-            printRoot!
-          )
-          await waitForImages(printRoot!)
-          // 批4: the per-page print header reads the document title — lend it
-          // the course·lesson identity for the print, then hand it back.
-          document.title = `${course?.name ?? ''} · ${lessonInfo?.title ?? lessonId}`
-          // E3 (review): the token, not the path — main decides where to write.
-          const res = await bridge.notes.exportPdfWrite(dialog.value.token ?? '')
-          if (!res.ok) {
-            toast(res.error ?? 'PDF 生成失败', 'error')
-            return
-          }
-          const filePath = res.value?.path ?? ''
-          toast(
-            `已导出 PDF（${Math.round((res.value?.bytes ?? 0) / 1024)} KB）：${filePath}`,
-            'success',
-            {
-              actionLabel: '打开所在文件夹',
-              onAction: () => {
-                void bridge.notes.revealFile(filePath)
-              }
-            }
-          )
-        } finally {
-          document.title = previousTitle
-          render(null, printRoot!)
-          setPdfBusy(false)
-        }
-      })()
-    },
-    [bridge, toast, note, attachmentManifest, loadAllAttachments, tree]
-  )
-
-  const runCopyNote = useCallback((): void => {
-    if (note == null) return
-    void navigator.clipboard
-      .writeText(noteToMarkdown(note, '课程笔记'))
-      .then(() => toast('已复制 Markdown 到剪贴板', 'success'))
-      .catch(() => toast('复制失败', 'error'))
-  }, [note, tree, currentLesson, toast])
-
-  // 声明批4: 七个导出出口统一从这里出去——出口清单与 spec §9「每个导出路径都提示」
-  // 一一对应：PDF 讲义 / Markdown / 剪贴板 / Anki / Obsidian 单课时 / Obsidian 整课 /
-  // 导图 SVG。**新增导出路径必须在这里包一层**，否则会绕过版权提醒。
-  const exportNote = useCallback((lessonId: string): void => guardExport(() => runExportNote(lessonId)), [guardExport, runExportNote])
-  const exportNoteObsidian = useCallback((lessonId: string): void => guardExport(() => runExportNoteObsidian(lessonId)), [guardExport, runExportNoteObsidian])
-  const exportCourseObsidian = useCallback(
-    (courseId: string, label: string): void => guardExport(() => runExportCourseObsidian(courseId, label)),
-    [guardExport, runExportCourseObsidian]
-  )
-  const exportNoteAnki = useCallback((lessonId: string): void => guardExport(() => runExportNoteAnki(lessonId)), [guardExport, runExportNoteAnki])
-  const exportNoteSvg = useCallback((lessonId: string): void => guardExport(() => runExportNoteSvg(lessonId)), [guardExport, runExportNoteSvg])
-  const exportNotePng = useCallback((lessonId: string, note: Note): void => guardExport(() => runExportNotePng(lessonId, note)), [guardExport, runExportNotePng])
-  const exportNotePdf = useCallback((lessonId: string): void => guardExport(() => runExportNotePdf(lessonId)), [guardExport, runExportNotePdf])
-  const copyNote = useCallback((): void => guardExport(runCopyNote), [guardExport, runCopyNote])
 
   /** C6: remove an empty (never-processed) course from the sidebar. */
   const removeCourse = useCallback(
@@ -2477,6 +1705,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   }, [bridge])
 
   return {
+    ...notes,
+    ...tasks,
     session,
     sessionInfo,
     sessionBusy,
@@ -2510,22 +1740,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     toggleAllCourses,
     visibleCourses,
     showMoreCourses,
-    note,
-    noteIndex,
-    noteIndexTotal,
-    noteQuery,
-    setNoteQuery,
-    showMoreNotes: () => setNoteLimit((n) => n + NOTE_PAGE),
-    showMoreTasks: () => setTaskLimit((n) => n + TASK_PAGE),
     qaRecent,
     harvestInflight,
     openLessonNotes,
-    history,
-    globalHistory,
-    globalHistoryTotal,
-    progress,
-    running,
-    submitBusy,
     qaEntries,
     qaBusy,
     providers,
@@ -2561,43 +1778,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     currentCourseLessons,
     addManual,
     biliImported,
-    createAndRun,
-    retryTask,
-    cancelTask,
-    removeTask,
-    clearFinishedTasks,
     ask,
     saveProvider,
     removeProvider,
     testProvider,
     providerTest,
     providerTestBusy,
-    exportNote,
-    exportNoteObsidian,
-    exportCourseObsidian,
-    exportNoteAnki,
-    exportNoteSvg,
-    exportNotePng,
-    openCourseMap,
-    courseMap,
-    closeCourseMap: () => setCourseMap(null),
-    copyNote,
-    attachmentManifest,
-    getAttachment,
-    attachmentVersion,
-    noteRegenBusy,
-    regenerateNote,
-    notePolishBusy,
-    polishNote,
-    noteUpgrade,
-    noteUpgradeRun,
-    openNoteUpgrade,
-    closeNoteUpgrade,
-    runNoteUpgrade,
-    pdfBusy,
-    exportBusy,
-    courseMapBusy,
-    exportNotePdf,
     setCacheDir,
     chooseCacheDir,
     chosenCacheDir,
@@ -2610,6 +1796,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     openPath,
     acceptDisclaimer,
     libraryBackupBusy,
-    exportLibraryBackup,
+    exportLibraryBackup
   }
 }
