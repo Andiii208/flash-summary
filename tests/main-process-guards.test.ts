@@ -41,12 +41,19 @@ describe('installProcessGuards (批5: 进程级异常兜底)', () => {
   })
 
   it('unwire removes the listeners so other test files stay unaffected', () => {
-    const lines: string[] = []
-    dispose = installProcessGuards({ error: (m) => lines.push(m) })
+    // Listener-count assertions only — emitting the event after dispose would
+    // leave vitest's own handler as the sole listener, which records an
+    // unhandled error and fails the whole run.
+    const baseRejection = process.listenerCount('unhandledRejection')
+    const baseException = process.listenerCount('uncaughtException')
+
+    dispose = installProcessGuards({ error: () => undefined })
+    expect(process.listenerCount('unhandledRejection')).toBe(baseRejection + 1)
+    expect(process.listenerCount('uncaughtException')).toBe(baseException + 1)
+
     dispose()
     dispose = null
-
-    process.emit('unhandledRejection', new Error('after-dispose'), Promise.resolve())
-    expect(lines).toHaveLength(0)
+    expect(process.listenerCount('unhandledRejection')).toBe(baseRejection)
+    expect(process.listenerCount('uncaughtException')).toBe(baseException)
   })
 })
