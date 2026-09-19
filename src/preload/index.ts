@@ -127,6 +127,8 @@ const api: SeuSummaryBridge = {
     openPath: (kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>> => ipcRenderer.invoke('settings:openPath', kind),
     acceptDisclaimer: (): Promise<ApiResult<{ version: number }>> => ipcRenderer.invoke('settings:acceptDisclaimer'),
     optOutCopyrightNotice: (): Promise<ApiResult<{ version: number }>> => ipcRenderer.invoke('settings:optOutCopyrightNotice'),
+    exportLibraryBackup: (): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
+      ipcRenderer.invoke('settings:exportLibraryBackup'),
     onMigrateProgress: (cb: (p: { copied: number; total: number }) => void): (() => void) => {
       const listener = (_e: unknown, p: { copied: number; total: number }): void => cb(p)
       ipcRenderer.on('library:migrationProgress', listener)

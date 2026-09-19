@@ -49,6 +49,9 @@ export interface ConfigDomain {
   optOutCopyrightNotice: () => void
   /** 声明批6: 打开测试期反馈表（地址在 main 侧，无参 IPC，渲染层传不了 URL）。 */
   openFeedbackForm: () => void
+  /** 批6 (D4): 资料库备份导出（busy 三件套同其它慢操作按钮）。 */
+  libraryBackupBusy: boolean
+  exportLibraryBackup: () => void
 }
 
 export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigDomain {
@@ -63,6 +66,8 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   const [libraryBusy, setLibraryBusy] = useState(false)
   const [libraryMigrated, setLibraryMigrated] = useState(false)
   const [migrationProgress, setMigrationProgress] = useState<{ copied: number; total: number } | null>(null)
+  /** 批6 (D4): 备份进行中——按钮禁用 + 文案省略号，防连点重复写盘。 */
+  const [libraryBackupBusy, setLibraryBackupBusy] = useState(false)
 
   const refreshProviders = useCallback(async (): Promise<void> => {
     const res = await bridge.providers.list()
@@ -223,6 +228,33 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     })()
   }, [bridge, toast, refreshSettings, libraryBusy])
 
+  // 批6 (D4): 资料库备份导出。main 侧 db.backup 是 WAL 一致快照，失败/取消都
+  // 由 main 兜底（不留半成品）；这里只做 in-flight 守卫 + 完成 toast（带「打开
+  // 所在文件夹」——备份落点用户自选，reveal 走 main 记下的一次性放行）。
+  const exportLibraryBackup = useCallback((): void => {
+    if (libraryBackupBusy) return
+    void (async () => {
+      setLibraryBackupBusy(true)
+      try {
+        const res = await bridge.settings.exportLibraryBackup()
+        if (!res.ok) {
+          toast(res.error ?? '备份失败', 'error')
+          return
+        }
+        if (res.value?.canceled) return
+        const filePath = res.value?.path ?? ''
+        toast('资料库备份完成', 'success', {
+          actionLabel: '打开所在文件夹',
+          onAction: () => {
+            void bridge.notes.revealFile(filePath)
+          }
+        })
+      } finally {
+        setLibraryBackupBusy(false)
+      }
+    })()
+  }, [bridge, toast, libraryBackupBusy])
+
   const openPath = useCallback(
     (kind: 'library' | 'cache' | 'exports' | 'logs'): void => {
       // 批4: the result is checked — a dead button (目录不存在/打开失败) must
@@ -291,6 +323,8 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     chooseCacheDir,
     setTheme,
     chooseLibrary,
+    libraryBackupBusy,
+    exportLibraryBackup,
     openPath,
     acceptDisclaimer,
     optOutCopyrightNotice,

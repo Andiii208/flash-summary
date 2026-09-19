@@ -673,6 +673,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onSetTheme={state.setTheme}
               onChooseLibrary={state.chooseLibrary}
               libraryBusy={state.libraryBusy}
+              onExportLibraryBackup={state.exportLibraryBackup}
+              backupBusy={state.libraryBackupBusy}
               libraryMigrated={state.libraryMigrated}
               migrationProgress={state.migrationProgress}
               onOpenPath={state.openPath}
@@ -903,6 +905,9 @@ interface AppState {
   libraryMigrated: boolean
   migrationProgress: { copied: number; total: number } | null
   chooseLibrary: () => void
+  /** 批6 (D4): 资料库备份导出（busy 三件套见 SettingsPanel）。 */
+  libraryBackupBusy: boolean
+  exportLibraryBackup: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
   /** 声明批2: record first-run consent (see useConfigDomain). */
   acceptDisclaimer: () => void
@@ -1062,7 +1067,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, openPath, acceptDisclaimer, optOutCopyrightNotice, openFeedbackForm } = config
+  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, libraryBackupBusy, exportLibraryBackup, openPath, acceptDisclaimer, optOutCopyrightNotice, openFeedbackForm } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -2603,6 +2608,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     migrationProgress,
     chooseLibrary,
     openPath,
-    acceptDisclaimer
+    acceptDisclaimer,
+    libraryBackupBusy,
+    exportLibraryBackup,
   }
 }

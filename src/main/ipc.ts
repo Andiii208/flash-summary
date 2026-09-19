@@ -48,6 +48,12 @@ import type { Note } from '../shared/notes/schema'
 
 /** 批5: PNG 魔数——渲染层传来的位图必须真的是 PNG 才落盘。 */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+/**
+ * 批6 (D4): main 自己通过保存对话框写下、等用户点「打开所在文件夹」的备份路径。
+ * 一次性：revealFile 消费后即移除——与 pendingPdfExports 同纪律，渲染层永远
+ * 只能 reveal 应用自己刚产出的文件。
+ */
+const recentLibraryBackups = new Set<string>()
 
 /**
  * 批C (plan 2026-09-18 note-library-reachability): 列表分页。
@@ -862,6 +868,39 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       writeLibraryPointer(ctx.userDataDir, migration.dest)
       ctx.logger.info(`library migrated to ${migration.dest} (pointer updated)`)
       return ok({ canceled: false, libraryRoot: migration.dest, restartRequired: true })
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // 批6 (D4): 资料库备份导出——独立入口（与迁移「不产 .bak、靠源库兜底」的
+  // 口径分开）。db.backup 是 better-sqlite3 内置的 WAL 一致快照 API（迁移复用的
+  // 同一原语），写到用户自选路径；只备份数据库文件，关键帧/PPT 等附件不在内。
+  // 失败或取消都不留半成品文件。
+  handle(ipc, 'settings:exportLibraryBackup', async () => {
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const stamp = new Date().toISOString().slice(0, 10)
+      const options: SaveDialogOptions = {
+        title: '备份资料库数据库',
+        defaultPath: join(ctx.exportsDir(), `seu-summary-backup-${stamp}.db`),
+        filters: [{ name: 'SQLite 数据库', extensions: ['db'] }]
+      }
+      const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
+      if (canceled || filePath == null) return ok({ canceled: true })
+      try {
+        await ctx.db.backup(filePath)
+      } catch (e) {
+        // 半成品不留：目标路径上可能已写下不完整的库文件。
+        try {
+          rmSync(filePath, { force: true })
+        } catch {
+          // Best-effort clean-up; the error below is what the user should see.
+        }
+        throw new Error(`备份失败：${(e as Error).message}`)
+      }
+      recentLibraryBackups.add(filePath)
+      ctx.logger.info(`library backup written: ${filePath}`)
+      return ok({ canceled: false, path: filePath })
     } catch (e) {
       return err(e)
     }
@@ -1694,7 +1733,10 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const allowedRoots = [ctx.exportsDir(), attachmentsPath(ctx.libraryRoot)]
       const vault = getSetting(ctx.db, 'obsidianVaultPath', '')
       if (vault !== '') allowedRoots.push(vault)
-      const allowed = allowedRoots.some((root) => {
+      // 批6: 备份落点由用户自选（可能在导出目录外）——main 刚写下的备份路径
+      // 放行（一次性），「打开所在文件夹」对自选路径不失灵。
+      const backupReveal = recentLibraryBackups.delete(requested)
+      const allowed = backupReveal || allowedRoots.some((root) => {
         const resolved = resolve(requested)
         return resolved === root || resolved.startsWith(root + sep)
       })

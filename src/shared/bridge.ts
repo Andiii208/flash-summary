@@ -303,6 +303,9 @@ export interface SettingsBridge {
   chooseCacheDir(): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   setTheme(theme: 'auto' | 'light' | 'dark'): Promise<ApiResult<{ theme: string }>>
   chooseLibrary(): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>>
+  /** 批6 (D4): 资料库备份导出——db.backup 到用户自选路径（与迁移「无 .bak 快照、
+   * 靠源库兜底」的口径分开的独立入口）。只含数据库文件；取消/失败不留半成品。 */
+  exportLibraryBackup(): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   openPath(kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>>
   /** 声明批2: record first-run consent for the current text version.
    *  Takes no argument on purpose — the version is main's own constant, so the

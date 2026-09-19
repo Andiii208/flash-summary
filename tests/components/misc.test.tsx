@@ -734,4 +734,27 @@ describe('SettingsPanel 批5 细节', () => {
     const host = mount(<SettingsPanel {...base} settings={LOADED} libraryMigrated />)
     expect(host.querySelector('[data-testid="migration-restart-notice"]')?.textContent).toContain('重启应用后生效')
   })
+
+  // 批6 (plan 2026-09-19, D4): 资料库备份入口——busy 三件套（省略号文案 +
+  // disabled + hook 侧 in-flight 守卫）与既有慢操作按钮同一形态。
+  it('批6: the library backup button shares the busy trio («备份中…» + disabled)', () => {
+    const onExportLibraryBackup = vi.fn()
+    const idle = mount(
+      <SettingsPanel {...base} settings={LOADED} onExportLibraryBackup={onExportLibraryBackup} />
+    )
+    const idleBtn = idle.querySelector('[data-testid="export-library-backup"]') as HTMLButtonElement
+    expect(idleBtn.textContent).toBe('备份资料库…')
+    expect(idleBtn.disabled).toBe(false)
+    click(idleBtn)
+    expect(onExportLibraryBackup).toHaveBeenCalledOnce()
+
+    const busy = mount(
+      <SettingsPanel {...base} settings={LOADED} onExportLibraryBackup={onExportLibraryBackup} backupBusy />
+    )
+    const busyBtn = busy.querySelector('[data-testid="export-library-backup"]') as HTMLButtonElement
+    expect(busyBtn.textContent).toBe('备份中…')
+    expect(busyBtn.disabled).toBe(true)
+    click(busyBtn)
+    expect(onExportLibraryBackup).toHaveBeenCalledTimes(1) // busy 时不放行连点
+  })
 })

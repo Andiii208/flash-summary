@@ -45,6 +45,9 @@ export interface SettingsPanelProps {
   /** 批5: a finished migration keeps a persistent restart notice on screen. */
   libraryMigrated?: boolean
   onChooseLibrary: () => void
+  /** 批6 (D4): 资料库备份导出——busy 三件套与在跑守卫同其它慢操作按钮。 */
+  backupBusy?: boolean
+  onExportLibraryBackup?: () => void
   onOpenPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
   /** 声明批6: 打开测试期反馈表（地址在 main 侧，无参 IPC）。 */
   onOpenFeedback?: () => void
@@ -165,6 +168,21 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
           <button class="btn small" onClick={() => props.onOpenPath('library')}>
             打开
           </button>
+        </div>
+        {/* 批6 (D4): 备份是独立入口——迁移不产 .bak 快照（靠源库兜底），
+            要「另存一份库」在这里。只备份数据库文件，附件不在内。 */}
+        <div class="settings-row">
+          <span class="settings-label">资料库备份</span>
+          {props.onExportLibraryBackup != null && (
+            <button
+              class="btn small"
+              data-testid="export-library-backup"
+              onClick={props.onExportLibraryBackup}
+              disabled={props.backupBusy === true}
+            >
+              {props.backupBusy === true ? '备份中…' : '备份资料库…'}
+            </button>
+          )}
         </div>
         {props.migrationProgress != null && (
           <p class="settings-hint">
