@@ -7,7 +7,7 @@ import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
 import { migrate } from '../src/main/db/migrate'
 import { ffmpegPath, ffprobePath } from '../src/main/media/binaries'
-import { decodeGrid8x8 } from '../src/main/media/grid'
+import { decodeGridPreferThumb } from '../src/main/media/grid'
 import { SchoolClient } from '../src/main/school/client'
 import { BilibiliClient } from '../src/main/bilibili/client'
 import { fetchBilibiliLesson } from '../src/main/bilibili/pipeline'
@@ -222,7 +222,7 @@ describe('six-stage pipeline end to end (real http + ffmpeg + provider wire form
       ffprobe: ffprobePath(),
       school,
       chat,
-      gridDecoder: decodeGrid8x8
+      gridDecoder: decodeGridPreferThumb
     })
 
     const repo = new TaskRepository(db)
@@ -324,7 +324,7 @@ describe('bilibili source end to end (plan 2026-09-06 M4)', () => {
       ffprobe: ffprobePath(),
       school: new SchoolClient(`http://127.0.0.1:${port}/jy-application-resourcemanage`, async () => '', (url, init) => globalThis.fetch(url, init as RequestInit)),
       chat,
-      gridDecoder: decodeGrid8x8,
+      gridDecoder: decodeGridPreferThumb,
       fetchBilibili: ({ bvid, page, signal }) => fetchBilibiliLesson(bilibili, bvid, page, signal)
     })
 
@@ -398,7 +398,7 @@ describe('bilibili source end to end (plan 2026-09-06 M4)', () => {
       ffprobe: ffprobePath(),
       school: new SchoolClient(`http://127.0.0.1:${port}/jy-application-resourcemanage`, async () => '', (url, init) => globalThis.fetch(url, init as RequestInit)),
       chat,
-      gridDecoder: decodeGrid8x8,
+      gridDecoder: decodeGridPreferThumb,
       fetchBilibili: ({ bvid, page, signal }) => fetchBilibiliLesson(bilibili, bvid, page, signal)
     })
 

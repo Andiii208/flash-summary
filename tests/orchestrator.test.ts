@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
@@ -386,6 +386,54 @@ describe('orchestrator stage executors', () => {
     expect((db.prepare('SELECT COUNT(*) AS n FROM notes').get() as { n: number }).n).toBe(1)
     expect((db.prepare('SELECT COUNT(*) AS n FROM transcripts').get() as { n: number }).n).toBe(1)
     expect(existsSync(join(taskDir, 'teacher.ts'))).toBe(false)
+  })
+
+  // 批3 (plan 2026-09-19): 抽帧去重改吃缩略图。gridDecoder 注入缝里换成
+  // 生产同款 decodeGridPreferThumb——保留帧集合（去重行为）必须与全分辨率
+  // 解码逐帧一致，且缓存目录里确有 thumb-frame-* 产出（双输出真的在跑）。
+  it('批3: 抽帧去重走缩略图（prefer-thumb 注入）与全分辨率解码保留结果一致', async () => {
+    const { execFileSync } = await import('child_process')
+    const { ffmpegPath } = await import('../src/main/media/binaries')
+    const { decodeGrid8x8, decodeGridPreferThumb } = await import('../src/main/media/grid')
+    const { hammingDistance } = await import('../src/shared/phash')
+
+    const runVisuals = async (taskId: string, gridDecoder: (p: string) => Grid8x8) => {
+      const deps = makeDeps({ gridDecoder })
+      const repo = new TaskRepository(db)
+      repo.create(taskId, 'l1')
+      const taskDir = join(dir, 'cache', taskId)
+      mkdirSync(taskDir, { recursive: true })
+      const screen = join(taskDir, 'screen.mp4')
+      execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=21:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', screen], { stdio: 'pipe' })
+      db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'downloading_video', ?)").run(
+        taskId,
+        JSON.stringify({ teacherPath: screen, screenPath: screen })
+      )
+      const executors = createExecutors(deps)
+      const result = await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })
+      const rows = db.prepare('SELECT timestamp_seconds, hash FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds').all('l1') as Array<{ timestamp_seconds: number; hash: string }>
+      return { result, rows, keyframesDir: join(taskDir, 'keyframes') }
+    }
+
+    const full = await runVisuals('t8-full', decodeGrid8x8)
+    expect(full.result).toEqual({ status: 'ok' })
+    expect(full.rows.length).toBeGreaterThan(1) // 21s @ fps=1/10 → 3 候选，去重后仍有多帧
+
+    const thumb = await runVisuals('t9-thumb', decodeGridPreferThumb)
+    expect(thumb.result).toEqual({ status: 'ok' })
+    // 去重行为不变：保留帧的时间戳集合逐帧一致。
+    expect(thumb.rows.map((r) => r.timestamp_seconds)).toEqual(full.rows.map((r) => r.timestamp_seconds))
+    // 哈希在原图与缩略图之间允许保真门内的漂移（≤2/64），实测应更小。
+    for (let i = 0; i < full.rows.length; i++) {
+      expect(hammingDistance(full.rows[i]!.hash, thumb.rows[i]!.hash)).toBeLessThanOrEqual(2)
+    }
+    // 批3: 缩略图随帧进库（hashOf 在 summarize 阶段解它，装完即删）；
+    // 抽帧缓存目录不残留 thumb-frame-*（只可能剩被去重丢弃帧的缩略图，
+    // 随任务缓存清理）。
+    const libKfDir = join(dir, 'attachments', 'l1', 'keyframes')
+    const libFiles = readdirSync(libKfDir)
+    expect(libFiles.filter((f) => f.startsWith('thumb-kf-')).length).toBe(thumb.rows.length)
+    expect(libFiles.filter((f) => /^kf-/.test(f)).length).toBe(thumb.rows.length)
   })
 })
 

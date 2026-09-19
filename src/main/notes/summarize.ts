@@ -4,9 +4,10 @@
  * note refresh never re-downloads the lesson (transcripts/keyframes are
  * reused straight from the library database).
  */
-import { readFileSync } from 'fs'
+import { readFileSync, readdirSync, rmSync } from 'fs'
+import { join } from 'path'
 import type { Db } from '../db/open'
-import { resolveLibraryPath } from '../library/paths'
+import { resolveLibraryPath, attachmentsPath } from '../library/paths'
 import {
   parseNote,
   parseNoteWithDiagnostics,
@@ -141,7 +142,28 @@ export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: strin
     })
     .filter((image): image is SummarizeImage => image != null)
 
+  // 视觉候选装配完毕（哈希已吃完缩略图）——删除该 lesson 的缩略图。
+  cleanupThumbnails(libraryRoot, lessonId)
+
   return { transcriptText: formatTimedTranscript(segments), segments, images, allRefs }
+}
+
+/**
+ * 批3: 缩略图只服务上面的哈希装配——装完即删该 lesson 两个附件目录的
+ * `thumb-*`。best-effort：目录不存在/删不掉都不抛（崩溃残留 ≤几 KB/张，
+ * 由附件 GC 批兜底；哈希产物不入库，下次装配时按需再生成）。
+ */
+function cleanupThumbnails(libraryRoot: string, lessonId: string): void {
+  for (const sub of ['ppt', 'keyframes'] as const) {
+    const dir = join(attachmentsPath(libraryRoot), lessonId, sub)
+    try {
+      for (const name of readdirSync(dir)) {
+        if (name.startsWith('thumb-')) rmSync(join(dir, name), { force: true })
+      }
+    } catch {
+      // 目录不存在/不可读：没有需要清理的缩略图
+    }
+  }
 }
 
 /** Post-image instruction: refs must quote the captioned evidence ids verbatim. */

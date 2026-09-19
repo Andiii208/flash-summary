@@ -3,11 +3,12 @@
  * All I/O goes through injected deps so tests can stub the network,
  * ffmpeg, and providers while the orchestration logic stays real.
  */
-import { mkdirSync, rmSync, existsSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, readFileSync, statSync, writeFileSync, renameSync } from 'fs'
 import { join } from 'path'
 import type { Db } from '../db/open'
 import { attachmentsPath } from '../library/paths'
 import { extractAudio, extractKeyframes, run as runProcess, pickAudioSource } from '../media/ffmpeg'
+import { thumbPathFor } from '../media/grid'
 import { chunkPlan, cutChunk } from '../media/audio-split'
 import { dedupeKeyframes, type Grid8x8 } from '../../shared/phash'
 import { downloadToFile } from '../media/download'
@@ -637,8 +638,11 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
         )
         for (const [i, frame] of kept.entries()) {
           const dest = join(destDir, `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`)
-          const { renameSync } = await import('fs')
           renameSync(frame.filePath, dest)
+          // 批3: 哈希缩略图随帧进库——summarize 阶段的视觉哈希解它
+          // （仅存于库、装完即删；抽帧缓存目录里的原件已被移走）。
+          const thumbSrc = thumbPathFor(frame.filePath)
+          if (existsSync(thumbSrc)) renameSync(thumbSrc, thumbPathFor(dest))
           insertKf.run(`${ctx.lessonId}-kf-${i}`, ctx.lessonId, frame.timestampSeconds, storedAttachmentsPath(ctx.lessonId, 'keyframes', `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`), frame.hash, nowIso(deps))
         }
         if (existsSync(dl.videoPath)) rmSync(dl.videoPath, { force: true })
@@ -660,8 +664,10 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
       )
       for (const [i, frame] of kept.entries()) {
         const dest = join(destDir, `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`)
-        const { renameSync } = await import('fs')
         renameSync(frame.filePath, dest)
+        // 批3: 哈希缩略图随帧进库（见 B 站支线同处注释）。
+        const thumbSrc = thumbPathFor(frame.filePath)
+        if (existsSync(thumbSrc)) renameSync(thumbSrc, thumbPathFor(dest))
         insertKf.run(`${ctx.lessonId}-kf-${i}`, ctx.lessonId, frame.timestampSeconds, storedAttachmentsPath(ctx.lessonId, 'keyframes', `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`), frame.hash, nowIso(deps))
       }
       if (existsSync(dl.screenPath)) rmSync(dl.screenPath, { force: true })
@@ -686,6 +692,27 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
             await downloadToFile(url, file, 3, ctx.signal)
             insertPpt.run(`${ctx.lessonId}-ppt-${i}`, ctx.lessonId, i, storedAttachmentsPath(ctx.lessonId, 'ppt', `page-${String(i).padStart(3, '0')}.png`), nowIso(deps))
             pptCount++
+          }
+          // 批3: PPT 页全部落盘后跑一次 ffmpeg，一次 spawn 出全部页的
+          // 哈希专用缩略图（同款 64px/8 倍数缩滤，见 media-thumb-fidelity
+          // 保真门）。失败不致命——缩略图缺失时哈希回落原图（降级路径）。
+          if (pptCount > 0) {
+            try {
+              await runProcess(
+                deps.ffmpeg,
+                [
+                  '-y',
+                  '-start_number', '0',
+                  '-i', join(pptDir, 'page-%03d.png'),
+                  '-vf', 'scale=w=64:h=max(8\\,trunc(64*ih/iw/8)*8)',
+                  '-start_number', '0',
+                  thumbPathFor(join(pptDir, 'page-%03d.png'))
+                ],
+                { signal: ctx.signal, timeoutMs: 10 * 60 * 1000 }
+              )
+            } catch {
+              // 缩略图是哈希加速件，不是证据本身；缺失即回落原图解码。
+            }
           }
         } catch {
           // PPT is supplementary; keep keyframes as the visual evidence.

@@ -8,6 +8,7 @@
 import { execFile } from 'child_process'
 import { statSync } from 'fs'
 import { join } from 'path'
+import { thumbPathFor } from './grid'
 
 export interface RunResult {
   stdout: string
@@ -131,6 +132,12 @@ export interface KeyframeResult {
  * Extract keyframes from the screen/PPT stream at a fixed interval
  * (`everySeconds`), writing JPGs named by timestamp. Deduplication happens
  * later via perceptual hashing; this stage only produces candidates.
+ *
+ * 批3 (plan 2026-09-19 audit-remediation): 一次 spawn 双输出——全分辨率帧
+ * 之外同出 64px 宽缩略图（高取 8 的倍数，令 8x8 网格边界与全分辨率严格
+ * 对齐；保真门 `tests/media-thumb-fidelity.test.ts` 实测汉明 ≤1/64）。
+ * 哈希改吃缩略图（`decodeGridPreferThumb`），主进程不再全分辨率解码；
+ * 缩略图只服务 phash、不展示，summarize 装配完即删。
  */
 export async function extractKeyframes(
   videoPath: string,
@@ -142,12 +149,15 @@ export async function extractKeyframes(
   const { mkdirSync, readdirSync } = await import('fs')
   mkdirSync(outDir, { recursive: true })
   const pattern = join(outDir, 'frame-%04d.jpg')
+  // thumbPathFor 单一事实源：命名 = thumbPathFor('frame-%04d.jpg') 的逐帧展开。
+  const thumbPattern = thumbPathFor(pattern)
   await run(ffmpeg ?? requireBin('ffmpeg'), [
     '-y',
     '-i', videoPath,
-    '-vf', `fps=1/${everySeconds}`,
-    '-q:v', '2',
-    pattern
+    '-filter_complex',
+    `[0:v]fps=1/${everySeconds},split[a][b];[b]scale=w=64:h=max(8\\,trunc(64*ih/iw/8)*8)[t]`,
+    '-map', '[a]', '-q:v', '2', pattern,
+    '-map', '[t]', '-q:v', '4', thumbPattern
   ], {
     signal,
     // D7 (review): a hard deadline only — the stall guard watches a single

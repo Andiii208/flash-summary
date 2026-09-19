@@ -7,7 +7,8 @@
  * 视觉融合要把两者比对，所以解码器按**文件魔数**分派而不是看扩展名。
  * pngjs 是 `phash.ts` 头注释里本来就写明的搭档解码器（MIT、零依赖）。
  */
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
+import { basename, dirname, join } from 'path'
 import { PNG } from 'pngjs'
 import type { Grid8x8 } from '../../shared/phash'
 
@@ -62,4 +63,27 @@ export function decodeGrid8x8(filePath: string): Grid8x8 {
     grid.push(row)
   }
   return grid
+}
+
+/**
+ * 批3：一张图的缩略图同伴路径——同目录、`thumb-` 前缀。
+ * 关键帧 `frame-0001.jpg` → `thumb-frame-0001.jpg`、PPT 页
+ * `page-000.png` → `thumb-page-000.png`。命名只有这一处事实源：
+ * `extractKeyframes` 双输出、PPT 缩略图跑批、`visual-hash` 与
+ * orchestrator 的 gridDecoder 注入都从它推导。
+ */
+export function thumbPathFor(originalPath: string): string {
+  return join(dirname(originalPath), `thumb-${basename(originalPath)}`)
+}
+
+/**
+ * 批3：有缩略图解缩略图、没有解原图。pHash 的 8x8 网格是块均值的二次
+ * 近似（scale 到 64px 再做块均值 ≈ 直接在原图上块均值，保真门见
+ * `tests/media-thumb-fidelity.test.ts`：汉明距离 ≤2/64），而解码成本
+ * 从「全分辨率 jpeg-js 同步解码阻塞主进程」降到 KB 级缩略图。
+ * 缩略图缺失（生成失败/历史库）时回落原图，哈希降级路径不变。
+ */
+export function decodeGridPreferThumb(filePath: string): Grid8x8 {
+  const thumb = thumbPathFor(filePath)
+  return decodeGrid8x8(existsSync(thumb) ? thumb : filePath)
 }

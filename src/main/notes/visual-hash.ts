@@ -9,7 +9,7 @@
  * 也不该被静默地从提示里拿掉。
  */
 import { averageHash, isDuplicate } from '../../shared/phash'
-import { decodeGrid8x8 } from '../media/grid'
+import { decodeGridPreferThumb } from '../media/grid'
 import { resolveLibraryPath } from '../library/paths'
 import type { VisualCandidate } from '../../shared/notes/visual-fusion'
 
@@ -24,10 +24,13 @@ export interface KeyframeRow {
   timestamp_seconds: number
 }
 
-/** 解码一张图的 8x8 哈希；读不出/解不开返回 null（候选保留，退出匹配）。 */
+/**
+ * 解码一张图的 8x8 哈希；读不出/解不开返回 null（候选保留，退出匹配）。
+ * 批3：有缩略图解缩略图（64px 宽的哈希专用同伴），没有回落原图。
+ */
 function hashOf(filePath: string): string | null {
   try {
-    return averageHash(decodeGrid8x8(filePath))
+    return averageHash(decodeGridPreferThumb(filePath))
   } catch {
     return null
   }

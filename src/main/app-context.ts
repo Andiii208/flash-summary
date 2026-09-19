@@ -24,7 +24,7 @@ import { loadProviderSettings, upsertProvider, deleteProvider, setBinding } from
 import { resolveCapability, validateProvider, type ProviderSettings, type Capability, type ProviderConfig } from './providers/model'
 import { OpenAiCompatibleClient } from './providers/openai-client'
 import { ffmpegPath, ffprobePath } from './media/binaries'
-import { decodeGrid8x8 } from './media/grid'
+import { decodeGridPreferThumb } from './media/grid'
 import type { Grid8x8 } from '../shared/phash'
 import { cleanStaleCache, cleanStaleCrashDumps, pruneStaleSignedUrlHandoffs } from './tasks/cache-clean'
 import { getSetting, setSetting, readSettings, SETTINGS_KEYS, type AppSettings } from './settings/store'
@@ -535,7 +535,8 @@ export function createContext(overrides: Partial<{
     },
     ffmpegPath,
     ffprobePath,
-    gridDecoder: decodeGrid8x8,
+    // 批3: 有 64px 缩略图解缩略图（哈希专用、只读 KB 级），没有回落原图。
+    gridDecoder: decodeGridPreferThumb,
     qaCapability: () => {
       const s = providers()
       return s.bindings.some((b) => b.capability === 'text') ? 'text' : 'multimodal'

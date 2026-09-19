@@ -1,9 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, statSync, writeFileSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, statSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { execFileSync } from 'child_process'
 import { extractAudio, extractKeyframes, probeMedia, fileSizeOrNull, pickAudioSource } from '../src/main/media/ffmpeg'
+import { thumbPathFor } from '../src/main/media/grid'
 import { ffmpegPath, ffprobePath } from '../src/main/media/binaries'
 
 let dir: string
@@ -86,6 +87,30 @@ describe('extractKeyframes (real ffmpeg)', () => {
       expect(existsSync(f.filePath)).toBe(true)
       expect(statSync(f.filePath).size).toBeGreaterThan(500)
     }
+  })
+
+  // 批3 (plan 2026-09-19): 一次 spawn 双输出是有意契约变更——帧之外同出
+  // 哈希专用 64px 缩略图（thumbPathFor 命名）。断言逐帧配对。
+  it('批3: one spawn 双输出——每帧配一张 thumb-frame-NNNN.jpg（同目录 thumb- 前缀）', async () => {
+    const outDir = join(dir, 'frames-thumbs')
+    const frames = await extractKeyframes(screenVideo, outDir, 2, ffmpegPath())
+    expect(frames.length).toBe(3)
+    for (const f of frames) {
+      const idx = /(\d{4})\.jpg$/.exec(f.filePath)![1]
+      const thumb = join(outDir, `thumb-frame-${idx}.jpg`)
+      expect(thumb).toBe(thumbPathFor(f.filePath))
+      expect(existsSync(thumb)).toBe(true)
+      // 缩略图是哈希加速件：宽 64、高 8 的倍数（保真门钉住格边界对齐）。
+      const info = await probeMedia(thumb, ffprobePath())
+      expect(info.width).toBe(64)
+      expect(info.height % 8).toBe(0)
+      // 远小于全分辨率帧。
+      expect(statSync(thumb).size).toBeLessThan(statSync(f.filePath).size)
+    }
+    // 数量一致：没有漏配也没有多产。
+    const dirFiles = readdirSync(outDir).sort()
+    expect(dirFiles.filter((f) => f.startsWith('thumb-')).length).toBe(frames.length)
+    expect(dirFiles.filter((f) => f.startsWith('frame-')).length).toBe(frames.length)
   })
 })
 
