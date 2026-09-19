@@ -136,7 +136,9 @@ export class OpenAiCompatibleClient {
     if (res.status === 400 && /image|visual|multimodal|vision/i.test(text)) {
       throw new ProviderError('unsupported_visual', 'model does not accept image input — bind a multimodal model', res.status)
     }
-    throw new ProviderError('bad_response', `provider returned ${res.status}: ${text.slice(0, 200)}`, res.status)
+    // 批2 (audit 2026-09-19): 响应体前 200 字符不再进错误信息——provider 的
+    // 错误页常回显请求（含 Authorization 头），body 白名单只留 status + kind。
+    throw new ProviderError('bad_response', `provider returned HTTP ${res.status}`, res.status)
   }
 
   /**
@@ -182,14 +184,15 @@ export class OpenAiCompatibleClient {
     }
 
     if (!res.ok) {
-      const text = await res.text().catch(() => '')
       if (res.status === 401 || res.status === 403) {
         throw new ProviderError('auth', 'API key rejected — check the key in provider settings', res.status)
       }
       if (res.status === 429) {
         throw new ProviderError('rate_limit', 'provider rate limit reached — retry later', res.status)
       }
-      throw new ProviderError('bad_response', `ASR returned ${res.status}: ${text.slice(0, 200)}`, res.status)
+      // 批2 (audit 2026-09-19): 同上——错误体不再读、不再拼（这里连分类都不
+      // 需要它），只留 HTTP status。
+      throw new ProviderError('bad_response', `ASR returned HTTP ${res.status}`, res.status)
     }
     const payload = (await res.json()) as { text?: string }
     if (typeof payload.text !== 'string') {

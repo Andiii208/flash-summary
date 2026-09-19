@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
 import { createContext, type AppContext } from '../src/main/app-context'
-import { registerIpc, setAppRendererOrigin } from '../src/main/ipc'
+import { registerIpc, setAppRendererOrigin, assertSafeId } from '../src/main/ipc'
 import { TaskRepository } from '../src/main/tasks/queue'
 import type { FetchLike } from '../src/main/bilibili/client'
 import type { Stage } from '../src/main/tasks/stages'
@@ -1214,5 +1214,41 @@ describe('assertAppSender — 批1 调用方边界（契约有意变更：不再
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
     await expect(ipc.invokeFrom('https://evil.example/x', 'providers:list')).rejects.toThrowError(/非法调用方/)
+  })
+})
+
+describe('assertSafeId — 批2 id 入盘校验', () => {
+  it('accepts the generator alphabet and rejects traversal, absolute paths, spaces and overlong values', () => {
+    expect(assertSafeId('course-01', 'courseId')).toBe('course-01')
+    expect(assertSafeId('c1-L12', 'lessonId')).toBe('c1-L12')
+    expect(assertSafeId('bili-BV1GJ411x7h7-P1', 'lessonId')).toBe('bili-BV1GJ411x7h7-P1')
+    expect(assertSafeId('a.b_c-d', 'id')).toBe('a.b_c-d')
+    for (const bad of ['..', '.', '../escape', '/abs', 'C:\\win', 'a b', 'a/b', 'a'.repeat(129), '', '课程一']) {
+      expect(() => assertSafeId(bad, 'id'), bad).toThrow(/(格式|non-empty)/)
+    }
+  })
+
+  it('rejects path-shaped ids at the handler entries (addManualCourse / tasks:create)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const badCourse = await ipc.invoke('school:addManualCourse', '../escape', 'L1') as { ok: boolean; error?: string }
+    expect(badCourse.ok).toBe(false)
+    expect(badCourse.error).toContain('courseId')
+    const badLesson = await ipc.invoke('school:addManualCourse', 'C1', 'L1/..') as { ok: boolean; error?: string }
+    expect(badLesson.ok).toBe(false)
+    expect(badLesson.error).toContain('lessonId')
+    const longLesson = await ipc.invoke('tasks:create', 'a'.repeat(200)) as { ok: boolean; error?: string }
+    expect(longLesson.ok).toBe(false)
+    expect(longLesson.error).toContain('lessonId')
+  })
+
+  it('keeps the tasks:delete hostiles rejected (guard moved into assertSafeId)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    for (const hostile of ['../escape', 'a/b', 'id with space', '.']) {
+      const rejected = (await ipc.invoke('tasks:delete', hostile)) as { ok: boolean; error?: string }
+      expect(rejected.ok, hostile).toBe(false)
+      expect(rejected.error, hostile).toContain('格式')
+    }
   })
 })

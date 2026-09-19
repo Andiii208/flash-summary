@@ -84,6 +84,19 @@ function str(v: unknown, name: string): string {
   return v
 }
 
+/**
+ * 批2 (audit 2026-09-19): id 字符校验——凡拼进文件路径或当 DB 行键的入参都先过
+ * 这里。纪律沿用 tasks:delete 的既有 inline 校验：首字符必须字母数字，«.» «..»
+ * «../x» 因此无法解析到别的目录（join(root, '.') 就是 root 本身）；再补长度上限
+ * 防超长键。中文等非 ASCII id 一并拒绝（手动课程 id 请用英文/数字）。
+ */
+const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+export function assertSafeId(v: unknown, name: string): string {
+  const id = str(v, name)
+  if (!SAFE_ID_RE.test(id)) throw new Error(`${name} 格式不合法`)
+  return id
+}
+
 /** Validate a directory is creatable/writable by probing it (U3). */
 function assertWritable(dir: string): void {
   mkdirSync(dir, { recursive: true })
@@ -467,7 +480,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // tree and shows the harvested lessons.
   handle(ipc, 'school:harvestLessons', async (_e, courseId: unknown) => {
     try {
-      const cid = str(courseId, 'courseId')
+      const cid = assertSafeId(courseId, 'courseId')
       ctx.harvestRuntime.start(cid)
       const course = ctx.db.prepare('SELECT id, tecl_id, tecl_code FROM courses WHERE id = ?').get(cid) as
         | { id: string; tecl_id: string | null; tecl_code: string | null }
@@ -524,8 +537,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // pull the real detail later; here we only need durable rows to exist.
   handle(ipc, 'school:addManualCourse', (_e, courseId: unknown, lessonId: unknown) => {
     try {
-      const cid = str(courseId, 'courseId')
-      const lid = str(lessonId, 'lessonId')
+      const cid = assertSafeId(courseId, 'courseId')
+      const lid = assertSafeId(lessonId, 'lessonId')
       const now = new Date().toISOString()
       ctx.db
         .prepare(
@@ -607,7 +620,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // with notes/tasks must be refused to protect the data).
   handle(ipc, 'school:removeCourse', (_e, courseId: unknown) => {
     try {
-      const cid = str(courseId, 'courseId')
+      const cid = assertSafeId(courseId, 'courseId')
       const noteRow = ctx.db
         .prepare('SELECT COUNT(*) AS n FROM notes n JOIN lessons l ON n.lesson_id = l.id WHERE l.course_id = ?')
         .get(cid) as { n: number }
@@ -633,7 +646,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // courses (plus their same-subject sections) to the top.
   handle(ipc, 'school:setMine', (_e, courseId: unknown, mine: unknown) => {
     try {
-      const cid = str(courseId, 'courseId')
+      const cid = assertSafeId(courseId, 'courseId')
       if (typeof mine !== 'boolean') throw new Error('mine must be a boolean')
       ctx.db.prepare('UPDATE courses SET is_mine = ? WHERE id = ?').run(mine ? 1 : 0, cid)
       return ok(true)
@@ -768,6 +781,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   handle(ipc, 'settings:setCacheDir', (_e, dir: unknown) => {
     try {
       const d = str(dir, 'cacheDir')
+      // 批2 (audit 2026-09-19): 缓存目录承接任务产物落盘——UNC（\\server\share）
+      // 会随网络/凭据漂移，任务跑到一半目录不可达就是永久失败；只收本机路径。
+      if (d.startsWith('\\\\') || d.startsWith('//')) throw new Error('缓存目录不支持网络路径（UNC），请选择本机磁盘目录')
       assertWritable(d)
       ctx.setSetting('cacheDir', d)
       return ok({ cacheDir: resolveCacheDir(d, ctx.settings().libraryRoot) })
@@ -871,7 +887,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
   handle(ipc, 'feedback:diagnostics', (_e, taskId: unknown) => {
     try {
-      const id = str(taskId, 'taskId')
+      const id = assertSafeId(taskId, 'taskId')
       const row = ctx.db
         .prepare(
           'SELECT t.id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name, c.source AS source FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id WHERE t.id = ?'
@@ -895,7 +911,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   handle(ipc, 'tasks:create', (_e, lessonId: unknown) => {
     try {
       const id = newId()
-      new TaskRepository(ctx.db).create(id, str(lessonId, 'lessonId'))
+      new TaskRepository(ctx.db).create(id, assertSafeId(lessonId, 'lessonId'))
       return ok({ id })
     } catch (e) {
       return err(e)
@@ -922,7 +938,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         'SELECT t.id, t.lesson_id, t.state, t.failed_stage, t.error_message, t.error_kind, t.created_at, t.updated_at, l.title AS lesson_title, c.name AS course_name, c.teacher AS teacher, c.cour_times AS courTimes, c.classroom AS classroom FROM tasks t LEFT JOIN lessons l ON t.lesson_id = l.id LEFT JOIN courses c ON l.course_id = c.id'
       const { limit, offset } = readPage(rawPage, TASK_LIST_LIMIT)
       const scoped = lessonId != null
-      const scopeArgs = scoped ? [str(lessonId, 'lessonId')] : []
+      const scopeArgs = scoped ? [assertSafeId(lessonId, 'lessonId')] : []
       // 批C: 总数与页用**同一个 WHERE 子句**（口径漂移过一次就再也对不上）。
       const total = (ctx.db.prepare(`SELECT COUNT(*) AS n FROM tasks t ${scoped ? 'WHERE t.lesson_id = ?' : ''}`).get(...scopeArgs) as { n: number }).n
       const rows = ctx.db
@@ -952,13 +968,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // A running task cannot be deleted — cancel it first.
   handle(ipc, 'tasks:delete', (_e, taskId: unknown) => {
     try {
-      const id = str(taskId, 'taskId')
-      // Defense in depth: the id is joined into an rmSync path below. It can
-      // only ever come from main's own task-id generator, but never trust that
-      // implicit invariant with a filesystem delete — the leading char must be
-      // alphanumeric, so «.», «..» and «../x» cannot resolve to another
-      // directory (join(root, '.') IS root).
-      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new Error('任务 ID 格式不合法')
+      const id = assertSafeId(taskId, 'taskId')
       const row = new TaskRepository(ctx.db).get(id)
       if (row == null) throw new Error('任务不存在')
       if (row.state !== 'succeeded' && row.state !== 'failed') throw new Error('任务尚未结束，请先取消再删除')
@@ -1057,7 +1067,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // as a failed progress event plus the returned envelope.
   handle(ipc, 'tasks:runAsync', async (_e, taskId: unknown) => {
     try {
-      const id = str(taskId, 'taskId')
+      const id = assertSafeId(taskId, 'taskId')
       const repo = new TaskRepository(ctx.db)
       const row = repo.get(id)
       if (row == null) throw new Error(`task ${id} not found`)
@@ -1106,7 +1116,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   }
   handle(ipc, 'tasks:cancel', (_e, taskId: unknown) => {
     try {
-      cancelById(str(taskId, 'taskId'))
+      cancelById(assertSafeId(taskId, 'taskId'))
       return ok({ cancelled: true })
     } catch (e) {
       return err(e)
@@ -1116,7 +1126,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // ---- notes ----
   handle(ipc, 'notes:latest', (_e, lessonId: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const row = ctx.db
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
@@ -1183,7 +1193,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // corrupt note_json degrades to a weak report instead of failing the course.
   handle(ipc, 'notes:courseHealth', (_e, courseId: unknown) => {
     try {
-      const id = str(courseId, 'courseId')
+      const id = assertSafeId(courseId, 'courseId')
       const course = ctx.db.prepare('SELECT id FROM courses WHERE id = ?').get(id)
       if (course == null) return err(new Error('课程不存在'))
       const rows = ctx.db
@@ -1231,7 +1241,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // picker), idempotent per-lesson writes, derived pages on course export.
   handle(ipc, 'notes:exportObsidian', async (_e, lessonId: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       // Nothing to export → fail before the vault picker ever opens.
       const exists = ctx.db.prepare('SELECT 1 FROM notes WHERE lesson_id = ?').get(id)
       if (exists == null) return err(new Error('该课时尚无笔记'))
@@ -1246,7 +1256,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   handle(ipc, 'notes:exportCourseObsidian', async (_e, courseId: unknown) => {
     try {
-      const id = str(courseId, 'courseId')
+      const id = assertSafeId(courseId, 'courseId')
       const course = ctx.db.prepare('SELECT id FROM courses WHERE id = ?').get(id)
       if (course == null) return err(new Error('课程不存在'))
       const vaultResult = await resolveObsidianVault(ctx.db)
@@ -1261,7 +1271,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // Export the latest note as Markdown via the system save dialog (U3).
   handle(ipc, 'notes:exportMarkdown', async (_e, lessonId: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const row = ctx.db
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
@@ -1301,7 +1311,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // native dialog (e2e seam, same pattern as SEU_PDF_PATH).
   handle(ipc, 'notes:exportAnki', async (_e, lessonId: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const row = ctx.db
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
@@ -1357,7 +1367,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // 但「渲染层传来的字节直接写盘」这种面不该无条件打开。
   handle(ipc, 'notes:exportPng', async (_e, lessonId: unknown, base64: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const data = str(base64, 'png')
       const bytes = Buffer.from(data, 'base64')
       if (bytes.length < 8 || bytes.subarray(0, 8).compare(PNG_SIGNATURE) !== 0) {
@@ -1400,7 +1410,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // the native dialog (e2e seam, same pattern as SEU_PDF_PATH/SEU_ANKI_PATH).
   handle(ipc, 'notes:exportSvg', async (_e, lessonId: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const row = ctx.db
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
@@ -1444,7 +1454,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // calls). A corrupt note JSON skips that lesson instead of failing the map.
   handle(ipc, 'notes:courseTree', (_e, courseId: unknown) => {
     try {
-      const id = str(courseId, 'courseId')
+      const id = assertSafeId(courseId, 'courseId')
       const course = ctx.db.prepare('SELECT name FROM courses WHERE id = ?').get(id) as { name: string } | undefined
       if (course == null) throw new Error('课程不存在')
       const rows = ctx.db
@@ -1476,7 +1486,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       // F4 (review): the manifest is identity-only — data URLs stream in
       // per ref via notes:attachmentData instead of one giant IPC message.
-      return ok(listAttachmentManifest(ctx.db, str(lessonId, 'lessonId')))
+      return ok(listAttachmentManifest(ctx.db, assertSafeId(lessonId, 'lessonId')))
     } catch (e) {
       return err(e)
     }
@@ -1485,7 +1495,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // F4 (review): one attachment's bytes per call — renderer caches per ref.
   handle(ipc, 'notes:attachmentData', (_e, lessonId: unknown, ref: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const attachmentRef = str(ref, 'ref')
       return ok(readAttachmentData(ctx.db, id, attachmentRef, ctx.libraryRoot))
     } catch (e) {
@@ -1497,7 +1507,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // re-download. Guarded: refuses while a task for this lesson is queued/running.
   handle(ipc, 'notes:regenerate', async (_e, lessonId: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       // Input checks first: a missing transcript should not masquerade as a
       // provider-binding problem (chatFor throws when unbound).
       const inputs = loadSummarizeInputs(ctx.db, id, ctx.libraryRoot)
@@ -1535,7 +1545,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   }
   handle(ipc, 'notes:polish', async (_e, lessonId: unknown, feedback: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const parsed = parseFeedback(feedback)
       if (parsed == null) return err(new Error('请先选择至少一个问题或填写补充说明'))
       if (queue.current() != null) return err(new Error('任务运行中，请等待完成后再润色笔记'))
@@ -1564,7 +1574,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // SEU_PDF_PATH bypasses the native dialog (e2e/test seam; dev-only env).
   handle(ipc, 'notes:exportPdfDialog', async (_e, lessonId: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const lesson = ctx.db
         .prepare(
           `SELECT l.title, c.name AS course_name, c.teacher
@@ -1644,7 +1654,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // ---- Q&A ----
   handle(ipc, 'qa:ask', async (_e, lessonId: unknown, question: unknown) => {
     try {
-      const id = str(lessonId, 'lessonId')
+      const id = assertSafeId(lessonId, 'lessonId')
       const q = str(question, 'question')
       const noteRow = ctx.db
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
@@ -1667,7 +1677,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       const rows = ctx.db
         .prepare('SELECT question, answer, created_at FROM qa WHERE lesson_id = ? ORDER BY created_at DESC LIMIT 50')
-        .all(str(lessonId, 'lessonId')) as Array<{ question: string; answer: string; created_at: string }>
+        .all(assertSafeId(lessonId, 'lessonId')) as Array<{ question: string; answer: string; created_at: string }>
       return ok(rows)
     } catch (e) {
       return err(e)

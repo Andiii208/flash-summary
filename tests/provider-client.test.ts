@@ -244,3 +244,43 @@ describe('ProviderError kinds', () => {
     expect(new ProviderError('bad_response', 'x').kind).toBe('bad_response')
   })
 })
+
+describe('批2 — provider 错误体白名单（status + kind，不留 body 原文）', () => {
+  it('chat 的 bad_response 只带 HTTP status，不回显响应体', async () => {
+    // A provider echoing the request (key included) in its 500 body must not
+    // ride along into the user-visible error message.
+    const body = 'upstream leaked Authorization: Bearer sk-super-secret-key-123 in its 500 page'
+    const client = new OpenAiCompatibleClient('https://api.x.com/v1', 'k', fetchText(500, body, []))
+    const error = await client.chat([], 'm').then(
+      () => null,
+      (e: unknown) => e as ProviderError
+    )
+    expect(error).toBeInstanceOf(ProviderError)
+    expect(error!.kind).toBe('bad_response')
+    expect(error!.status).toBe(500)
+    expect(error!.message).toContain('500')
+    expect(error!.message).not.toContain('sk-super-secret-key-123')
+    expect(error!.message).not.toContain('upstream')
+  })
+
+  it('ASR 的 bad_response 同样只带 HTTP status', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async () =>
+      ({ ok: false, status: 502, text: async () => 'gateway dumped sk-another-secret-key-456' }) as unknown as Response) as unknown as typeof fetch
+    try {
+      const client = new OpenAiCompatibleClient('https://api.x.com/v1', 'bad')
+      const error = await client.transcribe(new Blob(['x']), 'a.wav', 'whisper-1').then(
+        () => null,
+        (e: unknown) => e as ProviderError
+      )
+      expect(error).toBeInstanceOf(ProviderError)
+      expect(error!.kind).toBe('bad_response')
+      expect(error!.status).toBe(502)
+      expect(error!.message).toContain('502')
+      expect(error!.message).not.toContain('sk-another-secret-key-456')
+    } finally {
+      globalThis.fetch = original
+      chatOnlyAsrBaseUrls.delete('https://api.x.com/v1')
+    }
+  })
+})

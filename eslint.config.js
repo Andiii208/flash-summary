@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'node_modules/**', 'dist/**', 'release/**', '.zcode/**', '.ui-shots*/**']
+    ignores: ['out/**', 'node_modules/**', 'dist/**', 'release/**', '.zcode/**', '.ui-shots*/**', '.tmp-*/**']
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

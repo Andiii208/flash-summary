@@ -7,7 +7,9 @@
  *
  * Field sanitation: tabs/newlines inside a field would split or wrap rows on
  * every Anki version, so they collapse to spaces (plain-text import keeps
- * everything version-compatible — no #html headers).
+ * everything version-compatible — no #html headers). Cells starting with
+ * =/+/-/@ get a leading apostrophe so Anki/Excel treat them as text, not
+ * formulas (批2 audit 2026-09-19).
  */
 import type { Note } from './schema'
 
@@ -20,7 +22,10 @@ export interface AnkiDeck {
 
 /** Collapse row-breaking characters inside one TSV field. */
 function sanitizeField(text: string): string {
-  return text.replace(/[\t\r\n]+/g, ' ').trim()
+  const collapsed = text.replace(/[\t\r\n]+/g, ' ').trim()
+  // 批2 (audit 2026-09-19): 公式注入中和——Anki/Excel 会把 = + - @ 开头的
+  // 单元格当公式执行（CSV 注入），前置单引号后按纯文本导入。
+  return /^[=+\-@]/.test(collapsed) ? `'${collapsed}` : collapsed
 }
 
 /**

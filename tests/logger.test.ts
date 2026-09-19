@@ -74,6 +74,22 @@ describe('redact (U5 安全红线)', () => {
     expect(out).not.toContain('hunter2')
     expect(out).toContain('[REDACTED]')
   })
+
+  it('批2: 常见 key 的裸形态入名单（sk-/AKIA/gsk_——name=value 规则罩不住配置转储）', () => {
+    const out = redact('dump sk-AbCdEf123456 and AKIAABCDEFGHIJKLMNOP and gsk_abcdef123456 done')
+    expect(out).not.toContain('sk-AbCdEf123456')
+    expect(out).not.toContain('AKIAABCDEFGHIJKLMNOP')
+    expect(out).not.toContain('gsk_abcdef123456')
+    expect(out).toContain('[REDACTED]')
+  })
+
+  it('批2: B 站设备 cookie 名入名单（buvid3|b_nut|x-bili-ticket）', () => {
+    // SESSDATA/bili_jct/DedeUserID 之外，B 站登录态还发这三样设备标识。
+    const out = redact('bili cookies buvid3=abc123def456; b_nut=nut789xyz; x-bili-ticket=tok012abc done')
+    expect(out).not.toContain('abc123def456')
+    expect(out).not.toContain('nut789xyz')
+    expect(out).not.toContain('tok012abc')
+  })
 })
 
 describe('Logger (U5)', () => {

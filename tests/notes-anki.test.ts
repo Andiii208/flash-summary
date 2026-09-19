@@ -54,4 +54,17 @@ describe('ankiDecks (roadmap 2.2, 2026-09-04)', () => {
     const decks = ankiDecks(noteWith([{ term: 't', definition: 'd' }], []), '课')
     expect(deckToTsv(decks[0]!)).toBe('t\td\t课\n')
   })
+
+  it('批2: 公式注入中和——以 = + - @ 开头的单元格前置单引号，导入时按纯文本处理', () => {
+    // Anki/Excel 会把这类单元格当公式执行（CSV 注入），前置 ' 后按文本导入。
+    const decks = ankiDecks(
+      noteWith(
+        [{ term: '=1+1', definition: '+SUM(A1)' }, { term: '-2', definition: '@risk' }, { term: 'ok', definition: '普通文本' }],
+        [{ question: '=cmd', answer: '-1', source: 'examCue' }]
+      ),
+      '课'
+    )
+    expect(decks[0]?.rows).toEqual(["'=1+1\t'+SUM(A1)\t课", "'-2\t'@risk\t课", 'ok\t普通文本\t课'])
+    expect(decks[1]?.rows).toEqual(["'=cmd\t'-1\t课"])
+  })
 })

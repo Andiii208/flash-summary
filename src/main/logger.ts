@@ -72,7 +72,15 @@ export function redact(message: string): string {
     // Health audit 2026-09-12: access/refresh tokens live in the school
     // platform's localStorage and OAuth flows — no current log line carries
     // them, but any future response-body logging must not leak them first.
-    .replace(/((?:api[_-]?key|castgt|tgt|auth_key|jwt[-_]?token|sessdata|bili_jct|dedeuserid|access[_-]?token|refresh[_-]?token|password)\s*[=:]\s*)(?:"[^"]*"|[^\s;"]*)/gi, '$1[REDACTED]')
+    // 批2 (audit 2026-09-19): B 站设备 cookie buvid3/b_nut/x-bili-ticket 同属
+    // 账号标识，并入同一名单。
+    .replace(/((?:api[_-]?key|castgt|tgt|auth_key|jwt[-_]?token|sessdata|bili_jct|dedeuserid|access[_-]?token|refresh[_-]?token|password|buvid3|b_nut|x-bili-ticket)\s*[=:]\s*)(?:"[^"]*"|[^\s;"]*)/gi, '$1[REDACTED]')
+    // 批2 (audit 2026-09-19): 常见 key 的裸形态——name=value 规则要求等号在旁，
+    // 而配置转储/异常栈里 key 常单独出现。三段前缀：OpenAI 形态 sk-、AWS
+    // access key id AKIA、Groq 形态 gsk_。
+    .replace(/\bsk-[A-Za-z0-9_-]{12,}/g, '[REDACTED]')
+    .replace(/AKIA[0-9A-Z]{16}/g, '[REDACTED]')
+    .replace(/\bgsk_[A-Za-z0-9]{12,}/g, '[REDACTED]')
     .replace(/https?:\/\/[^\s"']+/gi, (url) => {
       try {
         const parsed = new URL(url)

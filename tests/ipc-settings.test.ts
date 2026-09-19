@@ -103,6 +103,15 @@ describe('settings IPC (U3)', () => {
     expect(again.value.cacheDir).toBe(custom)
   })
 
+  it('批2: settings:setCacheDir 拒绝 UNC 网络路径（任务产物落盘处不能随网络漂移）', async () => {
+    const ctx = makeCtx()
+    for (const hostile of ['\\\\nas\\share\\cache', '//nas/share/cache']) {
+      const res = await invoke(ctx, 'settings:setCacheDir', hostile) as { ok: boolean; error?: string }
+      expect(res.ok, hostile).toBe(false)
+      expect(res.error, hostile).toContain('UNC')
+    }
+  })
+
   it('settings:setTheme rejects an invalid theme', async () => {
     const ctx = makeCtx()
     const res = await invoke(ctx, 'settings:setTheme', 'neon') as { ok: false; error: string }
