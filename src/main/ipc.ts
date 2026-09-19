@@ -9,7 +9,7 @@
  */
 import { ipcMain, dialog, shell, app, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { lookup as dnsLookup } from 'dns/promises'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { join, dirname, sep, resolve } from 'path'
 import type { AppContext } from './app-context'
@@ -623,22 +623,50 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // C6: remove a manually mis-added course — ONLY when nothing was ever
   // processed with it (every table cascades on course delete, so a course
   // with notes/tasks must be refused to protect the data).
+  // 批6 (D8 推荐侧): 「任务记录」不再一律挡住删除——只挡在跑/排队中的任务，
+  // 或磁盘上仍留着该任务缓存的行（可续跑产物）；failed/cancelled 且无缓存的
+  // 行是终态垃圾，不该让误加的课程永远删不掉。
   handle(ipc, 'school:removeCourse', (_e, courseId: unknown) => {
     try {
       const cid = assertSafeId(courseId, 'courseId')
       const noteRow = ctx.db
         .prepare('SELECT COUNT(*) AS n FROM notes n JOIN lessons l ON n.lesson_id = l.id WHERE l.course_id = ?')
         .get(cid) as { n: number }
-      const taskRow = ctx.db
-        .prepare('SELECT COUNT(*) AS n FROM tasks t JOIN lessons l ON t.lesson_id = l.id WHERE l.course_id = ?')
-        .get(cid) as { n: number }
-      if (noteRow.n > 0 || taskRow.n > 0) {
-        throw new Error('该课程已有笔记或任务记录，为保护数据不允许删除')
+      const taskRows = ctx.db
+        .prepare('SELECT t.id, t.state FROM tasks t JOIN lessons l ON t.lesson_id = l.id WHERE l.course_id = ?')
+        .all(cid) as Array<{ id: string; state: string }>
+      const cacheRoot = resolveCacheDir(getSetting(ctx.db, 'cacheDir', ''), ctx.libraryRoot)
+      // 「磁盘上仍有缓存」= 任务缓存目录存在且非空（可续跑产物还在）。
+      const taskCacheOnDisk = (id: string): boolean => {
+        const dir = join(cacheRoot, id)
+        return existsSync(dir) && readdirSync(dir).length > 0
       }
+      if (noteRow.n > 0) {
+        throw new Error('该课程已有笔记，为保护数据不允许删除')
+      }
+      const blocked = taskRows.some((row) =>
+        row.state !== 'succeeded' && row.state !== 'failed' ? true : taskCacheOnDisk(row.id)
+      )
+      if (blocked) {
+        throw new Error('该课程有进行中或未清理的任务（缓存仍在磁盘上），为保护数据不允许删除')
+      }
+      const lessonRows = ctx.db
+        .prepare('SELECT id FROM lessons WHERE course_id = ?')
+        .all(cid) as Array<{ id: string }>
       ctx.db.transaction(() => {
         ctx.db.prepare('DELETE FROM lessons WHERE course_id = ?').run(cid)
         ctx.db.prepare('DELETE FROM courses WHERE id = ?').run(cid)
       })()
+      // 删除级联只覆盖库行；磁盘上的课时附件（关键帧/PPT/封面）由这里回收，
+      // 否则删课是附件目录无界增长的漏口。失败不阻塞返回——孤儿目录仍有启动时
+      // 24h sweep 兜底（app-context cleanStaleCache）。
+      for (const { id } of lessonRows) {
+        try {
+          rmSync(join(attachmentsPath(ctx.libraryRoot), id), { recursive: true, force: true })
+        } catch (e) {
+          ctx.logger.warn(`removeCourse: failed to GC attachments for lesson ${id}: ${(e as Error).message}`)
+        }
+      }
       ctx.logger.info(`removeCourse: ${cid} (empty course)`)
       return ok(true)
     } catch (e) {

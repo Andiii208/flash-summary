@@ -435,6 +435,54 @@ describe('orchestrator stage executors', () => {
     expect(libFiles.filter((f) => f.startsWith('thumb-kf-')).length).toBe(thumb.rows.length)
     expect(libFiles.filter((f) => /^kf-/.test(f)).length).toBe(thumb.rows.length)
   })
+
+  // 批6 (plan 2026-09-19): 重跑防孤儿。同一任务重跑且本次保留帧变少时，
+  // 附件目录先整体清空再写——上一次多出的帧（含批3 随帧的缩略图）不会作为
+  // 孤儿文件永远留在库里（DB 行有外键与版本管理，磁盘文件此前没有）。
+  it('批6: 重跑抽取先清 destDir——帧数变少不留孤儿文件', async () => {
+    const { execFileSync } = await import('child_process')
+    const { ffmpegPath } = await import('../src/main/media/binaries')
+
+    const taskId = 't6-rerun'
+    const repo = new TaskRepository(db)
+    repo.create(taskId, 'l1')
+    const taskDir = join(dir, 'cache', taskId)
+    mkdirSync(taskDir, { recursive: true })
+    const longVideo = join(taskDir, 'long.mp4')
+    const shortVideo = join(taskDir, 'short.mp4')
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=145:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', longVideo], { stdio: 'pipe' })
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=75:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', shortVideo], { stdio: 'pipe' })
+
+    const seedHandoff = (video: string): void => {
+      db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'downloading_video', ?)").run(
+        taskId,
+        JSON.stringify({ teacherPath: video, screenPath: video })
+      )
+    }
+    const libKfDir = join(dir, 'attachments', 'l1', 'keyframes')
+    const kfFiles = (): string[] => readdirSync(libKfDir).filter((f) => /^kf-/.test(f))
+    const rowsWithFileOnDisk = (): number =>
+      (db.prepare('SELECT file_path FROM keyframes WHERE lesson_id = ?').all('l1') as Array<{ file_path: string }>).filter((r) =>
+        existsSync(join(dir, r.file_path))
+      ).length
+
+    const executors = createExecutors(makeDeps())
+    seedHandoff(longVideo)
+    expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
+    const firstRun = kfFiles().length
+    expect(firstRun).toBeGreaterThan(1) // 145s @ 20s 间隔 + 覆盖桶 → 5 帧；75s 重跑 → 3 帧
+
+    // 上一次更长抽取留下的孤儿（整改前，帧数变少时它会一直躺在附件库里）。
+    writeFileSync(join(libKfDir, 'kf-0099-999s.jpg'), 'orphan-frame')
+    writeFileSync(join(libKfDir, 'thumb-kf-0099-999s.jpg'), 'orphan-thumb')
+
+    seedHandoff(shortVideo)
+    expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
+    expect(kfFiles().length).toBeLessThan(firstRun)
+    // 磁盘上没有孤儿：每个 kf 文件都有 DB 行，每个有文件的 DB 行都在盘上。
+    expect(kfFiles().length).toBe(rowsWithFileOnDisk())
+    expect(readdirSync(libKfDir).filter((f) => f.includes('0099'))).toHaveLength(0)
+  })
 })
 
 describe('transcript write helper', () => {

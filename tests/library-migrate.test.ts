@@ -32,6 +32,8 @@ describe('migrateLibrary (U3)', () => {
     expect(existsSync(join(dest, 'app.db'))).toBe(true)
     expect(existsSync(join(dest, 'attachments', 'asset.bin'))).toBe(true)
     // The source is never written to — it IS the fallback, no snapshot needed.
+    // 批6 (D4): 迁移不产 .bak 快照；要「另存一份」走设置页的独立备份入口
+    // （settings:exportLibraryBackup，db.backup 到用户自选路径）。
     const backups = readdirSync(src).filter((f) => f.startsWith('app.db.bak-'))
     expect(backups).toHaveLength(0)
     expect(existsSync(join(src, 'app.db'))).toBe(true)

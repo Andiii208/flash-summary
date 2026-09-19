@@ -1,11 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync, mkdirSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
 import { createContext, type AppContext } from '../src/main/app-context'
 import { registerIpc, setAppRendererOrigin, assertSafeId } from '../src/main/ipc'
 import { TaskRepository } from '../src/main/tasks/queue'
+import { attachmentsPath } from '../src/main/library/paths'
 import type { FetchLike } from '../src/main/bilibili/client'
 import type { Stage } from '../src/main/tasks/stages'
 import type { StageExecutor } from '../src/main/tasks/queue'
@@ -373,6 +374,63 @@ describe('ipc handlers over a real context', () => {
     expect(refused.error).toContain('不允许删除')
     // The note survived the refused delete.
     expect((db.prepare('SELECT COUNT(*) AS n FROM notes').get() as { n: number }).n).toBe(1)
+  })
+
+  // 批6 (plan 2026-09-19, D8 推荐侧): the delete guard only blocks LIVE work —
+  // running/queued rows, or any row whose task cache still occupies disk
+  // (resumable artifacts). failed/cancelled rows with no cache are terminal
+  // debris and must not keep a mis-added course undeletable forever.
+  it('批6 (D8): removeCourse no longer blocked by a failed task without cache — and lesson attachments are GCed', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c-failed', '失败课程', '2026-09-19T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('c-failed-L0', 'c-failed', '第1节课', '2026-09-19T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO tasks (id, lesson_id, state, failed_stage, error_message, created_at, updated_at) VALUES ('tf1', 'c-failed-L0', 'failed', 'transcribing', '任务已取消', '2026-09-19T00:00:00Z', '2026-09-19T00:00:00Z')"
+    ).run()
+    // Attachments on disk for the lesson — the unbounded growth 批6 closes.
+    const lessonAttachments = join(attachmentsPath(dir), 'c-failed-L0')
+    mkdirSync(join(lessonAttachments, 'keyframes'), { recursive: true })
+    writeFileSync(join(lessonAttachments, 'keyframes', 'kf-0000-0s.jpg'), 'frame')
+
+    const res = (await ipc.invoke('school:removeCourse', 'c-failed')) as { ok: boolean; value?: boolean }
+    expect(res.ok).toBe(true)
+    expect((db.prepare("SELECT COUNT(*) AS n FROM courses WHERE id = 'c-failed'").get() as { n: number }).n).toBe(0)
+    // The library rows cascade; the disk evidence goes with them.
+    expect(existsSync(lessonAttachments)).toBe(false)
+  })
+
+  it('批6 (D8): a failed task whose cache still occupies disk blocks removal', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c-cached', '残留缓存课程', '2026-09-19T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('c-cached-L0', 'c-cached', '第1节课', '2026-09-19T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO tasks (id, lesson_id, state, failed_stage, error_message, created_at, updated_at) VALUES ('tc1', 'c-cached-L0', 'failed', 'downloading_video', '网络中断', '2026-09-19T00:00:00Z', '2026-09-19T00:00:00Z')"
+    ).run()
+    const cacheDir = join(dir, 'cache', 'tc1')
+    mkdirSync(cacheDir, { recursive: true })
+    writeFileSync(join(cacheDir, 'teacher.ts'), 'partial-stream')
+
+    const res = (await ipc.invoke('school:removeCourse', 'c-cached')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('不允许删除')
+    expect((db.prepare("SELECT COUNT(*) AS n FROM courses WHERE id = 'c-cached'").get() as { n: number }).n).toBe(1)
+    expect(existsSync(join(attachmentsPath(dir), 'c-cached-L0'))).toBe(false)
+  })
+
+  it('批6 (D8): a queued/running task blocks removal even with no cache on disk', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c-live', '在跑课程', '2026-09-19T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('c-live-L0', 'c-live', '第1节课', '2026-09-19T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('tl1', 'c-live-L0', 'pending', '2026-09-19T00:00:00Z', '2026-09-19T00:00:00Z')"
+    ).run()
+
+    const res = (await ipc.invoke('school:removeCourse', 'c-live')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('不允许删除')
   })
 
   it('school:harvestState tracks in-flight and outcome across the navigation (批C)', async () => {

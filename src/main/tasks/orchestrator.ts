@@ -656,6 +656,9 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
         const candidates = await extractKeyframes(dl.videoPath, outDir, 10, deps.ffmpeg, ctx.signal)
         const kept = dedupeKeyframes(candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })), 5)
         const destDir = join(attachmentsPath(deps.libraryRoot), ctx.lessonId, 'keyframes')
+        // 批6: 重跑防孤儿——destDir 整体先清再写。本次保留帧变少时，上一次
+        // 多出的帧（含批3 随帧的缩略图）不会作为无主文件永远留在附件库里。
+        rmSync(destDir, { recursive: true, force: true })
         mkdirSync(destDir, { recursive: true })
         const insertKf = deps.db.prepare(
           'INSERT OR REPLACE INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)'
@@ -682,6 +685,8 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
       )
 
       const destDir = join(attachmentsPath(deps.libraryRoot), ctx.lessonId, 'keyframes')
+      // 批6: 重跑防孤儿（见 B 站支线同处注释）——先清整个 destDir 再写。
+      rmSync(destDir, { recursive: true, force: true })
       mkdirSync(destDir, { recursive: true })
       const insertKf = deps.db.prepare(
         'INSERT OR REPLACE INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)'
@@ -707,6 +712,8 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
         try {
           const urls = await deps.school.listPpt(pptCourseId)
           const pptDir = join(attachmentsPath(deps.libraryRoot), ctx.lessonId, 'ppt')
+          // 批6: 重跑防孤儿——PPT 目录同样先清再写（页面数变少时旧页不留）。
+          rmSync(pptDir, { recursive: true, force: true })
           mkdirSync(pptDir, { recursive: true })
           const insertPpt = deps.db.prepare(
             'INSERT OR REPLACE INTO ppt_pages (id, lesson_id, page_index, file_path, created_at) VALUES (?, ?, ?, ?, ?)'
