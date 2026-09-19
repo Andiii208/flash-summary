@@ -2,12 +2,38 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.7] — 2026-09-20 · 全面审查整改收编（批1–批8，未打 tag）
+
+本版本收编审查整改计划（`docs/plans/2026-09-19-audit-remediation-plan.md`）全部八批（提交 `7501248…b80654d`）：
+
+1. **安全·调用方与导航边界**（批1，`7501248`+`4354595`，1068→1081）
+2. **安全·入盘路径与脱敏**（批2，`3ab1ba8`，→1090）
+3. **性能·哈希缩略图**（批3，`ccba335`+`85224a6`，→1115）
+4. **性能·渲染 memo/搜索分块 + busy 约定 + a11y**（批4，`69dd7fd`+`54b6607`+`16aca13`，→1125 区间）
+5. **健壮性收口**（批5，`96fa918`+`e03f3af`，→+15）
+6. **数据层 GC/备份/删除口径**（批6，`ae85799`+`9643195`+`c63b9a5`，→1234）
+7. **CI·smoke 独立工作流**（批7，`1f96f06`+`7e8b1dd`）
+8. **收尾·拆域/token/死基建/文档**（批8，`9d25613`+`4b67390`+`b80654d`+收编提交，→1241）
+
+**测试 1068 → 1241（+173）**，smoke 33/33，CI 见各提交。**未打 tag**（与 0.7.6 走查节奏一致，tag 等 Andiii）。
+
+### Security
+- **IPC 调用方收窄为应用自身 renderer**（批1，D1）：`assertAppSender` 从「同目录前缀」改为**精确 URL 比对**（启动时算出的 renderer index.html URL）——同目录任意文件的注入面关闭，学校平台页（导航后 frame URL 变学校域）自然被拒。导航守卫补 redirect/frame 事件；登录窗 trace/pollTimer 退订改 `onBeforeRequest(null)` 并补 closed 回归（修复轮 `4354595`）。
+- **入盘路径与脱敏**（批2）：id 入盘校验（拒 UNC/路径穿越）；脱敏按 key 形态；缓存目录拒 UNC；Anki 公式列前置 `'` 中和。
 
 ### Added
-- **资料库备份导出**（审查整改计划 2026-09-19 批6，D4 裁决「实现备份入口」）：设置页「资料库与缓存位置」区新增「备份资料库…」按钮——系统保存对话框选路径，`db.backup()`（better-sqlite3 内置 WAL 一致快照 API，与资料库迁移同一原语）把 app.db 另存一份，完成后 toast 带「打开所在文件夹」。**只含数据库文件**（笔记/转写/任务记录），关键帧与 PPT 等附件不在内；备份期间按钮禁用并显示「备份中…」，目标不可写时给出「备份失败：…」人话错误。备份落 `${filePath}.tmp`、成功才 renameSync 落位——失败只清自己的 `.tmp`，**用户预存在目标路径上的文件原样保留**；拒绝把备份存进正在使用的活库自身。新增 IPC 通道 `settings:exportLibraryBackup`（preload/bridge 已登记，smoke 桥面清单同步）。
+- **资料库备份导出**（批6，D4 裁决「实现备份入口」）：设置页「资料库与缓存位置」区新增「备份资料库…」按钮——系统保存对话框选路径，`db.backup()`（better-sqlite3 内置 WAL 一致快照 API，与资料库迁移同一原语）把 app.db 另存一份，完成后 toast 带「打开所在文件夹」。**只含数据库文件**（笔记/转写/任务记录），关键帧与 PPT 等附件不在内；备份期间按钮禁用并显示「备份中…」，目标不可写时给出「备份失败：…」人话错误。备份落 `${filePath}.tmp`、成功才 renameSync 落位——失败只清自己的 `.tmp`，**用户预存在目标路径上的文件原样保留**；拒绝把备份存进正在使用的活库自身。新增 IPC 通道 `settings:exportLibraryBackup`（preload/bridge 已登记，smoke 桥面清单同步）。
+- **smoke 独立 CI 工作流**（批7，D6）：push 到 master 全量跑；PR 按契约路径过滤（`src/shared/bridge.ts`、`src/preload/**`、`src/main/ipc.ts`、`src/main/index.ts`）——契约路径是历史上桥面事故的全部落点。
+
+### Changed
+- **关键帧/PPT 哈希走 64px 缩略图**（批3，D3）：一次 ffmpeg spawn 双输出，pHash 只喂缩略图——真实库 42 帧全分辨率 decode+hash **1631.8ms → 10.9ms（-99.3%）**，生成阶段主进程不再冻结；零新依赖、8x8 网格语义不变（保真门实测汉明距离 ≤1/64，重复帧仍判重、不同帧仍判轻）。缩略图命名 `thumbPathFor()` 单一事实源，哈希用完即删，db schema 未动。
+- **渲染 memo/搜索分块 + busy 约定 + a11y**（批4）：笔记渲染 memo 化 + 附件版本批量 bump；搜索态列表分块（≥150 门命中只渲染 150 行）+「显示更多」；B站登录标签 in-flight；任务行防连点；tabpanel/aria-label 补全。
+- **useAppState 拆域**（批8，D5）：notes 域与 tasks 域的状态与回调抽出为 `src/renderer/hooks/use-notes-domain.tsx` 与 `use-tasks-domain.ts`（范式同 use-config-domain），App.tsx 2616→1803 行、useAppState 1669→946 行；纯搬移不改行为，既有组件测试零修改当回归。
+- **Tailwind 死基建清理**（批8，D7）：31 个组件零使用、零 `@apply`——移除 `tailwindcss` 与 `@tailwindcss/vite` devDeps、vite 插件与 app.css 两行 import（YAGNI）。
+- **padding 刻度基线**（批8）：`tests/style-scale.test.ts` 新增 allowlist（KNOWN_PADDING_VIOLATIONS，46 个存量值逐条注明归属）**只减不增**——新增野值或该删不删都会红；配套 `scripts/style-padding-baseline.mjs` 重新生成清单。SKILL §1 纪律段同步为真实口径。
 
 ### Fixed
+- **健壮性收口**（批5）：进程级异常兜底；polish/regenerate 竞态；ASR 可取消；进度回调不再卡死任务行；失败场景（ENOSPC/harvest/stageOutput 等）给出人话解释。
 - **删课回收磁盘附件**：`school:removeCourse` 在库行级联删除成功后，同步删除该课程每个课时的附件目录（关键帧/PPT/封面）——此前删课只删库行，磁盘附件成为无界增长的漏口；删除失败不阻塞返回，孤儿目录由启动清扫 `cleanOrphanAttachmentDirs` 兜底——判据 = DB 无 `lessons` 行且目录 mtime > 24h，在跑/排队任务的课时排除（修复轮 1 把「24h sweep 兜底」从注释变成真代码：此前 `cleanStaleCache` 只扫任务缓存目录，从不扫附件目录）。
 - **删除保护只挡活任务**（D8 推荐侧）：删课不再被「有过任务记录」一律挡死——只挡在跑/排队中的任务，或磁盘上仍留着任务缓存（可续跑产物）的行；failed/cancelled 且无缓存的行是终态垃圾，误加课程终于删得掉。
 - **重跑抽取防孤儿**：抽取阶段写入附件目录（keyframes/PPT）前先整体清空目标目录再写（修复轮 1 补上配套的 `DELETE FROM keyframes/ppt_pages WHERE lesson_id=?`——只清盘不清行会让重跑帧数变少后在 DB 留下指向已删文件的悬空 ref，进 `loadSummarizeInputs` 的 `allRefs`/`visualAssets` 并让 Obsidian 导出的 `copyFileSync` 抛错）——同一任务重跑且本次保留帧变少时，上一次多出的帧（含缩略图）不再作为无主文件永远留在库里。
