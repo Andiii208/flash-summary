@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { App } from '../../src/renderer/App'
 import { AboutPanel } from '../../src/renderer/components/AboutPanel'
 import { mount, click } from '../helpers/preact'
+import { waitFor as waitForPredicate } from '../helpers/wait-for'
 import { fakeState, makeBridge, ok, page } from '../helpers/fake-app-bridge'
 import type { TaskRowInfo } from '../../src/shared/bridge'
 import {
@@ -99,7 +100,7 @@ describe('测试期问题反馈通道（声明批6）', () => {
     expect(document.querySelector('[data-testid="feedback-sensitive-hint"]')?.textContent).toBe(FEEDBACK_SENSITIVE_HINT)
 
     click(buttonByText('.dialog button', '复制诊断信息'))
-    await vi.waitFor(() => expect(clipboardWrite).toHaveBeenCalledTimes(1))
+    await waitForPredicate(() => expect(clipboardWrite).toHaveBeenCalledTimes(1))
     expect(String(clipboardWrite.mock.calls[0]?.[0] ?? '')).toContain('诊断信息')
   })
 
@@ -112,7 +113,7 @@ describe('测试期问题反馈通道（声明批6）', () => {
     await waitFor('[data-testid="report-error"]')
     click(document.querySelector('[data-testid="report-error"]'))
 
-    await vi.waitFor(() => expect(document.body.textContent).toContain('任务已被删除'))
+    await waitForPredicate(() => expect(document.body.textContent).toContain('任务已被删除'))
     expect(document.querySelector('[data-testid="feedback-diagnostics"]')).toBeNull()
   })
 

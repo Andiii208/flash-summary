@@ -128,6 +128,15 @@ export interface AppContext {
   }
 }
 
+/**
+ * Bilibili QR-login poll result cache window (ms). The renderer drives the
+ * state machine by re-invoking loginStatus far more often than the passport
+ * API tolerates, so one real poll per this window is what the login flow
+ * gets; `bilibiliLoginPoll` below is the only writer of the constant.
+ * Tests import it to express "wait one cache window" without re-deriving 1000.
+ */
+export const BILIBILI_POLL_CACHE_MS = 1000
+
 export function createContext(overrides: Partial<{
   libraryRoot: string
   userDataDir: string
@@ -407,7 +416,7 @@ export function createContext(overrides: Partial<{
 
   const bilibiliLoginPoll = async (): Promise<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }> => {
     if (bilibiliQr == null) return { status: 'inactive' }
-    if (bilibiliPollCache != null && Date.now() - bilibiliPollCache.at < 1000) return bilibiliPollCache.result
+    if (bilibiliPollCache != null && Date.now() - bilibiliPollCache.at < BILIBILI_POLL_CACHE_MS) return bilibiliPollCache.result
     let poll
     try {
       poll = await bilibili.qrPoll(bilibiliQr.qrcodeKey)

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '../helpers/preact'
+import { waitFor } from '../helpers/wait-for'
 import { ErrorBoundary } from '../../src/renderer/ui/ErrorBoundary'
 
 /** A child that always throws during render. */
@@ -8,7 +9,7 @@ function Boom(): null {
 }
 
 describe('ErrorBoundary (review G2)', () => {
-  it('renders the recovery card with the area name and the error message', () => {
+  it('renders the recovery card with the area name and the error message', async () => {
     const rendererError = vi.fn(async () => undefined)
     ;(window as unknown as { seuSummary?: unknown }).seuSummary = { log: { rendererError } }
     const host = mount(<ErrorBoundary area='note-view'><Boom /></ErrorBoundary>)
@@ -16,7 +17,9 @@ describe('ErrorBoundary (review G2)', () => {
     expect(card).not.toBeNull()
     expect(host.textContent).toContain('界面出错了')
     expect(host.textContent).toContain('kaput: 引擎异常')
-    // The crash reaches the redacted file log with the area tag.
-    vi.waitFor(() => expect(rendererError).toHaveBeenCalledWith('[note-view] render error: kaput: 引擎异常'))
+    // The crash reaches the redacted file log with the area tag. Awaited so a
+    // missing call fails this test instead of an unhandled rejection later
+    // (batch 7: the un-awaited vi.waitFor defaulted to a 1s budget here).
+    await waitFor(() => expect(rendererError).toHaveBeenCalledWith('[note-view] render error: kaput: 引擎异常'))
   })
 })

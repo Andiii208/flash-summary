@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, readFileSync, mkdirSync, writeFileSync, existsSync
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
-import { createContext, type AppContext } from '../src/main/app-context'
+import { createContext, BILIBILI_POLL_CACHE_MS, type AppContext } from '../src/main/app-context'
 import { registerIpc, setAppRendererOrigin, assertSafeId } from '../src/main/ipc'
 import { TaskRepository } from '../src/main/tasks/queue'
 import { attachmentsPath } from '../src/main/library/paths'
@@ -11,6 +11,7 @@ import type { FetchLike } from '../src/main/bilibili/client'
 import type { Stage } from '../src/main/tasks/stages'
 import type { StageExecutor } from '../src/main/tasks/queue'
 import type { Cryptor } from '../src/main/auth/session-crypto'
+import { waitFor } from './helpers/wait-for'
 
 // 批1（契约有意变更）：assertAppSender 从「任意 file:// 放行」收窄为「只认
 // 启动时注入的应用 renderer URL」。这里 mock electron 平台层（与
@@ -617,8 +618,13 @@ describe('U1: task progress events', () => {
     expect(res.ok).toBe(true)
     expect(res.value?.state).toBe('running')
 
-    // Wait for the background pipeline to finish (6 stub stages × 10ms).
-    await new Promise((r) => setTimeout(r, 250))
+    // Wait for the background pipeline to land: the task row reaching a
+    // terminal state is the one condition the assertions below depend on
+    // (was: a fixed 250ms sleep sized against "6 stub stages × 10ms").
+    await waitFor(() => {
+      const row = new TaskRepository(db).get(taskId)
+      expect(row?.state).toBe('succeeded')
+    })
 
     const events = recIpc.sent.filter((s) => s.channel === 'tasks:progress') as Array<{
       channel: string
@@ -656,7 +662,12 @@ describe('U1: task progress events', () => {
     const created = (await recIpc.invoke('tasks:create', 'l1')) as { ok: boolean; value?: { id: string } }
     const taskId = created.value!.id
     await recIpc.invoke('tasks:runAsync', taskId)
-    await new Promise((r) => setTimeout(r, 120))
+    // Wait for the failed progress event to reach the recorder instead of
+    // guessing a duration for the stub to fail (was: 120ms).
+    await waitFor(() => {
+      const failed = recIpc.sent.find((s) => s.channel === 'tasks:progress' && (s.payload as { state: string }).state === 'failed')
+      expect(failed).toBeDefined()
+    })
 
     const failed = recIpc.sent.find((s) => s.channel === 'tasks:progress' && (s.payload as { state: string }).state === 'failed') as
       | { payload: { taskId: string; message: string } }
@@ -700,12 +711,14 @@ describe('U1: task progress events', () => {
     const created = (await recIpc.invoke('tasks:create', 'l1')) as { ok: boolean; value?: { id: string } }
     const taskId = created.value!.id
     await recIpc.invoke('tasks:runAsync', taskId)
-    await new Promise((r) => setTimeout(r, 100))
-    expect(new TaskRepository(db).get(taskId)?.state).toBe('failed')
+    // Wait for the first run to land in failed before resuming (was: 100ms).
+    await waitFor(() => expect(new TaskRepository(db).get(taskId)?.state).toBe('failed'))
 
     // Same channel, same task: firstStageFor restarts it at the failed stage.
     await recIpc.invoke('tasks:runAsync', taskId)
-    await new Promise((r) => setTimeout(r, 150))
+    // Wait for the resumed run to finish before snapshotting the event list
+    // (was: 150ms) — otherwise the trailing assertions race the queue.
+    await waitFor(() => expect(new TaskRepository(db).get(taskId)?.state).toBe('succeeded'))
 
     const events = recIpc.sent.filter((s) => s.channel === 'tasks:progress') as Array<{ payload: { state: string } }>
     const afterFailure = events.slice(events.findIndex((e) => e.payload.state === 'failed') + 1)
@@ -774,7 +787,14 @@ describe('U1: course tree and task list', () => {
     db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l2', 'c1', '课时二', '2026-08-30T00:00:00Z')").run()
 
     const a = (await ipc.invoke('tasks:create', 'l1')) as { ok: boolean; value?: { id: string } }
-    await new Promise((r) => setTimeout(r, 5))
+    // created_at is ms-precision and tasks:list orders by it: let the clock
+    // move past task a before creating b so "newest first" has a real
+    // tiebreak, instead of hoping two creates land in different milliseconds
+    // (was: a 5ms sleep between the two creates).
+    await waitFor(() => {
+      const row = db.prepare('SELECT created_at FROM tasks WHERE id = ?').get(a.value!.id) as { created_at: string }
+      expect(Date.now()).toBeGreaterThan(Date.parse(row.created_at))
+    })
     const b = (await ipc.invoke('tasks:create', 'l2')) as { ok: boolean; value?: { id: string } }
 
     // 批C: 列表返回 { items, total, limit }——total 让 UI 能如实说「共 N 条」。
@@ -991,15 +1011,15 @@ describe('registerIpc handle API (M1-3: close-window confirm)', () => {
 
     const created = (await ipc.invoke('tasks:create', 'l1')) as { value?: { id: string } }
     await ipc.invoke('tasks:runAsync', created.value!.id)
-    await vi.waitFor(() => expect(handle.isTaskRunning()).toBe(true))
+    await waitFor(() => expect(handle.isTaskRunning()).toBe(true))
 
     handle.cancelRunning()
-    await vi.waitFor(() => {
+    await waitFor(() => {
       const row = db.prepare('SELECT state, error_kind FROM tasks WHERE id = ?').get(created.value!.id) as { state: string; error_kind: string | null }
       expect(row.state).toBe('failed')
       expect(row.error_kind).toBe('cancelled')
     })
-    await vi.waitFor(() => expect(handle.isTaskRunning()).toBe(false))
+    await waitFor(() => expect(handle.isTaskRunning()).toBe(false))
   })
 })
 
@@ -1040,14 +1060,20 @@ describe('bilibili qr login flow (plan 2026-09-06 M3)', () => {
     expect(login.ok).toBe(true)
     expect(login.value?.qrUrl).toContain('qrcode_key=QR1')
 
+    // 等状态而不是等时间：loginStatus 在一个轮询缓存窗口内返回缓存旧状态，过窗
+    // 才推进一档，所以每档的等待预算必须大于一个缓存窗口（余量不再拍 1050 这种
+    // 死数字——缓存窗口从 app-context 导入）。两档各自独立推进，不互相赶时间。
+    const qrTransitionBudgetMs = BILIBILI_POLL_CACHE_MS + 4000
     const waiting = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
     expect(waiting.value?.status).toBe('waiting')
-    await new Promise((r) => setTimeout(r, 1050))
-    const scanned = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
-    expect(scanned.value?.status).toBe('scanned')
-    await new Promise((r) => setTimeout(r, 1050))
-    const confirmed = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
-    expect(confirmed.value?.status).toBe('confirmed')
+    await waitFor(async () => {
+      const next = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
+      expect(next.value?.status).toBe('scanned')
+    }, qrTransitionBudgetMs)
+    await waitFor(async () => {
+      const next = (await ipc.invoke('bilibili:loginStatus')) as { value?: { status: string } }
+      expect(next.value?.status).toBe('confirmed')
+    }, qrTransitionBudgetMs)
 
     // Encrypted at rest: the raw session file must not contain the plaintext
     // SESSDATA (stubCryptor XORs, so the ciphertext differs from plaintext).
@@ -1200,13 +1226,10 @@ describe('bilibili course auto-chain over ipc (usability 2026-09-07)', () => {
 
     await ipc.invoke('tasks:runAsync', t1.value!.id)
     // The chain walks P2 then P3 without any further renderer action.
-    await vi.waitFor(
-      () => {
-        const p3 = db.prepare('SELECT state FROM tasks WHERE id = ?').get(t3.value!.id) as { state: string }
-        expect(p3.state).toBe('succeeded')
-      },
-      { timeout: 5000, interval: 50 }
-    )
+    await waitFor(() => {
+      const p3 = db.prepare('SELECT state FROM tasks WHERE id = ?').get(t3.value!.id) as { state: string }
+      expect(p3.state).toBe('succeeded')
+    })
     for (const id of [t1.value!.id, t2.value!.id, t3.value!.id]) {
       const row = db.prepare('SELECT state FROM tasks WHERE id = ?').get(id) as { state: string }
       expect(row.state).toBe('succeeded')
@@ -1222,7 +1245,12 @@ describe('bilibili course auto-chain over ipc (usability 2026-09-07)', () => {
     const t1 = (await ipc.invoke('tasks:create', 'l1')) as { value?: { id: string } }
     const t2 = (await ipc.invoke('tasks:create', 'l2')) as { value?: { id: string } }
     await ipc.invoke('tasks:runAsync', t1.value!.id)
-    await new Promise((r) => setTimeout(r, 300))
+    // 续链与否在 t1 跑完的那一刻就决定了：等 t1 落到终态，而不是拍一个
+    // 「肯定跑完了」的固定 300ms。
+    await waitFor(() => {
+      const row = db.prepare('SELECT state FROM tasks WHERE id = ?').get(t1.value!.id) as { state: string }
+      expect(row.state).toBe('succeeded')
+    })
     // SEU course: l2 stays pending — no auto-chain outside bilibili.
     const l2 = db.prepare('SELECT state FROM tasks WHERE id = ?').get(t2.value!.id) as { state: string }
     expect(l2.state).toBe('pending')

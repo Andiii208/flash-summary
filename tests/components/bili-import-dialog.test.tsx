@@ -3,6 +3,7 @@ import { act } from 'preact/test-utils'
 import { render } from 'preact'
 import { BiliImportDialog } from '../../src/renderer/components/BiliImportDialog'
 import { mount, click, input } from '../helpers/preact'
+import { waitFor } from '../helpers/wait-for'
 import type { SeuSummaryBridge } from '../../src/shared/bridge'
 
 const RESOLVE_PAYLOAD = {
@@ -242,8 +243,8 @@ describe('BiliImportDialog (批1 双源并列: first-class import dialog)', () =
       await Promise.resolve()
     })
     await flush()
-    // IPC 落定后恢复可读标签（QR 编码随后异步完成，轮询等待 busy 清除）。
-    await vi.waitFor(() => {
+    // IPC 落定后恢复可读标签（QR 编码随后异步完成，等 busy 清除而不是拍时长）。
+    await waitFor(() => {
       expect([...host.querySelectorAll('button')].some((b) => b.textContent === '扫码登录后导入')).toBe(true)
     })
   })
