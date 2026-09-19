@@ -660,6 +660,10 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
         // 多出的帧（含批3 随帧的缩略图）不会作为无主文件永远留在附件库里。
         rmSync(destDir, { recursive: true, force: true })
         mkdirSync(destDir, { recursive: true })
+        // 修复轮 I3: 清盘也要清行——重跑帧数变少时，上一次多出的 keyframes
+        // 行会变成指向已删文件的悬空 ref（进 allRefs/visualAssets，Obsidian
+        // 导出 copyFileSync 直接抛）。与 INSERT OR REPLACE 语义自洽的幂等删。
+        deps.db.prepare('DELETE FROM keyframes WHERE lesson_id = ?').run(ctx.lessonId)
         const insertKf = deps.db.prepare(
           'INSERT OR REPLACE INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)'
         )
@@ -688,6 +692,8 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
       // 批6: 重跑防孤儿（见 B 站支线同处注释）——先清整个 destDir 再写。
       rmSync(destDir, { recursive: true, force: true })
       mkdirSync(destDir, { recursive: true })
+      // 修复轮 I3: 同上——清盘同步清行，防悬空 keyframes ref。
+      deps.db.prepare('DELETE FROM keyframes WHERE lesson_id = ?').run(ctx.lessonId)
       const insertKf = deps.db.prepare(
         'INSERT OR REPLACE INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)'
       )
@@ -715,6 +721,8 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
           // 批6: 重跑防孤儿——PPT 目录同样先清再写（页面数变少时旧页不留）。
           rmSync(pptDir, { recursive: true, force: true })
           mkdirSync(pptDir, { recursive: true })
+          // 修复轮 I3: ppt_pages 同步清行，理由同 keyframes。
+          deps.db.prepare('DELETE FROM ppt_pages WHERE lesson_id = ?').run(ctx.lessonId)
           const insertPpt = deps.db.prepare(
             'INSERT OR REPLACE INTO ppt_pages (id, lesson_id, page_index, file_path, created_at) VALUES (?, ?, ?, ?, ?)'
           )

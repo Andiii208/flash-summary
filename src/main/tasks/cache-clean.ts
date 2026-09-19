@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync, rmSync, mkdirSync, writeFileSync, utimesSync } from 'fs'
 import { join } from 'path'
-import { cachePath } from '../library/paths'
+import { attachmentsPath, cachePath } from '../library/paths'
 import type { Db } from '../db/open'
 import { BILI_STREAM_FRESH_MS, STREAM_URL_FRESH_MS } from './resume'
 
@@ -87,6 +87,65 @@ export function cleanStaleCache(
     }
   }
   return removed
+}
+
+/**
+ * 批6 修复轮 I1: 孤儿附件目录清扫。
+ *
+ * `cleanStaleCache` 只扫 `<cacheDir>/<taskId>`，从不碰 `attachments/`——而
+ * removeCourse 的 rmSync 失败、迁移半途、崩溃都会在 `attachments/<lessonId>`
+ * 留下「DB 已无 lessons 行」的孤儿目录（批6 主实现里「24h sweep 兜底」的注释
+ * 此前是一句不实声明，这里把它变成真的）。判据两条同时满足才删：
+ *   ① DB 无对应 lessons 行（级联删除后课程/课时行都没了才是孤儿）
+ *   ② 目录 mtime > maxAgeMs（24h 内可能是刚落盘、库行稍后写入的竞态窗口）
+ * `activeLessonIds`（在跑/排队任务的课时）一律排除——belt-and-braces：任务期
+ * 附件先落盘、库行由导入事务先写，正常不会进判据，防御不做省。
+ * 纯函数（db + 时间入参），返回删除的 lessonId 列表供日志（只有 id）。
+ */
+export function cleanOrphanAttachmentDirs(
+  db: Db,
+  libraryRoot: string,
+  now = Date.now(),
+  maxAgeMs = 24 * 60 * 60 * 1000,
+  activeLessonIds: ReadonlySet<string> = new Set()
+): string[] {
+  const attachments = attachmentsPath(libraryRoot)
+  if (!existsSync(attachments)) return []
+  let lessonIds: ReadonlySet<string>
+  try {
+    const rows = db.prepare('SELECT id FROM lessons').all() as Array<{ id: string }>
+    lessonIds = new Set(rows.map((r) => r.id))
+  } catch {
+    // 表缺失（旧库迁移中）→ 宁可不动，也不能凭目录名删证据。
+    return []
+  }
+  const removed: string[] = []
+  for (const entry of readdirSync(attachments)) {
+    if (lessonIds.has(entry) || activeLessonIds.has(entry)) continue
+    const full = join(attachments, entry)
+    try {
+      const stats = statSync(full)
+      if (!stats.isDirectory()) continue
+      if (now - stats.mtimeMs <= maxAgeMs) continue
+      rmSync(full, { recursive: true, force: true })
+      removed.push(entry)
+    } catch {
+      // A file disappearing mid-scan is not an error for cleanup purposes.
+    }
+  }
+  return removed
+}
+
+/** 在跑/排队任务的课时 id（崩溃残留的非终态行也算——它们随时可能被续跑）。 */
+export function activeLessonIds(db: Db): ReadonlySet<string> {
+  try {
+    const rows = db
+      .prepare("SELECT DISTINCT lesson_id FROM tasks WHERE state NOT IN ('succeeded', 'failed')")
+      .all() as Array<{ lesson_id: string }>
+    return new Set(rows.map((r) => r.lesson_id))
+  } catch {
+    return new Set()
+  }
 }
 
 /** Create a fake "old" cache entry for reverse verification in tests. */

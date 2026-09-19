@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import Database from 'better-sqlite3'
@@ -80,6 +80,8 @@ describe('settings:exportLibraryBackup (批6, D4)', () => {
     expect(res.ok).toBe(true)
     expect(res.value).toEqual({ canceled: false, path: target })
     expect(existsSync(target)).toBe(true)
+    // tmp 中间产物必须已 rename 落位，不留 .tmp 残影（修复轮 I2）。
+    expect(existsSync(`${target}.tmp`)).toBe(false)
 
     // The backup must be a real, openable database — not a half-written file.
     const opened = new Database(target, { readonly: true })
@@ -119,18 +121,43 @@ describe('settings:exportLibraryBackup (批6, D4)', () => {
     expect(showSaveDialog).toHaveBeenCalledTimes(1)
   })
 
-  it('a failed backup removes the partial file and reports a plain-words error (目标不可写)', async () => {
+  // 修复轮 I2：契约有意变更。旧实现失败时无条件 rmSync(filePath)——会删掉
+  // 用户预存在目标路径上自己的文件。新契约：备份落 `${filePath}.tmp`、成功
+  // renameSync 落位、失败只清 .tmp——预写文件必须原样保留。
+  it('a failed backup keeps a pre-existing target file intact (修复轮 I2: tmp/rename, 只清 .tmp)', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
-    // The user picked an existing file that is not a database: the backup
-    // fails mid-write and the corrupt remnant must not stay on disk.
-    const target = join(dir, 'occupied.db')
-    writeFileSync(target, 'this is not a database')
+    // Garbage parked at the .tmp slot: the backup fails there ("file is not a
+    // database"), the user's own file at the target must survive byte-for-byte.
+    const target = join(dir, 'mine.db')
+    const targetTmp = `${target}.tmp`
+    writeFileSync(target, 'my precious database')
+    writeFileSync(targetTmp, 'not a database')
     saveDialog.filePath = target
 
     const res = (await ipc.invoke('settings:exportLibraryBackup')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('备份失败')
-    expect(existsSync(target)).toBe(false)
+    // 用户预存文件原样保留；只有我们自己的 .tmp 半成品被清掉。
+    expect(existsSync(target)).toBe(true)
+    expect(readFileSync(target, 'utf8')).toBe('my precious database')
+    expect(existsSync(targetTmp)).toBe(false)
+  })
+
+  it('refuses to back up onto the live library db itself (修复轮 I2)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    saveDialog.filePath = join(dir, 'app.db')
+
+    const res = (await ipc.invoke('settings:exportLibraryBackup')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('本身')
+    // 活库未被触碰——打不开/被截断都会在这里现形。
+    const opened = new Database(join(dir, 'app.db'), { readonly: true })
+    try {
+      expect((opened.prepare('SELECT COUNT(*) AS n FROM courses').get() as { n: number }).n).toBe(1)
+    } finally {
+      opened.close()
+    }
   })
 })

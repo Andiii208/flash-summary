@@ -483,6 +483,46 @@ describe('orchestrator stage executors', () => {
     expect(kfFiles().length).toBe(rowsWithFileOnDisk())
     expect(readdirSync(libKfDir).filter((f) => f.includes('0099'))).toHaveLength(0)
   })
+
+  // 修复轮 I3: 清盘也要清行。写库前缺 DELETE FROM keyframes WHERE lesson_id=?
+  // 时，重跑帧数变少会在 DB 里留下指向已删文件的悬空行——它们会进
+  // loadSummarizeInputs 的 allRefs/visualAssets（模型可引用不存在也没发过
+  // 的证据）并让 Obsidian 导出的 copyFileSync 抛错。
+  it('修复轮 I3: 重跑帧数变少后 DB 行数与盘上文件数一致（无悬空 keyframes 行）', async () => {
+    const { execFileSync } = await import('child_process')
+    const { ffmpegPath } = await import('../src/main/media/binaries')
+
+    const taskId = 't6-rows'
+    const repo = new TaskRepository(db)
+    repo.create(taskId, 'l1')
+    const taskDir = join(dir, 'cache', taskId)
+    mkdirSync(taskDir, { recursive: true })
+    const longVideo = join(taskDir, 'long.mp4')
+    const shortVideo = join(taskDir, 'short.mp4')
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=145:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', longVideo], { stdio: 'pipe' })
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=75:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', shortVideo], { stdio: 'pipe' })
+
+    const seedHandoff = (video: string): void => {
+      db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'downloading_video', ?)").run(
+        taskId,
+        JSON.stringify({ teacherPath: video, screenPath: video })
+      )
+    }
+    const rowCount = (): number => (db.prepare('SELECT COUNT(*) AS n FROM keyframes WHERE lesson_id = ?').get('l1') as { n: number }).n
+    const libKfDir = join(dir, 'attachments', 'l1', 'keyframes')
+    const fileCount = (): number => readdirSync(libKfDir).filter((f) => /^kf-/.test(f)).length
+
+    const executors = createExecutors(makeDeps())
+    seedHandoff(longVideo)
+    expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
+    expect(rowCount()).toBeGreaterThan(1)
+
+    seedHandoff(shortVideo)
+    expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
+    // DB 行与盘上帧一一对应：没有悬空 ref 能进 allRefs/visualAssets。
+    expect(rowCount()).toBe(fileCount())
+    expect(rowCount()).toBeLessThan(5)
+  })
 })
 
 describe('transcript write helper', () => {

@@ -9,7 +9,7 @@
  */
 import { ipcMain, dialog, shell, app, BrowserWindow, type WebContents, type OpenDialogOptions, type SaveDialogOptions } from 'electron'
 import { lookup as dnsLookup } from 'dns/promises'
-import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, renameSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { join, dirname, sep, resolve } from 'path'
 import type { AppContext } from './app-context'
@@ -64,7 +64,7 @@ const NOTE_LIST_LIMIT = 200
 const TASK_LIST_LIMIT = 50
 /** 硬帽子：渲染层传什么都不会一次拉爆（分页才是正路）。 */
 const LIST_LIMIT_MAX = 500
-import { resolveCacheDir, attachmentsPath } from './library/paths'
+import { resolveCacheDir, attachmentsPath, dbPath } from './library/paths'
 import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
 import { getSetting, SETTINGS_KEYS } from './settings/store'
@@ -665,7 +665,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       })()
       // 删除级联只覆盖库行；磁盘上的课时附件（关键帧/PPT/封面）由这里回收，
       // 否则删课是附件目录无界增长的漏口。失败不阻塞返回——孤儿目录仍有启动时
-      // 24h sweep 兜底（app-context cleanStaleCache）。
+      // 24h sweep 兜底（app-context 的 cleanOrphanAttachmentDirs：无 lessons 行
+      // 且 mtime > 24h 才删）。
       for (const { id } of lessonRows) {
         try {
           rmSync(join(attachmentsPath(ctx.libraryRoot), id), { recursive: true, force: true })
@@ -887,12 +888,22 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       }
       const { canceled, filePath } = win == null ? await dialog.showSaveDialog(options) : await dialog.showSaveDialog(win, options)
       if (canceled || filePath == null) return ok({ canceled: true })
+      // 修复轮 I2: 拒绝备份到活库自身——备份到正在写的库没有意义还会自溃
+      // （SQLITE_BUSY / 半途截断），用户看到一个「成功」的坏备份比报错更糟。
+      const samePath = (a: string, b: string): boolean =>
+        process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b)
+      if (samePath(filePath, dbPath(ctx.libraryRoot))) {
+        throw new Error('不能把备份存进正在使用的资料库文件本身，请另选一个位置')
+      }
+      // 修复轮 I2: 备份落 .tmp、成功才 renameSync 落位——失败只清自己的
+      // .tmp，用户预存在目标路径上的文件必须原样留下（旧实现会删掉它）。
+      const tmpPath = `${filePath}.tmp`
       try {
-        await ctx.db.backup(filePath)
+        await ctx.db.backup(tmpPath)
+        renameSync(tmpPath, filePath)
       } catch (e) {
-        // 半成品不留：目标路径上可能已写下不完整的库文件。
         try {
-          rmSync(filePath, { force: true })
+          rmSync(tmpPath, { force: true })
         } catch {
           // Best-effort clean-up; the error below is what the user should see.
         }

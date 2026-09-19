@@ -26,7 +26,7 @@ import { OpenAiCompatibleClient } from './providers/openai-client'
 import { ffmpegPath, ffprobePath } from './media/binaries'
 import { decodeGridPreferThumb } from './media/grid'
 import type { Grid8x8 } from '../shared/phash'
-import { cleanStaleCache, cleanStaleCrashDumps, pruneStaleSignedUrlHandoffs } from './tasks/cache-clean'
+import { cleanStaleCache, cleanStaleCrashDumps, pruneStaleSignedUrlHandoffs, cleanOrphanAttachmentDirs, activeLessonIds } from './tasks/cache-clean'
 import { getSetting, setSetting, readSettings, SETTINGS_KEYS, type AppSettings } from './settings/store'
 import { readLibraryPointer } from './library/pointer'
 import { Logger } from './logger'
@@ -166,6 +166,17 @@ export function createContext(overrides: Partial<{
   try {
     const dumps = cleanStaleCrashDumps(userDataDir)
     if (dumps > 0) logger.info(`startup sweep removed ${dumps} stale crash dumps`)
+  } catch {
+    // The sweep must never brick startup.
+  }
+
+  // 批6 修复轮 I1: 孤儿附件目录清扫——removeCourse 的 rmSync 失败/迁移半途/
+  // 崩溃都会留下「DB 无 lessons 行」的 attachments/<lessonId> 目录（缓存清扫
+  // 从不碰附件目录）。判据 = 无 lessons 行 且 mtime > 24h；在跑/排队任务的
+  // 课时目录排除。批6 removeCourse 注释里「24h sweep 兜底」这句话到这里才成真。
+  try {
+    const orphaned = cleanOrphanAttachmentDirs(db, libraryRoot, Date.now(), 24 * 60 * 60 * 1000, activeLessonIds(db))
+    if (orphaned.length > 0) logger.info(`startup sweep removed ${orphaned.length} orphan attachment dirs`)
   } catch {
     // The sweep must never brick startup.
   }
