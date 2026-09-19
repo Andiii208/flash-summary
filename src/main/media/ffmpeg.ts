@@ -8,7 +8,7 @@
 import { execFile } from 'child_process'
 import { statSync } from 'fs'
 import { join } from 'path'
-import { thumbPathFor } from './grid'
+import { thumbPathFor, THUMB_SCALE_FILTER } from './grid'
 
 export interface RunResult {
   stdout: string
@@ -155,7 +155,7 @@ export async function extractKeyframes(
     '-y',
     '-i', videoPath,
     '-filter_complex',
-    `[0:v]fps=1/${everySeconds},split[a][b];[b]scale=w=64:h=max(8\\,trunc(64*ih/iw/8)*8)[t]`,
+    `[0:v]fps=1/${everySeconds},split[a][b];[b]${THUMB_SCALE_FILTER}[t]`,
     '-map', '[a]', '-q:v', '2', pattern,
     '-map', '[t]', '-q:v', '4', thumbPattern
   ], {

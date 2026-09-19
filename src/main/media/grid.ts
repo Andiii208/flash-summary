@@ -66,6 +66,18 @@ export function decodeGrid8x8(filePath: string): Grid8x8 {
 }
 
 /**
+ * 批3: 哈希缩略图的缩滤参数**单一事实源**——`extractKeyframes` 双输出、PPT
+ * 缩略图跑批与保真门测试都 import 这一份，杜绝三处复制漂移。
+ *
+ * 宽 64px；高取 8 的倍数：`decodeGrid8x8` 按 /8 分格，若格高不是 8 的倍数
+ * （16:9 的 64×36，格高 4.5px）会与全分辨率 720px/8=90px 的格边界错位，
+ * 硬边内容实测汉明 4/64 超保真门（换 scaler 无效）；取 8 倍数后格边界严格
+ * 对齐，全场 ≤1/64（tests/media-thumb-fidelity.test.ts 实测五种内容）。
+ * 缩略图只喂 phash、不展示，这点垂直压缩不影响任何呈现。
+ */
+export const THUMB_SCALE_FILTER = 'scale=w=64:h=max(8\\,trunc(64*ih/iw/8)*8)'
+
+/**
  * 批3：一张图的缩略图同伴路径——同目录、`thumb-` 前缀。
  * 关键帧 `frame-0001.jpg` → `thumb-frame-0001.jpg`、PPT 页
  * `page-000.png` → `thumb-page-000.png`。命名只有这一处事实源：

@@ -21,7 +21,7 @@ import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { ffmpegPath } from '../src/main/media/binaries'
-import { decodeGrid8x8, thumbPathFor } from '../src/main/media/grid'
+import { decodeGrid8x8, thumbPathFor, THUMB_SCALE_FILTER } from '../src/main/media/grid'
 import { averageHash, hammingDistance, isDuplicate } from '../src/shared/phash'
 
 interface Scene {
@@ -53,8 +53,6 @@ const SOURCES: Array<{ name: string; filter: string }> = [
 ]
 
 /** 生产同款参数：全分辨率帧 JPEG q2，缩略图宽 64px、高取 8 的倍数（格边界对齐）、JPEG q4。 */
-const THUMB_SCALE_FILTER = 'scale=w=64:h=max(8\\,trunc(64*ih/iw/8)*8)'
-
 function renderFullFrame(name: string, filter: string): string {
   const out = join(dir, `${name}.jpg`)
   execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', filter, '-frames:v', '1', '-q:v', '2', out], { stdio: 'pipe' })
@@ -85,6 +83,10 @@ describe('批3 保真门：thumb-grid 与 full-grid 的平均哈希（真实 ffm
     for (const s of scenes) {
       expect(s.thumb).toBe(join(dir, `thumb-${s.name}.jpg`))
     }
+  })
+
+  it('缩滤参数单一事实源：宽 64px、高取 8 的倍数（保真门推导定稿，三处共用）', () => {
+    expect(THUMB_SCALE_FILTER).toBe('scale=w=64:h=max(8\\,trunc(64*ih/iw/8)*8)')
   })
 
   it('每张样本图的汉明距离 ≤ 2/64（实测数字打印在测试输出里）', () => {

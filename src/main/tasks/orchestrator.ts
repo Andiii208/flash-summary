@@ -8,7 +8,7 @@ import { join } from 'path'
 import type { Db } from '../db/open'
 import { attachmentsPath } from '../library/paths'
 import { extractAudio, extractKeyframes, run as runProcess, pickAudioSource } from '../media/ffmpeg'
-import { thumbPathFor } from '../media/grid'
+import { thumbPathFor, THUMB_SCALE_FILTER } from '../media/grid'
 import { chunkPlan, cutChunk } from '../media/audio-split'
 import { dedupeKeyframes, type Grid8x8 } from '../../shared/phash'
 import { downloadToFile } from '../media/download'
@@ -704,7 +704,7 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
                   '-y',
                   '-start_number', '0',
                   '-i', join(pptDir, 'page-%03d.png'),
-                  '-vf', 'scale=w=64:h=max(8\\,trunc(64*ih/iw/8)*8)',
+                  '-vf', THUMB_SCALE_FILTER,
                   '-start_number', '0',
                   thumbPathFor(join(pptDir, 'page-%03d.png'))
                 ],
