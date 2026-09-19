@@ -1,0 +1,41 @@
+name: Smoke
+
+# 独立于 CI（AGENTS.md 红线）：smoke 触发条件带 paths 过滤，若挂在 ci.yml 上，
+# 非契约路径的 PR 会连 lint/typecheck/test 都不跑。这里只跑契约面：master/main
+# 全量，PR 仅在触碰桥面契约文件时触发（2026-09-18 批C1 实锤：四门禁全绿而
+# smoke 30/32，桥面形状只有 smoke 这一道门在守）。
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    paths:
+      - 'src/shared/bridge.ts'
+      - 'src/preload/**'
+      - 'src/main/ipc.ts'
+      - 'src/main/index.ts'
+      - 'scripts/smoke-cdp.mjs'
+      - '.github/workflows/smoke.yml'
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # scripts/smoke-cdp.mjs 自带隔离缝（SEU_SMOKE_USER_DATA / SEU_SUMMARY_DOCS_OVERRIDE），
+      # CI 里跑的是未打包 out/ 产物 + 一次性 userData，触不到真实用户数据。
+      - name: Smoke (CDP bridge contract)
+        run: npm run smoke
