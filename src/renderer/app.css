@@ -8,9 +8,6 @@
  * `@theme inline` re-exports them as semantic Tailwind colors so utilities
  * like bg-surface / text-muted follow light/dark automatically.
  */
-@import 'tailwindcss/theme.css' layer(theme);
-@import 'tailwindcss/utilities.css' layer(utilities);
-
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);

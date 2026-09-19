@@ -2,7 +2,6 @@ import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 import { resolve } from 'path'
 import preact from '@preact/preset-vite'
-import tailwindcss from '@tailwindcss/vite'
 
 /**
  * @fontsource gives every @font-face a woff2 url followed by a legacy woff url.
@@ -55,7 +54,7 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
-    plugins: [dropLegacyWoff(), preact(), tailwindcss()],
+    plugins: [dropLegacyWoff(), preact()],
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/renderer/index.html') }
