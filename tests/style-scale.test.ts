@@ -207,6 +207,101 @@ describe('长内容反截断合同（批4）', () => {
   })
 })
 
+/**
+ * 批8 (plan 2026-09-19): padding 刻度基线。SKILL §1 纪律要求 padding 也走
+ * --space-* 刻度，但存量攒了一批逐处手写的野值（gap/line-height/letter-spacing
+ * 早已收口，padding 一直没管）。一刀切会制造大片红，务实路径 = 基线 allowlist
+ * 「只减不增」：
+ *   - style.css 出现 allowlist 之外的野值 → 红（新增野值必须过审）；
+ *   - allowlist 里的值在 style.css 里已不存在 → 红（修一条就删一条）。
+ * 更新 allowlist：`node scripts/style-padding-baseline.mjs`（打印当前清单）。
+ */
+const KNOWN_PADDING_VIOLATIONS: Record<string, string> = {
+  '0 2px': '存量：侧栏头/树元信息（.sidebar-head/.tree-meta）',
+  '0 4px': '存量：AI 标签（.ai-tag）',
+  '0 6px': '存量：缩略图原图钮（.thumb-origin）',
+  '0 9px 7px 27px': '存量：课程副标题（.course-sub）',
+  '10px 6px 2px 0': '存量：声明正文（.consent-body）',
+  '10px': '存量：反馈正文/B站预览（.feedback-body/.bili-preview）',
+  '12px 16px 12px 18px': '存量：追问回答（.qa-a）',
+  '12px 2px 0': '存量：手动兜底（.manual-fallback）',
+  '12px': '存量：课程浏览覆盖层/反馈块（.course-browser-overlay/.feedback-block）',
+  '14px': '存量：B站二维码（.bili-qr）',
+  '16px': '存量：课程浏览卡/导图卡（.course-browser-card/.course-map-card）',
+  '18px 0 8px': '存量：空态当前行（.note-empty-current）',
+  '18px 20px': '存量：弹窗（.dialog）',
+  '18px': '存量：Provider 说明/B站对话框卡（.provider-cap-notes/.bili-dialog-card）',
+  '1px 5px': '存量：行内代码（.md-lite code 等）',
+  '1px 8px': '存量：证据折叠/时间戳（.evidence-fold/.timeline-stamp）',
+  '20px': '存量：引导步骤/Markdown 列表（.guide-steps/.md-lite .md-list）',
+  '24px': '存量：空课程行/导图覆盖层（.lesson-row.empty/.course-map-overlay）',
+  '27px': '存量：课程卡副题（.course-card-sub）',
+  '2px 10px': '存量：toast 动作/目录项（.toast-action/.toc-item）',
+  '2px 5px': '存量：面包屑（.crumb）',
+  '2px': '存量：浏览主体/阶段步（.course-browser-body/.stage-step）',
+  '32px': '存量：声明首屏（.consent-boot）',
+  '3px 0 5px 7px': '存量：课程树行（.item.course-item）',
+  '3px 10px': '存量：导图搜索（.mindmap-search）',
+  '3px 8px': '存量：品牌区（.brand）',
+  '3px': '存量：toast 关闭钮（.toast-close）',
+  '4px 10px 4px 0': '存量：法律滚动区（.legal-scroll）',
+  '4px 11px': '存量：课时 chip 钮（.lesson-chip-btn）',
+  '4px 12px': '存量：运行 pill/会话徽章（.running-pill/.session-badge）',
+  '4px 2px': '存量：笔记库组头（.note-library-group-head）',
+  '4px': '存量：chip 菜单/课程卡课时（.lesson-chip-menu/.course-card-lessons）',
+  '5px 8px': '存量：Markdown 表格单元（.md-table th/td）',
+  '5px 9px': '存量：证据图注（.evidence-fig figcaption）',
+  '6px 0': '存量：Provider 添加 summary（.provider-add summary）',
+  '6px 10px 6px 24px': '存量：课程行（.lesson-row）',
+  '6px 10px': '存量：时间线引文（.timeline-quote）',
+  '6px 12px': '存量：Markdown 引文（.md-lite .md-quote）',
+  '6px': '存量：课程卡空课时/追问答案（.course-card-lessons-empty/.quiz-answer）',
+  '7px 10px': '存量：chip 菜单按钮（.lesson-chip-menu button）',
+  '8px 10px': '存量：全部课程头/反馈输入（.all-courses-head/.feedback-text）',
+  '8px 11px': '存量：追问输入/任务错误（.qa-input/.task-error）',
+  '8px 12px': '存量：搜索框/设置加载错误（.search-input/.settings-load-error）',
+  '8px 14px': '存量：追问问题（.qa-q）',
+  '8px': '存量：折叠侧栏等 5 处（.sidebar.collapsed 等）',
+  '9px 18px 9px 14px': '存量：toast（.toast）'
+}
+
+/** 与 scripts/style-padding-baseline.mjs 同一把尺：值必须完全由 --space-* token（或 0）组成。 */
+function paddingOnScale(value: string): boolean {
+  return value.split(/\s+/).every((p) => /^var\(--space-[a-z0-9-]+\)$/.test(p) || p === '0')
+}
+
+describe('padding 刻度基线（批8，allowlist 只减不增）', () => {
+  it('padding 声明只能取刻度 token——存量野值必须在 allowlist 内，新增野值即红', () => {
+    const bad: string[] = []
+    const re = /\bpadding(-top|-right|-bottom|-left|-block|-inline|-block-start|-block-end|-inline-start|-inline-end)?\s*:\s*([^;}]+)/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(stripped)) != null) {
+      const value = m[2].trim()
+      if (paddingOnScale(value)) continue
+      if (!(value in KNOWN_PADDING_VIOLATIONS)) bad.push(`${value} @ style.css:${lineOf(m.index)}`)
+    }
+    expect(
+      bad,
+      `padding 出现 allowlist 外的新野值：\n${bad.join('\n')}\n若是有意新增：跑 \`node scripts/style-padding-baseline.mjs\` 打印当前清单，把新值补进 KNOWN_PADDING_VIOLATIONS 并注明归属；若只是顺手修样式，请直接改用 --space-* token。`
+    ).toEqual([])
+  })
+
+  it('allowlist 只减不增——已修掉的野值必须从清单里删掉', () => {
+    const found = new Set<string>()
+    const re = /\bpadding(-top|-right|-bottom|-left|-block|-inline|-block-start|-block-end|-inline-start|-inline-end)?\s*:\s*([^;}]+)/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(stripped)) != null) {
+      const value = m[2].trim()
+      if (!paddingOnScale(value)) found.add(value)
+    }
+    const stale = Object.keys(KNOWN_PADDING_VIOLATIONS).filter((v) => !found.has(v))
+    expect(
+      stale,
+      `这些 allowlist 条目在 style.css 里已不存在（修一条就删一条）：\n${stale.join('\n')}\n跑 \`node scripts/style-padding-baseline.mjs\` 可拿到当前清单。`
+    ).toEqual([])
+  })
+})
+
 describe('首启与空库的排版合同（批2）', () => {
   it('.empty-actions 允许换行——否则窄容器里的中文按钮会被逐字换行', () => {
     expect(bodyOf('.empty-actions')).toContain('flex-wrap: wrap')

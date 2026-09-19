@@ -34,8 +34,12 @@ version: 1.0.0
 | | `--tracking-wide` | 1px | 页标题/箴言 |
 | | `--tracking-seal` | 3px | 仅设置页页脚箴言（别处不得引用） |
 
-**纪律**：`gap` / `line-height` / `letter-spacing` 只能取上表的 token（`gap: 0` 例外）；
-`padding` 也走同一套刻度。这条由 `tests/style-scale.test.ts` 强制，新增裸值会红。
+**纪律**：`gap` / `line-height` / `letter-spacing` 只能取上表的 token（`gap: 0` 例外），
+由 `tests/style-scale.test.ts` 强制，新增裸值即红。`padding` 同刻度但走**基线 allowlist**
+（2026-09-20 批8 起）：存量野值（73 处 / 46 个值）登记在测试的
+`KNOWN_PADDING_VIOLATIONS` 里并注明归属，规则**只减不增**——出现 allowlist 外的新野值
+或该删未删的条目都会红；allowlist 用 `node scripts/style-padding-baseline.mjs` 重新生成
+（打印当前值清单与出现位置）。修 padding 时优先直接改走 token 并从清单里删条目。
 
 ## 2. 六个共享基元
 
