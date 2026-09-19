@@ -14,13 +14,18 @@ describe('TaskPanel', () => {
   it('批2: the all-tasks view renders the live progress card (retry stays visible without a lesson)', () => {
     const progress: TaskProgressInfo = { taskId: 't1', state: 'transcribing', stage: 'transcribing', message: '转写中', percent: 42 }
     const row: TaskRowInfo = { ...ROW, id: 't1', state: 'transcribing' }
+    const onCancel = vi.fn()
     const host = mount(
-      <TaskPanel currentLesson="" running busy={false} progress={progress} history={[]} globalHistory={[row]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+      <TaskPanel currentLesson="" running busy={false} progress={progress} history={[]} globalHistory={[row]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={onCancel} onDelete={() => undefined} onClearFinished={() => undefined} />
     )
     // The exact gap the 2026-09-07 field report hit: retrying from the global
     // list left NO progress surface anywhere.
     expect(host.querySelector('[data-testid="task-status"]')).not.toBeNull()
     expect(host.textContent).toContain('转写音频')
+    // 修复轮 1 (I1): 取消任务按钮同样必须无参调用（同上 MouseEvent 隐患）。
+    const cancelBtn = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '取消任务')
+    click(cancelBtn ?? null)
+    expect(onCancel).toHaveBeenCalledWith()
   })
 
   it('批2: the status card shows a percent readout, hidden while queued', () => {
@@ -80,6 +85,9 @@ describe('TaskPanel', () => {
     const cancelQueue = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '取消排队')
     click(cancelQueue ?? null)
     expect(onCancel).toHaveBeenCalledOnce()
+    // 修复轮 1 (I1): 无参调用——onClick={onCancel} 会把 MouseEvent 当 taskId 传进
+    // App.cancelTask，event truthy → cancel(<MouseEvent>) → main assertSafeId 拒绝。
+    expect(onCancel).toHaveBeenCalledWith()
   })
 
   it('wires the per-row cancel button for active tasks (批3 B5)', () => {

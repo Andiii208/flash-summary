@@ -261,12 +261,12 @@ function TaskStatusCard({ progress, taskRow, cancellable = false, onCancel }: Ta
       {progress.detail != null && <p class="task-detail">{progress.detail}</p>}
       {failed && <p class="task-error">{progress.message}</p>}
       {cancellable && !queued && onCancel != null && (
-        <button class="btn small danger" onClick={onCancel}>
+        <button class="btn small danger" onClick={() => onCancel()}>
           取消任务
         </button>
       )}
       {queued && onCancel != null && (
-        <button class="btn small ghost" onClick={onCancel}>
+        <button class="btn small ghost" onClick={() => onCancel()}>
           取消排队
         </button>
       )}
