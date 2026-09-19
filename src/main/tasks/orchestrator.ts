@@ -14,6 +14,7 @@ import { dedupeKeyframes, type Grid8x8 } from '../../shared/phash'
 import { downloadToFile } from '../media/download'
 import { sanitizeStreamUrl } from '../school/play-harvest'
 import { streamComplete, freeDiskBytes } from './resume'
+import { readStageOutput } from './stage-io'
 import { storedAttachmentsPath } from '../library/paths'
 import type { StageExecutor, StageContext } from './queue'
 import type { Stage } from './stages'
@@ -98,10 +99,33 @@ function recordStage(deps: OrchestratorDeps, taskId: string, stage: Stage, outpu
 }
 
 function stageOutput<T>(deps: OrchestratorDeps, taskId: string, stage: Stage): T | null {
-  const row = deps.db.prepare('SELECT output_json FROM task_stage_outputs WHERE task_id = ? AND stage = ?').get(taskId, stage) as
-    | { output_json: string }
-    | undefined
-  return row != null ? (JSON.parse(row.output_json) as T) : null
+  // 批5: 与 resume 共用一个带兜底的 reader——坏 JSON 回落 null（产物缺失），
+  // 不再把一个坏行炸成「执行异常」。
+  return readStageOutput<T>(deps.db, taskId, stage)
+}
+
+/** 批5: 可取消的退避睡眠——signal 一触发就 reject，取消不再等满 5/10/15s。 */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted === true) return Promise.reject(new Error('任务已取消'))
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(new Error('任务已取消'))
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+/** 批5: ENOSPC 直落到用户面前是一句看不懂的 errno——翻译成与前置磁盘检查同款的人话。 */
+function describeDownloadError(err: unknown): string {
+  if ((err as { code?: string } | undefined)?.code === 'ENOSPC') {
+    return '磁盘空间不足，下载中断：请清理磁盘空间后重试'
+  }
+  return (err as Error).message
 }
 
 /** Network errors and rate limits are transient — retry the upload. */
@@ -116,11 +140,11 @@ async function transcribeChunk(
 ): Promise<string> {
   for (let attempt = 1; ; attempt++) {
     try {
-      return (await client.transcribe(audio, fileName, model)).trim()
+      return (await client.transcribe(audio, fileName, model, undefined, signal)).trim()
     } catch (err) {
       const kind = (err as { kind?: string }).kind
       if (attempt >= TRANSCRIBE_RETRY_ATTEMPTS || (kind !== 'network' && kind !== 'rate_limit')) throw err
-      await new Promise((r) => setTimeout(r, 5000 * attempt))
+      await abortableSleep(5000 * attempt, signal)
       if (signal?.aborted) throw new Error('任务已取消')
     }
   }
@@ -325,7 +349,7 @@ async function downloadStreamWithRetry(
       if (signal?.aborted || (err as Error)?.name === 'AbortError') throw err
       if (attempt >= STREAM_DOWNLOAD_ATTEMPTS) throw err
       if (signal?.aborted) throw new Error('任务已取消')
-      await new Promise((r) => setTimeout(r, attempt === 1 ? 5000 : 15000))
+      await abortableSleep(attempt === 1 ? 5000 : 15000, signal)
     }
   }
 }
@@ -467,7 +491,7 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
       return { status: 'ok' }
     } catch (err) {
       if (isCancelled(ctx, err)) return cancelResult()
-      return { status: 'failed', error: `下载视频失败: ${(err as Error).message}` }
+      return { status: 'failed', error: `下载视频失败: ${describeDownloadError(err)}` }
     } finally {
       poll.stop()
     }

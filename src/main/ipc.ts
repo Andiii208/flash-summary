@@ -43,6 +43,7 @@ import { COPYRIGHT_NOTICE_VERSION } from '../shared/copyright-notice'
 import { FEEDBACK_FORM_URL } from '../shared/feedback'
 import { buildDiagnostics, type DiagnosticsTask } from './feedback/diagnostics'
 import { redact } from './logger'
+import { claimNoteInflight, releaseNoteInflight } from './notes/inflight'
 import type { Note } from '../shared/notes/schema'
 
 /** 批5: PNG 魔数——渲染层传来的位图必须真的是 PNG 才落盘。 */
@@ -479,9 +480,13 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // renderer — the window unloads mid-call; the fresh mount re-reads the
   // tree and shows the harvested lessons.
   handle(ipc, 'school:harvestLessons', async (_e, courseId: unknown) => {
+    // 批5: start 返回本次调用是否新拿到在途归属——第二个同课时的调用会被
+    // 单飞拒绝，它的 catch 不能 finish（那会清掉第一次仍在途的标识并覆盖
+    // 其 outcome），只有持有者能收尾。
+    let ownsHarvest = false
     try {
       const cid = assertSafeId(courseId, 'courseId')
-      ctx.harvestRuntime.start(cid)
+      ownsHarvest = ctx.harvestRuntime.start(cid)
       const course = ctx.db.prepare('SELECT id, tecl_id, tecl_code FROM courses WHERE id = ?').get(cid) as
         | { id: string; tecl_id: string | null; tecl_code: string | null }
         | undefined
@@ -511,13 +516,13 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         }
       })()
       ctx.logger.info(`harvestLessons: course=${cid} entries=${harvest.lessons.length}`)
-      ctx.harvestRuntime.finish(cid, { ok: true, lessons: harvest.lessons.length })
+      if (ownsHarvest) ctx.harvestRuntime.finish(cid, { ok: true, lessons: harvest.lessons.length })
       return ok({ lessons: harvest.lessons.length })
     } catch (e) {
       ctx.logger.error(`harvestLessons failed: ${(e as Error).message}`)
       // 批C: the initiating renderer dies with the navigation — the outcome
       // is the only way the fresh mount can tell the user it failed.
-      if (typeof courseId === 'string') ctx.harvestRuntime.finish(courseId, { ok: false, lessons: 0, error: (e as Error).message })
+      if (ownsHarvest && typeof courseId === 'string') ctx.harvestRuntime.finish(courseId, { ok: false, lessons: 0, error: (e as Error).message })
       return err(e)
     }
   })
@@ -1038,6 +1043,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       })
       .catch((e) => {
         sendProgress({ taskId: id, state: 'failed', stage: null, message: (e as Error).message, percent: 0 })
+        // 批5: 抛到这里的任务行（入队前/出队复检/prepare 阶段炸掉）runTask
+        // 根本没来得及 markFailed——只推事件会留下永久非终态行，UI 再也删不
+        // 掉它。仍存在且非终态的行在这里补一刀。
+        const row = new TaskRepository(ctx.db).get(id)
+        if (row != null && row.state !== 'succeeded' && row.state !== 'failed') {
+          new TaskRepository(ctx.db).markFailed(
+            id,
+            PIPELINE_STAGES.includes(row.state as Stage) ? (row.state as Stage) : null,
+            (e as Error).message
+          )
+        }
       })
       .finally(() => {
         abortControllers.delete(id)
@@ -1517,10 +1533,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .prepare("SELECT COUNT(*) AS n FROM tasks WHERE lesson_id = ? AND state IN ('pending','summarizing','transcribing','extracting_visuals','extracting_audio','downloading_video','fetching_course')")
         .get(id) as { n: number }
       if (runningForLesson.n > 0) return err(new Error('该课时存在排队/运行中的任务，请等待完成后再重新生成笔记'))
-      const client = ctx.chatFor('multimodal')
-      const result = await summarizeLesson(ctx.db, client, id, ctx.libraryRoot)
-      if ('error' in result) return err(new Error(result.error))
-      return ok(result)
+      // 批5: 与 polish 共用进程内在途登记——同课时同时只允许一路笔记重写，
+      // 否则两路各算出同一个 MAX(version)+1，INSERT 撞 UNIQUE 撞在用户面前。
+      if (!claimNoteInflight(id, 'regenerate')) return err(new Error('该课时已有笔记生成或润色在进行中，请稍候'))
+      try {
+        const client = ctx.chatFor('multimodal')
+        const result = await summarizeLesson(ctx.db, client, id, ctx.libraryRoot)
+        if ('error' in result) return err(new Error(result.error))
+        return ok(result)
+      } finally {
+        releaseNoteInflight(id)
+      }
     } catch (e) {
       return err(e)
     }
@@ -1528,9 +1551,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // 批5 (plan 2026-09-07 v07): feedback-driven polish — revise the latest note
   // per user feedback, persisting it as version N+1. No images, no queue slot
-  // (qa:ask precedent); regenerate's two guards apply, plus an in-flight mark
-  // so double-invoking cannot race two INSERTs at the same version.
-  const polishInFlight = new Set<string>()
+  // (qa:ask precedent); regenerate's two guards apply, plus the shared
+  // notes/inflight registry so polish × regenerate cannot race two INSERTs
+  // at the same version.
   /** Tag count cap (FEEDBACK_TAGS is the vocabulary; unknown ids are dropped downstream). */
   const FEEDBACK_TAG_LIMIT = FEEDBACK_TAGS.length
   /** Free-text cap — polish.ts clamps again before prompting (defense in depth). */
@@ -1553,8 +1576,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .prepare("SELECT COUNT(*) AS n FROM tasks WHERE lesson_id = ? AND state IN ('pending','summarizing','transcribing','extracting_visuals','extracting_audio','downloading_video','fetching_course')")
         .get(id) as { n: number }
       if (runningForLesson.n > 0) return err(new Error('该课时存在排队/运行中的任务，请等待完成后再润色笔记'))
-      if (polishInFlight.has(id)) return err(new Error('该课时的润色正在进行中，请稍候'))
-      polishInFlight.add(id)
+      if (!claimNoteInflight(id, 'polish')) return err(new Error('该课时已有笔记生成或润色在进行中，请稍候'))
       try {
         const client = ctx.chatFor('multimodal')
         // 批3: 传 libraryRoot —— 润色要补发少量关键帧（它 prompt 里本来就承诺
@@ -1563,7 +1585,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         if ('error' in result) return err(new Error(result.error))
         return ok(result)
       } finally {
-        polishInFlight.delete(id)
+        releaseNoteInflight(id)
       }
     } catch (e) {
       return err(e)
@@ -1575,6 +1597,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   handle(ipc, 'notes:exportPdfDialog', async (_e, lessonId: unknown) => {
     try {
       const id = assertSafeId(lessonId, 'lessonId')
+      // 批5: 发起新导出前先清扫过期 token——被放弃的导出会话否则会一直
+      // 躺在 map 里（过期检查此前只在写入时发生）。
+      for (const [token, pending] of pendingPdfExports) {
+        if (Date.now() > pending.expiresAt) pendingPdfExports.delete(token)
+      }
       const lesson = ctx.db
         .prepare(
           `SELECT l.title, c.name AS course_name, c.teacher

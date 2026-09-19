@@ -355,26 +355,31 @@ export function transcriptHitRateFor(db: Db, lessonId: string, note: Note): { hi
 
 /** Insert the note as a new version row (pruning beyond KEEP_VERSIONS); returns the version number. */
 export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: string): number {
-  const versionRow = db.prepare('SELECT MAX(version) AS v FROM notes WHERE lesson_id = ?').get(lessonId) as { v: number | null }
-  const version = (versionRow.v ?? 0) + 1
-  // 批3: 记下产出这份笔记的工艺版本，存量升级入口据此判断「要不要建议重生成」。
-  db.prepare(
-    'INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at, prompt_version, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(
-    `${lessonId}-v${version}`,
-    lessonId,
-    version,
-    JSON.stringify(note),
-    'openai-compatible',
-    model,
-    new Date().toISOString(),
-    CURRENT_PROMPT_VERSION,
-    CURRENT_SCHEMA_VERSION
-  )
-  // F6 (design-review): keep only the newest KEEP_VERSIONS rows — regeneration
-  // and polish append versions, and the table grew without bound before this.
-  db.prepare('DELETE FROM notes WHERE lesson_id = ? AND version <= ?').run(lessonId, version - KEEP_VERSIONS)
-  return version
+  // 批5: MAX→INSERT→DELETE 收进一个事务——版本号的计算与落盘必须原子，
+  // 半途失败要么整条回滚（下次重算同一版本号），绝不留下半个版本行。
+  const insertVersion = db.transaction((): number => {
+    const versionRow = db.prepare('SELECT MAX(version) AS v FROM notes WHERE lesson_id = ?').get(lessonId) as { v: number | null }
+    const version = (versionRow.v ?? 0) + 1
+    // 批3: 记下产出这份笔记的工艺版本，存量升级入口据此判断「要不要建议重生成」。
+    db.prepare(
+      'INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at, prompt_version, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      `${lessonId}-v${version}`,
+      lessonId,
+      version,
+      JSON.stringify(note),
+      'openai-compatible',
+      model,
+      new Date().toISOString(),
+      CURRENT_PROMPT_VERSION,
+      CURRENT_SCHEMA_VERSION
+    )
+    // F6 (design-review): keep only the newest KEEP_VERSIONS rows — regeneration
+    // and polish append versions, and the table grew without bound before this.
+    db.prepare('DELETE FROM notes WHERE lesson_id = ? AND version <= ?').run(lessonId, version - KEEP_VERSIONS)
+    return version
+  })
+  return insertVersion()
 }
 
 /**

@@ -8,6 +8,7 @@ import { attachNavigationGuards } from './nav-guard'
 import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
 import { Logger } from './logger'
 import { binaryFingerprint } from './media/binaries'
+import { installProcessGuards } from './process-guards'
 
 let mainWindow: BrowserWindow | null = null
 // D4 (review): the close dialog promises «后台继续运行» — hide to tray and
@@ -119,7 +120,7 @@ function appRendererEntryUrl(): string {
   return devUrl != null && devUrl !== '' ? devUrl : fileUrl
 }
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow(onLoadError?: (message: string) => void): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -139,10 +140,14 @@ function createMainWindow(): BrowserWindow {
     }
   })
 
+  // A failed renderer load (dev server gone, corrupted bundle) used to die as
+  // a bare void rejection — no window content, zero log lines. 批5: route it
+  // into the logger.
+  const onLoadFailure = (err: unknown): void => onLoadError?.(`renderer load failed: ${(err as Error).message ?? String(err)}`)
   if (process.env.ELECTRON_RENDERER_URL) {
-    void win.loadURL(process.env.ELECTRON_RENDERER_URL)
+    void win.loadURL(process.env.ELECTRON_RENDERER_URL).catch(onLoadFailure)
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadFile(join(__dirname, '../renderer/index.html')).catch(onLoadFailure)
   }
 
   win.on('closed', () => {
@@ -181,7 +186,11 @@ if (!gotSingleInstanceLock) {
       // the proxy bypass applies before any window/platform navigation exists.
       await session.defaultSession.setProxy({ mode: 'system', proxyBypassRules: PROXY_BYPASS_RULES })
       const ctx = createContext()
-      mainWindow = createMainWindow()
+      // 批5: 进程级异常兜底——未处理的 rejection / 未捕获异常落日志而不是
+      // 无声杀进程（无 crashReporter，退出即丢现场；uncaughtException 记录
+      // 后不退出，见 process-guards.ts 的取舍注释）。
+      installProcessGuards(ctx.logger)
+      mainWindow = createMainWindow((line) => ctx.logger.error(line))
       // In-window navigation flows (play-page harvest, embedded login) drive
       // this window from main; recreated windows replace the reference.
       ctx.setMainWindow(mainWindow)
@@ -241,7 +250,7 @@ if (!gotSingleInstanceLock) {
 
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
-          mainWindow = createMainWindow()
+          mainWindow = createMainWindow((line) => ctx.logger.error(line))
           ctx.setMainWindow(mainWindow)
           attachNavigationGuards(ctx, mainWindow)
           bindWindowLifecycle(ctx, mainWindow)

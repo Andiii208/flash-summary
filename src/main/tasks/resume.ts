@@ -12,6 +12,7 @@
 import { existsSync } from 'fs'
 import type { Db } from '../db/open'
 import { PIPELINE_STAGES, type Stage } from './stages'
+import { readStageOutput } from './stage-io'
 
 /**
  * auth_key URLs are time-limited signatures (V4.1 field test: still valid
@@ -52,20 +53,6 @@ interface DownloadHandoff {
 interface AudioHandoff {
   audioPath?: string
   skipped?: string
-}
-
-function readOutput<T>(db: Db, taskId: string, stage: Stage): T | null {
-  const row = db.prepare('SELECT output_json FROM task_stage_outputs WHERE task_id = ? AND stage = ?').get(taskId, stage) as
-    | { output_json: string }
-    | undefined
-  if (row == null) return null
-  try {
-    return JSON.parse(row.output_json) as T
-  } catch {
-    // A corrupted row is a missing product (review B1: no more dead ends
-    // from one broken JSON line).
-    return null
-  }
 }
 
 /** True when the signed URL handoff is fresh enough to download against. */
@@ -113,7 +100,7 @@ function degrade(db: Db, taskId: string, failedStage: Stage, now: number): Resum
         ? true // reads transcripts/keyframes/ppt tables directly — no file inputs
         : stage === 'extracting_visuals'
           ? (() => {
-              const dl = readOutput<DownloadHandoff>(db, taskId, 'downloading_video')
+              const dl = readStageOutput<DownloadHandoff>(db, taskId, 'downloading_video')
               if (dl == null) return false
               if (dl.bilibili === true) {
                 // No video stream → the stage itself skips (legal no-evidence note).
@@ -123,14 +110,14 @@ function degrade(db: Db, taskId: string, failedStage: Stage, now: number): Resum
             })()
           : stage === 'transcribing'
             ? (() => {
-                const audio = readOutput<AudioHandoff>(db, taskId, 'extracting_audio')
+                const audio = readStageOutput<AudioHandoff>(db, taskId, 'extracting_audio')
                 if (audio?.audioPath != null) return existsSync(audio.audioPath)
                 // Bilibili subtitle fast path: the skip marker IS the product.
                 return audio?.skipped === 'bilibili-subtitle'
               })()
             : stage === 'extracting_audio'
               ? (() => {
-                  const dl = readOutput<DownloadHandoff>(db, taskId, 'downloading_video')
+                  const dl = readStageOutput<DownloadHandoff>(db, taskId, 'downloading_video')
                   if (dl == null) return false
                   if (dl.bilibili === true) {
                     // Subtitle path needs no audio; audio path needs the m4a.
@@ -138,7 +125,7 @@ function degrade(db: Db, taskId: string, failedStage: Stage, now: number): Resum
                   }
                   return streamComplete(dl.teacherPath) || streamComplete(dl.screenPath)
                 })()
-              : /* downloading_video */ urlsAreFresh(readOutput<FetchHandoff>(db, taskId, 'fetching_course'), now)
+              : /* downloading_video */ urlsAreFresh(readStageOutput<FetchHandoff>(db, taskId, 'fetching_course'), now)
 
     if (ok) {
       return i === stageIndex(failedStage)

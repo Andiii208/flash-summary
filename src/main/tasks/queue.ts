@@ -117,10 +117,22 @@ export async function runTask(
   onProgress?: ProgressListener,
   signal?: AbortSignal
 ): Promise<'succeeded' | 'failed'> {
+  // 批5: 进度推送（渲染层接收端）异常绝不能把管道炸穿——runTask 的每次
+  // onProgress 调用都走这里兜底；真正卡死任务行的场景由 launchTask 的
+  // catch 补 markFailed（双保险）。
+  const notify = onProgress == null
+    ? undefined
+    : (p: TaskProgress): void => {
+        try {
+          onProgress(p)
+        } catch {
+          // The UI bridge is gone; the pipeline state machine continues.
+        }
+      }
   const startIdx = PIPELINE_STAGES.indexOf(firstStage)
   for (let i = startIdx; i < PIPELINE_STAGES.length; i++) {
     if (signal?.aborted) {
-      return cancelTask(repo, taskId, PIPELINE_STAGES[i] as Stage, onProgress)
+      return cancelTask(repo, taskId, PIPELINE_STAGES[i] as Stage, notify)
     }
     const stage = PIPELINE_STAGES[i]
     const ctx: StageContext = { taskId, lessonId: repo.get(taskId)!.lesson_id, stage, signal }
@@ -130,7 +142,7 @@ export async function runTask(
     // completion percent — carry the previous stage's percent instead, so
     // the bar reads «previous done, this one running».
     const startPercent = i === 0 ? 0 : stagePercent(PIPELINE_STAGES[i - 1] as Stage)
-    onProgress?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: startPercent })
+    notify?.({ taskId, state: stage, stage, message: `正在执行：${stage}`, percent: startPercent })
     let result: StageResult
     try {
       result = await executors[stage](ctx)
@@ -139,20 +151,20 @@ export async function runTask(
       // row stuck in a running state — map it to failed/cancelled like a
       // returned failure would be.
       if (signal?.aborted || (err as Error)?.name === 'AbortError') {
-        return cancelTask(repo, taskId, stage, onProgress)
+        return cancelTask(repo, taskId, stage, notify)
       }
       const message = redact(`执行异常: ${(err as Error).message}`)
       repo.markFailed(taskId, stage, message)
-      onProgress?.({ taskId, state: 'failed', stage, message, percent: stagePercent(stage) })
+      notify?.({ taskId, state: 'failed', stage, message, percent: stagePercent(stage) })
       return 'failed'
     }
     if (signal?.aborted) {
-      return cancelTask(repo, taskId, stage, onProgress)
+      return cancelTask(repo, taskId, stage, notify)
     }
     if (result.status === 'failed') {
       const message = redact(result.error)
       repo.markFailed(taskId, stage, message, result.kind)
-      onProgress?.({
+      notify?.({
         taskId,
         state: 'failed',
         stage,
@@ -164,7 +176,7 @@ export async function runTask(
     }
   }
   repo.markSucceeded(taskId)
-  onProgress?.({ taskId, state: 'succeeded', stage: null, message: '任务完成', percent: 100 })
+  notify?.({ taskId, state: 'succeeded', stage: null, message: '任务完成', percent: 100 })
   return 'succeeded'
 }
 

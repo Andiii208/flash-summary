@@ -146,12 +146,18 @@ export class OpenAiCompatibleClient {
    * platform does not expose /audio/transcriptions (404 or transport resets —
    * field case: Xiaomi MiMo routes ASR through chat completions), retry with
    * the chat-style input_audio path and remember the platform.
+   *
+   * `signal` (批5): the caller's cancellation rides the request beside the
+   * hard ASR deadline — cancelling a task aborts the in-flight chunk instead
+   * of waiting out the timeout.
    */
-  async transcribe(audio: Blob, fileName: string, model: string, language?: string): Promise<string> {
+  async transcribe(audio: Blob, fileName: string, model: string, language?: string, signal?: AbortSignal): Promise<string> {
     if (!chatOnlyAsrBaseUrls.has(this.baseUrl)) {
       try {
-        return await this.transcribeMultipart(audio, fileName, model, language)
+        return await this.transcribeMultipart(audio, fileName, model, language, signal)
       } catch (err) {
+        // 批5: a cancelled task must not pay the chat-fallback detour.
+        if (signal?.aborted === true) throw err
         const kind = err instanceof ProviderError ? err.kind : null
         // Fatal user-facing errors stay; anything suggesting a missing
         // endpoint (404, resets, other bad responses) falls back to chat.
@@ -159,11 +165,11 @@ export class OpenAiCompatibleClient {
         chatOnlyAsrBaseUrls.add(this.baseUrl)
       }
     }
-    return await this.transcribeChatAudio(audio, model, language)
+    return await this.transcribeChatAudio(audio, model, language, signal)
   }
 
   /** POST /audio/transcriptions with a file + model. */
-  private async transcribeMultipart(audio: Blob, fileName: string, model: string, language?: string): Promise<string> {
+  private async transcribeMultipart(audio: Blob, fileName: string, model: string, language?: string, signal?: AbortSignal): Promise<string> {
     const form = new FormData()
     form.append('file', audio, fileName)
     form.append('model', model)
@@ -175,7 +181,7 @@ export class OpenAiCompatibleClient {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.apiKey}` },
         body: form,
-        signal: AbortSignal.timeout(ASR_TIMEOUT_MS)
+        signal: signal != null ? AbortSignal.any([AbortSignal.timeout(ASR_TIMEOUT_MS), signal]) : AbortSignal.timeout(ASR_TIMEOUT_MS)
       })
     } catch (err) {
       const cause = (err as { cause?: unknown }).cause
@@ -207,7 +213,7 @@ export class OpenAiCompatibleClient {
    * content. The caller must keep the chunk small enough for the platform's
    * base64 size cap (~10 MB encoded).
    */
-  private async transcribeChatAudio(audio: Blob, model: string, language?: string): Promise<string> {
+  private async transcribeChatAudio(audio: Blob, model: string, language?: string, signal?: AbortSignal): Promise<string> {
     const bytes = Buffer.from(await audio.arrayBuffer())
     const dataUrl = `data:audio/wav;base64,${bytes.toString('base64')}`
     const payload = await this.request('/chat/completions', {
@@ -219,7 +225,7 @@ export class OpenAiCompatibleClient {
         }
       ],
       ...(language != null && language !== 'auto' ? { asr_options: { language } } : {})
-    })
+    }, signal)
     const content = (payload as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content
     // An empty transcript is a valid answer (silent audio) — the caller
     // decides whether that is fatal; only a malformed shape throws here.

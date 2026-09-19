@@ -113,7 +113,13 @@ export interface AppContext {
    */
   harvestRuntime: {
     inflight: ReadonlySet<string>
-    start: (courseId: string) => void
+    /**
+     * Claim the course; returns true only when THIS call newly took the
+     * in-flight slot (批5: a second same-course call loses the single-flight
+     * race and must not `finish` — that would clear the first harvest's
+     * marker and overwrite its outcome).
+     */
+    start: (courseId: string) => boolean
     finish: (courseId: string, result: { ok: boolean; lessons: number; error?: string }) => void
     state: () => {
       inflight: string[]
@@ -557,8 +563,10 @@ export function createContext(overrides: Partial<{
       let outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null = null
       return {
         inflight,
-        start: (courseId: string): void => {
+        start: (courseId: string): boolean => {
+          if (inflight.has(courseId)) return false
           inflight.add(courseId)
+          return true
         },
         finish: (courseId: string, result: { ok: boolean; lessons: number; error?: string }): void => {
           inflight.delete(courseId)
