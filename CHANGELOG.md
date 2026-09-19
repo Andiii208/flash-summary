@@ -13,9 +13,9 @@
 5. **健壮性收口**（批5，`96fa918`+`e03f3af`，→+15）
 6. **数据层 GC/备份/删除口径**（批6，`ae85799`+`9643195`+`c63b9a5`，→1234）
 7. **CI·smoke 独立工作流**（批7，`1f96f06`+`7e8b1dd`）
-8. **收尾·拆域/token/死基建/文档**（批8，`9d25613`+`4b67390`+`b80654d`+收编提交，→1241）
+8. **收尾·拆域/token/死基建/文档**（批8，`9d25613`+`4b67390`+`b80654d`+收编提交，→1150）
 
-**测试 1068 → 1241（+173）**，smoke 33/33，CI 见各提交。**未打 tag**（与 0.7.6 走查节奏一致，tag 等 Andiii）。
+**测试 1068 → 1150（+82）**，smoke 33/33，CI 见各提交。**未打 tag**（与 0.7.6 走查节奏一致，tag 等 Andiii）。
 
 ### Security
 - **IPC 调用方收窄为应用自身 renderer**（批1，D1）：`assertAppSender` 从「同目录前缀」改为**精确 URL 比对**（启动时算出的 renderer index.html URL）——同目录任意文件的注入面关闭，学校平台页（导航后 frame URL 变学校域）自然被拒。导航守卫补 redirect/frame 事件；登录窗 trace/pollTimer 退订改 `onBeforeRequest(null)` 并补 closed 回归（修复轮 `4354595`）。
@@ -38,6 +38,8 @@
 - **删除保护只挡活任务**（D8 推荐侧）：删课不再被「有过任务记录」一律挡死——只挡在跑/排队中的任务，或磁盘上仍留着任务缓存（可续跑产物）的行；failed/cancelled 且无缓存的行是终态垃圾，误加课程终于删得掉。
 - **重跑抽取防孤儿**：抽取阶段写入附件目录（keyframes/PPT）前先整体清空目标目录再写（修复轮 1 补上配套的 `DELETE FROM keyframes/ppt_pages WHERE lesson_id=?`——只清盘不清行会让重跑帧数变少后在 DB 留下指向已删文件的悬空 ref，进 `loadSummarizeInputs` 的 `allRefs`/`visualAssets` 并让 Obsidian 导出的 `copyFileSync` 抛错）——同一任务重跑且本次保留帧变少时，上一次多出的帧（含缩略图）不再作为无主文件永远留在库里。
 - **口径修正**：README/CHANGELOG 中「迁移前自动备份」与实现不符的说法已改为现实口径——迁移失败回滚、无 .bak 快照，备份是独立入口。
+- **终审修复波**（0.7.7 未打 tag 内收编）：① `createMainWindow`/`restoreMainWindow` 两处窗口加载入口补 `!app.isPackaged` 门——安装版 + 本机残留 `ELECTRON_RENDERER_URL` 曾会让窗口加载远程 UI，`assertAppSender`（packaged 时已不放行 dev 前缀）随之拒掉一切 IPC = 应用自我锁死，登录/收割返回时更会把窗口从应用 UI 导航去远程页；判定抽成 `nav-guard.ts` 的 `loadMainRenderer`，三个使用方同一份口径，各补 packaged 钉住测试。② 设置页「备份资料库…」按钮旁补用户可见口径（「仅备份数据库文件（课程/任务/笔记记录）；关键帧与 PPT 等附件不在内，暂不支持从备份还原」）——此前只活在代码注释里。③ `assertSafeId` 报错文案全中文（课程/课时/任务 ID）。④ `notes:revealFile` 改为 reveal 成功后才消费一次性放行（先 delete 会让 reveal 失败的重试落到误导文案）。⑤ 删课拦截文案区分「在跑/排队中」与「已终态但缓存未清理」两种情况。⑥ B 站下载失败复用 `describeDownloadError`——ENOSPC 人话化与 SEU 分支同口径。⑦ `cleanupThumbnails` 移 `finally`——转写缺失/损坏早退路径不再漏删 `thumb-*`。⑧ smoke 工作流 paths 补 `package.json`/`package-lock.json` 并加 `workflow_dispatch`。⑨ 删除纯 `@theme inline` 死块 `app.css` 及其 import。
+- **测试计数订正**：此前 README/CHANGELOG/PROGRESS 写的 1241 例/120 文件把并行会话 5 个未提交测试文件的 91 条计进了本分支账。按干净 HEAD worktree（`git worktree add .tmp-cleancheck HEAD` + `node_modules` junction + 全量 vitest）实测订正：0.7.7 收尾（`d76be50`）为 **1150 例/115 文件**；本修复波另有 +10 例/+1 文件的钉住测试，落地后 **1160/116**。
 ## [0.7.6] — 2026-09-18 · 笔记总结质量攻坚（六批）+ 排版系统化整改（八批）+ 笔记库检索
 
 本版本覆盖 0.7.5 之后的三批工作（0.7.6 自 2026-09-17 起一直是测试构建、未打 tag）：
