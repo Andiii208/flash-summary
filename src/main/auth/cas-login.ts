@@ -14,8 +14,9 @@
 import { appendFileSync, mkdirSync, writeFileSync, rmSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { BrowserWindow, session, app, type Session, type Event, type RenderProcessGoneDetails, type WebContentsDidStartNavigationEventParams } from 'electron'
+import { BrowserWindow, session, app, type Session, type Event, type OnBeforeRequestListenerDetails, type RenderProcessGoneDetails, type WebContents, type WebContentsDidStartNavigationEventParams } from 'electron'
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
+import { isAppOrSchoolUrl } from '../nav-guard'
 import { directNetRequested } from '../net-diagnostics'
 import { redact } from '../logger'
 
@@ -119,8 +120,19 @@ function traceLine(line: string): void {
   }
 }
 
+/**
+ * 批1 (audit 2026-09-19): 旧写法每次 openCasLoginWindow 都往
+ * persist:seu-cas 加一个 onBeforeRequest 且从不移除——旧登录窗路径
+ * （SEU_LOGIN_WINDOW=1）下逐次累积、trace 行倍增。现在同一 session 只挂
+ * 一次并保存引用，窗口关闭时 removeListener（untraceSession）。
+ */
+const casTraceSessions = new WeakSet<Session>()
+let casTrace: { ses: Session; listener: (details: OnBeforeRequestListenerDetails) => void } | null = null
+
 function traceSession(ses: Session): void {
-  ses.webRequest.onBeforeRequest((details) => {
+  if (casTraceSessions.has(ses)) return
+  casTraceSessions.add(ses)
+  const listener = (details: OnBeforeRequestListenerDetails): void => {
     try {
       const u = new URL(details.url)
       if (/\.(js|css|png|jpg|jpeg|gif|woff2?|svg|ico|ttf|mp4)$/i.test(u.pathname)) return
@@ -128,6 +140,37 @@ function traceSession(ses: Session): void {
     } catch {
       // Ignore unparsable URLs.
     }
+  }
+  ses.webRequest.onBeforeRequest(listener)
+  casTrace = { ses, listener }
+}
+
+/** 批1: 登录窗关闭时移除 trace 监听（见 traceSession 的累积问题）。 */
+function untraceSession(ses: Session): void {
+  if (casTrace == null || casTrace.ses !== ses) return
+  // Electron 运行时在每个 on* 事件上带 removeListener，类型定义没暴露，需要这一跳。
+  const on = ses.webRequest.onBeforeRequest as unknown as {
+    removeListener(l: (details: OnBeforeRequestListenerDetails) => void): void
+  }
+  on.removeListener(casTrace.listener)
+  casTrace = null
+  casTraceSessions.delete(ses)
+}
+
+/**
+ * 批1 (audit 2026-09-19): 登录窗渲染的是学校平台页面——把导航钉在学校主机上
+ * （loading 页自己跳平台那一下放行），window.open 全拒。SEU_DIAG_URL 是现场
+ * 诊断缝，仍然放行，否则诊断流程会被自己人挡死。
+ */
+export function attachLoginWindowGuards(webContents: WebContents, trace: (line: string) => void, diagUrl: string): void {
+  webContents.setWindowOpenHandler(() => {
+    trace('blocked window.open in login window')
+    return { action: 'deny' }
+  })
+  webContents.on('will-navigate', (event, url) => {
+    if (isAppOrSchoolUrl(url) || (diagUrl !== '' && url.startsWith(diagUrl))) return
+    event.preventDefault()
+    trace(`blocked login navigation to ${describeUrl(url)}`)
   })
 }
 
@@ -257,6 +300,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
       nodeIntegration: false
     }
   })
+  attachLoginWindowGuards(win.webContents, traceLine, diagUrl)
 
   // Field 2026-09-02: the first navigation sometimes never commits. These
   // pins localize the stall — start without commit points at the renderer /
@@ -378,6 +422,10 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
     })
 
     win.on('closed', () => {
+      // 批1: 轮询定时器与 trace 监听都随窗口销毁清掉（trace 的累积问题见
+      // traceSession；轮询留着会在销毁后继续探活）。
+      if (pollTimer != null) clearInterval(pollTimer)
+      untraceSession(ses)
       if (!settled) {
         settled = true
         if (firstPaintTimer != null) {

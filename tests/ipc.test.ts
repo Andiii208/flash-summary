@@ -4,12 +4,29 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
 import { createContext, type AppContext } from '../src/main/app-context'
-import { registerIpc } from '../src/main/ipc'
+import { registerIpc, setAppRendererOrigin } from '../src/main/ipc'
 import { TaskRepository } from '../src/main/tasks/queue'
 import type { FetchLike } from '../src/main/bilibili/client'
 import type { Stage } from '../src/main/tasks/stages'
 import type { StageExecutor } from '../src/main/tasks/queue'
 import type { Cryptor } from '../src/main/auth/session-crypto'
+
+// 批1（契约有意变更）：assertAppSender 从「任意 file:// 放行」收窄为「只认
+// 启动时注入的应用 renderer URL」。这里 mock electron 平台层（与
+// ipc-settings/ipc-feedback 同款）；app 做成可变对象，供「dev 前缀仅未打包
+// 放行」用例翻转 isPackaged。
+const electronApp = vi.hoisted(() => ({ isPackaged: false, getVersion: () => '0.0.0-test' }))
+vi.mock('electron', () => ({
+  ipcMain: undefined,
+  dialog: { showSaveDialog: vi.fn(async () => ({ canceled: true })), showOpenDialog: vi.fn(async () => ({ canceled: true })) },
+  shell: { openPath: vi.fn(async () => '') },
+  BrowserWindow: { getFocusedWindow: () => null },
+  app: electronApp,
+  WebContents: undefined
+}))
+
+// FakeIpc 伪装的调用方 URL 必须经注入才算数（与 tests/ipc-settings 等同一契约）。
+setAppRendererOrigin('file:///app/index.html')
 
 /** In-memory ipc stub mimicking electron ipcMain handle/invoke. */
 class FakeIpc {
@@ -21,6 +38,8 @@ class FakeIpc {
     const fn = this.handlers.get(channel)
     if (fn == null) throw new Error(`no handler for ${channel}`)
     // E1 (review): handlers verify the sender frame — pose as the app UI.
+    // 批1（契约有意变更）：这个 URL 现在必须与 setAppRendererOrigin 注入的
+    // 应用 renderer URL 完全相等，不再因为是 file:// 就放行。
     return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
   }
 
@@ -1149,5 +1168,51 @@ describe('bilibili course auto-chain over ipc (usability 2026-09-07)', () => {
     // SEU course: l2 stays pending — no auto-chain outside bilibili.
     const l2 = db.prepare('SELECT state FROM tasks WHERE id = ?').get(t2.value!.id) as { state: string }
     expect(l2.state).toBe('pending')
+  })
+})
+
+describe('assertAppSender — 批1 调用方边界（契约有意变更：不再放行任意 file://）', () => {
+  const APP_RENDERER_URL = 'file:///E:/SEU%20summary/out/renderer/index.html'
+
+  afterEach(() => {
+    // 还原 FakeIpc 的伪装身份，避免影响本文件其余用例。
+    setAppRendererOrigin('file:///app/index.html')
+    delete process.env.ELECTRON_RENDERER_URL
+    electronApp.isPackaged = false
+  })
+
+  it('rejects a foreign file:// page (the old code allowed any file://)', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    await expect(ipc.invokeFrom('file:///C:/temp/evil.html', 'settings:get')).rejects.toThrowError(/非法调用方/)
+  })
+
+  it('accepts exactly the renderer URL injected at startup', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    setAppRendererOrigin(APP_RENDERER_URL)
+    const res = (await ipc.invokeFrom(APP_RENDERER_URL, 'settings:get')) as { ok: boolean }
+    expect(res.ok).toBe(true)
+    // A sibling file in the same directory still fails — exact match, not prefix.
+    await expect(ipc.invokeFrom('file:///E:/SEU%20summary/out/renderer/other.html', 'settings:get')).rejects.toThrowError(
+      /非法调用方/
+    )
+  })
+
+  it('accepts the dev-server prefix only when unpackaged', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+    electronApp.isPackaged = false
+    const ok = (await ipc.invokeFrom('http://localhost:5173/', 'settings:get')) as { ok: boolean }
+    expect(ok.ok).toBe(true)
+    electronApp.isPackaged = true
+    await expect(ipc.invokeFrom('http://localhost:5173/', 'settings:get')).rejects.toThrowError(/非法调用方/)
+  })
+
+  it('rejects https callers', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    await expect(ipc.invokeFrom('https://evil.example/x', 'providers:list')).rejects.toThrowError(/非法调用方/)
   })
 })

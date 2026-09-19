@@ -116,17 +116,34 @@ export interface HandleLike {
 }
 
 /**
+ * 批1 (audit 2026-09-19): the renderer entry URL, computed once at startup and
+ * injected by index.ts (setAppRendererOrigin, before registerIpc).
+ * assertAppSender compares file:// callers against it EXACTLY.
+ */
+let appRendererUrl: string | null = null
+
+/** Inject the app renderer's own entry URL (index.ts, app.whenReady). */
+export function setAppRendererOrigin(url: string): void {
+  appRendererUrl = url
+}
+
+/**
  * E1 (review): every handler verifies the caller is the app's own renderer.
  * While the main window is navigated to the school platform, its pages load
  * WITH the preload bridge attached — without this check they could reach
  * the full IPC surface (providers:save, settings writes, PDF export…).
+ * 批1（契约有意变更）：file:// 不再整体放行——只认启动时注入的那个 renderer
+ * 入口 URL；dev 分支保留前缀放行且仅限未打包（与 nav-guard 同一口径）。
  */
 export function assertAppSender(e: unknown): void {
   const frame = (e as { senderFrame?: { url?: string } | null } | undefined)?.senderFrame
   const url = frame?.url ?? ''
+  if (url.startsWith('file://')) {
+    if (appRendererUrl != null && url === appRendererUrl) return
+    throw new Error('非法调用方：该通道仅限应用自身界面调用')
+  }
   const devUrl = process.env.ELECTRON_RENDERER_URL
-  if (url.startsWith('file://')) return
-  if (devUrl != null && devUrl !== '' && url.startsWith(devUrl)) return
+  if (!app.isPackaged && devUrl != null && devUrl !== '' && url.startsWith(devUrl)) return
   throw new Error('非法调用方：该通道仅限应用自身界面调用')
 }
 

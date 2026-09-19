@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, Tray, Menu } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
-import { registerIpc, webContentsSender } from './ipc'
+import { registerIpc, setAppRendererOrigin, webContentsSender } from './ipc'
+import { attachNavigationGuards } from './nav-guard'
 import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
 import { Logger } from './logger'
 import { binaryFingerprint } from './media/binaries'
@@ -74,42 +76,6 @@ function enterBackgroundMode(win: BrowserWindow): void {
   })
 }
 
-/**
- * E2 (review): the main window legitimately navigates to the school
- * platform (login, play-page harvest) — but nothing else. Pin navigation
- * to the app itself and the school hosts, refuse window.open popups, and
- * deny every permission request.
- */
-const NAV_ALLOWED_HOST_SUFFIXES = ['cvs.seu.edu.cn', 'auth.seu.edu.cn', 'ids.seu.edu.cn']
-
-function isAppOrSchoolUrl(url: string): boolean {
-  const devUrl = process.env.ELECTRON_RENDERER_URL
-  if (devUrl != null && devUrl !== '' && url.startsWith(devUrl)) return true
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol === 'file:') return true
-    return NAV_ALLOWED_HOST_SUFFIXES.some((suffix) => parsed.hostname === suffix || parsed.hostname.endsWith('.' + suffix))
-  } catch {
-    return false
-  }
-}
-
-function attachNavigationGuards(ctx: { logger: { warn(message: string): void } }, win: BrowserWindow): void {
-  win.webContents.on('will-navigate', (event, url) => {
-    if (isAppOrSchoolUrl(url)) return
-    event.preventDefault()
-    ctx.logger.warn(`blocked navigation to ${url.split('?')[0] ?? ''}`)
-  })
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    ctx.logger.warn(`blocked window.open to ${url.split('?')[0] ?? ''}`)
-    return { action: 'deny' }
-  })
-  win.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    ctx.logger.warn(`denied permission request: ${permission}`)
-    callback(false)
-  })
-}
-
 /** D4 decision 1b: when the queue drains, bring the window back. */
 function exitBackgroundMode(win: BrowserWindow): void {
   destroyTray()
@@ -139,6 +105,18 @@ if (!app.isPackaged) {
 // is per-userData). Library isolation additionally uses SEU_SUMMARY_DOCS_OVERRIDE.
 if (process.env.SEU_SMOKE === '1' && process.env.SEU_SMOKE_USER_DATA != null) {
   app.setPath('userData', process.env.SEU_SMOKE_USER_DATA)
+}
+
+/**
+ * 批1: the renderer entry the app actually loads — the dev-server URL in
+ * unpackaged dev runs, the packaged file URL otherwise. Injected into
+ * ipc.ts so assertAppSender can compare file:// callers against it exactly.
+ */
+function appRendererEntryUrl(): string {
+  const fileUrl = pathToFileURL(join(__dirname, '../renderer/index.html')).href
+  if (app.isPackaged) return fileUrl
+  const devUrl = process.env.ELECTRON_RENDERER_URL
+  return devUrl != null && devUrl !== '' ? devUrl : fileUrl
 }
 
 function createMainWindow(): BrowserWindow {
@@ -209,6 +187,9 @@ if (!gotSingleInstanceLock) {
       ctx.setMainWindow(mainWindow)
       bindWindowLifecycle(ctx, mainWindow)
       attachNavigationGuards(ctx, mainWindow)
+      // 批1: IPC handler 的调用方校验（ipc.ts assertAppSender）只认应用自己的
+      // renderer 入口 URL——启动时算一次并注入，之后 handler 精确比对。
+      setAppRendererOrigin(appRendererEntryUrl())
       // The main window reference lets IPC push task progress to the renderer.
       // H3 (review): audit trail for the bundled media binaries.
       ctx.logger.info(

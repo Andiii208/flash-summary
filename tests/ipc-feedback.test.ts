@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
 import { createContext, type AppContext } from '../src/main/app-context'
-import { registerIpc } from '../src/main/ipc'
+import { registerIpc, setAppRendererOrigin } from '../src/main/ipc'
 import type { Cryptor } from '../src/main/auth/session-crypto'
 import { FEEDBACK_FORM_URL } from '../src/shared/feedback'
 
@@ -27,6 +27,10 @@ vi.mock('electron', () => ({
   app: { getVersion: () => '0.0.0-test' },
   WebContents: undefined
 }))
+
+// 批1（契约有意变更）：E1 校验从「任意 file:// 放行」改为「只认启动时注入的
+// 应用 renderer URL」——FakeIpc 伪装的调用方 URL 现在必须显式注入。
+setAppRendererOrigin('file:///app/index.html')
 
 class FakeIpc {
   readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
