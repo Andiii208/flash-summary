@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { App } from '../../src/renderer/App'
 import { render } from 'preact'
-import { mount, click } from '../helpers/preact'
-import type { SeuSummaryBridge } from '../../src/shared/bridge'
+import { mount, click, input } from '../helpers/preact'
+import type { CourseTreeInfo, SeuSummaryBridge } from '../../src/shared/bridge'
 import type { ApiResult } from '../../src/shared/api-result'
 import { makeBridge, ok, fakeState, NOTE_ROWS, TASK_ROWS, setListTotals } from '../helpers/fake-app-bridge'
 
@@ -516,5 +516,94 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // D6-A: Ctrl+K toggles the browser back closed (the chord is free).
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
     await waitForGone('[data-testid="course-browser"]')
+  })
+
+  it('批4: 搜索态也分块——≥150 门命中只渲染 150 行，「显示更多」按页加长（重置 effect 对搜索态生效）', async () => {
+    const courses: CourseTreeInfo[] = Array.from({ length: 260 }, (_, i) => ({
+      id: `s${i}`,
+      name: `检索课程${i}`,
+      lessons: [{ id: `s${i}-l1`, title: `第${i}讲`, hasNote: false }]
+    }))
+    const bridge = makeBridge()
+    // fixture 语义：makeBridge 会复位 fakeState，courses 必须在它之后赋值。
+    fakeState.courses = courses
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    await waitForSelector('.sidebar .search-input')
+    const box = host.querySelector<HTMLInputElement>('.sidebar .search-input')
+    expect(box).not.toBeNull()
+    input(box, '检索课程')
+    // 300ms 防抖后侧栏切到纯搜索结果列表。
+    await vi.waitFor(() => {
+      expect(document.querySelectorAll('.course-head')!.length).toBeGreaterThan(0)
+    })
+    // 防抖渲染与 effect flush 落定后再操作——Preact act 与 debounce 的
+    // 渲染队列有竞态，紧接着点「显示更多」会丢掉这次状态更新。
+    await new Promise((r) => setTimeout(r, 100))
+    // 分块：260 门命中只渲染 150 行（等量 lesson 行随之裁掉）。
+    expect(document.querySelectorAll('.course-head')!.length).toBe(150)
+    const more = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('显示更多'))
+    expect(more).not.toBeUndefined()
+    expect(more?.textContent).toContain('还有 110 门')
+    click(more ?? null)
+    await vi.waitFor(() => {
+      expect(document.querySelectorAll('.course-head')!.length).toBe(260)
+    })
+    // 取满后「显示更多」消失，不留一个「还有 0 门」。
+    expect([...document.querySelectorAll('button')].some((b) => b.textContent?.includes('显示更多'))).toBe(false)
+  })
+
+  it('批4: 启动只拉一次任务列表，口径与「显示更多」分页一致（不再混入全表二次覆盖）', async () => {
+    const bridge = makeBridge()
+    mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    await vi.waitFor(() => {
+      expect(bridge.tasks.list).toHaveBeenCalled()
+    })
+    const listCalls = bridge.tasks.list as unknown as { mock: { calls: unknown[][] } }
+    await vi.waitFor(() => {
+      expect(listCalls.mock.calls.length).toBe(1)
+    })
+    expect(listCalls.mock.calls[0]?.[1]).toMatchObject({ limit: 50 })
+  })
+
+  it('批4: 存量升级批量完成后只刷一次笔记库（不再逐课刷全库）', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
+      { lessonId: 'l2', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第二讲' }
+    )
+    const bridge = makeBridge()
+    ;(bridge.notes.courseHealth as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok([
+        { lessonId: 'l1', lessonTitle: '第一讲', version: 1, warnCount: 2, grade: 'weak', promptVersion: 0 },
+        { lessonId: 'l2', lessonTitle: '第二讲', version: 1, warnCount: 0, grade: 'good', promptVersion: 0 }
+      ])
+    )
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library')
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '升级旧笔记') ?? null)
+    await waitForSelector('.dialog')
+    // 等 courseHealth 落地（loading 结束才有列表与可点的确认钮）。
+    await waitForSelector('.note-upgrade-list')
+    // 等默认勾选的 effect flush 落定（确认钮随之可用——同上，渲染队列竞态）。
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选'))
+      expect(btn?.textContent).toContain('（2）')
+    })
+    const confirm = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) as HTMLButtonElement
+    expect(confirm).not.toBeUndefined()
+    const listMock = bridge.notes.list as unknown as { mock: { calls: unknown[][] } }
+    const before = listMock.mock.calls.length
+    click(confirm)
+    await vi.waitFor(() => {
+      expect(bridge.notes.regenerate).toHaveBeenCalledTimes(2)
+    })
+    await vi.waitFor(() => {
+      expect(host.textContent).toContain('已升级 2 个课时笔记')
+    })
+    // 批量后刷一次——逐课刷会是 2 次。
+    expect(listMock.mock.calls.length).toBe(before + 1)
   })
 })

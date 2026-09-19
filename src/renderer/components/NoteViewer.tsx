@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
 import type { NoteIndexInfo, NoteAttachmentInfo, AttachmentManifestEntry } from '../../shared/bridge'
@@ -166,6 +166,9 @@ export function NoteViewer({
   const hitRate = note != null ? evidenceHitRate(note, attachmentManifest) : null
   // 批3: 内容体检——纯函数投影（批1 质量规约的可观测面）。
   const health = note != null ? noteHealth(note, hitRate) : null
+  // 批4: 投影 memo——note/view 不变时，无关 state 变更（如体检面板开合）
+  // 不重新投影，NoteBlocks 也不会因拿到新 blocks 数组而整树重渲染。
+  const sections = useMemo(() => (note == null ? [] : projectNoteBlocks(note, view)), [note, view])
   return (
     <div class="note-viewer">
       <PageHeader
@@ -402,7 +405,7 @@ export function NoteViewer({
               exportBusy={exportBusy}
             />
           ) : (
-            projectNoteBlocks(note, view).map((section) => (
+            sections.map((section) => (
               <ErrorBoundary key={section.heading} area="note-view">
               <section key={section.heading} class="note-section">
                 <h3>{section.heading}</h3>

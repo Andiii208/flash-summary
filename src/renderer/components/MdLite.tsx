@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { memo } from 'preact/compat'
 import { useEffect, useRef } from 'preact/hooks'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -55,8 +56,11 @@ export function Inline({ spans }: { spans: MdInline[] }): JSX.Element {
 /**
  * Markdown-lite renderer: parse to tokens, emit JSX only — no innerHTML
  * anywhere, so LLM text can never inject markup (CSP-safe by construction).
+ *
+ * 批4: memo——props 只有一个 text 字符串；父层（NoteViewer / App）的无关 state
+ * 变更不再触发整棵子树重解析重渲染（渲染层性能）。
  */
-export function MdLite({ text }: { text: string }): JSX.Element {
+export const MdLite = memo(function MdLite({ text }: { text: string }): JSX.Element {
   const blocks = parseMdLite(text)
   return (
     <div class="md-lite">
@@ -137,4 +141,4 @@ export function MdLite({ text }: { text: string }): JSX.Element {
       })}
     </div>
   )
-}
+})

@@ -8,9 +8,11 @@
  * MdLite's Inline.
  */
 import type { JSX } from 'preact'
+import { memo } from 'preact/compat'
 import { parseInline } from '../../shared/notes/md-lite'
 import { Inline } from './MdLite'
 
-export function InlineText({ text }: { text: string }): JSX.Element {
+/** 批4: memo——props 只有一个 text 字符串，无关重渲染不再重新 parseInline。 */
+export const InlineText = memo(function InlineText({ text }: { text: string }): JSX.Element {
   return <Inline spans={parseInline(text)} />
-}
+})

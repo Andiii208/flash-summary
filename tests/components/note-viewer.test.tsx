@@ -2,6 +2,22 @@ import { describe, expect, it, vi } from 'vitest'
 import { NoteViewer } from '../../src/renderer/components/NoteViewer'
 import { mount, click, input } from '../helpers/preact'
 import type { Note } from '../../src/shared/notes/schema'
+import type * as mdLiteModule from '../../src/shared/notes/md-lite'
+import type * as viewsModule from '../../src/shared/notes/views'
+import { parseInline } from '../../src/shared/notes/md-lite'
+import { projectNoteBlocks } from '../../src/shared/notes/views'
+
+// 批4: memo 有效性要用计数器说话——解析/投影换成间谍，其余导出保持真实现。
+// 注意：parseMdLite 模块内部对 parseInline 的调用不经过导出绑定，
+// 所以计数器量的正是 InlineText 每次渲染触发的解析。
+vi.mock('../../src/shared/notes/md-lite', async (importOriginal) => {
+  const actual = await importOriginal<typeof mdLiteModule>()
+  return { ...actual, parseInline: vi.fn(actual.parseInline) }
+})
+vi.mock('../../src/shared/notes/views', async (importOriginal) => {
+  const actual = await importOriginal<typeof viewsModule>()
+  return { ...actual, projectNoteBlocks: vi.fn(actual.projectNoteBlocks) }
+})
 
 const NOTE: Note = {
   overview: '本讲介绍复杂度分析。',
@@ -505,4 +521,22 @@ describe('NoteViewer 健康巡查 2026-09-12 批5 (export busy feedback)', () =>
     const markdown = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '导出 Markdown') as HTMLButtonElement
     expect(markdown.disabled).toBe(false)
   })
+
+describe('NoteViewer 批4 渲染层 memo', () => {
+  it('memo 化后一次无关 state 变更（开合体检面板）不重复解析、不重复投影', () => {
+    const parseSpy = vi.mocked(parseInline)
+    const projectSpy = vi.mocked(projectNoteBlocks)
+    parseSpy.mockClear()
+    projectSpy.mockClear()
+    const host = mount(<NoteViewer note={NOTE} />)
+    const parsesAtMount = parseSpy.mock.calls.length
+    const projectionsAtMount = projectSpy.mock.calls.length
+    expect(parsesAtMount).toBeGreaterThan(0)
+    expect(projectionsAtMount).toBeGreaterThan(0)
+    // 无关 state 变更：开合体检面板（note 与全部 props 原样不动）。
+    click(host.querySelector('.note-health-toggle'))
+    expect(parseSpy.mock.calls.length).toBe(parsesAtMount)
+    expect(projectSpy.mock.calls.length).toBe(projectionsAtMount)
+  })
+})
 })

@@ -413,8 +413,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           {showWelcome ? (
             <WelcomeGuide onLogin={state.login} onOpenBili={state.openBili} onOpenSettings={() => setTab('settings')} busy={state.sessionBusy} />
           ) : state.searchMode ? (
+            <>
             <CourseTree
-              tree={state.filteredTree}
+              tree={state.filteredTree.slice(0, state.visibleCourses)}
               selectedLesson={state.currentLesson}
               expanded={state.expanded}
               searching
@@ -428,6 +429,12 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onHarvestLessons={state.harvestLessons}
               onToggleMine={state.toggleMine}
             />
+            {state.filteredTree.length > state.visibleCourses && (
+              <button class="btn small ghost show-more" onClick={state.showMoreCourses}>
+                显示更多（还有 {state.filteredTree.length - state.visibleCourses} 门）
+              </button>
+            )}
+            </>
           ) : (
             <>
               <MyStudyPanel
@@ -1216,9 +1223,13 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
           const res = await bridge.notes.attachmentData(lessonId, ref)
           const value = res.ok ? (res.value ?? null) : null
           attachmentCache.current.set(cacheKey, value)
-          if (lessonRef.current === lessonId) setAttachmentVersion((v) => v + 1)
         } finally {
           attachmentInflight.current.delete(cacheKey)
+          // 批4: 一批附件全部解析完成后一次 bump——逐张 bump 会让每个关键帧都
+          // 触发整棵笔记树重渲染；in-flight 集合清空即这一批结束。
+          if (attachmentInflight.current.size === 0 && lessonRef.current === lessonId) {
+            setAttachmentVersion((v) => v + 1)
+          }
         }
       })()
     },
@@ -1263,12 +1274,14 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     }
   }, [bridge])
 
-  const loadGlobalHistory = useCallback(async (): Promise<void> => {
+  const loadGlobalHistory = useCallback(async (): Promise<TaskRowInfo[]> => {
     const res = await bridge.tasks.list(undefined, { limit: taskLimitRef.current })
     if (res.ok && res.value != null) {
       setGlobalHistory(res.value.items)
       setGlobalHistoryTotal(res.value.total)
+      return res.value.items
     }
+    return []
   }, [bridge])
 
   /** 批B: cross-lesson library + recent Q&A feed the tab empty states. */
@@ -1412,7 +1425,6 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     void refreshProviders()
     void refreshSettings()
     void refreshBiliSession()
-    void loadGlobalHistory()
     void loadNoteIndex()
     void loadQaRecent()
     // 批C: resume the persisted lesson selection (loads note/attachments/
@@ -1429,11 +1441,11 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     // The renderer unloads during in-window navigations (harvest/未来登录) —
     // an in-flight task keeps running in main; restore its live state here.
     void (async () => {
-      const res = await bridge.tasks.list()
-      if (disposed || !res.ok || res.value == null) return
-      setGlobalHistory(res.value.items)
-      setGlobalHistoryTotal(res.value.total)
-      const active = res.value.items.find((t) => isActiveState(t.state))
+      // 批4: 启动口径统一——任务列表只经 loadGlobalHistory 拉一次（分页 limit），
+      // 不再叠加一次全表拉取把分页状态覆盖回全量。
+      const items = await loadGlobalHistory()
+      if (disposed) return
+      const active = items.find((t) => isActiveState(t.state))
       if (active != null) {
         setRunning(true)
         setProgress({
@@ -1451,18 +1463,17 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     const off = bridge.tasks.onProgress((p) => {
       setProgress(p)
       const progressKey = `${p.taskId}:${p.state}:${p.stage ?? ''}`
-      if (lastProgressKeyRef.current !== progressKey) {
-        lastProgressKeyRef.current = progressKey
-        void loadGlobalHistory()
-        if (lessonRef.current !== '') void loadHistory(lessonRef.current)
-      }
+      const keyChanged = lastProgressKeyRef.current !== progressKey
+      if (keyChanged) lastProgressKeyRef.current = progressKey
       const lid = lessonRef.current
       if (p.state === 'succeeded') {
         // B1: other tasks may still be queued — recompute from the fresh rows.
+        // 批4: 一次成功事件只拉一次任务列表——此前 key 变更路径与成功分支
+        // 各发一次全量 tasks.list，且成功分支那份还是不带 limit 的全表。
         void (async () => {
-          const rows = await bridge.tasks.list()
-          setRunning(rows.ok && rows.value != null ? rows.value.items.some((t) => isActiveState(t.state)) : false)
-          const row = rows.ok && rows.value != null ? rows.value.items.find((t) => t.id === p.taskId) : undefined
+          const rows = await loadGlobalHistory()
+          setRunning(rows.some((t) => isActiveState(t.state)))
+          const row = rows.find((t) => t.id === p.taskId)
           const doneLesson = row?.lesson_id ?? lid
           void loadNoteIndex()
           if (doneLesson !== '') {
@@ -1474,13 +1485,19 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             onAction: () => openLessonNotesRef.current(doneLesson !== '' ? doneLesson : lid)
           })
         })()
-      } else if (p.state === 'failed') {
+      } else {
+        if (keyChanged) {
+          void loadGlobalHistory()
+          if (lid !== '') void loadHistory(lid)
+        }
+        if (p.state === 'failed') {
         void (async () => {
           const rows = await bridge.tasks.list()
           setRunning(rows.ok && rows.value != null ? rows.value.items.some((t) => isActiveState(t.state)) : false)
         })()
         toast(p.message, 'error')
         if (p.kind === 'session_expired') toast('会话已过期，登录后可重试此任务', 'error')
+        }
       }
     })
     return () => {
@@ -2302,11 +2319,12 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
             const res = await bridge.notes.regenerate(lessonId)
             if (res.ok) {
               done.add(lessonId)
-              await loadNoteIndex()
             } else {
               failed.add(lessonId)
             }
           }
+          // 批4: 批量完成后刷一次笔记库——逐课各刷一次全库，批量升级时是 N 倍开销。
+          await loadNoteIndex()
         } finally {
           setNoteRegenBusy(false)
           setNoteUpgradeRun({ busy: false, running: new Set(), done, failed })
