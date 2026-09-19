@@ -404,7 +404,7 @@ describe('orchestrator stage executors', () => {
       const taskDir = join(dir, 'cache', taskId)
       mkdirSync(taskDir, { recursive: true })
       const screen = join(taskDir, 'screen.mp4')
-      execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=21:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', screen], { stdio: 'pipe' })
+      execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=75:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', screen], { stdio: 'pipe' })
       db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'downloading_video', ?)").run(
         taskId,
         JSON.stringify({ teacherPath: screen, screenPath: screen })
@@ -417,7 +417,7 @@ describe('orchestrator stage executors', () => {
 
     const full = await runVisuals('t8-full', decodeGrid8x8)
     expect(full.result).toEqual({ status: 'ok' })
-    expect(full.rows.length).toBeGreaterThan(1) // 21s @ fps=1/10 → 3 候选，去重后仍有多帧
+    expect(full.rows.length).toBeGreaterThan(1) // 75s @ 20s 间隔（A4）→ 4 候选；本机 testsrc 缺省全部差异 ≤5 位（视频太静），靠 A4 覆盖桶保底才有多帧
 
     const thumb = await runVisuals('t9-thumb', decodeGridPreferThumb)
     expect(thumb.result).toEqual({ status: 'ok' })
@@ -439,9 +439,14 @@ describe('orchestrator stage executors', () => {
   // 批6 (plan 2026-09-19): 重跑防孤儿。同一任务重跑且本次保留帧变少时，
   // 附件目录先整体清空再写——上一次多出的帧（含批3 随帧的缩略图）不会作为
   // 孤儿文件永远留在库里（DB 行有外键与版本管理，磁盘文件此前没有）。
+  // 帧源必须选高熵动画源（mandelbrot）+ 真实 gridDecoder：testsrc/rgbtestsrc
+  // 在 64x64、提交态 10s 间隔下去重后只剩 1-2 帧，而 makeDeps 默认的常量
+  // 网格会让任何源都去重成 1 帧——曾按并行会话在飞的「20s 间隔 + 覆盖桶」
+  // 校准（那是未提交行为），在干净 HEAD 上直接红。下个会话不要改回 testsrc。
   it('批6: 重跑抽取先清 destDir——帧数变少不留孤儿文件', async () => {
     const { execFileSync } = await import('child_process')
     const { ffmpegPath } = await import('../src/main/media/binaries')
+    const { decodeGrid8x8 } = await import('../src/main/media/grid')
 
     const taskId = 't6-rerun'
     const repo = new TaskRepository(db)
@@ -450,8 +455,8 @@ describe('orchestrator stage executors', () => {
     mkdirSync(taskDir, { recursive: true })
     const longVideo = join(taskDir, 'long.mp4')
     const shortVideo = join(taskDir, 'short.mp4')
-    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=145:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', longVideo], { stdio: 'pipe' })
-    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=75:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', shortVideo], { stdio: 'pipe' })
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'mandelbrot=size=64x64:rate=10', '-t', '145', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', longVideo], { stdio: 'pipe' })
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'mandelbrot=size=64x64:rate=10', '-t', '75', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', shortVideo], { stdio: 'pipe' })
 
     const seedHandoff = (video: string): void => {
       db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'downloading_video', ?)").run(
@@ -466,11 +471,11 @@ describe('orchestrator stage executors', () => {
         existsSync(join(dir, r.file_path))
       ).length
 
-    const executors = createExecutors(makeDeps())
+    const executors = createExecutors(makeDeps({ gridDecoder: decodeGrid8x8 }))
     seedHandoff(longVideo)
     expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
     const firstRun = kfFiles().length
-    expect(firstRun).toBeGreaterThan(1) // 145s @ 20s 间隔 + 覆盖桶 → 5 帧；75s 重跑 → 3 帧
+    expect(firstRun).toBeGreaterThanOrEqual(2) // mandelbrot 145s @ 10s 间隔（提交态）→ 14 帧；75s → 7 帧
 
     // 上一次更长抽取留下的孤儿（整改前，帧数变少时它会一直躺在附件库里）。
     writeFileSync(join(libKfDir, 'kf-0099-999s.jpg'), 'orphan-frame')
@@ -478,9 +483,11 @@ describe('orchestrator stage executors', () => {
 
     seedHandoff(shortVideo)
     expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
-    expect(kfFiles().length).toBeLessThan(firstRun)
+    const reRun = kfFiles().length
+    expect(reRun).toBeGreaterThanOrEqual(1)
+    expect(reRun).toBeLessThan(firstRun)
     // 磁盘上没有孤儿：每个 kf 文件都有 DB 行，每个有文件的 DB 行都在盘上。
-    expect(kfFiles().length).toBe(rowsWithFileOnDisk())
+    expect(reRun).toBe(rowsWithFileOnDisk())
     expect(readdirSync(libKfDir).filter((f) => f.includes('0099'))).toHaveLength(0)
   })
 
@@ -488,9 +495,12 @@ describe('orchestrator stage executors', () => {
   // 时，重跑帧数变少会在 DB 里留下指向已删文件的悬空行——它们会进
   // loadSummarizeInputs 的 allRefs/visualAssets（模型可引用不存在也没发过
   // 的证据）并让 Obsidian 导出的 copyFileSync 抛错。
+  // 帧源同批6 重跑用例：mandelbrot 高熵动画 + 真实 decodeGrid8x8——testsrc
+  // 在提交态 10s 间隔下去重后只剩 1-2 帧，常量网格更是任何源都只剩 1 帧。
   it('修复轮 I3: 重跑帧数变少后 DB 行数与盘上文件数一致（无悬空 keyframes 行）', async () => {
     const { execFileSync } = await import('child_process')
     const { ffmpegPath } = await import('../src/main/media/binaries')
+    const { decodeGrid8x8 } = await import('../src/main/media/grid')
 
     const taskId = 't6-rows'
     const repo = new TaskRepository(db)
@@ -499,8 +509,8 @@ describe('orchestrator stage executors', () => {
     mkdirSync(taskDir, { recursive: true })
     const longVideo = join(taskDir, 'long.mp4')
     const shortVideo = join(taskDir, 'short.mp4')
-    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=145:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', longVideo], { stdio: 'pipe' })
-    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'testsrc=duration=75:size=64x64:rate=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', shortVideo], { stdio: 'pipe' })
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'mandelbrot=size=64x64:rate=10', '-t', '145', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', longVideo], { stdio: 'pipe' })
+    execFileSync(ffmpegPath(), ['-y', '-f', 'lavfi', '-i', 'mandelbrot=size=64x64:rate=10', '-t', '75', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', shortVideo], { stdio: 'pipe' })
 
     const seedHandoff = (video: string): void => {
       db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'downloading_video', ?)").run(
@@ -512,16 +522,18 @@ describe('orchestrator stage executors', () => {
     const libKfDir = join(dir, 'attachments', 'l1', 'keyframes')
     const fileCount = (): number => readdirSync(libKfDir).filter((f) => /^kf-/.test(f)).length
 
-    const executors = createExecutors(makeDeps())
+    const executors = createExecutors(makeDeps({ gridDecoder: decodeGrid8x8 }))
     seedHandoff(longVideo)
     expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
-    expect(rowCount()).toBeGreaterThan(1)
+    const firstRows = rowCount()
+    expect(firstRows).toBeGreaterThanOrEqual(2) // mandelbrot 145s @ 10s 间隔 → 14 帧
 
     seedHandoff(shortVideo)
     expect(await executors.extracting_visuals({ taskId, lessonId: 'l1', stage: 'extracting_visuals' })).toEqual({ status: 'ok' })
     // DB 行与盘上帧一一对应：没有悬空 ref 能进 allRefs/visualAssets。
     expect(rowCount()).toBe(fileCount())
-    expect(rowCount()).toBeLessThan(5)
+    expect(rowCount()).toBeGreaterThanOrEqual(1)
+    expect(rowCount()).toBeLessThan(firstRows) // 75s → 7 帧，行数随帧数变少
   })
 })
 
