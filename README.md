@@ -129,7 +129,7 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 ## ✅ 当前状态
 
 - **v0.2.1 + 可用性整改**：真实课时下载管线全通（播放页收割直链+课时目录；真实单课 810MB 双流→ASR→笔记已跑通）、主窗口内嵌登录与会话过期恢复活体验证通过；2026-09-03 用户实测反馈修复：dev/安装版数据隔离、会话三态（JWT 过期本地判定）、登录失败可见反馈、校园域名代理绕行 + Fake-IP 预检、课程分页拉取（含总量/进度边界明示）、星标「我的课程」置顶 + 同课程其他老师推荐 + 课程时间/教室展示。
-- **1160 个测试**（1158 通过；余 2 例为 orchestrator 重跑帧数用例，d76be50 起即存在、待并行会话未提交的 A4 抽帧间隔改动落地后转绿，归因记录见 PROGRESS 终审修复波台账）（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **1160 个测试全绿**（lint / typecheck / test / build / smoke / CI 六道门禁）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
 
