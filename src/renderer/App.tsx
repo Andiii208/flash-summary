@@ -397,6 +397,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               class="search-input"
               type="search"
               placeholder="搜索课程 / 教师 / 学期…"
+              aria-label="搜索课程"
               value={state.query}
               onInput={(e) => state.setQuery((e.target as HTMLInputElement).value)}
             />
@@ -533,8 +534,10 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             {TAB_LABELS.map((t, i) => (
               <button
                 key={t.id}
+                id={`tab-${t.id}`}
                 role="tab"
                 aria-selected={tab === t.id}
+                aria-controls={`panel-${t.id}`}
                 tabIndex={tab === t.id ? 0 : -1}
                 class={tab === t.id ? 'active' : ''}
                 title={`Ctrl+${i + 1}`}
@@ -545,7 +548,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
             ))}
           </nav>
           {tab === 'tasks' &&
-            (showWelcome ? (
+            (
+            <div role="tabpanel" id="panel-tasks" aria-labelledby="tab-tasks">
+            {showWelcome ? (
               /* 批2（plan 2026-09-18 typography）: 零课程时主区承接三步引导。
                  此前主区空态写「先选择课时：从左侧课程树点击一个课时」，而左侧一门
                  课都没有（T2 两处空态自相矛盾），且引导被塞在 269px 侧栏里、主区
@@ -581,8 +586,11 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 onOpenNote={state.openLessonNotes}
                 onReportError={state.reportError}
               />
-            ))}
+            )}
+            </div>
+          )}
           {tab === 'notes' && (
+            <div role="tabpanel" id="panel-notes" aria-labelledby="tab-notes">
             <NoteViewer
               note={state.note}
               attachmentManifest={state.attachmentManifest}
@@ -621,8 +629,10 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               polishBusy={state.notePolishBusy}
               onPolish={state.currentLesson !== '' ? (feedback) => state.polishNote(state.currentLesson, feedback) : undefined}
             />
+            </div>
           )}
           {tab === 'qa' && (
+            <div role="tabpanel" id="panel-qa" aria-labelledby="tab-qa">
             <QaPanel
               entries={state.qaEntries}
               busy={state.qaBusy}
@@ -635,8 +645,10 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               recent={state.qaRecent}
               onOpenLesson={state.selectLesson}
             />
+            </div>
           )}
           {tab === 'settings' && (
+            <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings">
             <SettingsPanel
               settings={state.settings}
               session={state.session}
@@ -666,6 +678,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onOpenPath={state.openPath}
               onOpenFeedback={state.openFeedbackForm}
             />
+            </div>
           )}
         </main>
       </div>
@@ -835,8 +848,10 @@ interface AppState {
   /** A1: create + run with a pre-flight capability check. */
   createAndRun: () => void
   retryTask: (taskId: string) => void
-  cancelTask: (taskId?: string) => void
-  removeTask: (taskId: string) => void
+  /** 批4: 返回 Promise——TaskPanel 行级按钮据此在 IPC 在途期间置灰。 */
+  cancelTask: (taskId?: string) => Promise<void>
+  /** 批4: 返回 Promise——TaskPanel 行级按钮据此在 IPC 在途期间置灰。 */
+  removeTask: (taskId: string) => Promise<void>
   clearFinishedTasks: () => void
   ask: (question: string) => void
   saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => void
@@ -1929,10 +1944,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
 
   /** B5: cancel any queued/running task by id (row-level button too). */
   const cancelTask = useCallback(
-    (taskId?: string): void => {
+    (taskId?: string): Promise<void> => {
       const id = taskId ?? (running ? progress?.taskId : undefined)
-      if (id == null) return
-      void (async () => {
+      if (id == null) return Promise.resolve()
+      return (async () => {
         const res = await bridge.tasks.cancel(id)
         if (!res.ok) {
           toast(res.error ?? '取消失败', 'error')
@@ -1949,8 +1964,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   // M1-2: delete one terminal history row / clear all terminal rows, then
   // refresh the visible histories.
   const removeTask = useCallback(
-    (taskId: string): void => {
-      void (async () => {
+    (taskId: string): Promise<void> => {
+      return (async () => {
         const res = await bridge.tasks.remove(taskId)
         if (!res.ok) {
           toast(res.error ?? '删除失败', 'error')

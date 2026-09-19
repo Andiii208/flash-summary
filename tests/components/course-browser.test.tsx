@@ -73,6 +73,14 @@ describe('CourseBrowser', () => {
     expect(bili?.querySelector('.badge.bili')).not.toBeNull()
   })
 
+  it('批4 a11y: 搜索框有 aria-label（与侧栏/笔记库/MindMap 搜索框同款）', () => {
+    const props = makeProps()
+    const host = mount(<CourseBrowser {...props} />)
+    const box = host.querySelector<HTMLInputElement>('.course-browser-search')
+    expect(box).not.toBeNull()
+    expect(box?.getAttribute('aria-label')).toBe('搜索课程')
+  })
+
   it('filters by teacher (the field that tells same-name courses apart) with a matched count', () => {
     const props = makeProps()
     const host = mount(<CourseBrowser {...props} />)

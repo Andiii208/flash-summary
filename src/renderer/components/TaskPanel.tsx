@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { AudioLines, BookOpenCheck, CloudDownload, Download, Images, ScrollText, X } from 'lucide-preact'
 import type { LucideIcon } from 'lucide-preact'
@@ -32,9 +32,10 @@ export interface TaskPanelProps {
   onMoreHistory?: () => void
   onCreateRun: () => void
   onRetry: (taskId: string) => void
-  onCancel: () => void
+  /** 批4: 行级取消带任务 id；返回 Promise 时行按钮按在途态置灰。 */
+  onCancel: (taskId?: string) => void | Promise<void>
   /** M1-2: delete one terminal history row. */
-  onDelete: (taskId: string) => void
+  onDelete: (taskId: string) => void | Promise<void>
   /** M1-2: clear every terminal history row. */
   onClearFinished: () => void
   /** A2: open a finished task's note (selects the lesson + switches tab). */
@@ -160,7 +161,7 @@ export function TaskPanel({
               {busy ? '提交中…' : running ? '排队下一节' : '创建并运行'}
             </button>
             {running && (
-              <button class="btn danger" onClick={onCancel} disabled={busy}>
+              <button class="btn danger" onClick={() => onCancel()} disabled={busy}>
                 取消任务
               </button>
             )}
@@ -277,8 +278,8 @@ interface HistoryListProps {
   history: TaskRowInfo[]
   onRetry: (taskId: string) => void
   disabled: boolean
-  onCancel: (taskId: string) => void
-  onDelete: (taskId: string) => void
+  onCancel: (taskId: string) => void | Promise<void>
+  onDelete: (taskId: string) => void | Promise<void>
   onClearFinished: () => void
   /** A2: open a finished task's note. */
   onOpenNote?: (lessonId: string) => void
@@ -289,6 +290,27 @@ interface HistoryListProps {
 function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFinished, onOpenNote, onReportError }: HistoryListProps): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all')
   const [confirmClear, setConfirmClear] = useState(false)
+  // 批4（AGENTS.md busy 约定）: 行级取消/删除 IPC 在途时该行按钮置灰——连点
+  // 会发出第二个 cancel/remove。ref 关掉同一 tick 的连点 race，state 供渲染。
+  const rowBusyRef = useRef(new Set<string>())
+  const [rowBusy, setRowBusy] = useState<ReadonlySet<string>>(new Set())
+  const withRowBusy = (taskId: string, run: (taskId: string) => void | Promise<void>): void => {
+    if (rowBusyRef.current.has(taskId)) return
+    rowBusyRef.current.add(taskId)
+    setRowBusy(new Set(rowBusyRef.current))
+    void (async () => {
+      try {
+        await run(taskId)
+      } finally {
+        rowBusyRef.current.delete(taskId)
+        setRowBusy((prev) => {
+          const next = new Set(prev)
+          next.delete(taskId)
+          return next
+        })
+      }
+    })()
+  }
   if (history.length === 0) return <p class="msg">暂无任务</p>
   const visible = history.filter((row) => matchFilter(row, filter))
   const clearable = history.filter((row) => row.state === 'succeeded' || row.state === 'failed').length
@@ -372,7 +394,7 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
               </button>
             )}
             {row.state !== 'succeeded' && row.state !== 'failed' && (
-              <button class="btn small danger" onClick={() => onCancel(row.id)} title="取消这个任务">
+              <button class="btn small danger" onClick={() => withRowBusy(row.id, onCancel)} disabled={rowBusy.has(row.id)} title="取消这个任务">
                 取消
               </button>
             )}
@@ -394,7 +416,7 @@ function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFi
               </button>
             )}
             {(row.state === 'succeeded' || row.state === 'failed') && (
-              <button class="btn small ghost" title="删除这条记录" aria-label="删除这条记录" onClick={() => onDelete(row.id)}>
+              <button class="btn small ghost" title="删除这条记录" aria-label="删除这条记录" onClick={() => withRowBusy(row.id, onDelete)} disabled={rowBusy.has(row.id)}>
                 <X size={13} strokeWidth={1.75} />
               </button>
             )}

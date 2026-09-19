@@ -532,6 +532,8 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForSelector('.sidebar .search-input')
     const box = host.querySelector<HTMLInputElement>('.sidebar .search-input')
     expect(box).not.toBeNull()
+    // 批4 a11y: 与 MindMap 搜索框同款——读屏用户听到的是「搜索课程」而非「编辑框」。
+    expect(box!.getAttribute('aria-label')).toBe('搜索课程')
     input(box, '检索课程')
     // 300ms 防抖后侧栏切到纯搜索结果列表。
     await vi.waitFor(() => {
@@ -605,5 +607,24 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
     // 批量后刷一次——逐课刷会是 2 次。
     expect(listMock.mock.calls.length).toBe(before + 1)
+  })
+
+  it('批4 a11y: 主 tab 内容面板补 role=tabpanel，与激活 tab 双向 aria 关联', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    await waitForSelector('.task-panel')
+    const panel = host.querySelector('[role="tabpanel"]')!
+    expect(panel).not.toBeNull()
+    const active = host.querySelector('.tabs button.active') as HTMLButtonElement
+    expect(panel.getAttribute('aria-labelledby')).toBe(active.id)
+    expect(active.getAttribute('aria-controls')).toBe(panel.id)
+    // 切到「笔记」：面板与关联随行（tabpanel 只有一个，指向新激活 tab）。
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('[role="tabpanel"]')
+    const panel2 = host.querySelector('[role="tabpanel"]')!
+    const active2 = host.querySelector('.tabs button.active') as HTMLButtonElement
+    expect(active2.textContent).toBe('笔记')
+    expect(panel2.getAttribute('aria-labelledby')).toBe(active2.id)
   })
 })

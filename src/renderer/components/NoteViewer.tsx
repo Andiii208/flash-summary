@@ -208,9 +208,11 @@ export function NoteViewer({
             {VIEW_IDS.map((id) => (
               <button
                 key={id}
+                id={`note-tab-${id}`}
                 class={id === view ? 'active' : ''}
                 role="tab"
                 aria-selected={id === view}
+                aria-controls="note-body-panel"
                 tabIndex={id === view ? 0 : -1}
                 onClick={() => setView(id)}
               >
@@ -392,7 +394,7 @@ export function NoteViewer({
           ) : null}
         </>
       ) : (
-        <div class="note-body" data-view={view}>
+        <div class="note-body" data-view={view} id="note-body-panel" role="tabpanel" aria-labelledby={`note-tab-${view}`}>
           {view === 'mindmap' ? (
             <MindMap
               tree={note.knowledgeTree}

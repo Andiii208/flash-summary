@@ -188,6 +188,7 @@ export function CourseBrowser({
           class="search-input course-browser-search"
           type="search"
           placeholder="搜索课程 / 教师 / 教室 / 学期…"
+          aria-label="搜索课程"
           value={query}
           onInput={(e) => {
             setQuery((e.target as HTMLInputElement).value)

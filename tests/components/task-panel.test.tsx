@@ -254,4 +254,29 @@ describe('TaskPanel', () => {
     const seals = [...host.querySelectorAll('.history-state')].map((s) => s.textContent)
     expect(seals).toEqual(['成', '停', '败'])
   })
+
+  it('批4: 行级取消 IPC 在途时该行按钮 disabled，连点不出第二个 IPC', async () => {
+    let releaseCancel!: () => void
+    const cancelGate = new Promise<void>((r) => {
+      releaseCancel = r
+    })
+    const onCancel = vi.fn(() => cancelGate)
+    const running: TaskRowInfo = { ...ROW, id: 't-running', state: 'transcribing' }
+    const host = mount(
+      <TaskPanel currentLesson="" running={false} busy={false} progress={null} history={[]} globalHistory={[running]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={onCancel} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    const cancel = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '取消') as HTMLButtonElement
+    click(cancel)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    // AGENTS.md busy 约定：IPC 在途期间按钮置灰，防止连点发出第二个 cancel。
+    expect(cancel.disabled).toBe(true)
+    click(cancel)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    releaseCancel()
+    await new Promise((r) => setTimeout(r, 10))
+    // IPC 落定：按钮恢复可用（行数据本身的刷新由父层负责）。
+    expect(cancel.disabled).toBe(false)
+  })
 })

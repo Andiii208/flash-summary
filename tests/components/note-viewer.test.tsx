@@ -372,6 +372,8 @@ describe('NoteViewer', () => {
     const box = host.querySelector<HTMLInputElement>('.note-library-search')
     expect(box).not.toBeNull()
     expect(box?.getAttribute('placeholder')).toContain('课程 / 教师 / 课时')
+    // 批4 a11y: 与 MindMap 搜索框同款——读屏用户听到的不再是「编辑框」。
+    expect(box?.getAttribute('aria-label')).toBe('搜索笔记')
 
     // 输入 → 回调（过滤在主进程做，组件只上报）。
     input(box, '编译')
@@ -522,7 +524,7 @@ describe('NoteViewer 健康巡查 2026-09-12 批5 (export busy feedback)', () =>
     expect(markdown.disabled).toBe(false)
   })
 
-describe('NoteViewer 批4 渲染层 memo', () => {
+describe('NoteViewer 批4 渲染层 memo 与 a11y', () => {
   it('memo 化后一次无关 state 变更（开合体检面板）不重复解析、不重复投影', () => {
     const parseSpy = vi.mocked(parseInline)
     const projectSpy = vi.mocked(projectNoteBlocks)
@@ -537,6 +539,25 @@ describe('NoteViewer 批4 渲染层 memo', () => {
     click(host.querySelector('.note-health-toggle'))
     expect(parseSpy.mock.calls.length).toBe(parsesAtMount)
     expect(projectSpy.mock.calls.length).toBe(projectionsAtMount)
+  })
+
+  it('批4 a11y: 五视图内容面板是 tabpanel，与激活 tab 双向 aria 关联', () => {
+    const host = mount(<NoteViewer note={NOTE} />)
+    const panel = host.querySelector('.note-body')!
+    expect(panel.getAttribute('role')).toBe('tabpanel')
+    const active = host.querySelector('.note-tabs button.active') as HTMLButtonElement
+    expect(panel.getAttribute('aria-labelledby')).toBe(active.id)
+    expect(active.getAttribute('aria-controls')).toBe(panel.id)
+    // 每个 tab 有唯一 id 且都指向同一个面板。
+    const tabs = [...host.querySelectorAll('.note-tabs button')] as HTMLButtonElement[]
+    expect(new Set(tabs.map((t) => t.id)).size).toBe(tabs.length)
+    for (const t of tabs) expect(t.getAttribute('aria-controls')).toBe(panel.id)
+    // 切视图后面板不倒，关联跟着激活的 tab 走。
+    const mindmapTab = tabs.find((b) => b.textContent === '思维导图')!
+    click(mindmapTab)
+    const active2 = host.querySelector('.note-tabs button.active') as HTMLButtonElement
+    expect(active2.textContent).toBe('思维导图')
+    expect(host.querySelector('.note-body')!.getAttribute('aria-labelledby')).toBe(active2.id)
   })
 })
 })

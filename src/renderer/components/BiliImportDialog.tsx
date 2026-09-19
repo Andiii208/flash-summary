@@ -86,7 +86,9 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   const [busy, setBusy] = useState(false)
   // 健康巡查 2026-09-12 批5: which operation owns the busy state — resolve and
   // import share the disabled flag but their buttons need distinct labels.
-  const [busyKind, setBusyKind] = useState<'resolve' | 'import' | null>(null)
+  // 批4: busyKind 覆盖扫码登录——登录在途时按钮读「登录中…」并置灰
+  // （AGENTS.md busy 约定：慢操作文案加省略号 + disabled + in-flight 守卫）。
+  const [busyKind, setBusyKind] = useState<'resolve' | 'login' | 'import' | null>(null)
   const [qrImage, setQrImage] = useState<string | null>(null)
   const [qrStatus, setQrStatus] = useState<string>('')
   const [loginPhase, setLoginPhase] = useState<LoginPhase>('idle')
@@ -185,19 +187,24 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
 
   const startLoginFlow = async (): Promise<void> => {
     setBusy(true)
-    const res = await bridge.bilibili.login()
-    setBusy(false)
-    if (!res.ok || res.value == null) {
-      toast(res.error ?? '无法开始扫码登录', 'error')
-      return
-    }
-    setLoginPhase('qr')
-    setQrStatus('等待扫码…')
+    setBusyKind('login')
     try {
-      const dataUrl = await QRCode.toDataURL(res.value.qrUrl, { margin: 1, width: 220 })
-      setQrImage(dataUrl)
-    } catch {
-      setQrStatus('二维码渲染失败，但登录轮询仍在进行，请用手机App确认')
+      const res = await bridge.bilibili.login()
+      if (!res.ok || res.value == null) {
+        toast(res.error ?? '无法开始扫码登录', 'error')
+        return
+      }
+      setLoginPhase('qr')
+      setQrStatus('等待扫码…')
+      try {
+        const dataUrl = await QRCode.toDataURL(res.value.qrUrl, { margin: 1, width: 220 })
+        setQrImage(dataUrl)
+      } catch {
+        setQrStatus('二维码渲染失败，但登录轮询仍在进行，请用手机App确认')
+      }
+    } finally {
+      setBusy(false)
+      setBusyKind(null)
     }
   }
 
@@ -313,7 +320,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
           )}
         </div>
         <button class="btn primary bili-import-btn" disabled={busy || preview == null || preview.selected.length === 0} onClick={onImportClick}>
-          {busyKind === 'import' ? '导入中…' : loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
+          {busyKind === 'import' ? '导入中…' : busyKind === 'login' ? '登录中…' : loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
         </button>
         {/* 声明批5: 边界说明放在动作旁边——用户正要点「导入」，此刻才看得进去。
             说的是应用实际做了什么（拒绝付费内容、只要低清晰度），不是免责套话。 */}

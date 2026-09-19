@@ -213,4 +213,38 @@ describe('BiliImportDialog (批1 双源并列: first-class import dialog)', () =
     await flush()
     expect([...host.querySelectorAll('button')].some((b) => b.textContent === '解析')).toBe(true)
   })
+
+  it('批4: 扫码登录在途时主按钮读「登录中…」且 disabled（busyKind 覆盖登录，连点不出第二个 IPC）', async () => {
+    let release: (value: unknown) => void = () => undefined
+    const gate = new Promise((r) => {
+      release = r
+    })
+    const bridge = makeBridge({
+      login: vi.fn(async () => {
+        await gate
+        return { ok: true, value: { qrUrl: 'https://passport.bilibili.com/qr?qrcode_key=K1' } }
+      })
+    })
+    const host = await resolveTo(makeProps(bridge))
+    click(host.querySelector('.bili-import-btn'))
+    await flush()
+    // busyKind === 'login'：按钮文案换「登录中…」并置灰（此前只有 busy 无 kind，
+    // 登录在途时按钮仍读「扫码登录后导入」，违反 AGENTS.md busy 约定）。
+    const loginBtn = [...host.querySelectorAll('button')].find((b) => b.textContent === '登录中…') as HTMLButtonElement | undefined
+    expect(loginBtn).not.toBeNull()
+    expect(loginBtn!.disabled).toBe(true)
+    // in-flight 守卫：busy 期间再点不会发出第二个 login IPC。
+    click(host.querySelector('.bili-import-btn'))
+    await flush()
+    expect(bridge.bilibili.login).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      release(undefined)
+      await Promise.resolve()
+    })
+    await flush()
+    // IPC 落定后恢复可读标签（QR 编码随后异步完成，轮询等待 busy 清除）。
+    await vi.waitFor(() => {
+      expect([...host.querySelectorAll('button')].some((b) => b.textContent === '扫码登录后导入')).toBe(true)
+    })
+  })
 })

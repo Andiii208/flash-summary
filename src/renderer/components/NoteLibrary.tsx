@@ -74,6 +74,7 @@ export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCo
           class="search-input note-library-search"
           type="search"
           placeholder="搜索笔记：课程 / 教师 / 课时…"
+          aria-label="搜索笔记"
           value={query}
           onInput={(e) => onQuery((e.target as HTMLInputElement).value)}
         />
