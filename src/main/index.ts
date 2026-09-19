@@ -4,7 +4,7 @@ import { pathToFileURL } from 'url'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
 import { registerIpc, setAppRendererOrigin, webContentsSender } from './ipc'
-import { attachNavigationGuards } from './nav-guard'
+import { attachNavigationGuards, loadMainRenderer, rendererDevUrl, rendererIndexPath } from './nav-guard'
 import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
 import { Logger } from './logger'
 import { binaryFingerprint } from './media/binaries'
@@ -112,15 +112,14 @@ if (process.env.SEU_SMOKE === '1' && process.env.SEU_SMOKE_USER_DATA != null) {
  * 批1: the renderer entry the app actually loads — the dev-server URL in
  * unpackaged dev runs, the packaged file URL otherwise. Injected into
  * ipc.ts so assertAppSender can compare file:// callers against it exactly.
+ * 终审修复波 B1: 判定与两处窗口加载入口共用 nav-guard 的 rendererDevUrl——
+ * 同一份 packaged 门，三处不再各读 env。
  */
 function appRendererEntryUrl(): string {
-  const fileUrl = pathToFileURL(join(__dirname, '../renderer/index.html')).href
-  if (app.isPackaged) return fileUrl
-  const devUrl = process.env.ELECTRON_RENDERER_URL
-  return devUrl != null && devUrl !== '' ? devUrl : fileUrl
+  return rendererDevUrl(app.isPackaged) ?? pathToFileURL(rendererIndexPath()).href
 }
 
-function createMainWindow(onLoadError?: (message: string) => void): BrowserWindow {
+export function createMainWindow(onLoadError?: (message: string) => void): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -142,13 +141,9 @@ function createMainWindow(onLoadError?: (message: string) => void): BrowserWindo
 
   // A failed renderer load (dev server gone, corrupted bundle) used to die as
   // a bare void rejection — no window content, zero log lines. 批5: route it
-  // into the logger.
+  // into the logger. 终审修复波 B1: packaged 门收在 loadMainRenderer 内。
   const onLoadFailure = (err: unknown): void => onLoadError?.(`renderer load failed: ${(err as Error).message ?? String(err)}`)
-  if (process.env.ELECTRON_RENDERER_URL) {
-    void win.loadURL(process.env.ELECTRON_RENDERER_URL).catch(onLoadFailure)
-  } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html')).catch(onLoadFailure)
-  }
+  void loadMainRenderer(win).catch(onLoadFailure)
 
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null

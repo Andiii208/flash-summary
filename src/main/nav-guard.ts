@@ -1,4 +1,5 @@
 import { app, type BrowserWindow } from 'electron'
+import { join } from 'path'
 
 /**
  * E2 (review): the main window legitimately navigates to the school
@@ -7,6 +8,35 @@ import { app, type BrowserWindow } from 'electron'
  * deny every permission request.
  */
 export const NAV_ALLOWED_HOST_SUFFIXES = ['cvs.seu.edu.cn', 'auth.seu.edu.cn', 'ids.seu.edu.cn']
+
+/**
+ * 终审修复波 B1: the renderer entry a main window loads. Packaged builds
+ * ALWAYS load the bundled file — a stray ELECTRON_RENDERER_URL on an
+ * installed machine must not navigate the window to a remote page. The
+ * remote page would be refused by assertAppSender (packaged 时已不放行
+ * dev 前缀），every IPC call would then fail and the app self-locks; worse,
+ * restoreMainWindow navigates the window back after login/harvest, which
+ * used to yank the user off the app UI onto the remote page.
+ */
+export function rendererIndexPath(): string {
+  return join(__dirname, '../renderer/index.html')
+}
+
+/** The dev-server URL to load, or null when the bundled file must win. */
+export function rendererDevUrl(packaged: boolean, devUrl = process.env.ELECTRON_RENDERER_URL): string | null {
+  if (packaged) return null
+  return devUrl != null && devUrl !== '' ? devUrl : null
+}
+
+/**
+ * B1: the single load branch shared by the two window entries — index.ts
+ * createMainWindow and app-context.ts restoreMainWindow. Both used to read
+ * the env var themselves without the packaged gate.
+ */
+export function loadMainRenderer(win: BrowserWindow): Promise<void> {
+  const devUrl = rendererDevUrl(app.isPackaged)
+  return devUrl !== null ? win.loadURL(devUrl) : win.loadFile(rendererIndexPath())
+}
 
 export interface NavUrlOptions {
   /** Dev-server URL (ELECTRON_RENDERER_URL): allowed as a prefix only when not packaged. */

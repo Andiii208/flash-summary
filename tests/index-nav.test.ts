@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
-import { NAV_ALLOWED_HOST_SUFFIXES, attachNavigationGuards, isAppOrSchoolUrl } from '../src/main/nav-guard'
+import { NAV_ALLOWED_HOST_SUFFIXES, attachNavigationGuards, isAppOrSchoolUrl, loadMainRenderer, rendererDevUrl, rendererIndexPath } from '../src/main/nav-guard'
 import { attachLoginWindowGuards } from '../src/main/auth/cas-login'
 
 // nav-guard reads app.isPackaged inside the guard; the node test environment
@@ -123,5 +123,77 @@ describe('attachLoginWindowGuards — 批1: 登录窗只放行学校主机', () 
     // 未打包时才放行 dev 前缀。
     electronApp.isPackaged = false
     expect(wc.emit('will-navigate', 'http://localhost:5173/')).toBe(false)
+  })
+})
+
+// 终审修复波 B1: 两处窗口加载入口（index.ts createMainWindow 与 app-context.ts
+// restoreMainWindow）共用的 dev-URL 判定。安装版 + 本机残留 ELECTRON_RENDERER_URL
+// 曾让窗口加载远程 UI——assertAppSender（packaged 时已不放行 dev 前缀）会拒掉
+// 一切 IPC = 应用自我锁死；restoreMainWindow 更会在登录/收割返回时把窗口从应用
+// UI 导航去远程页面。判定抽来此处，两个入口都不再各自读 env。
+describe('rendererDevUrl — 终审修复波 B1: packaged 门', () => {
+  afterEach(() => {
+    electronApp.isPackaged = false
+    delete process.env.ELECTRON_RENDERER_URL
+  })
+
+  it('packaged builds never honor the env var', () => {
+    electronApp.isPackaged = true
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+    expect(rendererDevUrl(true)).toBeNull()
+    expect(rendererDevUrl(electronApp.isPackaged)).toBeNull()
+  })
+
+  it('unpackaged builds use the dev URL when set', () => {
+    electronApp.isPackaged = false
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+    expect(rendererDevUrl(false)).toBe('http://localhost:5173/')
+  })
+
+  it('empty or missing env falls back to the bundled file', () => {
+    electronApp.isPackaged = false
+    process.env.ELECTRON_RENDERER_URL = ''
+    expect(rendererDevUrl(false)).toBeNull()
+    delete process.env.ELECTRON_RENDERER_URL
+    expect(rendererDevUrl(false)).toBeNull()
+  })
+})
+
+describe('loadMainRenderer — 终审修复波 B1: 两个入口的加载分支', () => {
+  afterEach(() => {
+    electronApp.isPackaged = false
+    delete process.env.ELECTRON_RENDERER_URL
+  })
+
+  function recordingWin(): { win: { loadURL(url: string): Promise<void>; loadFile(path: string): Promise<void> }; calls: string[] } {
+    const calls: string[] = []
+    const win = {
+      loadURL: (url: string) => {
+        calls.push(`url:${url}`)
+        return Promise.resolve()
+      },
+      loadFile: (path: string) => {
+        calls.push(`file:${path}`)
+        return Promise.resolve()
+      }
+    }
+    return { win, calls }
+  }
+
+  it('loads the bundled file when packaged even with ELECTRON_RENDERER_URL set', async () => {
+    electronApp.isPackaged = true
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+    const { win, calls } = recordingWin()
+    await loadMainRenderer(win as never)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toBe(`file:${rendererIndexPath()}`)
+  })
+
+  it('loads the dev-server URL when not packaged', async () => {
+    electronApp.isPackaged = false
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+    const { win, calls } = recordingWin()
+    await loadMainRenderer(win as never)
+    expect(calls).toEqual(['url:http://localhost:5173/'])
   })
 })

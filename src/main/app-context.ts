@@ -17,6 +17,7 @@ import { clearBrowserSessionState } from './auth/browser-clear'
 import type { SessionStateValue } from '../shared/types'
 import { openCasLoginWindow } from './auth/cas-login'
 import { loginViaMainWindow, loginWindowFallbackRequested } from './auth/main-window-login'
+import { loadMainRenderer } from './nav-guard'
 import { SchoolClient } from './school/client'
 import { BilibiliClient, type FetchLike } from './bilibili/client'
 import { harvestPlayPage, type PlayHarvestResult, type PlayPageTarget } from './school/play-harvest'
@@ -315,9 +316,9 @@ export function createContext(overrides: Partial<{
   const restoreMainWindow = async (): Promise<void> => {
     const win = mainWindowRef
     if (win == null || win.isDestroyed()) return
-    const devUrl = process.env.ELECTRON_RENDERER_URL
-    if (devUrl != null && devUrl !== '') await win.loadURL(devUrl)
-    else await win.loadFile(join(__dirname, '../renderer/index.html'))
+    // 终审修复波 B1: 与 createMainWindow 同一个 loadMainRenderer——packaged
+    // 时不读 ELECTRON_RENDERER_URL，登录/收割返回不会把窗口导航去远程页。
+    await loadMainRenderer(win)
   }
 
   const persistSession = (harvested: { cookieString: string; jwt: string }): void => {
