@@ -97,10 +97,16 @@ function str(v: unknown, name: string): string {
  * «../x» 因此无法解析到别的目录（join(root, '.') 就是 root 本身）；再补长度上限
  * 防超长键。中文等非 ASCII id 一并拒绝（手动课程 id 请用英文/数字）。
  */
+/** 终审修复波: 入参名 → 用户可见中文标签——assertSafeId 报错不再中英混排。 */
+const SAFE_ID_LABELS: Record<string, string> = {
+  courseId: '课程 ID',
+  lessonId: '课时 ID',
+  taskId: '任务 ID'
+}
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 export function assertSafeId(v: unknown, name: string): string {
   const id = str(v, name)
-  if (!SAFE_ID_RE.test(id)) throw new Error(`${name} 格式不合法`)
+  if (!SAFE_ID_RE.test(id)) throw new Error(`${SAFE_ID_LABELS[name] ?? name} 格式不合法`)
   return id
 }
 
@@ -654,7 +660,14 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         row.state !== 'succeeded' && row.state !== 'failed' ? true : taskCacheOnDisk(row.id)
       )
       if (blocked) {
-        throw new Error('该课程有进行中或未清理的任务（缓存仍在磁盘上），为保护数据不允许删除')
+        // 终审修复波: 「在跑/排队」与「已终态但缓存还在磁盘上」是两种拦截
+        // 原因——旧文案一口咬定「缓存仍在磁盘上」，对在跑但无缓存的分支不准确。
+        const running = taskRows.some((row) => row.state !== 'succeeded' && row.state !== 'failed')
+        throw new Error(
+          running
+            ? '该课程有进行中或排队中的任务，为保护数据不允许删除'
+            : '该课程有已完成任务但缓存仍未清理，为保护数据不允许删除'
+        )
       }
       const lessonRows = ctx.db
         .prepare('SELECT id FROM lessons WHERE course_id = ?')
@@ -1746,13 +1759,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (vault !== '') allowedRoots.push(vault)
       // 批6: 备份落点由用户自选（可能在导出目录外）——main 刚写下的备份路径
       // 放行（一次性），「打开所在文件夹」对自选路径不失灵。
-      const backupReveal = recentLibraryBackups.delete(requested)
+      const backupReveal = recentLibraryBackups.has(requested)
       const allowed = backupReveal || allowedRoots.some((root) => {
         const resolved = resolve(requested)
         return resolved === root || resolved.startsWith(root + sep)
       })
       if (!allowed) throw new Error('只能打开导出目录或附件目录中的文件')
       shell.showItemInFolder(requested)
+      // 终审修复波: reveal 成功后才消费这一次性放行——先 delete 后 reveal
+      // 的话，reveal 失败的重试会落到「只能打开导出目录或附件目录中的文件」
+      // 的误导文案上（备份路径本就可能在导出目录外）。
+      if (backupReveal) recentLibraryBackups.delete(requested)
       return ok(true)
     } catch (e) {
       return err(e)

@@ -443,7 +443,7 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
         return { status: 'ok' }
       } catch (err) {
         if (isCancelled(ctx, err)) return cancelResult()
-        return { status: 'failed', error: `下载B站流失败: ${(err as Error).message}` }
+        return { status: 'failed', error: `下载B站流失败: ${describeDownloadError(err)}` }
       } finally {
         poll.stop()
       }

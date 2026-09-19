@@ -1319,13 +1319,14 @@ describe('assertSafeId — 批2 id 入盘校验', () => {
     registerIpc(ctx, ipc as never)
     const badCourse = await ipc.invoke('school:addManualCourse', '../escape', 'L1') as { ok: boolean; error?: string }
     expect(badCourse.ok).toBe(false)
-    expect(badCourse.error).toContain('courseId')
+    // 终审修复波: 报错文案全中文——「courseId 格式不合法」→「课程 ID 格式不合法」。
+    expect(badCourse.error).toContain('课程 ID')
     const badLesson = await ipc.invoke('school:addManualCourse', 'C1', 'L1/..') as { ok: boolean; error?: string }
     expect(badLesson.ok).toBe(false)
-    expect(badLesson.error).toContain('lessonId')
+    expect(badLesson.error).toContain('课时 ID')
     const longLesson = await ipc.invoke('tasks:create', 'a'.repeat(200)) as { ok: boolean; error?: string }
     expect(longLesson.ok).toBe(false)
-    expect(longLesson.error).toContain('lessonId')
+    expect(longLesson.error).toContain('课时 ID')
   })
 
   it('keeps the tasks:delete hostiles rejected (guard moved into assertSafeId)', async () => {

@@ -89,6 +89,17 @@ export interface SummarizeInputs {
 }
 
 export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: string): SummarizeInputs | { error: string } {
+  try {
+    return loadSummarizeInputsInner(db, lessonId, libraryRoot)
+  } finally {
+    // 终审修复波: 缩略图清理移进 finally——转写缺失/损坏的早退路径此前直接
+    // return error，上一轮崩到一半留下的 thumb-* 永远不清（≤几 KB/张，但
+    // 跨轮残留没有兜底）。
+    cleanupThumbnails(libraryRoot, lessonId)
+  }
+}
+
+function loadSummarizeInputsInner(db: Db, lessonId: string, libraryRoot: string): SummarizeInputs | { error: string } {
   const transcriptRow = db.prepare('SELECT segments_json FROM transcripts WHERE lesson_id = ?').get(lessonId) as
     | { segments_json: string }
     | undefined
@@ -142,8 +153,8 @@ export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: strin
     })
     .filter((image): image is SummarizeImage => image != null)
 
-  // 视觉候选装配完毕（哈希已吃完缩略图）——删除该 lesson 的缩略图。
-  cleanupThumbnails(libraryRoot, lessonId)
+  // 视觉候选装配完毕（哈希已吃完缩略图）——缩略图的删除在外层
+  // loadSummarizeInputs 的 finally 里（早退路径也要清）。
 
   return { transcriptText: formatTimedTranscript(segments), segments, images, allRefs }
 }

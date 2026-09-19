@@ -143,6 +143,40 @@ describe('ENOSPC 人话报错 (批5)', () => {
     expect(String(row?.error_message)).toContain('磁盘')
     expect(String(row?.error_message)).not.toContain('ENOSPC')
   })
+
+  // 终审修复波: B 站下载分支复用 describeDownloadError——此前只有 SEU 分支
+  // 人话化，B 站分支裸抛 err.message。同一句「磁盘空间不足」两个分支都要说。
+  it('a disk-full bilibili download humanizes ENOSPC the same way (reuses describeDownloadError)', async () => {
+    vi.useFakeTimers()
+    const repo = new TaskRepository(db)
+    repo.create('t2', 'l1')
+    db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES ('t2', 'fetching_course', ?)").run(
+      JSON.stringify({
+        lessonId: 'l1',
+        bilibili: true,
+        videoStreamUrl: 'https://bili/video.mp4',
+        audioStreamUrl: null,
+        hasSubtitle: false
+      })
+    )
+    const deps = makeDeps({
+      fetchStream: async (_url: string, target: string) => {
+        writeFileSync(target, 'partial')
+        throw Object.assign(new Error('write ENOSPC'), { code: 'ENOSPC' })
+      }
+    })
+
+    const run = runTask(repo, 't2', createExecutors(deps), 'downloading_video')
+    // 3 attempts with 5s + 15s backoff sleeps.
+    await vi.advanceTimersByTimeAsync(21_000)
+    const result = await run
+
+    expect(result).toBe('failed')
+    const row = repo.get('t2')
+    expect(row?.state).toBe('failed')
+    expect(String(row?.error_message)).toContain('磁盘空间不足')
+    expect(String(row?.error_message)).not.toContain('ENOSPC')
+  })
 })
 
 describe('stageOutput 坏 JSON 兜底 (批5)', () => {

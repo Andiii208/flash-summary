@@ -184,6 +184,14 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
             </button>
           )}
         </div>
+        {/* 终审修复波 B4: 备份口径必须活在用户做选择的位置——只备份数据库文件、
+            附件不在内、暂无还原入口，此前只写在代码注释里（AGENTS 声明层纪律）。
+            与按钮同条件渲染：没有备份入口的旧调用面不出现孤儿提示。 */}
+        {props.onExportLibraryBackup != null && (
+          <p class="settings-hint" data-testid="export-library-backup-hint">
+            仅备份数据库文件（课程/任务/笔记记录）；关键帧与 PPT 等附件不在内，暂不支持从备份还原。
+          </p>
+        )}
         {props.migrationProgress != null && (
           <p class="settings-hint">
             正在复制附件 {props.migrationProgress.copied}/{props.migrationProgress.total} …请勿关闭应用

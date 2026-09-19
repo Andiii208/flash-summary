@@ -757,4 +757,22 @@ describe('SettingsPanel 批5 细节', () => {
     click(busyBtn)
     expect(onExportLibraryBackup).toHaveBeenCalledTimes(1) // busy 时不放行连点
   })
+
+  // 终审修复波 B4: 声明层纪律——备份口径必须活在用户做选择的位置。「仅备份
+  // 数据库文件、附件不在内、暂不支持还原」此前只写在代码注释里，用户点按钮
+  // 前看不见。与按钮同条件渲染（没有备份入口时不出现孤儿提示）。
+  it('终审修复波 B4: the backup hint sits next to the button (附件不在内 + 无还原)', () => {
+    const host = mount(
+      <SettingsPanel {...base} settings={LOADED} onExportLibraryBackup={vi.fn()} />
+    )
+    const hint = host.querySelector('[data-testid="export-library-backup-hint"]')
+    expect(hint?.textContent).toContain('仅备份数据库文件')
+    expect(hint?.textContent).toContain('关键帧与 PPT 等附件不在内')
+    expect(hint?.textContent).toContain('暂不支持从备份还原')
+  })
+
+  it('终审修复波 B4: no backup entry, no orphan hint', () => {
+    const host = mount(<SettingsPanel {...base} settings={LOADED} />)
+    expect(host.querySelector('[data-testid="export-library-backup-hint"]')).toBeNull()
+  })
 })
