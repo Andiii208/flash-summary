@@ -1,11 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, afterEach, vi } from 'vitest'
 import { NAV_ALLOWED_HOST_SUFFIXES, attachNavigationGuards, isAppOrSchoolUrl } from '../src/main/nav-guard'
 import { attachLoginWindowGuards } from '../src/main/auth/cas-login'
 
 // nav-guard reads app.isPackaged inside the guard; the node test environment
 // has no Electron runtime, so the platform layer is mocked (same pattern as
-// tests/ipc-settings.test.ts).
-vi.mock('electron', () => ({ app: { isPackaged: false }, BrowserWindow: undefined }))
+// tests/ipc-settings.test.ts). electronApp is mutable so the I1 case can flip
+// isPackaged and prove the login-window guard uses the same gate as the main
+// window guard (dev-server prefix only when NOT packaged).
+const electronApp = vi.hoisted(() => ({ isPackaged: false }))
+vi.mock('electron', () => ({ app: electronApp, BrowserWindow: undefined }))
 
 describe('isAppOrSchoolUrl — 批1 契约：file:// 不再整体放行', () => {
   it('rejects a bare local file page', () => {
@@ -88,6 +91,11 @@ describe('attachNavigationGuards — 批1: will-navigate/redirect/frame 同判',
 })
 
 describe('attachLoginWindowGuards — 批1: 登录窗只放行学校主机', () => {
+  afterEach(() => {
+    electronApp.isPackaged = false
+    delete process.env.ELECTRON_RENDERER_URL
+  })
+
   it('blocks off-school navigations and popups, allows the platform jump', () => {
     const wc = new FakeWebContents()
     const lines: string[] = []
@@ -104,5 +112,16 @@ describe('attachLoginWindowGuards — 批1: 登录窗只放行学校主机', () 
     const wc = new FakeWebContents()
     attachLoginWindowGuards(wc as never, () => undefined, 'https://diag.example/platform')
     expect(wc.emit('will-navigate', 'https://diag.example/platform')).toBe(false)
+  })
+
+  it('refuses the dev-server prefix when packaged (I1: same gate as the main-window guard)', () => {
+    const wc = new FakeWebContents()
+    electronApp.isPackaged = true
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173/'
+    attachLoginWindowGuards(wc as never, () => undefined, '')
+    expect(wc.emit('will-navigate', 'http://localhost:5173/')).toBe(true)
+    // 未打包时才放行 dev 前缀。
+    electronApp.isPackaged = false
+    expect(wc.emit('will-navigate', 'http://localhost:5173/')).toBe(false)
   })
 })

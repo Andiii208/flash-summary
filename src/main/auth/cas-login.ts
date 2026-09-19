@@ -124,7 +124,7 @@ function traceLine(line: string): void {
  * 批1 (audit 2026-09-19): 旧写法每次 openCasLoginWindow 都往
  * persist:seu-cas 加一个 onBeforeRequest 且从不移除——旧登录窗路径
  * （SEU_LOGIN_WINDOW=1）下逐次累积、trace 行倍增。现在同一 session 只挂
- * 一次并保存引用，窗口关闭时 removeListener（untraceSession）。
+ * 一次并保存引用，窗口关闭时退订（untraceSession）。
  */
 const casTraceSessions = new WeakSet<Session>()
 let casTrace: { ses: Session; listener: (details: OnBeforeRequestListenerDetails) => void } | null = null
@@ -145,14 +145,15 @@ function traceSession(ses: Session): void {
   casTrace = { ses, listener }
 }
 
-/** 批1: 登录窗关闭时移除 trace 监听（见 traceSession 的累积问题）。 */
+/**
+ * 批1: 登录窗关闭时退订 trace 监听（见 traceSession 的累积问题）。
+ * 修复轮 C1：WebRequest 对象模板只注册 on* 方法，removeListener 运行时并不
+ * 存在——官方退订方式是把 listener 传 null（d.ts 重载本身接受 null）。旧写法
+ * 在这里抛 TypeError，把 closed 处理器后段的 reject 一起跳过。
+ */
 function untraceSession(ses: Session): void {
   if (casTrace == null || casTrace.ses !== ses) return
-  // Electron 运行时在每个 on* 事件上带 removeListener，类型定义没暴露，需要这一跳。
-  const on = ses.webRequest.onBeforeRequest as unknown as {
-    removeListener(l: (details: OnBeforeRequestListenerDetails) => void): void
-  }
-  on.removeListener(casTrace.listener)
+  ses.webRequest.onBeforeRequest(null)
   casTrace = null
   casTraceSessions.delete(ses)
 }
@@ -168,7 +169,8 @@ export function attachLoginWindowGuards(webContents: WebContents, trace: (line: 
     return { action: 'deny' }
   })
   webContents.on('will-navigate', (event, url) => {
-    if (isAppOrSchoolUrl(url) || (diagUrl !== '' && url.startsWith(diagUrl))) return
+    // 修复轮 I1：与主窗口守卫同口径——dev 前缀仅未打包放行。
+    if (isAppOrSchoolUrl(url, { packaged: app.isPackaged }) || (diagUrl !== '' && url.startsWith(diagUrl))) return
     event.preventDefault()
     trace(`blocked login navigation to ${describeUrl(url)}`)
   })
