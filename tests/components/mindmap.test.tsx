@@ -177,6 +177,38 @@ describe('MindMap M1.2 工具栏', () => {
     expect(host.querySelectorAll('.mindmap-node.search-hit')).toHaveLength(0)
     expect(host.querySelectorAll('.mindmap-node.search-dim')).toHaveLength(0)
   })
+
+  // 批5 (P16): 此前 `searching = matched.size > 0`——零命中时全图原样渲染，
+  // 界面毫无变化，用户会以为搜索坏了（全站唯一没有零命中空态的搜索）。
+  it('批5 (P16): 搜不到时给一行零命中提示，命中/清空后消失', () => {
+    const host = mountMindMap(TREE)
+    const empty = (): Element | null => host.querySelector('[data-testid="mindmap-search-empty"]')
+    const input = host.querySelector<HTMLInputElement>('.mindmap-search')!
+    const type = (value: string): void => {
+      act(() => {
+        input.value = value
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    }
+    // 没搜之前不占位。
+    expect(empty()).toBeNull()
+    type('不存在的节点名')
+    expect(empty()).not.toBeNull()
+    expect(empty()?.classList.contains('msg')).toBe(true)
+    expect(empty()?.textContent).toContain('没有匹配的节点')
+    // 有命中 → 提示消失（节点自己会点亮）。
+    type('概念')
+    expect(host.querySelectorAll('.mindmap-node.search-hit')).toHaveLength(1)
+    expect(empty()).toBeNull()
+    // 再次零命中 → 回来；清空 → 消失。
+    type('还是不存在的名字')
+    expect(empty()).not.toBeNull()
+    type('')
+    expect(empty()).toBeNull()
+    // 纯空白视同没搜。
+    type('   ')
+    expect(empty()).toBeNull()
+  })
 })
 
 describe('MindMap M1.3 缩放与平移', () => {

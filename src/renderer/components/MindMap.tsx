@@ -474,6 +474,15 @@ export function MindMap({
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
       </div>
+      {/* 批5 (P16): 零命中空态——此前 `searching = matched.size > 0`，搜不到时
+          全图原样渲染、界面毫无变化，用户会以为搜索坏了（全站唯一没有零命中
+          空态的搜索）。小区空态用一行小字（.msg，SKILL §2 两种形态之一），与
+          课程浏览器「没有匹配的课程…」同口径。 */}
+      {query.trim() !== '' && matched.size === 0 && (
+        <p class="msg mindmap-search-empty" data-testid="mindmap-search-empty">
+          没有匹配的节点——换个词，或清空搜索
+        </p>
+      )}
       {/* M3.2/批3: breadcrumb 常驻——未下钻时也展示焦点机制的存在（可发现性），
           「全图」在焦点态下提供一键返回。 */}
       <nav class="mindmap-crumbs" aria-label="焦点分支路径">
