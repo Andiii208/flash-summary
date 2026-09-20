@@ -62,6 +62,8 @@ The first-run experience recommends a single provider that supports both ASR and
 
 All provider communication uses OpenAI-compatible APIs. The default note generation path uses a multimodal model. A text-only model is a fallback for users who explicitly choose it.
 
+> **批注（2026-09-19）**：“绑定的多模态模型”按具体模型判定视觉能力。已知无视觉（如 deepseek-chat）时生成路径**不发图**；未知类型保守发图。划分不依赖于用户声明，而依赖于维护的模型知识表（猜错的代价不对称：说无视觉=丢画面，说有视觉=白烧 token）。
+
 ## 5. Structured Notes
 
 The model produces one structured note stored as JSON. The UI renders this note natively and offers four reading views:
@@ -87,6 +89,9 @@ The note schema contains:
 - PPT and keyframe evidence references
 - Self-quiz items (anchored to a concept term or an exam cue)
 - Concept relation links (from/to resolving to a concept term or a node title)
+- Chapters (optional; 3-8 sections with `at`/`title`/one-line `summary`; timeline entries are grouped by chapter in the reading views)
+- Key quotes (optional; verbatim speaker quotes with `at`, verified against the transcript, omitted rather than invented)
+- One-line TL;DR (optional; the preview-value sentence that answers "what is this and is it worth reading")
 
 > **清单维护批注（2026-09-17）**：本清单此前已落后于实现——`quiz`、`conceptLinks`、
 > `terms` 与时间线条目的 `evidence` 都不在旧清单里，批2 又新增了 `Concept.example`。
@@ -94,6 +99,12 @@ The note schema contains:
 
 Markdown export is a secondary exchange format. PDF export is not included in MVP.
 
+> **批注（2026-09-19，笔记体验整改 v4，见 docs/plans/2026-09-19-note-experience-overhaul.md）**：
+> ① 时间线/转写引用的 `at` 若超出真实转写范围（模型外推时间），铳制到范围上界并计数暂存——**保内容、修位置、不装作时间是准的**（宁缺勿编）。
+> ② 绑定的多模态模型若无视觉能力（知识表 `shared/model-vision.ts`，**只收核实过的知识**：mimo-v2.5 曾因假说误列无视觉、2026-09-20 经用户订正撤下；表外类型保守发图）——不发图，避免图片被静默丢弃或造成整段静默重发；生成结果报 `visionCapable`。
+> ③ 时间线配图新增课时封面（B 站导入落盘 `attachments/<lessonId>/cover.jpg`，`lessons.cover_path`）；无封面时阅读首屏用最早关键帧兜底，两者皆无则不渲染。
+> ④ 就近配图由“90 秒单条目筛选”改为**跨条目贪心一对一分配**（屏幕端与 PDF 同口径；容差自适应且封顶 600s，超限而诚实纯文字卡）。
+> ⑤ **原片时间戳跳转按源收窄（批 D，2026-09-20）**：仅 SEU 源不做（平台播放页无时间参数）；B 站源支持 `lessons:openSource(lessonId, at)` ——渲染层只传 lessonId 与秒数（数据，不是 URL），URL 由 main 侧常量基准 + 库内 bvid 拼出并经 `shell.openExternal` 打开（渲染层不传 URL，安全红线不破）；BV 号过正则才拼，秒数净化，多 P 带 `p=` 参数。
 > **修订批注（2026-09-04，Note Revolution，用户批准）**：
 > ① 阅读视图由四个扩为**五个**：+ 思维导图（knowledgeTree 的交互 SVG 投影，同源 JSON）。
 > ② 四个阅读视图升级为**块模型投影**（`projectNoteBlocks`：时间线图文卡片/概念卡/公式分块/考点缺口卡/编号步骤），证据引用在渲染层与真实关键帧图片绑定（三层对齐：ref 精确匹配 → 就近关键帧 → 纯文字）。

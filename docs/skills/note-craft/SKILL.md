@@ -1,7 +1,7 @@
 ---
 name: note-craft
 description: SEU Summary 笔记系统的工艺规范——数据契约、证据对齐、五视图投影、视觉纪律、PDF 排版与测试要求。凡改动笔记生成/展示/导出链路的会话必须先读本文件。
-version: 2.0.0
+version: 2.1.0
 ---
 
 # SEU Summary 笔记工艺（Note Craft）
@@ -10,7 +10,12 @@ version: 2.0.0
 >
 > **2026-09-17 v2.0.0**：按 plan `docs/plans/2026-09-17-note-quality-upgrade.md` 重写为
 > 「五阶段 + 每阶段门禁」，补写 PPT×关键帧融合，修订方法论参照（现 §15）并新增外部方法论
-> 吸收登记。定位经 Andiii 裁定收窄为**「把总结做好」**——**不做学习/教学功能**（见 §13）。
+> 吸收登记。
+>
+> **2026-09-20 v2.1.0**：按 plan `docs/plans/2026-09-19-note-experience-overhaul.md` 同步已落地现实——
+> 数据契约补 `tldr`/`chapters`/`quotes`（B3/B1/B2）；配图由 90s 筛子改跨条目贪心分配（A5）；
+> 视觉能力知识表决定发不发图（A1）；封面资产（A2）；`at` 越界铳制（B4）；
+> 帧库 20s 增密 + 覆盖保底（A4）；体检补画面覆盖率（B6）；阅读层封面区/章节分组/图文并排/胶片条枚组（C1/C3/C4/C5/A6）。定位经 Andiii 裁定收窄为**「把总结做好」**——**不做学习/教学功能**（见 §13）。
 
 ## 0. 工艺五阶段（先看这张图，再看细节）
 
@@ -38,6 +43,9 @@ version: 2.0.0
 ```
 Note {
   overview, methodology          ← LLM 按 markdown 组织（## 小节 + - 列表）
+  tldr?                          ← B3: 一句话总结（预览价值；宁空勿编）
+  chapters: [{at,title,summary}] ← B1: 3-8 章；timeline 在阅读层按 at 归章（默认 []，旧笔记零迁移）
+  quotes: [{at,text}]            ← B2: 讲者原话金句（过 ref-verify 同款核验；宁空勿编）
   knowledgeTree: TreeNode        ← 思维导图的唯一数据源；节点可带 terms（锚定 concepts term，归一层丢弃编造项）
   timeline: [{at, title, detail, refs[], evidence[]}]
   concepts: [{term, definition, example?, refs[]}]   ← 批2 起 example 可选（宁空勿编）
@@ -53,7 +61,7 @@ Note {
 - **改 schema 必须同时考虑**：归一层、两个投影、markdown 导出、PrintHandout、obsidian、anki、四组测试。
 - **新字段一律可选带默认值**：旧笔记必须零迁移加载（`terms` / `conceptLinks` / `example` 都是这个手法）。
 - **长转写走全域抽稀**：`sampleTranscriptLines`（polish / qa 共用）在超预算时按行抽稀，**覆盖整节课的首中尾**——此前是 `slice(0, 24000)`，45 分钟以上的课后半段对模型完全不存在。
-- **prompt 条款**：形状 8 条 + 质量 9.1–9.11。其中 **9.11「去 AI 味」**（批6）三条：**去路标**（禁「值得注意的是/综上所述/本节主要介绍」——它们在语音转写里根本不存在，出现即模型加的）、**具体优先**（定义与 detail 必须落到本讲的具体数字/参数/演示结果）、**不均匀化**（讲得多的地方写得多，禁止为了整齐而填充）。动条款必须动 `tests/note-prompt-quality.test.ts`。
+- **prompt 条款**：形状 8 条（结构串含 tldr/chapters/quotes）+ 质量 9.1–9.14。其中 **9.11「去 AI 味」**（批6）三条：**去路标**（禁「值得注意的是/综上所述/本节主要介绍」——它们在语音转写里根本不存在，出现即模型加的）、**具体优先**（定义与 detail 必须落到本讲的具体数字/参数/演示结果）、**不均匀化**（讲得多的地方写得多，禁止为了整齐而填充）。动条款必须动 `tests/note-prompt-quality.test.ts`。
 - **工艺版本**：`CURRENT_PROMPT_VERSION` / `CURRENT_SCHEMA_VERSION`（`shared/notes/schema.ts`）。
   **改 prompt 或 schema 时必须同时 +1**——存量升级入口靠它识别「旧工艺产出但侥幸没 warn」
   的笔记（见 §8）。
@@ -66,7 +74,7 @@ Note {
 2. **归一端过滤**：`EVIDENCE_REF_PATTERN = /^(ppt:\d+|kf:[\w.-]+)$/`，编造的散文 ref 直接丢弃（不报错、不渲染死链）。
    **few-shot 里给的值必须能过这条正则**——2026-09-17 之前示例写的是 `kf:<证据ID>`（`<`/`>` 不在字符类里），
    **示范的正是它要禁止的东西**，等于没教。见 `tests/note-prompt-quality.test.ts` 的钉住断言。
-3. **渲染端兜底**：`bindTimelineImages`（`src/shared/notes/evidence.ts`）——ref 精确匹配 → timeline.at 就近关键帧（容差 `NEAREST_SECONDS = 90`）→ 无图纯文字卡。旧笔记无需重跑即可获得配图。
+3. **渲染端分配**（A5，2026-09-19由「90s 筛子」改为「跨条目贪心一对一」）：`allocateTimelineImages`/`allocateTimelineImagesLazy`（`src/shared/notes/evidence.ts`）——ref 精确匹配 → **剩余条目与未被引用帧按 |Δat| 全局升序贪心配对**（每帧至多配一条、每条至多配一帧；容差 = clamp(2×帧距中位数, 120s, 600s)，超限而诚实纯文字卡）→ 无图纯文字卡。**屏幕端与 PDF 同口径**（分配判定只有一份）。旧笔记无需重跑即可获得配图。
 
 **两个口径不许合并**（2026-09-17）：
 - **合法性判定**用**全量**证据集（`dropUnknownEvidence` 的入参）——绝不把模型没看到但真实存在的 ref 当编造删掉。
@@ -95,7 +103,7 @@ Note {
 
 | 视图 | 内容策略 |
 |---|---|
-| 详细笔记 | 概览(md) → 树 → 时间线卡片流(图+引文) → 概念卡(含 example) → 公式分块 → 考点/缺口 → 课堂画面图集 |
+| 详细笔记 | tldr(有则) → 概览(md) → 树 → **章节分组**的时间线卡片流(**图文并排**、奇偶交替、无图卡首条摘引升 hero 大引文) → **金句**(pull-quote) → 概念卡(含 example) → 公式分块 → 考点/缺口 → **按章分组的画面胶片条**（图集近重复帧折叠为一组） |
 | 标准总结 | 概览 + 树 + 前 8 概念 + 考点速览 |
 | 要点 | 考点卡 + 缺口卡 + 前 5 时间线 |
 | 方法论 | methodology(md) + operation/code 步骤（排除 formula） |
@@ -103,6 +111,7 @@ Note {
 
 - 空 section **必须省略**（不渲染空标题）。
 - 投影是纯函数，放 `src/shared/notes/`，测试在 `tests/notes-views.test.ts`。
+- **首屏与导航**（A2/C1/C3，2026-09-19）：masthead 封面 banner（cover_path 数据 URL 优先，缺省取 **60 秒后第一帧**——0s 标题页带黑边像空图；两者皆无不渲染）+ 章节 chips + 阅读时长（正文字数/400）；详细视图顶部有 sticky 目录条（章节 + 概念锚点，滚动高亮）。
 
 ## 4. Markdown 渲染（md-lite）
 
@@ -163,6 +172,9 @@ Note {
     knowledgeTree 零子节点、timeline/concepts/quiz 全空。**必填分节缺失必须是 warn**。
   - **`example` 缺失只报 info**：讲者没给例子时省略该字段是正确行为（宁空勿编），
     报成缺口会逼模型编例子。
+- **画面覆盖率**（B6，口径=**仅 info**）：时间线配图覆盖率由**渲染层**用同一分配函数算后传入 `noteHealth` 第四参数。
+  无图可能是风控合法态，报 warn 会触发多模态返修烧钱——但用户必须看得见。
+- **`at` 越界**（B4）：生成时 `clampNoteTimes` 铳制并计数（`clampedTimes` 进 toast）——模型外推时间是可核验的作做，铳到范围上界而不是删条目。
   - **容忍部分形状**：渲染层会在 mock/降级路径下传缺字段的笔记，`noteHealth` 绝不能因此抛错
     （曾导致 app-shell 整个 shell 崩溃）。
 - **归一化丢弃计数可见**（2026-09-17）：`parseNoteWithDiagnostics` 额外回报 `quiz` / `conceptLinks` / `transcriptRefs` / `evidence` / `treeTerms` / `timelineEvidence` 各被归一层丢了**几项**，生成 toast 里显示「N 项格式不合法已丢弃」。
@@ -224,9 +236,13 @@ Note {
 ## 12. 已知边界（改动前先想）
 
 - ASR 时间戳粒度 = 120s 分片起点（精对齐受限，证据对齐靠三层机制补偿）。**B站字幕是秒级**——两种粒度的核验邻域阈值按源分档，不要一刀切。
-- 本地视频已删、平台播放页无时间参数——时间戳跳转视频**明确不做**。
+- ~~本地视频已删、平台播放页无时间参数——时间戳跳转视频**明确不做**。~~ **2026-09-20 按源收窄（批 D）**：仅 **SEU 源不做**（平台播放页无时间参数，硬约束）；**B 站源已做** `?t=` 跳转（`lessons:openSource`，main 侧用常量基准 + 库内 bvid 拼 URL 经 shell.openExternal——渲染层只传 lessonId 与秒数，红线不破）。
 - 笔记无在线编辑器；版本历史全量留存但 UI 无版本切换。
 - 平台 PPT 是**课程级**端点、可能空返回；PPT 页的时间是**推断值**（见 §2.1）。
+- **视觉能力知识表**（A1，`shared/model-vision.ts`）：已知无视觉模型（deepseek-chat 等，**只收核实过的**——mimo-v2.5 曾因假说误列、2026-09-20 经用户订正撤下）生成时**不发图**；表外类型保守发图。猜错代价不对称：说无视觉=丢画面。
+- **封面**（A2）：B 站导入落盘 `attachments/<lessonId>/cover.jpg` + `lessons.cover_path`；SEU 源无封面，阅读首屏兜底取 **60 秒后第一帧**（越过 0s 标题页）。
+- **`at` 铳制**（B4）：时间线/转写引用的 at 超转写范围时铳到上界并计数——**保内容修位置，不装作时间是准的**。
+- **帧库密度**（A4）：抽帧 20s/帧（七四分钟课 ≈ 222 帧约 7MB）+ 去重后按时间桶（clamp(跳距/120, 30, 120)s）补底；**发送预算仍 ≤20 张**——抽帧与发送是两个决策。已存量课时不回填帧库。
 - **B站源**：transcripts.provider = `bilibili-subtitle`（字幕直插，秒级 `at`）或 `openai-compatible`（ASR 兜底）；提示词经 `sourceHeader` 注入「B站视频」语境行，SEU 行为零变化；证据只有 `kf:`（流被风控拒绝时 evidence 可为空，属合法态）。
 - 笔记库 `notes:list` 有 `LIMIT 200` 上限且无搜索——已知缺口，属「笔记库」而非「笔记总结」，待单独处理。
 

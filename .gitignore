@@ -37,3 +37,7 @@ tmp-chunk-*
 # Playwright MCP / ad-hoc audit screenshot leftovers (dev-only artifacts)
 .playwright-mcp/
 .tmp-audit-shots/
+
+# 真机验收临时产物（2026-09-20 批 D + v4 验收）
+.tmp-accept-shots/
+.regen-e2e-report.json

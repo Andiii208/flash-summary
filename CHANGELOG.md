@@ -2,6 +2,52 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布] — 2026-09-19/20 · 笔记体验整改 v4（未打 tag）
+
+> 触发：Andiii 实测「花了上十分钟，结果产出一篇全是文字、没有任何截图的低质量笔记」。方案与全程取证：`docs/plans/2026-09-19-note-experience-overhaul.md`（综合主稿，与 `2026-09-19-note-visual-richness.md`、`2026-09-19-audit-remediation-plan.md`、`2026-09-18-non-lecture-and-long-video.md` 对拍后落地）。工艺规范同步见 `docs/skills/note-craft/SKILL.md` v2.1.0；spec §4/§5 已先行登记。**本线与 [0.7.7] 并行推进、同未打 tag，发布时合并。**
+
+### Added
+
+- **章节结构**（B1）：`Note.chapters [{at,title,summary}]`（3-8 章，默认 `[]`，旧笔记零迁移）+ prompt 9.13；`shared/notes/chapters.ts` 归章纯函数（首章之前的条目进未分组桶，空章不进阅读视图）；时间线按章分组渲染（章头 = 时间徽章 + 标题 + 一句话）；图集改为**按章分组的横向胶片条**（`shared/notes/frame-groups.ts`）；markdown/Obsidian 增「章节速览/章节」小节。
+- **金句**（B2）：`Note.quotes [{at,text}]`（讲者原话逐字摘引，与 09-18 方案 highlights 同字段不建两份）+ prompt 9.14；复用 `verifyTranscriptRefs` 同款核验（越界钳制、匹配不上清空 text）；阅读层 pull-quote、PDF 金句节、markdown/Obsidian 金句小节；坏项整条丢弃而非弄炸整份笔记（宁缺勿编）。
+- **一句话总结**（B3）：`Note.tldr`（预览价值，宁空勿编）+ prompt 9.12；六处投影同步（详/标准视图首块、markdown、Obsidian、PDF 封面）；Anki 明确不出卡。
+- **视觉能力知识表**（A1）：`shared/model-vision.ts`——已知无视觉模型（deepseek-chat 等，**只收核实过的知识**）生成时**不发图**（省 token + 省一次 unsupported_visual 静默重发的整段耗时），表外型号保守发图；ProviderPanel 预设标注与「无视觉」警告徽标；返回值新增 `visionCapable`。
+- **课时封面**（A2）：migration 012 `lessons.cover_path` + `notes/cover.ts`（data URL → `attachments/<lessonId>/cover.jpg`，best-effort 不弄坏导入）+ `notes:cover` 通道；笔记 masthead 封面 banner，无封面取 60 秒后第一帧（越过 0s 标题页）。
+- **图集近重复折叠**（A6）：`shared/notes/evidence-groups.ts` 按感知哈希折组（无哈希不折），图集以「代表帧 + N 张近重复」呈现；manifest 增加可选 `hash`。
+- **只读取证探针**（批0）：`scripts/note-visual-audit.ts`——真实库只读量化配图率/evidence 引用数/at 越界/绑定模型。
+- **B 站原片时间戳跳转**（批 D）：新通道 `lessons:openSource(lessonId, at)` ——渲染层只传课时 ID 与秒数，URL 由 main 侧常量基准 + 库内 bvid 拼出并经 `shell.openExternal` 打开（红线不破：不接受渲染层传入的 URL）；BV 号过正则才拼、秒数净化、多 P 带 `p=` 参数；时间线卡头「原片」小钮 + 两处放大对话框「跳到原片」（仅 B 站源渲染，SEU 源不给会失败的入口）。note-craft SKILL §12 的「时间戳跳转不做」按源收窄为「仅 SEU 源不做」。
+
+### Changed
+
+- **时间线配图从「90 秒筛子」改为跨条目贪心一对一分配**（A5）：`allocateTimelineImages`/`allocateTimelineImagesLazy`（屏幕端与 PDF 同口径，容差 = clamp(2×帧距中位数, 120s, 600s)，超限诚实纯文字卡）；相邻画面工具条显示帧自身时间。
+- **时间戳越界钳制**（B4）：`clampNoteTimes` 把 timeline/transcriptRefs 超转写范围的 at 钳到上界并计数（`clampedTimes` 进重生成 toast）——保内容修位置，不装作时间是准的。真实库实测：某 B 站笔记 5/18 条时间线 at 超出视频本体最多 62 分钟。
+- **帧库增密与预算解耦**（A4）：抽帧 10s → 20s（74 分钟课 ≈ 222 帧约 7MB）+ 去重后按时间桶补底（口播段不再整段零素材）；**发送预算仍 ≤20 张**。`dedupeKeyframes` 新增可选 `coverageBuckets`（默认不传 = 旧行为逐字节不变）。
+- **断供可见化**（A3）：`visualAssets {keyframes,ppt}` 进返回值；重生成 toast 明示「本课时未取得画面素材（视频流可能被平台拦截，重试导入可能恢复）」——与 A1 的「模型看不见」区分成两种原因两句话；图集空态从一行灰字改为原因 + 出路。
+- **体检补画面覆盖率指标**（B6）：渲染层用同一分配函数算后传入 `noteHealth` 第四参数；**只报 info**——无图可能是风控合法态，warn 会触发多模态返修烧钱，但用户必须看见。
+- **阅读面**（C1/C3/C4）：封面区（章节 chips + 阅读时长）；sticky 目录条（章节 + 概念锚点，滚动高亮）；时间线卡片图文并排（按条目奇偶左右交替），无图卡首条摘引升级 hero 大引文。
+- **prompt_version 2 → 5**（B3/B1/B2 各 +1），存量升级入口据此覆盖旧工艺笔记。
+
+### Fixed
+
+- **mimo 视觉能力事实订正**（2026-09-20，Andiii 核实）：上一轮 A1 把 `mimo-v2.5` 写进「已知无视觉」表依据是假说而非核实——错分类的后果正是纪律警告的一侧（对看得见图的模型不发图 = 白丢画面 + 向用户出示错误 toast）。整条撤下回到「表外未知 = 保守发图」；知识表现在只收核实过的知识。
+- **投影层容忍部分形状**（2026-09-20）：views/NoteViewer/NoteBlocks/PrintHandout 8 处直取 `note.chapters/quotes` 在新字段缺失的原始对象上抛 TypeError 崩渲染（与 markdown/obsidian/health 同源纪律对齐）+ 回归测试 1 条；连带洗净两条长期误归因并行会话的 app-shell 红（干净 HEAD 对照实测证伪）。
+- **实拍回购四处修正**（2026-09-20，真实库全量走查 + 种子副本库特写）：目录条横跨 860 轴改限 640；兜底封面帧改取 60 秒后第一帧；暗色章节 chips 对比度 4.15:1 改用次级文本色（实测 7.1:1）；图列 `minmax(140,200)` 改 `1fr auto` 消除 32px 右隙。**被证伪的两条「缺陷」**（旧构建工件，computed style 平反）：TOC 概念缺失（7/7 实全在）、缩略图高度异常（168×96 实为正确）。
+
+### 真机验收（2026-09-20，投诉课时真实重新生成）
+
+在真实库副本 + 安装版 userData 缝（DPAPI）上跑通真实重新生成（《数据结构基本认知》74 分钟，mimo-v2.5，459s，18 张关键帧全部发出）：
+
+- **金句是讲者原话**：3/3 逐字命中（产品核验器 quotesVerified 3/3 + 独立归一化复核），时间戳误差 ≤2s。
+- **TL;DR 像人写的**：78 字、具体结论（课程背景/数据结构定义/C 语言复习重点），无空话。
+- **toast 口径正确**：visionCapable=true（mimo 是多模态，不再误报「无视觉能力」）+ 18 帧（不出现「未取得画面素材」）；clampedTimes=0（新模型无时间外推，旧笔记 5 条假时间戳问题未复现）。
+- **章节超约**：产出 10 章（prompt 9.13 要求 3-8），且章与时间线条目一一对应、分组退化——切分内容合理但条数未遵守，记入下一轮 prompt 收紧候选。
+- **evidence 引用仍为 0**（18 张图确实到达模型）：「MiMo 引用遵循度弱」由假说变实证——图文并茂的最后一关是 prompt 侧，记入下一轮第一候选。
+- 贪心分配器在该旧帧库上 7/10 条时间线配到画面（旧工艺 5/18）；transcriptHitRate 65/65=100%、droppedRefs=0、体检 good/0 warn。截图留 `.tmp-accept-shots/`。
+
+### 测试与门禁
+
+本线工作期间测试 **1119 → 1268**（123 文件）；smoke **34/34**（含批 D 新通道探针）；lint/typecheck 零错误；真实库回购截图留 `.ui-shots-seeded/`（gitignored）。**未打 tag**，与 0.7.6 走查、0.7.7 收编同节奏，tag 等 Andiii 统一裁。
+
 ## [0.7.7] — 2026-09-20 · 全面审查整改收编（批1–批8，未打 tag）
 
 本版本收编审查整改计划（`docs/plans/2026-09-19-audit-remediation-plan.md`）全部八批（提交 `7501248…b80654d`）：
