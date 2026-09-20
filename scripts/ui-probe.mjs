@@ -437,12 +437,18 @@ async function probeNoteSearch(cdp, out, keyword) {
  *     `w * scale` 假定「元素盒 = 布局原宽」，在 6.2 之后会重复计缩放、fits 语义漂移，
  *     所以这里去掉乘法，直接取元素盒本身。
  * 既有字段名（含易混的 scrollW——它量的是 clientWidth）一律不动，避免破坏既有记录格式。
+ *
+ * 批6 6.3 再补两个字段（只增不改）——6.3 的验收项「工具栏常驻可见」需要位置数字：
+ *   - toolbarTop：导图工具栏相对 `.content` 可视顶边的位置；pageOverflow：页面级滚动余量。
+ *     工具栏永不被滚出视口 ⟺ toolbarTop ≥ pageOverflow（滚到底时工具栏仍在可视区内）。
  */
 const MINDMAP_GEOMETRY = `(() => {
   const sc = document.querySelector('.mindmap-scroll')
   const svg = document.querySelector('.mindmap-scroll svg')
   if (sc == null || svg == null) return { found: false }
   const wrap = document.querySelector('.mindmap-wrap')
+  const content = document.querySelector('.content')
+  const toolbar = document.querySelector('.mindmap-toolbar')
   const w = Number(svg.getAttribute('width'))
   const h = Number(svg.getAttribute('height'))
   const vb = (svg.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number)
@@ -454,6 +460,8 @@ const MINDMAP_GEOMETRY = `(() => {
     svgW: w, svgH: h,
     drawnW: Math.round(w), drawnH: Math.round(h),
     overX: sc.scrollWidth - sc.clientWidth, overY: sc.scrollHeight - sc.clientHeight,
+    toolbarTop: content == null || toolbar == null ? null : Math.round(toolbar.getBoundingClientRect().top - content.getBoundingClientRect().top),
+    pageOverflow: content == null ? null : content.scrollHeight - content.clientHeight,
     fits: w <= sc.clientWidth + 1 && h <= sc.clientHeight + 1
   }
 })()`
@@ -543,7 +551,7 @@ function summarize(out) {
   }
   for (const [key, label] of [['mindmap', '导图首屏'], ['mindmapZoomed', '放大后'], ['mindmapRefit', '适应后'], ['mindmapNarrow', '窄窗适应']]) {
     const m = out[key]
-    if (m?.found === true) lines.push(`${label} scale ${m.scale.toFixed(3)} · 画布 ${m.scrollW}×${m.scrollH} · 宿主高 ${m.wrapH} · 内容 ${m.svgW}×${m.svgH} → 元素盒 ${m.drawnW}×${m.drawnH} · 溢出 ${m.overX}/${m.overY} · 装得下 ${m.fits}`)
+    if (m?.found === true) lines.push(`${label} scale ${m.scale.toFixed(3)} · 画布 ${m.scrollW}×${m.scrollH} · 宿主高 ${m.wrapH} · 内容 ${m.svgW}×${m.svgH} → 元素盒 ${m.drawnW}×${m.drawnH} · 溢出 ${m.overX}/${m.overY} · 工具栏顶 ${m.toolbarTop} vs 页滚 ${m.pageOverflow} · 装得下 ${m.fits}`)
   }
   return lines
 }

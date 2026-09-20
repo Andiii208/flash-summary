@@ -251,7 +251,13 @@ describe('长内容反截断合同（批4）', () => {
 describe('正文列铁律（批6，P10/D6）', () => {
   it('正文列是 640，且没有任何视图再破格到面板轴', () => {
     expect(bodyOf('.note-body')).toContain('max-width: 640px')
-    expect(stripped, '导图视图的破格规则已删（P10）').not.toContain('data-view')
+    // 导图视图的破格规则已删（P10）。批6 6.3 起该选择器用于**宿主高度**，所以这里
+    // 钉的是「所有 data-view 规则都不得再动列宽」而不是「选择器不许出现」。
+    const blocks = stripped.split('}').filter((block) => block.includes("data-view='mindmap'"))
+    expect(blocks.length, '导图宿主的确定高度规则应存在（批6 6.3）').toBeGreaterThan(0)
+    for (const block of blocks) {
+      expect(block, `导图视图不得再破格列宽：${block.split('{')[0].trim()}`).not.toContain('max-width')
+    }
   })
 })
 

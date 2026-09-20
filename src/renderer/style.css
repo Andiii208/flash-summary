@@ -2071,6 +2071,15 @@ button.concept-ref:hover { color: var(--accent); }
 .course-map-meta { margin: 2px 0 0; font-size: var(--font-size-sm); color: var(--text-muted); }
 .course-map-card .mindmap-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .course-map-card .mindmap-wrap .mindmap-scroll { flex: 1; min-height: 0; }
+/* 批6 (P12/D7, plan 2026-09-20-ux-issues-remediation): 笔记宿主此前没有高度规则，
+   容器被 SVG 内容撑起（实测 862 ≈ 内容 718 + 工具栏/面包屑 + padding）——画布连同
+   工具栏一起走页面级滚动，工具栏被滚出视口，「适应窗口」的竖直半边也在此宿主空转
+   （fitToViewport 量到的 clientHeight 是内容高度而非视口高度）。这里给宿主一个**确定
+   高度**，与课程导图弹层宿主（上面两条）同一策略：高度是容器级一次性预算（同弹层
+   max-height: 86vh 的先例），不走间距 token——D7 定档 min(60vh, 640px)，实拍数字见
+   批6 6.3 的提交信息。 */
+.note-body[data-view='mindmap'] .mindmap-wrap { height: min(60vh, 640px); display: flex; flex-direction: column; }
+.note-body[data-view='mindmap'] .mindmap-scroll { flex: 1; min-height: 0; }
 /* 批3: 课程下暂无任何可用笔记时的空态（替代"空画布+全套工具栏"）。 */
 .course-map-empty {
   flex: 1;
