@@ -1,6 +1,6 @@
 # 方案：UX 问题整改（2026-09-20）
 
-> 状态：**待审（未动任何代码）**。v2：按第 2 轮评审意见修订；v3：按第 3 轮评审补全 notes:latest 测试消费方；v4：按终审补 preload 改动点与批 6 探针扩展；v5：补入第 6 项反馈「窗口最大化右侧空白」（P24，本次会话 `ui-probe` 实测取证）；v6：按 Andiii 订正把 ASR 预设与提示文案改成只留小米 MiMo（见 §6）（修订记录见 §6）。
+> 状态：**批1 已落地（2026-09-21，含 v7 评审补口）；其余批次未动代码**。v2：按第 2 轮评审意见修订；v3：按第 3 轮评审补全 notes:latest 测试消费方；v4：按终审补 preload 改动点与批 6 探针扩展；v5：补入第 6 项反馈「窗口最大化右侧空白」（P24，本次会话 `ui-probe` 实测取证）；v6：按 Andiii 订正把 ASR 预设与提示文案改成只留小米 MiMo（见 §6）；v7：批 1 实现后评审补口——P20 的「不覆盖」在全仓范围内只冻结了一个 writer，任务侧 catalog refresh 是第二个（见 §6）。（修订记录见 §6）。
 > 触发：Andiii 第 1 轮试用反馈——24 条已确认问题，覆盖八个面：视频封面 / 笔记体检与补全 / 模型设置与新用户引导 / 我的学习全屏展开 / 思维导图板块排版 / 窗口最大化右侧空白 / 渲染层全站普查 / 主进程任务链路普查。
 > 取证方式：本方案每条根因都已逐条打开源文件核对（下文 `file:line` 均为本次会话实读；第 1 轮审查材料中未逐条复核的少数条目已标注来源）。第 2 轮评审给出的 7 条意见（B1–B7）亦已逐条打开源文件复核，复核结论并入 §6。
 > 排序原则（按 Andiii 要求）：**先修功能不可用/失败 → 再修引导与信息架构 → 再修观感与布局**。
@@ -118,6 +118,7 @@
 
 - **P20（high）用户现象**：只是点开/刷新某门课，之前辛苦生成的笔记就可能从笔记库消失——全程无提示、无确认。
   - **根因**：`ipc.ts:539-545` `DELETE FROM lessons WHERE course_id = ? AND id LIKE ? AND id NOT IN (keepIds…)`——只要本次 harvest 返回的集合比库里小，多出来的行直接删。`lessons` 是各证据表的父表且全是 `ON DELETE CASCADE`（`001_initial.ts:34` tasks、`:51` transcripts、`:60` ppt_pages、`:71` keyframes、`:82` notes、`:95` qa；`src/main/db/open.ts:10` `foreign_keys = ON` 确认级联真的生效）。触发条件并非罕见：① `play-harvest.ts:321-322` 的目录脚本只在读到视频流后跑一次、不做稳定轮询，SPA 列表晚渲染就是部分列表；② `play-harvest.ts:110` 只收 1–40 字且含「第N节」的文本；③ `ipc.ts:536-538` 注释自述「平台列表会随新课时漂移」。对照 `removeCourse` 专门立了「该课程已有笔记，为保护数据不允许删除」（`ipc.ts:673-675`），同一条纪律在这条路径上完全缺失。较轻的必然后果：序号漂移时存活行的 title/play_ref 被 upsert 覆盖（`ipc.ts:529-535`），笔记还挂在行上但行名已变成另一节课。现有测试 `tests/ipc.test.ts:333-334`（第 1 轮材料）只钉了「旧行 c1-L9 被删」，没有任何「带笔记的行必须保留」的断言。
+  - **第二个 writer（2026-09-21 实现后评审补口，v6）**：同一份「课时目录」在任务侧还有一条写路径——`src/main/tasks/orchestrator.ts` 的 `fetching_course`「Catalog refresh」对本次收割到的**每个** entry 无条件 `ON CONFLICT(id) DO UPDATE SET title, play_ref, fetched_at`。它在 `courseRow.tecl_id/tecl_code` 非空时运行，即**每一次 SEU 课时的任务运行**都会把整门课的行名/ref 按平台当前索引重写一遍（该 upsert 自 e39cedfa 2026-09-02 起就在，本方案 §1.7 与 §2 1.1 初稿都没点名它）。只冻结 `school:harvestLessons` 等于没冻：收割刚冻结完，下一次任务运行就把它踩回去。后果不止「行名变成另一节课」——`play_ref` 正是 play 页用来点「第N节课」的 ref（`orchestrator.ts` 的 `selectLessonRef: lessonRow?.play_ref ?? null` → `play-harvest.ts` 的 `selectLessonRef`），被漂移覆盖后，下一次对该行跑任务会去抓**另一节课**的流并写回这一行。处置见 §2 1.1 的第四条落点。
 - **P21 用户现象**：任务运行中改缓存目录，产物被劈到新旧两个目录，旧目录里几 GB 的视频/音频成为永远没人回收的磁盘孤儿，界面上看不出来。
   - **根因**：`ipc.ts:851-863` `settings:setCacheDir` 只做 UNC 拒绝 + `assertWritable`，没有像 `chooseLibrary`（`:879-884`「有任务在运行、排队或未完成，请先取消或清理任务后再迁移」）那样的在跑任务检查。而 cacheDir 是每次调用重读的设置（`app-context.ts:157`，第 1 轮材料），`orchestrator.ts:94-98`（第 1 轮材料）的 taskDir 每次调用都重新 join——同一任务的不同 stage 可能落在不同根下；`cleanStaleCache` 只 readdirSync 当前 cacheDir（`cache-clean.ts:49-65`，第 1 轮材料），tasks:delete 与 clearFinished 也只 rm 当前 cacheDir 下的任务目录（`ipc.ts:1090-1091`、`1114-1116`，第 1 轮材料）。
 - **P22 用户现象**：生成/转写超时被翻译成「校园网可能较慢或服务暂不可用」——把用户引向错误方向（去查代理与 DNS），真正该做的（换更快的模型、缩短视频、减少图片）一句都没提。
@@ -150,11 +151,13 @@
   - DELETE 改为 `… AND id NOT IN (keepIds) AND id NOT IN (protectedIds)`；`keepIds.length > 0` 才删的现状保留（空收割仍不删）。
   - 序号漂移冻结：upsert 前取 protected 集合，protected 的行改用 `INSERT … ON CONFLICT(id) DO NOTHING`（title/play_ref 不被覆盖——否则笔记还挂在行上、行名已变成另一节课）；无产物行照常 upsert。旧 title → 新 title 的漂移记 `logger.info`。
   - 日志补三数：`harvestLessons: course=X entries=N dropped=K keptProtected=M`（dropped=本次真的删掉的空行数）。
-- 测试（`tests/ipc.test.ts` 扩充，只增不减）：
-  - 重收割返回更少课时时，带 notes 行的旧课时保留，且其 notes 行仍在（级联没触发）；
-  - 无任何依赖行的旧课时仍被删（现有「c1-L9 被删」断言原样保留）；
-  - 带笔记的课时 title 不被覆盖（漂移冻结），无产物行 title 照常更新；
-  - 空收割仍不删任何行（现状钉住）。
+  - **两个 writer 共用同一判定（2026-09-21 评审补口，v6）**：判定与写法收敛到新模块 `src/main/lessons/catalog.ts`——`protectedLessons(db, courseId)`（六表 EXISTS）、`upsertLessonCatalog(db, courseId, entries, fetchedAt)`（无产物行照常 upsert、有产物行 `ON CONFLICT DO NOTHING` 并返回漂移条目）、`describeCatalogDrift`（两条路径同一日志形态）。`school:harvestLessons` 与 `tasks` 的 `fetching_course` catalog refresh（`orchestrator.ts`）**都**走它；任务侧经新 dep `onCatalogDrift(courseId, drifted)` 把漂移交回 main 落 `task catalog drift (kept): course=X …` 日志（orchestrator 自己没有 logger，硬塞一个会动到它的 deps 面）。只冻结一条路径等于没冻（见 §1.7 P20 的「第二个 writer」）。
+  - 测试（`tests/ipc.test.ts` 扩充，只增不减）：
+    - 重收割返回更少课时时，带 notes 行的旧课时保留，且其 notes 行仍在（级联没触发）；
+    - 无任何依赖行的旧课时仍被删（现有「c1-L9 被删」断言原样保留）；
+    - 带笔记的课时 title 不被覆盖（漂移冻结），无产物行 title 照常更新；
+    - 空收割仍不删任何行（现状钉住）；
+    - **任务侧 catalog refresh 同款（2026-09-21 评审补口，v6）**：`tests/orchestrator.test.ts` 加一条——有产物的兄弟课时 title/play_ref 被冻结、空行照常跟随平台、漂移条目经 `onCatalogDrift` 交回（该用例在补口前实测为红）。
 
 **1.2 课程导图不再被全屏浏览器遮住（P13）**
 - 落点：
@@ -423,3 +426,4 @@
 - **B7（行号偏差）——已修/已核对**：采纳并改正——`views.ts:139-143` → `:135-139`；`db/open.ts:11` → `:10`；`NoteLibrary.tsx:104-115` → `:105-116`；`md-lite.ts:46` → `:41`（parseInline）/`:49`（code 分支）；`labels.ts` → `src/renderer/labels.ts`；`openai-client.ts` → `src/main/providers/openai-client.ts`。**两条经复核原引用正确、按原样保留**：`use-notes-domain.tsx:483-484`（`grep -n "await loadNote(lessonId)\|await loadNoteIndex()"` → 483/484/518/519/571，单条路径确为 483-484）与 `:571`（批量路径 loadNoteIndex 就在 571）；`App.tsx:444-452`（course-browser-open 按钮块，`class` 在 :445、`data-testid` 在 :446）。另 `App.tsx:417-430` 复核为 MyStudyPanel 完整块（:417 开、:430 `/>`），保留。
 - **v6（ASR 预设只留小米，2026-09-20 Andiii 订正）——已改**：Andiii 在方案执行期间明确「asr 预设只写小米，不要 open ai」。据此订正三处：① §2 批4.1 的 `PROVIDER_PRESETS.asrModel` 只给小米 MiMo 一例（`mimo-v2.5-asr`），OpenAI/DeepSeek/硅基流动/自定义一律不预填 asr、也不因预设自动勾选 asr；② 同批把 `ASR_MODEL_HINT`（`ProviderPanel.tsx:30`）改为「ASR 需要专门的语音模型，推荐小米 MiMo 的 `mimo-v2.5-asr`」——原句把 `whisper-1` 与小米并列，属用户可见文案，一并去掉 OpenAI 示例；③ 批4 的测试断言从「切 OpenAI 预设回填 whisper-1」改为「切小米 MiMo 预设回填 `mimo-v2.5-asr`、切 OpenAI 预设不预填 asr」。§3 的 D4 与 §4 批4 验收项同步。执行工作流已按方案正文读取，此订正发生在批4 之前，批4 实现者按新口径落地。
 - **v5（P24 窗口最大化空白，第 6 项反馈补入）——已修**：第 1 轮排查中「窗口放大排查员」报出 10 条发现，被分级员全部判为不进方案（理由：定宽正文列是 2026-09-18 排版整改的既定决策、非缺陷）。终审后逐条对照 Andiii 原话时发现：**用户的第 6 项反馈在方案里没有着落**——分级员可以把发现判为「不进方案」，但不能让用户点名的问题无声消失。本次会话实测取证（`node scripts/ui-probe.mjs --width=2560 --out=.ui-shots/probe-wide.json`：内容盒 2256 vs 面板右缘 1188 vs 正文右缘 968，右侧空白 1372/1592px；任务行恒 860）确认为真问题，补为 P24、列入批 6（新增 6.4）与决策项 D12，其余 23 条的批次与结论未动。教训记入：**每条用户原话都必须在方案里有明确着落——修，或作为决策项给出「不修/换解法」的理由；分级是筛噪音，不是销项**。
+- **v7（2026-09-21，批1 实现后评审补口）——已修**：批 1 的 1.1 只冻结了 `school:harvestLessons` 一个 writer，而同一份课时目录在任务侧还有第二个 writer（`orchestrator.ts` 的 `fetching_course` catalog refresh，SEU 路径每次任务运行都跑）。于是提交 `e6ae65b` 的信息与 PROGRESS 里「带笔记/转写的行保留**且不被覆盖**」这句在仓库范围内**是错的**——收割刚冻结完，下一次任务运行就把整门课的行名/play_ref 按平台当前索引重写回去；play_ref 又是下一次任务用来点「第N节课」的 ref，被覆盖会去抓另一节课的流。处置取评审推荐①（改动小、语义一致）：判定与写法抽到 `src/main/lessons/catalog.ts`，两个 writer 共用，任务侧漂移经 `onCatalogDrift` 落 main 日志。**教训记入**：本方案 §1.7/§2 的每条根因都写了 file:line，但「同一份数据的其他 writer」这类**横向**事实靠读单点代码是看不见的——声明「不被覆盖」这种全称命题前，必须先 `grep` 该列的全部写入点（`INSERT INTO lessons` / `UPDATE lessons SET`），而不是只读被点名的那一处。
