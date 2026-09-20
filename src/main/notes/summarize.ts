@@ -307,6 +307,14 @@ function buildRepairUserParts(note: Note, findings: ReadonlyArray<{ level: strin
  * 批3：一次有界返修。**不发图**——体检报的基本是「写短了 / 复读了标题 / 缺具体数字」
  * 这类问题，靠带时间的转写就能修；重发图片会让多模态费用接近翻倍。
  *
+ * 批2 (plan 2026-09-20, P3)：返修复检必须与调用方的**前置体检同口径**。
+ * 此前 `warnCount` 只按笔记形状算（`noteHealth(clamped)`，不带任何命中率），
+ * 于是「只差证据/转写命中率」的笔记也会被判成「返修成功」——代价是一次完整
+ * 模型调用 + 笔记被整篇改写，而 toast 报的「体检 2 项 → 0 项」是假的。
+ * 现在命中率由**返修稿自己的 stats** 重算，`evidenceRefs` 由调用方传入
+ * （生成路径 = 实际发过的图；存盘补全路径 = `loadValidRefs` 全量 refs），
+ * 与前置体检用的那一份**必须同源**——否则命中率 warn 会凭空消失。
+ *
  * 返回 null 表示返修没能改善（调用失败 / 解析失败 / warn 数没下降），调用方保留原稿。
  * **门禁只用于内部提质，绝不用于拦截交付**——生成失败比一份及格的笔记更糟。
  */
@@ -318,6 +326,7 @@ async function repairOnce(
   transcriptText: string,
   segments: CleanSegment[],
   allRefs: ReadonlySet<string>,
+  evidenceRefs: ReadonlyArray<{ ref: string }>,
   signal?: AbortSignal
 ): Promise<{ note: Note; stats: RefVerifyStats; warnCount: number; clamped: number } | null> {
   let answer: string
@@ -349,7 +358,15 @@ async function repairOnce(
   const verified = verifyNoteRefs(evidenceChecked, segments)
   // B4: 返修稿同样钳制越界 at（模型返修时可能再次外推时间）。
   const { note: clamped, clamped: clampedCount } = clampNoteTimes(verified.note, segments)
-  return { note: clamped, stats: verified.stats, warnCount: noteHealth(clamped).warnCount, clamped: clampedCount }
+  // 批2 (P3): 复检口径 = 前置体检口径（形状 + 证据命中率 + 转写命中率）。
+  const repairedHitRate = evidenceHitRate(clamped, evidenceRefs)
+  const repairedTranscriptHitRate = transcriptRefHitRate(verified.stats)
+  return {
+    note: clamped,
+    stats: verified.stats,
+    warnCount: noteHealth(clamped, repairedHitRate, repairedTranscriptHitRate).warnCount,
+    clamped: clampedCount
+  }
 }
 
 /**
@@ -489,8 +506,10 @@ export async function summarizeLesson(
     let clampedTimes = clampedStep.clamped
     // Citation quality signals (roadmap 1.3 + batch 1): the compliance reading
     // deliberately uses the images actually sent — the model never saw the rest.
-    const hitRate = evidenceHitRate(clampedStep.note, inputs.images)
-    const transcriptHitRate = transcriptRefHitRate(verified.stats)
+    // 批2 (P3): 可变——返修被采纳时命中率必须按返修稿重算，否则最终 health
+    // 报的是「返修前那一版的命中率」（口径又分叉一次）。
+    let hitRate = evidenceHitRate(clampedStep.note, inputs.images)
+    let transcriptHitRate = transcriptRefHitRate(verified.stats)
 
     // Batch 3: 生成质量闭环——体检发现缺口时做**一次**有界返修，不发图。
     // 只有当返修真的把 warn 数压下来才采纳（否则保留原稿），所以这条路只可能
@@ -515,6 +534,9 @@ export async function summarizeLesson(
         inputs.transcriptText,
         inputs.segments,
         inputs.allRefs,
+        // 批2 (P3): 与上面那次 noteHealth 用**同一份** refs——前后同源才谈得上
+        // 「warn 数有没有下降」。生成路径 = 实际发过的图。
+        inputs.images,
         signal
       )
       if (attempt != null && attempt.warnCount < warnCountBefore) {
@@ -523,6 +545,9 @@ export async function summarizeLesson(
         clampedTimes += attempt.clamped
         warnCountBeforeRepair = warnCountBefore
         warnCountBefore = attempt.warnCount
+        // 批2 (P3): 命中率同样取返修稿的重算值（与 attempt.warnCount 同一份口径）。
+        hitRate = evidenceHitRate(note, inputs.images)
+        transcriptHitRate = transcriptRefHitRate(stats)
         repaired = true
       }
     }
@@ -544,7 +569,9 @@ export async function summarizeLesson(
       clampedTimes,
       health: {
         warnCount: warnCountBefore,
-        grade: noteHealth(note).grade,
+        // 批2 (P3): 评级与 warn 数同口径——此前 grade 只按笔记形状算，
+        // 会出现「warn 报 1 项待改进、grade 却说 good」的自相矛盾。
+        grade: noteHealth(note, hitRate, transcriptHitRate).grade,
         repaired,
         /** 返修前的 warn 数（未返修时为 null），便于展示「返修把 N 项改进到 M 项」。 */
         warnCountBeforeRepair

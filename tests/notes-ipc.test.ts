@@ -561,6 +561,127 @@ describe('批3 生成质量闭环：有界返修（2026-09-17）', () => {
   })
 })
 
+describe('批2 (plan 2026-09-20, P3) 返修复检与前置体检同口径', () => {
+  /**
+   * 21 帧 → 发送预算 20 张（`MAX_SUMMARIZE_IMAGES`）：最后一张（kf-21）仍在
+   * `allRefs` 里（真存在），但**没被发出去**。引用它 = 视觉锚 0/1 = 一条纯
+   * 「证据命中率」warn，用来构造「只差命中率」的笔记。
+   */
+  function seedManyKeyframes(count: number): void {
+    for (let i = 1; i <= count; i++) {
+      const file = join(dir, `kf-${i}.jpg`)
+      // 每帧字节不同——万一解码成功也不会被帧内去重判成重复而少发。
+      writeFileSync(file, Buffer.from([0xff, 0xd8, 0xff, 0xe0, i, 2]))
+      db.prepare('INSERT INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+        `kf-${i}`,
+        'l1',
+        i,
+        file,
+        'hash',
+        '2026-09-20T00:00:00Z'
+      )
+    }
+  }
+
+  function seedTranscriptAndBinding(): void {
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-20T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'gpt-4o')").run()
+  }
+
+  /** 前置体检用的薄稿（与本文件批3 组同形，作用域内自持一份）。 */
+  const THIN = JSON.stringify({
+    overview: '太短。',
+    knowledgeTree: { title: 'root', children: [] },
+    methodology: '方法',
+    examCues: [],
+    questionsAndGaps: []
+  })
+
+  /** RICH 的形状（零形状 warn）+ 一条引用「没发出去的 kf:kf-21」的时间线。 */
+  const RICH_ONE_UNSENT_REF = JSON.stringify({    ...JSON.parse(RICH_NOTE),
+    timeline: [
+      {
+        at: 0,
+        title: '超参数调整演示',
+        detail:
+          '把模型宽度从 32 改到 64 之后，测试集精度由 0.97 回落到 0.87，训练集精度却继续上升，说明在这个数据量下容量过大已经明显过拟合。',
+        refs: [],
+        evidence: [{ kind: 'keyframe', ref: 'kf:kf-21' }]
+      }
+    ]
+  })
+
+  it('只有证据命中率 warn 时不被误判成「返修成功」——保留原稿、不存新版本', async () => {
+    const ctx = makeCtx()
+    seedManyKeyframes(21)
+    seedTranscriptAndBinding()
+    // 两次都返回同一份「形状达标但引用了一条没发出去的证据」的稿：
+    // 形状 warn = 0，命中率 warn = 1（0/1）。
+    const chatJson = vi.fn(async () => RICH_ONE_UNSENT_REF)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as {
+      ok: boolean
+      value?: { health: { warnCount: number; grade: string; repaired: boolean; warnCountBeforeRepair: number | null }; images: number }
+    }
+    expect(res.ok).toBe(true)
+    // 发送预算确实是 20 张（构造前提成立：kf-21 没被发出去）。
+    expect(res.value?.images).toBe(20)
+    // 返修确实跑了一次（warn>0），但复检口径与前置体检同源 → warn 数没下降 →
+    // 拒绝采纳。旧口径（只按笔记形状复检）会在这里给出 warnCount 0 + repaired=true
+    // 的虚假成功——本用例就是那条回归的钉子。
+    expect(chatJson).toHaveBeenCalledTimes(2)
+    expect(res.value?.health).toEqual({ warnCount: 1, grade: 'fair', repaired: false, warnCountBeforeRepair: null })
+    // 渲染层的 toast 后缀条件是「repaired===true && warnCountBeforeRepair!=null」，
+    // 两者都不成立 → toast 里不会出现「体检 N 项 → M 项」。
+    const toastWouldClaimImprovement = res.value?.health.repaired === true && res.value?.health.warnCountBeforeRepair != null
+    expect(toastWouldClaimImprovement).toBe(false)
+  })
+
+  it('形状与命中率同降时才采纳，且返修后的体检结论按同一口径给出', async () => {
+    const ctx = makeCtx()
+    seedManyKeyframes(21)
+    seedTranscriptAndBinding()
+    // 前置：4 条形状 warn（概览过短 / 概念为空 / 知识树分支不足 / 知识树层数不足）
+    // + 1 条证据命中率 warn = 5。
+    const thinWithBadRef = JSON.stringify({
+      ...JSON.parse(THIN),
+      timeline: [
+        {
+          at: 0,
+          title: '超参数调整演示',
+          detail:
+            '把模型宽度从 32 改到 64 之后，测试集精度由 0.97 回落到 0.87，训练集精度却继续上升，说明在这个数据量下容量过大已经明显过拟合。',
+          refs: [],
+          evidence: [{ kind: 'keyframe', ref: 'kf:kf-21' }]
+        }
+      ]
+    })
+    const chatJson = vi.fn(async () => thinWithBadRef).mockResolvedValueOnce(thinWithBadRef).mockResolvedValueOnce(RICH_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as {
+      ok: boolean
+      value?: { health: { warnCount: number; grade: string; repaired: boolean; warnCountBeforeRepair: number | null } }
+    }
+    expect(res.ok).toBe(true)
+    // 返修后：形状 0 warn、且不再引用没发出去的证据 → 命中率 warn 也没了。
+    expect(res.value?.health).toEqual({ warnCount: 0, grade: 'good', repaired: true, warnCountBeforeRepair: 5 })
+    // 口径一致：返修前的 5 项与返修后的 0 项都出自「形状 + 证据命中率 + 转写命中率」
+    // 这一组判据（grade 也跟着 warn 数走，不再出现「1 项待改进 / 却说良好」）。
+    const stored = db.prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1').get('l1') as {
+      note_json: string
+    }
+    expect(stored.note_json).toContain('本讲主线')
+  })
+})
+
 describe('批3 归一化丢弃计数可见化（2026-09-17 item 3）', () => {
   it('模型编的 quiz / 关联 / terms 被归一层丢掉的条数如实回报（不再静默）', async () => {
     const ctx = makeCtx()
