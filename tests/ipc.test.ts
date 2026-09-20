@@ -300,6 +300,23 @@ describe('ipc handlers over a real context', () => {
     expect(bogus.ok).toBe(false)
     expect(bogus.error).toContain('capability')
     expect(((await ipc.invoke('providers:list')) as { value?: { bindings: unknown[] } }).value?.bindings).toHaveLength(1)
+
+    // 批4 二次评审点名：验收项写的是「保存后列表徽标消失、**管线不再用它**」——
+    // 徽标半边由上面的 list 断言覆盖，管线半边此前只验到 unbind 调用本身。这里在
+    // 解绑多模态之后直接走一次笔记管线（notes:regenerate），证明解绑真的落到行为上，
+    // 而不只是列表里少了一行。文案来自 chatFor（regenerate 没有 repair/qa:ask 那种
+    // 前置友好检查，如实按现况断言）。
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-09-20T00:00:00Z')").run()
+    // 守卫顺序是「转写缺失 → 队列 → 在跑任务 → 绑定」——素材先备好，才轮得到绑定检查。
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-20T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '这节课讲梯度下降。' }]))
+    expect((await ipc.invoke('providers:unbind', 'multimodal')) as { ok: boolean }).toMatchObject({ ok: true })
+    const regen = (await ipc.invoke('notes:regenerate', 'l1')) as { ok: boolean; error?: string }
+    expect(regen.ok).toBe(false)
+    expect(regen.error).toContain('未绑定')
+    expect(regen.error).toContain('multimodal')
   })
 
   // P25 (2026-09-21): 能力面收敛为两项——「文本问答」不再是能力，桥面拒绝写入；
@@ -323,6 +340,26 @@ describe('ipc handlers over a real context', () => {
     // 多模态绑定存在时，追问取用的就是它（不再是 text）。
     expect((await ipc.invoke('providers:bind', 'multimodal', providerId, 'mimo-v2.5')) as { ok: boolean }).toMatchObject({ ok: true })
     expect(ctx.providers().bindings.find((b) => b.capability === ctx.qaCapability())?.model).toBe('mimo-v2.5')
+  })
+
+  // 补批验收项第二支（二次评审点名：全仓没有「只绑过 text、从未绑过多模态 → qa:ask」
+  // 的用例）：老库升级后这类账号拿到的必须是一句可执行的下一步，而不是 chatFor 的
+  // 「能力 multimodal 未绑定 Provider」技术串——绑定检查在 chatFor **之前**，顺序本身
+  // 就是这条断言成立的前提（migration 013 只删 text 行、不代用户改写绑定，见 D13）。
+  it('P25: 只绑过 text、从未绑过多模态的账号，追问得到可执行提示', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const saved = (await ipc.invoke('providers:save', { name: '老库', baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: 'sk-1' })) as {
+      value?: { id: string }
+    }
+    // 老库遗留形态：只有一行 text 绑定（migration 013 之前的库）。
+    ctx.db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('text', ?, 'qwen2.5')").run(saved.value!.id)
+    ctx.db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-20T00:00:00Z')").run()
+    ctx.db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-09-20T00:00:00Z')").run()
+
+    const res = (await ipc.invoke('qa:ask', 'l1', '这节课讲了什么？')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toBe('未绑定问答模型，请在设置中配置多模态总结模型')
   })
 
   it('refuses IPC from a non-app sender frame (review E1)', async () => {
@@ -482,7 +519,7 @@ describe('ipc handlers over a real context', () => {
     expect(logs).toContain('harvestLessons: course=c1 entries=1 dropped=1 keptProtected=6')
   })
 
-  it('批1 (P20): 漂移冻结——有产出的课时 title/play_ref 不被改写，无产物行照常更新', async () => {
+  it('批1 (P20): 漂移冻结——有产出的课时 title 不被改写，无产物行照常更新', async () => {
     const ctx = seedHarvestCourse()
     db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L3', 'c1', '第4节课', '3', '2026-08-30T00:00:00Z')").run()
     db.prepare(
@@ -491,10 +528,14 @@ describe('ipc handlers over a real context', () => {
     db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L4', 'c1', '第5节课', '4', '2026-08-30T00:00:00Z')").run()
 
     // 平台把序号挪了一格：本次收割说 L3 是「第5节课」、L4 是「第6节课」。
+    // 输入形状按生产可达的那一种：`parseLessonEntries` 是 entry 的唯一生产者，
+    // ref 恒等于 String(index)（tests/play-harvest.test.ts 有专项钉子）——旧夹具
+    // 写 ref '4' 配 index 3 是生产造不出来的形状，会让「play_ref 被冻结」这条断言
+    // 看着成立而实际不可达（批1 二次评审订正）。
     ctx.harvestCoursePage = async () => ({
       lessons: [
-        { index: 3, title: '第5节课', ref: '4' },
-        { index: 4, title: '第6节课', ref: '5' }
+        { index: 3, title: '第5节课', ref: '3' },
+        { index: 4, title: '第6节课', ref: '4' }
       ]
     })
     const res = (await ipc.invoke('school:harvestLessons', 'c1')) as { ok: boolean }
@@ -506,13 +547,55 @@ describe('ipc handlers over a real context', () => {
       play_ref: string | null
     }>
     // 带笔记的行冻结在原名上（笔记还挂着，行名不能变成另一节课）；
-    // 空行照常跟随平台更新。
+    // 空行照常跟随平台更新。play_ref 两行都等于 String(index)——它本来就是序号
+    // 派生值，冻结改不动它，本用例不宣称能改（见 catalog.ts 文件头订正）。
     expect(rows).toEqual([
       { id: 'c1-L3', title: '第4节课', play_ref: '3' },
-      { id: 'c1-L4', title: '第6节课', play_ref: '5' }
+      { id: 'c1-L4', title: '第6节课', play_ref: '4' }
     ])
     // 漂移不是静默的——日志留一条，且这条记录挂在受保护的行上。
     expect(logText()).toContain('harvestLessons drift (kept): c1-L3')
+  })
+
+  // 批1 补口（二次评审点名：这条日志语句从未被执行过）：本用例不覆写 executors——
+  // 走 registerIpc 的真实装配（makeExecutors → onCatalogDrift → ctx.logger.info），
+  // 让「任务侧漂移交回 main 落日志」这段代码真的跑一遍。fetching_course 之后的下
+  // 载阶段会真的起 ffmpeg（https 假流），所以拿到日志后立刻取消，不让它空转重试。
+  it('批1 补口 (P20): 任务侧 catalog refresh 的漂移经 onCatalogDrift 落 main 日志', async () => {
+    const ctx = seedHarvestCourse()
+    const handle = registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L3', 'c1', '第4节课', '3', '2026-08-30T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n3', 'c1-L3', 1, '{}', 'p', 'm', '2026-08-30T00:00:00Z')"
+    ).run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '第1节课', '2026-08-30T00:00:00Z')").run()
+
+    ctx.harvestCoursePage = async () => ({
+      teacherStreamUrl: 'https://vod/t.mp4?auth_key=x',
+      screenStreamUrl: 'https://vod/s.mp4?auth_key=y',
+      // 平台重排：L3 这次被叫「第5节课」（同一行的 title 被冻结不写下去）。
+      lessons: [{ index: 3, title: '第5节课', ref: '3' }]
+    })
+    const created = (await ipc.invoke('tasks:create', 'l1')) as { ok: boolean; value?: { id: string } }
+    expect(created.ok).toBe(true)
+    await ipc.invoke('tasks:runAsync', created.value!.id)
+
+    await waitFor(
+      () => {
+        expect(logText()).toContain('task catalog drift (kept): course=c1')
+      },
+      15000
+    )
+    // 形态与收割侧同款：行 id + 旧名(旧 ref) → 平台新名(新 ref)。
+    expect(logText()).toContain('c1-L3 «第4节课»(3) → «第5节课»(3)')
+    // 冻结生效：行名没被写下去。
+    const row = db.prepare("SELECT title FROM lessons WHERE id = 'c1-L3'").get() as { title: string }
+    expect(row.title).toBe('第4节课')
+    handle.cancelRunning()
+    await waitFor(() => {
+      const task = db.prepare('SELECT state FROM tasks WHERE id = ?').get(created.value!.id) as { state: string }
+      expect(task.state).toBe('failed')
+    })
   })
 
   it('批1 (P20): 空收割仍不删任何行（现状钉住）', async () => {

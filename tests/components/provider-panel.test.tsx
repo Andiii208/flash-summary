@@ -97,9 +97,16 @@ describe('ProviderPanel 首启默认值（批4 P8/D4）', () => {
     expect(modelInput(host, '多模态总结模型')!.value).toBe('mimo-v2.5')
     expect(modelInput(host, 'ASR 转写模型')!.value).toBe('mimo-v2.5-asr')
 
-    // OpenAI 预设没有语音模型——不预填、也不把 whisper-1 猜进去。
+    // OpenAI 预设没有语音模型——applyPreset **不动 asr**（保留上一个预设留下的值）、
+    // 不把 whisper-1 猜进去、也不因此取消勾选。批4 二次评审点名：旧断言只写
+    // `not.toBe('whisper-1')`，而切预设前 asr 本就是 'mimo-v2.5-asr'，所以它对
+    // 「不预填」「预填成任何其它值」都成立，钉不住语义——现按 applyPreset 的真实
+    // 契约断言（值原样保留 + 多模态换成 OpenAI 的模型 + 勾选态不动）。
     selectPreset(host, 'OpenAI')
-    expect(modelInput(host, 'ASR 转写模型')!.value).not.toBe('whisper-1')
+    expect(modelInput(host, 'ASR 转写模型')!.value).toBe('mimo-v2.5-asr')
+    expect(modelInput(host, '多模态总结模型')!.value).toBe('gpt-4o')
+    expect(capabilityBoxes(host)[0].checked).toBe(true)
+    expect(host.textContent).not.toContain('whisper-1')
   })
 
   it('没有 asrModel 的预设：不动 asr，也不自动勾选', () => {
@@ -112,5 +119,38 @@ describe('ProviderPanel 首启默认值（批4 P8/D4）', () => {
     // 模型字段跟着勾选态渲染——没勾就没有输入框，勾回来时值仍是 MiMo 那次留下的。
     click(capabilityBoxes(host)[0])
     expect(modelInput(host, 'ASR 转写模型')!.value).toBe('mimo-v2.5-asr')
+  })
+
+  // 补批验收项前半的渲染半边（二次评审点名）：migration 013 删掉 text 行之后，
+  // ProviderRowView 渲染的绑定徽标里不能再出现第三项——此前只有迁移层的断言
+  // （tests/db-migrations.test.ts），渲染层一个用例都没有。
+  it('P25: 迁移后的绑定形态只渲染两项徽标，界面里没有 text 的痕迹', () => {
+    const providers = {
+      providers: [{ id: 'p1', name: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', hasKey: true }],
+      // migration 013 之后库里就剩这两行（旧 text 行被删除）。
+      bindings: [
+        { capability: 'asr', providerId: 'p1', model: 'mimo-v2.5-asr' },
+        { capability: 'multimodal', providerId: 'p1', model: 'mimo-v2.5' }
+      ]
+    }
+    const host = mount(<ProviderPanel providers={providers} busy={false} onSave={vi.fn()} onRemove={() => undefined} />)
+    const badges = [...host.querySelectorAll('.provider-row-bindings .badge')].map((el) => el.textContent ?? '')
+    expect(badges).toEqual(['ASR 转写: mimo-v2.5-asr', '多模态总结: mimo-v2.5'])
+    expect(host.textContent).not.toContain('文本问答')
+    expect(host.textContent).not.toContain('text')
+  })
+
+  // 迁移之外的遗留行（或将来新增能力忘了配标签）不该把内部标识印给用户——旧写法
+  // 回落渲染裸值，界面上就会出现一个「text: qwen2.5」的徽标且没有任何用例发现。
+  it('P25: 标签表外的能力渲染「未知能力」，不印内部标识', () => {
+    const providers = {
+      providers: [{ id: 'p1', name: '老库', baseUrl: 'https://api.xiaomimimo.com/v1', hasKey: true }],
+      bindings: [{ capability: 'text', providerId: 'p1', model: 'qwen2.5' }]
+    }
+    const host = mount(<ProviderPanel providers={providers} busy={false} onSave={vi.fn()} onRemove={() => undefined} />)
+    const badge = host.querySelector('.provider-row-bindings .badge')
+    expect(badge?.textContent).toBe('未知能力: qwen2.5')
+    expect(badge?.getAttribute('title')).toBe('未知能力 绑定的模型')
+    expect(host.textContent).not.toContain('text')
   })
 })

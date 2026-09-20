@@ -276,21 +276,26 @@ describe('MindMap M1.3 缩放与平移', () => {
       })
     }
     stubViewport(host, 400, 300)
-    const states: Array<[string, () => void]> = [
-      ['首屏 1:1', () => {}],
-      ['放大 3x', () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 }) }],
-      ['适应窗口', fit],
-      ['缩到下限', () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: 120 }) }],
-      ['再适应窗口', fit]
+    // 每个状态的**期望缩放倍率**是独立算出来的（不是从元素盒反解的）——批6 二次评审
+    // 点名：旧断言 `scale = box.w / vb[2]` 再 `expect(box.w).toBeCloseTo(vb[2] * scale)`
+    // 右式恒等于 box.w，只在 vb[2] 为 0/NaN 时才可能红，捕捉不到任何元素盒回归。
+    const fitScale = Math.min(1, Math.max(0.4, Math.min(400 / contentW, 300 / contentH)))
+    const states: Array<[string, number, () => void]> = [
+      ['首屏 1:1', 1, () => {}],
+      ['放大 3x', 3, () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 }) }],
+      ['适应窗口', fitScale, fit],
+      ['缩到下限', 0.4, () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: 120 }) }],
+      ['再适应窗口', fitScale, fit]
     ]
-    for (const [label, step] of states) {
+    for (const [label, expectedScale, step] of states) {
       step()
       const box = { w: Number(svg.getAttribute('width')), h: Number(svg.getAttribute('height')) }
       const vb = viewBoxOf(host)
       const scale = box.w / vb[2]!
-      // 元素盒 = 视口窗口 × 缩放（缩放倍率本身没有漂移）。
-      expect(box.w, `${label}: 元素盒宽 = 窗口宽 × scale`).toBeCloseTo(vb[2]! * scale, 4)
-      expect(box.h, `${label}: 元素盒高 = 窗口高 × scale`).toBeCloseTo(vb[3]! * scale, 4)
+      // 缩放倍率 = 元素盒 / 视口窗口，且必须等于**这个状态应有的倍率**。
+      expect(scale, `${label}: 缩放倍率 = 元素盒宽 / 窗口宽`).toBeCloseTo(expectedScale, 4)
+      // 等比：宽高两个方向的倍率一致（元素盒不得被拉伸）。
+      expect(box.h / vb[3]!, `${label}: 元素盒高 / 窗口高 = 同一个倍率`).toBeCloseTo(scale, 4)
       if (scale < 1) {
         // 缩态：整幅内容缩到装得进容器（幽灵横滚条消失的条件）。
         expect(box.w, `${label}: 缩态元素盒宽 ≤ 容器宽`).toBeLessThanOrEqual(400 + 0.5)

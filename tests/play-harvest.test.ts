@@ -85,6 +85,18 @@ describe('parseLessonEntries', () => {
   it('drops empty candidates', () => {
     expect(parseLessonEntries(['', '第1节课'])).toHaveLength(1)
   })
+
+  // 批1 二次评审订正：这个恒等式是「漂移冻结改不动 play_ref」的根据——
+  // lessons.id = `${courseId}-L${index}`（lessons/catalog.ts），ref 又恒等于
+  // String(index)，所以同一行被重写进去的 play_ref 与库里已有的必然是同一个数字。
+  // 冻结的真实效果落在 title 上（笔记挂着的行不会变成另一节课的名字）。
+  it('批1 订正: ref 恒等于 String(index)——同一行的 play_ref 与序号一一对应，无第二种取值', () => {
+    const entries = parseLessonEntries(['第1节课', '第2节课', '第3节课'])
+    expect(entries.every((entry) => entry.ref === String(entry.index))).toBe(true)
+    // 去重/裁剪之后也一样（index 是「已收下几条」，不是原始下标）。
+    const deduped = parseLessonEntries(['第1节课', '第1节课', '第2节课'])
+    expect(deduped.map((e) => `${e.index}:${e.ref}`)).toEqual(['0:0', '1:1'])
+  })
 })
 
 describe('lessonNumber', () => {

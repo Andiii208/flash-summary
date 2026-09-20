@@ -124,7 +124,10 @@ describe('settings IPC (U3)', () => {
 
     const res = (await invoke(ctx, 'settings:setCacheDir', join(dir, 'new-cache'))) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
-    expect(res.error).toContain('任务')
+    // 验收项要的是「提示先取消/清理」这半边——只断言含「任务」二字的话，任何
+    // 改稿（比如删掉下一步动作）都能保持全绿（批1 二次评审点名）。
+    expect(res.error).toBe('有任务在运行、排队或未完成，请先取消或清理任务后再更换缓存目录')
+    expect(res.error).toContain('请先取消或清理任务后再更换缓存目录')
     // 拒绝就是拒绝：设置保持原值（默认 cache 目录），没有被半途改写。
     const after = (await invoke(ctx, 'settings:get')) as { ok: true; value: { cacheDir: string } }
     expect(after.value.cacheDir).toBe(join(dir, 'cache'))
@@ -138,7 +141,7 @@ describe('settings IPC (U3)', () => {
 
     const res = (await invoke(ctx, 'settings:setCacheDir', join(dir, 'new-cache'))) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
-    expect(res.error).toContain('任务')
+    expect(res.error).toBe('有任务在运行、排队或未完成，请先取消或清理任务后再更换缓存目录')
   })
 
   it('批1 (P21): 终态任务（succeeded/failed）不挡更换——产物已收口，换根是安全的', async () => {

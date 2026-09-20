@@ -235,6 +235,39 @@ describe('TaskPanel', () => {
     expect(onClearFinished).toHaveBeenCalledOnce()
   })
 
+  // 批3 (P22/D11) 验收项的渲染半边（批3 二次评审点名）：话术单测与渲染路径是两回事
+  // ——此前的任务行用例只喂过 ERR_CONNECTION_RESET，超时原文从未经过任务行。
+  it('批3 (P22): 生成侧超时原文在任务行显示新话术（指向换模型/缩短视频/少发图）', () => {
+    const history: TaskRowInfo[] = [
+      {
+        id: 't1',
+        lesson_id: 'l1',
+        state: 'failed',
+        failed_stage: 'summarizing',
+        // provider 侧 10 分钟上限撞墙时的原始信息（openai-client 的 CHAT_TIMEOUT_MS）。
+        error_message: 'The operation was aborted due to timeout',
+        error_kind: null,
+        course_name: '数据结构',
+        lesson_title: '第五讲',
+        teacher: '汪海',
+        courTimes: '周一 第3-4节',
+        classroom: '中山-312'
+      }
+    ]
+    const host = mount(
+      <TaskPanel currentLesson="l1" running={false} busy={false} progress={null} history={history} globalHistory={[]} onCreateRun={() => undefined} onRetry={() => undefined} onCancel={() => undefined} onDelete={() => undefined} onClearFinished={() => undefined} />
+    )
+    const err = host.querySelector('.history-error')
+    expect(err?.textContent).toContain('10 分钟上限')
+    expect(err?.textContent).toContain('换更快的模型')
+    expect(err?.textContent).toContain('缩短视频')
+    expect(err?.textContent).toContain('少发图片')
+    // 旧话术把用户引向代理与 DNS——它不该出现在生成超时上。
+    expect(err?.textContent).not.toContain('服务暂不可用')
+    // 行与 tooltip 同一句（A8 的既有口径）。
+    expect(err?.getAttribute('title')).toBe(err?.textContent)
+  })
+
   it('filters rows by state chips (M1-2)', () => {
     const history: TaskRowInfo[] = [
       { id: 't1', lesson_id: 'l1', state: 'succeeded', failed_stage: null, error_message: null },

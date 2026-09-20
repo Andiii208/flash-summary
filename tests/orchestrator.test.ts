@@ -192,9 +192,12 @@ describe('orchestrator stage executors', () => {
       harvestLesson: async () => ({
         teacherStreamUrl: 'https://vod/t.mp4?auth_key=x',
         screenStreamUrl: 'https://vod/s.mp4?auth_key=y',
+        // 生产可达的输入形状：ref 恒等于 String(index)（parseLessonEntries 是唯一
+        // 生产者，tests/play-harvest.test.ts 有专项钉子）——批1 二次评审订正了旧夹具
+        // 里 ref '4' 配 index 3 的不可达形状。
         lessons: [
-          { index: 3, title: '第5节课', ref: '4' },
-          { index: 4, title: '第6节课', ref: '5' }
+          { index: 3, title: '第5节课', ref: '3' },
+          { index: 4, title: '第6节课', ref: '4' }
         ]
       })
     })
@@ -212,7 +215,7 @@ describe('orchestrator stage executors', () => {
     }>
     expect(rows).toEqual([
       { id: 'c1-L3', title: '第4节课', play_ref: '3' },
-      { id: 'c1-L4', title: '第6节课', play_ref: '5' }
+      { id: 'c1-L4', title: '第6节课', play_ref: '4' }
     ])
     // 冻结不是静默的：漂移条目交回 main 落日志。
     expect(drifted).toEqual([{ courseId: 'c1', ids: ['c1-L3'] }])

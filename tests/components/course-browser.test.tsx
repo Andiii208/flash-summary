@@ -255,6 +255,26 @@ describe('CourseBrowser', () => {
     expect(props.onClose).toHaveBeenCalledTimes(3)
   })
 
+  // 批1 补口（验收项「Esc 只关一层」）：确认弹层是 z-index 60 那一档，恒在自绘
+  // overlay（40）之上——它开着时一次 Esc 只关弹层，浏览器不能跟着一起消失。
+  it('批1 (P13): 卡上确认弹层开着时 Esc 只关弹层，浏览器留在原处', async () => {
+    const props = makeProps()
+    const host = mount(<CourseBrowser {...props} />)
+    // c2 是唯一「从未处理过」的课程（无课时、无笔记）——只有它带删除键。
+    click(host.querySelector('button[aria-label="删除课程 网络信息编程（全英文）"]'))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(host.querySelector('.dialog-backdrop')).not.toBeNull()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(host.querySelector('.dialog-backdrop')).toBeNull()
+    expect(host.querySelector('[data-testid="course-browser"]')).not.toBeNull()
+    expect(props.onClose).not.toHaveBeenCalled()
+    expect(props.onRemoveCourse).not.toHaveBeenCalled()
+    // 第二层再按一次才轮到浏览器自己关。
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(props.onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('lands focus in the search box when opened', () => {
     const props = makeProps()
     const host = mount(<CourseBrowser {...props} />)

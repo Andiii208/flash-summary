@@ -592,6 +592,8 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // 浏览器先关：遮罩随之消失，导图弹层才是唯一在屏的一层。
     await waitForGone('[data-testid="course-browser"]')
     expect(bridge.notes.courseTree).toHaveBeenCalledWith('c1')
+    // 「只剩一层」是可量的前提——否则下面的 Esc 断言分不清「关一层」与「关两层」。
+    expect(host.querySelectorAll('.course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .my-study-overlay')).toHaveLength(1)
 
     // Esc 只关地图这一层——浏览器不会「跟着一起被关」（它已经关了，也不会回来）。
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
@@ -601,7 +603,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   // 批1 (P13) 的防御性半边：地图弹层现在渲染在浏览器之后，任何「浏览器开着
   // 打开地图」的路径都盖在上面而不是被埋掉。
-  it('批1 (P13): 地图弹层渲染在浏览器之后——两层同时在 DOM 里时地图在上', async () => {
+  it('批1 (P13): 地图弹层渲染在浏览器之后——两层同在时一次 Esc 只关最上面那一层', async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -615,11 +617,18 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     const overlays = [...host.querySelectorAll('.course-browser-overlay, .course-map-overlay')]
     expect(overlays.map((el) => el.className)).toEqual(['course-browser-overlay', 'course-map-overlay'])
 
-    // 收尾：两层都关掉——helpers/preact 的 afterEach 只清 DOM，挂着不关会把
-    // window 键监听与 body 滚动锁留给下一个用例（两层都听 Esc）。
+    // 批1 补口（验收项「Esc 只关一层」）：两层同开时，一次 Esc 关掉的只有**最上面
+    // 那一层**（地图渲染在浏览器之后 = DOM 后者居上）。旧断言是「一次 Esc 两层全关」，
+    // 与验收项字面相反，且这条路径真实可达（侧栏「查看课程导图」+ Ctrl+K/侧栏入口）。
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await waitForGone('[data-testid="course-map-dialog"]')
+    expect(host.querySelector('[data-testid="course-browser"]')).not.toBeNull()
+    expect(host.querySelectorAll('.course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .my-study-overlay')).toHaveLength(1)
+
+    // 第二层要再按一次才关；收尾理由同旧注释——helpers/preact 的 afterEach 只清
+    // DOM，挂着不关会把 window 键监听与 body 滚动锁留给下一个用例。
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await waitForGone('[data-testid="course-browser"]')
-    await waitForGone('[data-testid="course-map-dialog"]')
   })
 
   it('批4: 搜索态也分块——≥150 门命中只渲染 150 行，「显示更多」按页加长（重置 effect 对搜索态生效）', async () => {
@@ -903,6 +912,80 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(button()).toBeNull()
     await vi.waitFor(() => expect(host.querySelector('.toast')?.textContent).toContain('已重新获取封面'))
     // 等 toast 自动过期再结束（同上面的收尾理由）。
+    await vi.waitFor(
+      () => {
+        expect(host.querySelector('.toast')).toBeNull()
+      },
+      { timeout: 6000, interval: 100 }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  })
+
+  // 批2 二次评审点名：渲染层的补全路径（use-notes-domain 的 repairNote）此前
+  // 没有任何用例——toast 两条分支、in-flight 守卫、成功后的刷新全靠 IPC 层代理
+  // 条件断言，文案改坏了也没人知道。这里走真实点击：体检面板 → 「按体检结果补全」。
+  it('批2 订正 (P2): 补全成功 → toast 说「体检 N 项 → M 项」、连点只发一次、笔记刷新', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第1讲' }
+    )
+    const bridge = makeBridge()
+    // 当前笔记要能加载出来（体检面板才在）——换掉 latest 的桩，直接读新 mock 的调用数。
+    const latest = vi.fn(async () => ok({ note: COVER_NOTE, transcriptHitRate: null }))
+    ;(bridge.notes as unknown as { latest: unknown }).latest = latest
+    // 补全请求挂着不返回——量「在途」这一窗口里的守卫。
+    const gate: { settle?: () => void } = {}
+    const repair = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          gate.settle = () => resolve(ok({ version: 2, repaired: true, health: { warnCount: 0, grade: 'good' as const, warnCountBeforeRepair: 2 }, transcriptHitRate: null }))
+        })
+    )
+    ;(bridge.notes as unknown as { repair: unknown }).repair = repair
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-masthead')
+    const latestBefore = latest.mock.calls.length
+    click(host.querySelector('.note-health-toggle'))
+    const repairBtn = (): HTMLButtonElement | null => host.querySelector<HTMLButtonElement>('.note-repair-btn')
+    expect(repairBtn()).not.toBeNull()
+    // 同一 tick 连点两次：第二次落在按钮 disabled 之前，靠 hook 的 ref 守卫拦下。
+    click(repairBtn())
+    click(repairBtn())
+    await vi.waitFor(() => expect(repair).toHaveBeenCalledTimes(1))
+    expect(repairBtn()?.textContent).toBe('补全中…')
+    expect(repairBtn()?.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(host.querySelector('.toast')?.textContent).toContain('已补全：体检 2 项 → 0 项'))
+    // 成功后刷新当前笔记（否则屏幕停在补全前的旧版本与旧徽标）。
+    await vi.waitFor(() => expect(latest.mock.calls.length).toBe(latestBefore + 1))
+    // 在途守卫放开，按钮回到可点。
+    await vi.waitFor(() => expect(repairBtn()?.disabled).toBe(false))
+    // 等 toast 自动过期再结束（helpers/preact 的 afterEach 不 unmount，理由同批3）。
+    await vi.waitFor(
+      () => {
+        expect(host.querySelector('.toast')).toBeNull()
+      },
+      { timeout: 6000, interval: 100 }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  })
+
+  it('批2 订正 (P2): 未改善 → toast 明说保留原稿（不说「N 项 → M 项」）', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第1讲' }
+    )
+    const bridge = makeBridge()
+    ;(bridge.notes as unknown as { latest: unknown }).latest = vi.fn(async () => ok({ note: COVER_NOTE, transcriptHitRate: null }))
+    // 假桥默认的 repair 就是「未采纳」那一支：repaired false + warnCountBeforeRepair null。
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-masthead')
+    click(host.querySelector('.note-health-toggle'))
+    click(host.querySelector('.note-repair-btn'))
+    await vi.waitFor(() => expect(host.querySelector('.toast')?.textContent).toBe('补完没有改善，已保留原稿'))
+    expect(bridge.notes.repair).toHaveBeenCalledTimes(1)
     await vi.waitFor(
       () => {
         expect(host.querySelector('.toast')).toBeNull()
