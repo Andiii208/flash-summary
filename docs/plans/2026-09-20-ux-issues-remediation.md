@@ -1,7 +1,7 @@
 # 方案：UX 问题整改（2026-09-20）
 
-> 状态：**批1 已落地（2026-09-21，含 v7 评审补口）；其余批次未动代码**。v2：按第 2 轮评审意见修订；v3：按第 3 轮评审补全 notes:latest 测试消费方；v4：按终审补 preload 改动点与批 6 探针扩展；v5：补入第 6 项反馈「窗口最大化右侧空白」（P24，本次会话 `ui-probe` 实测取证）；v6：按 Andiii 订正把 ASR 预设与提示文案改成只留小米 MiMo（见 §6）；v7：批 1 实现后评审补口——P20 的「不覆盖」在全仓范围内只冻结了一个 writer，任务侧 catalog refresh 是第二个（见 §6）。（修订记录见 §6）。
-> 触发：Andiii 第 1 轮试用反馈——24 条已确认问题，覆盖八个面：视频封面 / 笔记体检与补全 / 模型设置与新用户引导 / 我的学习全屏展开 / 思维导图板块排版 / 窗口最大化右侧空白 / 渲染层全站普查 / 主进程任务链路普查。
+> 状态：**批1–批4 已落地（2026-09-21；批4 曾被脚本门禁的一次时序抖动误判为红，实测 HEAD 全绿 lint 0 / tsc 0 / 1362 测试）；批5、批6 与新增「补批（P25）」待执行**。v2：按第 2 轮评审意见修订；v3：按第 3 轮评审补全 notes:latest 测试消费方；v4：按终审补 preload 改动点与批 6 探针扩展；v5：补入第 6 项反馈「窗口最大化右侧空白」（P24，本次会话 `ui-probe` 实测取证）；v6：按 Andiii 订正把 ASR 预设与提示文案改成只留小米 MiMo（见 §6）；v7：批 1 实现后评审补口——P20 的「不覆盖」在全仓范围内只冻结了一个 writer，任务侧 catalog refresh 是第二个（见 §6）；v8：补入 Andiii 第 3 项原话的剩余部分「三选项改两项」（P25 + 补批，见 §6）。（修订记录见 §6）。
+> 触发：Andiii 第 1 轮试用反馈——25 条已确认问题，覆盖九个面：视频封面 / 笔记体检与补全 / 模型设置与新用户引导（含两项化）/ 我的学习全屏展开 / 思维导图板块排版 / 窗口最大化右侧空白 / 渲染层全站普查 / 主进程任务链路普查 / 模型设置两项化（P25，补批）。
 > 取证方式：本方案每条根因都已逐条打开源文件核对（下文 `file:line` 均为本次会话实读；第 1 轮审查材料中未逐条复核的少数条目已标注来源）。第 2 轮评审给出的 7 条意见（B1–B7）亦已逐条打开源文件复核，复核结论并入 §6。
 > 排序原则（按 Andiii 要求）：**先修功能不可用/失败 → 再修引导与信息架构 → 再修观感与布局**。
 > 总盘子：**6 批**覆盖全部 24 条；每批拆成一个或多个小而聚焦的 Conventional Commit；批批过四门禁（`npm run lint` + `npm run typecheck` 双 tsc + `npm test` 全量）；动了桥面（`src/shared/bridge.ts` / preload / `ipc.ts` 返回结构）的批加跑 `npm run smoke`；改 renderer 样式/布局的批加跑 `npm run build` + 实拍（`scripts/ui-probe.mjs` / `scripts/ui-shots.mjs`），关键数字写进提交信息。
@@ -47,6 +47,7 @@
 | P11 | SVG 元素盒不随缩放 → 常驻约 49px 横滚 | low | 批6 |
 | P12 | 导图画布在笔记页无确定高度、无内滚 | medium | 批6 |
 | P24 | 窗口最大化后右侧大片空白（定宽正文列撞宽屏） | medium | 批6 |
+| P25 | 模型设置仍是三个选项，Andiii 要求「只留 ASR 与多模态两项」 | medium | 补批 |
 
 ---
 
@@ -136,6 +137,14 @@
   - **实测取证**（本会话实跑 `node scripts/ui-probe.mjs --width=2560 --out=.ui-shots/probe-wide.json`）：视口 2560 时 `.content` 宽 2256（左 304 → 右 2560），而 `.note-viewer` 仍 860（右缘 1188）、`.note-body` 仍 640（右缘 968）——右侧分别空 **1372px / 1592px**；任务历史 `.history-row` 同样恒 860（六行全 860）。即宽屏下所有内容页只用到约四成宽度。对照默认窗 1266：面板右缘 1188、内容右缘 1266，只差 78px——所以观感是「一放大就出现，且随屏宽线性恶化」。
   - 不是回归事故：860/640 是 2026-09-18 排版整改「单一内容列」的既定决策（SKILL §6 把 640 钉为阅读排版铁律，实测 42.7 全角字/行）。要改的是**宽屏下的空间用法**，不是阅读列本身。
 - **为什么第 1 轮漏了它**：该方向排查员报出 10 条，被分级员以「属既定排版决策、非缺陷」全部判为不进方案——判断本身有依据，但用户明确把它列为第 6 项体验问题，不能以「设计使然」结案；故本次会话实测复核后补入，并升格为决策项 D12 待拍板。
+
+### 1.9 模型设置仍是三个选项（P25，medium）
+
+- **用户原话（第 3 项的后半句）**：「你把当前的逻辑给改一下，直接改成 asr 语音转写模型和多模态模型这两个选项，不要设置成当前的三个选项」。
+- **现状（实测）**：能力面仍是三项——`ProviderPanel.tsx:9` 的 `CAPABILITY_LABELS` 有 `text: '文本问答'`、`:10` 的 `CAPABILITY_ORDER = ['asr','multimodal','text']`、`:15-17` 的 `CapabilityNotes` 图例列三条；`src/main/providers/model.ts:19` 的 `Capability = 'asr' | 'multimodal' | 'text'`；`src/main/ipc.ts:119-121` 的 `requireCapability` 放行三值；`src/main/tasks/orchestrator.ts:43` 的 `chat(capability)` 形参含 `'text'`。
+- **text 的唯一真实消费点**：`src/main/app-context.ts:570-573` 的 `qaCapability()`（`bindings.some(b => b.capability === 'text') ? 'text' : 'multimodal'`），由追问链路 `src/main/ipc.ts:1997` 取用。`orchestrator.chat()` 只在 `:604`（asr）与 `:823`（multimodal）被调用——**没有任何地方真的需要第三个能力**。
+- **为什么第 1 轮漏了它**：模型设置排查员的指令里点名要查「text 能力的全部消费点与删掉后的替代路径」，但分级/成文时被并进 P8（首启默认值）与 P14（解绑），「三改二」本身没有独立条目。与 P24 同一类缺口（用户原话在方案里没着落），按 v5 的教训补为独立条目。
+- **spec 冲突**：`docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md` §4 与 §211 把「text 模型绑定」写成产品承诺（「Advanced settings allow ASR, multimodal summarization, and text summarization to use different providers」「independent ASR, multimodal, and text model bindings」）——按声明层纪律，**spec 先行**：先改 spec 再改代码（见补批第 0 步）。
 
 ---
 
@@ -365,7 +374,32 @@
 
 ---
 
-## 3. 决策项（D1–D12，均给推荐；Andiii 习惯「按推荐」拍板）
+### 补批 — 模型设置两项化（P25，Andiii 第 3 项原话的剩余部分）
+
+**目标**：设置页的能力面从三项（ASR / 多模态 / 文本问答）收敛到 Andiii 要求的两项（ASR / 多模态）；追问链路改走多模态；老库里的 text 绑定清理干净，界面不再出现第三项的任何痕迹。
+
+**执行顺序**：本补批与批5、批6 同属剩余工作；本次续跑**先做本补批**（用户原话优先），再做批5、批6。
+
+**补0 spec 先行（docs 提交，先于一切代码）**
+- `docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md`：§4 的两处（「Advanced settings allow ASR, multimodal summarization, and text summarization…」与「A text-only model is a fallback for users who explicitly choose it」）与 §211 第 8 条（「independent ASR, multimodal, and text model bindings」）改为**两个能力**（ASR / multimodal），并写明「追问（Q&A）走多模态绑定」——这是产品边界变更，先落 spec 再落实现（Andiii 已明确要求）。
+- 提交：`docs(spec): 能力面收敛为 ASR + 多模态两项，追问走多模态绑定`
+
+**补1 能力面两项化（P25）**
+- 落点：
+  - `src/main/providers/model.ts:19`：`Capability` 收敛为 `'asr' | 'multimodal'`。
+  - `src/main/app-context.ts:90` 的 `qaCapability: () => Capability` 与 `:570-573` 的实现：直接返回 `'multimodal'`（保留 dep 名，避免牵动 `ipc.ts:1997` 的调用点——取改动更小的一支）。
+  - `src/main/ipc.ts:119-121` `requireCapability`：只放行两值（smoke 已有 `providers:bind('bogus')` 必须失败的探针，`'text'` 从此也进拒绝集）。
+  - `src/main/tasks/orchestrator.ts:43` 的 `chat(capability)` 形参同步收窄（`:604` asr、`:823` multimodal 两处调用不变）。
+  - `src/renderer/components/ProviderPanel.tsx:9-17`：`CAPABILITY_LABELS` / `CAPABILITY_ORDER` / `CapabilityNotes` 三项改两项（删「文本问答」行）；`:215-216` 的 `models` 初值与 `:233` 的 `applyPreset` 里的 `text` 字段一并去掉。
+  - `src/renderer/hooks/use-config-domain.ts` 若因联合收窄报错，同步修（不改行为）。
+- 老库清理（D13）：新增 migration 013 删除 `capability_bindings WHERE capability = 'text'`——该能力已不存在，留着只会在 `ProviderRowView` 里显示一个 UI 已无法维护的徽标。**不动** migration 003 的 CHECK 约束（改它要重建表，收益为零）；**零新增依赖**。
+- 测试：`tests/provider-model.test.ts:19`（现用 `capability: 'text'` 的夹具改为两值内的用例，只改语义不删断言）；组件测试断言能力组只剩两个复选框且无「文本问答」；ipc 测试断言 `providers:bind('text', …)` 被拒；追问链路既有测试保持绿（走 multimodal）。
+- 门禁：四门禁 + **smoke**（动桥面：`Capability` 联合收窄牵动 bridge/preload 的类型标注；expected surface 若含 text 绑定需同步）。
+- 提交：`refactor(provider): 能力面收敛为 ASR + 多模态两项，追问改走多模态绑定`（migration 与测试同批）。
+
+---
+
+## 3. 决策项（D1–D13，均给推荐；Andiii 习惯「按推荐」拍板）
 
 - **D1 — 重新收割的删除边界**。推荐：**有依赖行（notes/transcripts/keyframes/ppt_pages/tasks/qa 任一）的课时永不删**；真空行才删；带产物行的 title/play_ref 不覆盖（漂移只记日志）。理由：`removeCourse` 已立「该课程已有笔记，为保护数据不允许删除」（`ipc.ts:673-675`），同一纪律必须覆盖这条更隐蔽的路径；「序号漂移改名」会让用户对着旧标题找不到已生成的笔记。备选：永不删任何行（只提示）——更保守，但平台真的下架课时后列表里会留永久空行。若你更想要备选，批 1.1 的 DELETE 整个去掉即可。
 - **D2 — 定向补全的入口与范围**。推荐：**单课入口**（体检面板「按体检结果补全」按钮，title 写明「只按体检问题修，不重新发送画面；修不好保留原稿」），批量升级对话框**不加**「补全」列。理由：补全与重生成是两种成本/语义不同的操作，一次只让用户面对一个选择；批量补全可以在单课稳定后单独开。行为边界（不发图、只跑一次、不改善不存新版本）已写进批 2.0 的 spec 批注，**需你确认这段 spec 文字**。
@@ -378,6 +412,7 @@
 - **D9 — Obsidian 失败报告形态**。推荐：返回失败清单（lessonId + 原因，截断 200 字），toast 显示前 2 条 + 「详见日志」，main 侧逐条 `logger.warn`。理由：vault 落在 OneDrive/只读位置时全部「跳过」是最容易发生的静默失败，用户至少要知道「一篇都没写进去」和第一个原因。备选：只要 `exported === 0 && skipped > 0` 就整体报错——更响但更糙（确实存在「全课都没笔记」的合法情形，会被误报成故障）。
 - **D10 — 树 a11y 修法**。推荐：补全标准 ARIA 树（treeitem + aria-level + aria-expanded 在树项上 + 子行 `role="group"`），不做 roving tabindex。理由：「知识结构」本身就是层级语义，读屏用户按层导航的收益真实；成本约十几行。备选：摘掉 `role="tree"` 退回普通按钮列表——更简单但主动放弃了层级语义，与这个组件的立意相反。
 - **D11 — 超时话术文案**。推荐改成：「连接或生成超时——校园网慢可稍后重试；若卡在笔记生成（10 分钟上限），换更快的模型、缩短视频或少发图片再试」。理由：原始两类超时（网络/provider 算得慢）共用一条正则（`errors.ts:13`），话术必须同时覆盖且各给下一步；这句只陈述可核实的事实（10 分钟上限 = `src/main/providers/openai-client.ts:40` 的 `CHAT_TIMEOUT_MS`），无法律术语。**请你过目这句**，措辞你定。
+- **D13 — 老库里已绑定的 text 能力怎么处置（P25）**。推荐：**新增 migration 013 删掉 `capability_bindings WHERE capability = 'text'`**——能力面已收敛，留着这行只会在 Provider 列表里渲染一个 UI 再也无法维护的徽标（`ProviderRowView` 按库里的 bindings 渲染），属「声明与实现漂移」；删掉后追问自然落到多模态绑定，用户不需要做任何事。备选 A：保留行、渲染层过滤掉 text 徽标——不删数据，但库里留一行永远没人读的配置，下次读代码的人要重新推一遍为什么。备选 B：保留 text 能力但 UI 隐藏——与 Andiii 原话直接冲突，不取。**migration 只删这一种行，不动 CHECK 约束与其它绑定。**
 - **D12 — 宽屏留白的解法（P24）**。推荐：**列表页响应式加宽 + 阅读列保持 640/860**——新增宽屏断点（先改 SKILL §3 断点表与 `tests/style-scale.test.ts` 钉住口径，spec/skill 先行，见批 6.4），任务历史/笔记库/课程树在宽屏下加宽或两列，把空白换成信息密度；阅读页的留白是 640 阅读铁律的既定代价，不动。理由：改动落在 max-width 档位而非刻度 token，对话框/弹层/钉住测试零牵连；「列表更宽」比「整体更大」的信息增益更高，也不改变任何既有页面的视觉语言。备选 A（你提的等比例放大）：main 侧按屏宽设 `setZoomFactor` 分档（如 1.25/1.5）——一次机制全覆盖、视觉最统一，且不新增 CSS 断点；但 `vh` 弹层与固定定位在缩放下是否溢出必须实拍验证（判据见批 6.4），放大后侧栏/工具栏会同比例变糙，且要决定是否给用户手动调缩放档位（那是新增产品设置）。备选 B：保持现状——阅读页留白即纪律，列表页也不加宽。**这是产品观感选择，请你定档**；若选备选 A，请一并给档位与是否可手动调。
 
 ---
@@ -390,6 +425,7 @@
 - [ ] **批 2**：对一份 warn 笔记点「按体检结果补全」→ 只跑一次模型、不发图；改善则出新版本且 toast「体检 N 项 → M 项」口径真实，未改善则版本不变、toast 明说保留原稿。**只有证据/转写命中率 warn 的笔记不被误判为「补全成功」**。批量升级混入失败课时 → 每行显示真实原因、toast 汇总；当前课时升级成功后屏幕笔记与徽标即时更新；对已完成课时点重试不再触发 regenerate。查看器徽标与升级列表对同一份笔记结论一致。「升级旧笔记」连点只发起一次体检。
 - [ ] **批 3**：构造超时失败 → 任务行/详情显示新话术且指向「换模型/缩短视频/少发图」。vault 指向不可写目录做整课导出 → toast 报告失败篇数与原因、日志有逐条记录、不再显示具有误导性的「跳过 N 篇」。B 站课时点「重新获取封面」→ 封面出现；SEU 源课时不给这个入口；导入日志能看到封面成败。
 - [ ] **批 4**：全新 userData 首启 → Provider 表单默认含 multimodal、asr 有预填或明确原因；只勾 asr 空模型时保存被挡且看得到原因；保存后若缺 multimodal 立即被告知。编辑已有 Provider 取消勾选某能力 → 保存后列表徽标消失、管线不再用它。「我的学习」标题旁按钮 / Ctrl+M 可全屏展开，选课时后弹层关闭并落到该课时，Esc/关闭键行为与课程浏览器一致。
+- [ ] **补批（P25）**：设置页能力组只剩「ASR 转写」「多模态总结」两个复选框，界面上没有「文本问答」；旧库里绑过 text 的账号升级后列表不再显示该徽标、追问仍可用（走多模态绑定）；`providers:bind('text', …)` 被拒；spec §4 与 §211 的第 8 条已改成两项并与实现一致。
 - [ ] **批 5**：含行内代码的 tldr/概览渲染成代码而不是字面反引号；纯文本笔记投影不变。读屏（或 DOM 断言）下知识树有完整 treeitem/aria-level/aria-expanded。扫码等待期间主按钮禁用且显示「等待扫码…」，不会二次取码。导图搜不存在的词出现零命中提示。
 - [ ] **批 6**：`ui-probe --mindmap` 四态（探针已由 6.0 扩展）：导图文列宽 = 640（与其余四视图同轴）、svg 元素盒随缩放、**`overX = 0`（适应态，探针新字段）**、**`wrapH` 为确定高度且工具栏常驻可见（探针新字段）**；窄窗（`--width=960`）无新破格。宽屏（`--width=1920`/`--width=2560`）：列表页用上空间、空白像素较修前（1372/1592）显著收窄、阅读页仍 640/860，数字写进提交信息。
 - [ ] **整体**：`npm run lint && npm run typecheck && npm test` 全绿；动过桥面的批（2/3/4）各自 `npm run smoke` 全绿；测试数只增不减（每批在 PROGRESS 记「X → Y」）；`PROGRESS.md` 每阶段一条记录（含纯实现细节的取舍理由）；README/CHANGELOG 在最后一批收口时对齐。
@@ -426,4 +462,5 @@
 - **B7（行号偏差）——已修/已核对**：采纳并改正——`views.ts:139-143` → `:135-139`；`db/open.ts:11` → `:10`；`NoteLibrary.tsx:104-115` → `:105-116`；`md-lite.ts:46` → `:41`（parseInline）/`:49`（code 分支）；`labels.ts` → `src/renderer/labels.ts`；`openai-client.ts` → `src/main/providers/openai-client.ts`。**两条经复核原引用正确、按原样保留**：`use-notes-domain.tsx:483-484`（`grep -n "await loadNote(lessonId)\|await loadNoteIndex()"` → 483/484/518/519/571，单条路径确为 483-484）与 `:571`（批量路径 loadNoteIndex 就在 571）；`App.tsx:444-452`（course-browser-open 按钮块，`class` 在 :445、`data-testid` 在 :446）。另 `App.tsx:417-430` 复核为 MyStudyPanel 完整块（:417 开、:430 `/>`），保留。
 - **v6（ASR 预设只留小米，2026-09-20 Andiii 订正）——已改**：Andiii 在方案执行期间明确「asr 预设只写小米，不要 open ai」。据此订正三处：① §2 批4.1 的 `PROVIDER_PRESETS.asrModel` 只给小米 MiMo 一例（`mimo-v2.5-asr`），OpenAI/DeepSeek/硅基流动/自定义一律不预填 asr、也不因预设自动勾选 asr；② 同批把 `ASR_MODEL_HINT`（`ProviderPanel.tsx:30`）改为「ASR 需要专门的语音模型，推荐小米 MiMo 的 `mimo-v2.5-asr`」——原句把 `whisper-1` 与小米并列，属用户可见文案，一并去掉 OpenAI 示例；③ 批4 的测试断言从「切 OpenAI 预设回填 whisper-1」改为「切小米 MiMo 预设回填 `mimo-v2.5-asr`、切 OpenAI 预设不预填 asr」。§3 的 D4 与 §4 批4 验收项同步。执行工作流已按方案正文读取，此订正发生在批4 之前，批4 实现者按新口径落地。
 - **v5（P24 窗口最大化空白，第 6 项反馈补入）——已修**：第 1 轮排查中「窗口放大排查员」报出 10 条发现，被分级员全部判为不进方案（理由：定宽正文列是 2026-09-18 排版整改的既定决策、非缺陷）。终审后逐条对照 Andiii 原话时发现：**用户的第 6 项反馈在方案里没有着落**——分级员可以把发现判为「不进方案」，但不能让用户点名的问题无声消失。本次会话实测取证（`node scripts/ui-probe.mjs --width=2560 --out=.ui-shots/probe-wide.json`：内容盒 2256 vs 面板右缘 1188 vs 正文右缘 968，右侧空白 1372/1592px；任务行恒 860）确认为真问题，补为 P24、列入批 6（新增 6.4）与决策项 D12，其余 23 条的批次与结论未动。教训记入：**每条用户原话都必须在方案里有明确着落——修，或作为决策项给出「不修/换解法」的理由；分级是筛噪音，不是销项**。
+- **v8（P25 模型设置两项化，2026-09-21 补入）——待执行**：批4 只落地了 D4 的首启默认值与 P14 的解绑，Andiii 第 3 项原话的另一半「**直接改成 asr 与多模态这两个选项，不要三个**」在方案里没有着落——模型设置排查员的指令里点名要查 text 能力的消费点与删除路径，但成文时被并进 P8/P14，独立条目消失。这与 v5 的 P24 是同一类缺口（用户原话在方案里没着落）。补为 **P25 + 补批**：spec §4/§211 先行收敛为两个能力，`Capability` 联合、`qaCapability()`（追问改走多模态）、`requireCapability`、`ProviderPanel` 三项改两项，老库 text 绑定按 D13 用 migration 013 删除。**教训第二次记入**：分级与成文都必须逐条对着用户原话核「这句在方案里落在哪一条」，不能用「已并入某条」代替独立着落。
 - **v7（2026-09-21，批1 实现后评审补口）——已修**：批 1 的 1.1 只冻结了 `school:harvestLessons` 一个 writer，而同一份课时目录在任务侧还有第二个 writer（`orchestrator.ts` 的 `fetching_course` catalog refresh，SEU 路径每次任务运行都跑）。于是提交 `e6ae65b` 的信息与 PROGRESS 里「带笔记/转写的行保留**且不被覆盖**」这句在仓库范围内**是错的**——收割刚冻结完，下一次任务运行就把整门课的行名/play_ref 按平台当前索引重写回去；play_ref 又是下一次任务用来点「第N节课」的 ref，被覆盖会去抓另一节课的流。处置取评审推荐①（改动小、语义一致）：判定与写法抽到 `src/main/lessons/catalog.ts`，两个 writer 共用，任务侧漂移经 `onCatalogDrift` 落 main 日志。**教训记入**：本方案 §1.7/§2 的每条根因都写了 file:line，但「同一份数据的其他 writer」这类**横向**事实靠读单点代码是看不见的——声明「不被覆盖」这种全称命题前，必须先 `grep` 该列的全部写入点（`INSERT INTO lessons` / `UPDATE lessons SET`），而不是只读被点名的那一处。
