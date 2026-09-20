@@ -149,6 +149,43 @@ describe('BiliImportDialog (批1 双源并列: first-class import dialog)', () =
     expect(host.querySelector('.bili-qr')).not.toBeNull()
   })
 
+  // 批5 评审补口: 上面那例只喂了 'waiting'——禁用条件若把整个 qr 相位一起罩住，
+  // 过期后就再没有入口重新取码，用户真的卡在等待扫码（状态行还让他去点那个
+  // 已经点不动的按钮）。主进程在 expired 时就把 qrcodeKey 置空
+  // （app-context.ts 的 `else if (poll.status === 'expired') bilibiliQr = null`），
+  // 此后轮询只会回 'inactive'——两个子态都要恢复可点。
+  it('批5 (P15) 补口: 二维码过期/失效后主按钮恢复可点，点它重新取码', async () => {
+    const loginStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, value: { status: 'expired' as const } })
+      .mockResolvedValueOnce({ ok: true, value: { status: 'inactive' as const } })
+      .mockResolvedValue({ ok: true, value: { status: 'waiting' as const } })
+    const bridge = makeBridge({ loginStatus })
+    const host = await resolveTo(makeProps(bridge))
+    const main = (): HTMLButtonElement => host.querySelector('.bili-import-btn') as HTMLButtonElement
+    click(main())
+    await flush()
+    expect(bridge.bilibili.login).toHaveBeenCalledOnce()
+    // 首个轮询 tick 之前：新码的等待窗口，按钮禁用读「等待扫码…」。
+    await waitFor(() => expect(main().textContent).toContain('等待扫码…'))
+    expect(main().disabled).toBe(true)
+    // expired：按钮放回可点、文案回「扫码登录后导入」——状态行让用户点的就是它。
+    await waitFor(() => expect(main().disabled).toBe(false))
+    expect(host.querySelector('.bili-qr-status')?.textContent).toBe('二维码已过期，请重新点击「扫码登录」')
+    expect(main().textContent).toBe('扫码登录后导入')
+    // 稳态 inactive（同一张死码，主进程此后一直回这个）：状态行换成短句，按钮仍可点。
+    // 文案取全等——「请重新点击」是过期那句的子串，用 contains 量不到这一支。
+    await waitFor(() => expect(host.querySelector('.bili-qr-status')?.textContent).toBe('请重新点击「扫码登录」'))
+    expect(main().disabled).toBe(false)
+    expect(main().textContent).toBe('扫码登录后导入')
+    // 点它 = 重新取码（这正是恢复动作），新码立刻回到等待子态（不等下一个 tick）。
+    click(main())
+    await flush()
+    expect(bridge.bilibili.login).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(main().textContent).toContain('等待扫码…'))
+    expect(main().disabled).toBe(true)
+  })
+
   it('a failed resolve surfaces the error as a toast and no preview appears', async () => {
     const bridge = makeBridge({ resolve: vi.fn(async () => ({ ok: false, error: '该视频为付费内容，不支持导入' })) })
     const toast = vi.fn()

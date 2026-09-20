@@ -92,7 +92,15 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   const [qrImage, setQrImage] = useState<string | null>(null)
   const [qrStatus, setQrStatus] = useState<string>('')
   const [loginPhase, setLoginPhase] = useState<LoginPhase>('idle')
+  // 批5 评审补口: 轮询的原始状态（qrStatus 存的是给人看的中文文案，判不了子态）。
+  // 相位停在 'qr' 期间有两条子路：还在等（waiting/scanned）与这张码已经没用了
+  // （expired/inactive）——后者必须把主按钮放回可点，否则用户卡死在等待扫码。
+  const [qrScanStatus, setQrScanStatus] = useState<'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' | null>(null)
   const pendingPages = useRef<number[] | null>(null)
+  /** 过期/失效子态：主进程在 expired 时就把 qrcodeKey 置空（app-context.ts 的
+   *  `else if (poll.status === 'expired') bilibiliQr = null`），此后轮询只会回
+   *  'inactive'——两个值都算「这张码不能用了，恢复动作是重新取码」。 */
+  const qrStale = loginPhase === 'qr' && (qrScanStatus === 'expired' || qrScanStatus === 'inactive')
 
   // A fresh resolve/import surface per open: a stale preview from a previous
   // session must not survive into the next one. onSessionRefresh is a stable
@@ -104,6 +112,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
       setLoginPhase('idle')
       setQrImage(null)
       setQrStatus('')
+      setQrScanStatus(null)
       onSessionRefresh()
     }
   }, [open])
@@ -159,6 +168,7 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
         const poll = await bridge.bilibili.loginStatus()
         if (cancelled || !poll.ok || poll.value == null) return
         setQrStatus(statusLabel(poll.value.status))
+        setQrScanStatus(poll.value.status)
         if (poll.value.status === 'confirmed') {
           setLoginPhase('confirmed')
           setQrImage(null)
@@ -196,6 +206,9 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
       }
       setLoginPhase('qr')
       setQrStatus('等待扫码…')
+      // 新码的等待窗口从第一刻起算：清掉上一张码的子态，首个轮询 tick 之前
+      // 按钮就已是「等待扫码…」+ 禁用（不能因为上一张码过期而留一个可点的缝）。
+      setQrScanStatus(null)
       try {
         const dataUrl = await QRCode.toDataURL(res.value.qrUrl, { margin: 1, width: 220 })
         setQrImage(dataUrl)
@@ -209,9 +222,11 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   }
 
   const onImportClick = (): void => {
-    // 批5 (P15): qr 相位下按钮已 disabled，这里再加同一守卫（双保险）——
+    // 批5 (P15): 等待扫码期间按钮已 disabled，这里再加同一守卫（双保险）——
     // 再点一次会重新取码，把手机上那张已经扫过的码作废。
-    if (preview == null || busy || loginPhase === 'qr') return
+    // 评审补口: 守卫只覆盖「还在等」这一支；过期/失效（qrStale）时点它是**恢复**
+    // 动作（重新取码），正是状态行让用户做的事，不能一起挡掉。
+    if (preview == null || busy || (loginPhase === 'qr' && !qrStale)) return
     if (preview.selected.length === 0) {
       toast('请至少选择一个分P', 'error')
       return
@@ -323,13 +338,17 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
         </div>
         {/* 批5 (P15): 扫码等待期间主按钮不可点——此前 finally 里 setBusy(false) 之后
             按钮恢复可点，再点一次走 startLoginFlow() 重新取码，覆写 qrcodeKey，
-            手机上那张已扫的码就此失效而界面还停在「等待扫码…」。 */}
+            手机上那张已扫的码就此失效而界面还停在「等待扫码…」。
+            评审补口: 禁用只覆盖「还在等」这一支。相位停在 qr 但码已过期/失效时，
+            重新取码正是用户该做的恢复动作（状态行就是这么写的），按钮必须放回
+            可点并读回「扫码登录后导入」——否则过期后唯一出路是关掉对话框重开，
+            而 open 复位会把 preview 与已选分P 一起清掉。 */}
         <button
           class="btn primary bili-import-btn"
-          disabled={busy || loginPhase === 'qr' || preview == null || preview.selected.length === 0}
+          disabled={busy || (loginPhase === 'qr' && !qrStale) || preview == null || preview.selected.length === 0}
           onClick={onImportClick}
         >
-          {busyKind === 'import' ? '导入中…' : busyKind === 'login' ? '登录中…' : loginPhase === 'qr' ? '等待扫码…' : loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
+          {busyKind === 'import' ? '导入中…' : busyKind === 'login' ? '登录中…' : loginPhase === 'qr' && !qrStale ? '等待扫码…' : loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
         </button>
         {/* 声明批5: 边界说明放在动作旁边——用户正要点「导入」，此刻才看得进去。
             说的是应用实际做了什么（拒绝付费内容、只要低清晰度），不是免责套话。 */}
