@@ -441,6 +441,11 @@ async function probeNoteSearch(cdp, out, keyword) {
  * 批6 6.3 再补两个字段（只增不改）——6.3 的验收项「工具栏常驻可见」需要位置数字：
  *   - toolbarTop：导图工具栏相对 `.content` 可视顶边的位置；pageOverflow：页面级滚动余量。
  *     工具栏永不被滚出视口 ⟺ toolbarTop ≥ pageOverflow（滚到底时工具栏仍在可视区内）。
+ *
+ * 批6 二次评审再补一个字段（只增不改）——§4 验收项「导图文列宽 = 640（与其余四视图同轴）」
+ * 此前只有静态钉住（tests/style-scale.test.ts 断言 `.note-body` 含 max-width: 640px），
+ * 探针从不量 `.note-body`（`MEASURE` 里那条只在非导图页采集）：补 `noteBodyW` 让这条
+ * 验收项在运行时也可量。注意它量的是**盒子宽**，窗口窄于 640 时是流式宽度。
  */
 const MINDMAP_GEOMETRY = `(() => {
   const sc = document.querySelector('.mindmap-scroll')
@@ -449,6 +454,7 @@ const MINDMAP_GEOMETRY = `(() => {
   const wrap = document.querySelector('.mindmap-wrap')
   const content = document.querySelector('.content')
   const toolbar = document.querySelector('.mindmap-toolbar')
+  const noteBody = document.querySelector('.note-body')
   const w = Number(svg.getAttribute('width'))
   const h = Number(svg.getAttribute('height'))
   const vb = (svg.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number)
@@ -457,6 +463,7 @@ const MINDMAP_GEOMETRY = `(() => {
     found: true, scale,
     scrollW: sc.clientWidth, scrollH: sc.clientHeight,
     wrapH: wrap == null ? null : Math.round(wrap.getBoundingClientRect().height),
+    noteBodyW: noteBody == null ? null : Math.round(noteBody.getBoundingClientRect().width),
     svgW: w, svgH: h,
     drawnW: Math.round(w), drawnH: Math.round(h),
     overX: sc.scrollWidth - sc.clientWidth, overY: sc.scrollHeight - sc.clientHeight,

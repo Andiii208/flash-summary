@@ -358,6 +358,39 @@ async function main() {
     record('L4 four tabs rendered', domState.tabs === 4, `tabs ${domState.tabs}`)
     record('L4 badge starts logged_out', domState.badge.includes('logged_out'), `badge class "${domState.badge}"`)
 
+    // L4（批4 P8/D4 验收项的实跑半边，批4 二次评审点名）：验收项写的是「**全新
+    // userData 首启** → Provider 表单默认含 multimodal、asr 有预填或明确原因」，
+    // 组件级单测挂的是 providers=null 的近似态——这里就是那个真实首启：一次性
+    // userData、库里 0 个 provider、走真实 IPC 读设置页。
+    await cdp.eval(`(() => { document.getElementById('tab-settings')?.click(); return 'settings' })()`)
+    await waitFor('首启 Provider 表单出现', async () => {
+      const seen = JSON.parse(
+        await cdp.eval(`JSON.stringify({ form: document.querySelector('.provider-form') != null })`)
+      )
+      return { ok: seen.form === true, detail: `provider-form ${seen.form}` }
+    }, 8000)
+    const providerForm = JSON.parse(
+      await cdp.eval(
+        `JSON.stringify({
+          boxes: [...document.querySelectorAll('.capability-check input[type=checkbox]')].map((b) => b.checked),
+          labels: [...document.querySelectorAll('.capability-check')].map((el) => el.textContent),
+          multimodal: document.querySelector('input[aria-label="多模态总结模型"]')?.value ?? null,
+          asr: document.querySelector('input[aria-label="ASR 转写模型"]')?.value ?? null,
+          reason: document.querySelector('.capability-model-reason')?.textContent ?? null
+        })`
+      )
+    )
+    record(
+      'L4 首启 Provider 表单默认含 multimodal + asr，asr 空值有可见原因',
+      providerForm.boxes.length === 2 &&
+        providerForm.boxes[0] === true &&
+        providerForm.boxes[1] === true &&
+        (providerForm.multimodal ?? '') !== '' &&
+        providerForm.asr === '' &&
+        (providerForm.reason ?? '').includes('ASR 需要专门的语音模型'),
+      JSON.stringify(providerForm)
+    )
+
     // L4: library assembly — migrations really applied to app.db.
     const dbFile = join(tmpDocs, 'SEU Summary', 'Library', 'app.db')
     const dbExists = existsSync(dbFile)
