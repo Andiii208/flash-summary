@@ -5,9 +5,16 @@
  * `school:harvestLessons` 一个 writer 上，但同一份平台课时目录在任务侧还有第二个
  * writer——`fetching_course` 的 catalog refresh（orchestrator，SEU 路径每次任务都
  * 跑）。两条路径语义必须一致，否则收割刚冻结完、下一次任务运行就把整门课的行名与
- * play_ref 按平台当前索引重写回去：play_ref 正是 play 页用来点「第N节课」的 ref
- * （`selectLessonRef`），被漂移覆盖后下一次任务会去抓另一节课的流并写回这一行。
- * 「有产物 = 冻结」的判定与写法现在只有这一份，两个调用方都走它。
+ * play_ref 按平台当前索引重写回去。
+ *
+ * 2026-09-21（批1 二次评审订正，原句与代码事实不符）：初稿在这里写「play_ref 被
+ * 漂移覆盖后下一次任务会去抓另一节课的流」。`parseLessonEntries` 是 entry 的唯一
+ * 生产者，`ref` 恒等于 `String(index)`（`play-harvest.ts:93`），而 id 是
+ * `${courseId}-L${index}`（本文件）——同一行的 play_ref 被重写进去的就是同一个数字，
+ * 冻结 play_ref 因此是**空操作**。冻结的真实效果落在 **title** 上：笔记挂着的行不会
+ * 变成另一节课的名字。play 页按 ref 作位置下标点击（`clickLessonScript`），平台重排
+ * 后同一 id 仍点同一个位置——那是序号漂移本身的性质，冻结不宣称能改它。
+ * 「有产物 = 冻结」的判定与写法只有这一份，两个调用方都走它。
  */
 import type { Db } from '../db/open'
 
@@ -64,8 +71,8 @@ export function protectedLessons(db: Db, courseId: string): ProtectedLessonRow[]
 /**
  * 把一次收割到的目录写进 lessons：
  * - 无产物的行照常 upsert（title/play_ref/fetched_at 跟随平台）；
- * - 有产物的行只补缺（`ON CONFLICT(id) DO NOTHING`）——序号漂移不改行名，play_ref
- *   也不会被指到别的课时。
+ * - 有产物的行只补缺（`ON CONFLICT(id) DO NOTHING`）——序号漂移不改行名（真实效果
+ *   在 title 上；play_ref 恒等于 String(index)，冻结它是空操作，见文件头订正）。
  * 事务边界由调用方负责（ipc 收割侧在事务里调用）。
  */
 export function upsertLessonCatalog(

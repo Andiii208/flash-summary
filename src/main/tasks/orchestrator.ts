@@ -256,8 +256,8 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
         // Catalog refresh: converge the tree with the platform's own list.
         // 2026-09-21（UX 整改批1 评审补口）：与 school:harvestLessons 共用
         // lessons/catalog.ts 的同一份「有产物则冻结」判定——这里原来无条件
-        // upsert，会把整门课的行名与 play_ref 按平台当前索引重写；play_ref 正是
-        // 下一次任务用来点「第N节课」的 ref，被漂移覆盖就会去抓另一节课的流。
+        // upsert，会把整门课的行名按平台当前索引重写（冻结的真实效果在 title 上；
+        // play_ref 恒等于 String(index)，见 catalog.ts 文件头的二次评审订正）。
         const catalog = deps.db.transaction(() =>
           upsertLessonCatalog(deps.db, courseRow.id, harvest.lessons ?? [], nowIso(deps))
         )()
