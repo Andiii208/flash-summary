@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fetchBilibiliLesson, pickAudioStream, pickPage, pickVideoStream, BilibiliPaidError } from '../src/main/bilibili/pipeline'
 import { BilibiliApiError, BilibiliClient, type FetchLike } from '../src/main/bilibili/client'
 import type { BiliViewInfo } from '../src/main/bilibili/parse'
@@ -136,19 +136,36 @@ describe('fetchBilibiliLesson (plan 2026-09-06 M4)', () => {
     await expect(fetchBilibiliLesson(makeClient(makeFetch(routes)), 'BV1TEST0000', 1)).rejects.toBeInstanceOf(BilibiliPaidError)
   })
 
+  // 批 A3-① 后 412 走完 5s 重试阶梯才降级——fake timers 推进退避。
   it('risk-controlled playurl with a subtitle present: degrade to no keyframes', async () => {
-    const result = await fetchBilibiliLesson(makeClient(makeFetch(BASE_ROUTES, () => 412)), 'BV1TEST0000', 1)
-    expect(result.segments.length).toBeGreaterThan(0)
-    expect(result.videoStreamUrl).toBeNull()
-    expect(result.note).toContain('风控')
+    vi.useFakeTimers()
+    try {
+      const pending = fetchBilibiliLesson(makeClient(makeFetch(BASE_ROUTES, () => 412)), 'BV1TEST0000', 1)
+      await vi.advanceTimersByTimeAsync(2500)
+      await vi.advanceTimersByTimeAsync(3500)
+      const result = await pending
+      expect(result.segments.length).toBeGreaterThan(0)
+      expect(result.videoStreamUrl).toBeNull()
+      expect(result.note).toContain('风控')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('risk-controlled playurl without a subtitle: hard failure (nothing to do)', async () => {
-    const routes: Record<string, unknown> = {
-      ...BASE_ROUTES,
-      [`${API}/x/player/wbi/v2?bvid=BV1TEST0000&cid=1001`]: { code: 0, data: { need_login_subtitle: true, subtitle: { subtitles: [] } } }
+    vi.useFakeTimers()
+    try {
+      const routes: Record<string, unknown> = {
+        ...BASE_ROUTES,
+        [`${API}/x/player/wbi/v2?bvid=BV1TEST0000&cid=1001`]: { code: 0, data: { need_login_subtitle: true, subtitle: { subtitles: [] } } }
+      }
+      const pending = fetchBilibiliLesson(makeClient(makeFetch(routes, () => 412)), 'BV1TEST0000', 1).catch((e) => e)
+      await vi.advanceTimersByTimeAsync(2500)
+      await vi.advanceTimersByTimeAsync(3500)
+      await expect(pending).resolves.toBeInstanceOf(BilibiliApiError)
+    } finally {
+      vi.useRealTimers()
     }
-    await expect(fetchBilibiliLesson(makeClient(makeFetch(routes, () => 412)), 'BV1TEST0000', 1)).rejects.toBeInstanceOf(BilibiliApiError)
   })
 
   it('stream/ page pickers and page fallback', () => {

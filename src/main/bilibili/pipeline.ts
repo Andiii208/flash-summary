@@ -93,7 +93,7 @@ export async function fetchBilibiliLesson(
   let audioStreamUrl: string | null = null
   let streamNote = ''
   try {
-    const streams = await client.dashStreams(bvid, page.cid)
+    const streams = await client.dashStreams(bvid, page.cid, signal)
     videoStreamUrl = pickVideoStream(streams.videos)
     // Audio is only worth downloading when ASR will run (no subtitle).
     if (segments.length === 0) audioStreamUrl = pickAudioStream(streams.audios)

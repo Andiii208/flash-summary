@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { BilibiliClient } from '../src/main/bilibili/client'
 import { parseDashStreams, parsePlayerInfo, parseViewInfo } from '../src/main/bilibili/parse'
 import { normalizeSubtitleUrl, pickSubtitleTrack, segmentsToTranscriptJson } from '../src/main/bilibili/subtitle'
@@ -137,14 +137,87 @@ describe('BilibiliClient (fixture replay)', () => {
     expect(streams.videos.length).toBeGreaterThan(0)
   })
 
-  it('maps HTTP 412 onto risk_control', async () => {
-    const client = makeClient(
-      makeFetch({
-        [NAV_URL]: jsonResponse(NAV_PAYLOAD),
-        '/playurl/': jsonResponse({ code: 0, data: {} }, 412)
-      })
-    )
-    await expect(client.dashStreams('BV1GJ411x7h7', 137649199)).rejects.toMatchObject({ kind: 'risk_control' })
+  // 批 A3-① (plan 2026-09-19): 412 风控重试阶梯——dm_img 参数每次随机重建，间隔重试即新参数组合。
+  it('dashStreams retries the 412 ladder: qn 32 → 32(interval) → 16(downgrade)', async () => {
+    vi.useFakeTimers()
+    try {
+      const qns: string[] = []
+      let call = 0
+      const fetchImpl = async (url: string) => {
+        if (url.includes('playurl')) {
+          qns.push(new URL(url).searchParams.get('qn') ?? '')
+          call += 1
+          return call < 3 ? jsonResponse({ code: 0, data: {} }, 412) : jsonResponse(PLAYURL_PAYLOAD)
+        }
+        return jsonResponse(NAV_PAYLOAD)
+      }
+      const client = new BilibiliClient(async () => 'SESSDATA=abc', fetchImpl)
+      const pending = client.dashStreams('BV1GJ411x7h7', 137649199)
+      // 阶梯两段退避共 5s——用异步推进把定时器与 fetch 微任务都放行。
+      await vi.advanceTimersByTimeAsync(2500)
+      await vi.advanceTimersByTimeAsync(3500)
+      const streams = await pending
+      expect(streams.videos.length).toBeGreaterThan(0)
+      expect(qns).toEqual(['32', '32', '16'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('dashStreams exhausts the ladder then surfaces risk_control (no silent success)', async () => {
+    vi.useFakeTimers()
+    try {
+      let call = 0
+      const fetchImpl = async (url: string) => {
+        if (url.includes('playurl')) {
+          call += 1
+          return jsonResponse({ code: 0, data: {} }, 412)
+        }
+        return jsonResponse(NAV_PAYLOAD)
+      }
+      const client = new BilibiliClient(async () => 'SESSDATA=abc', fetchImpl)
+      const pending = client.dashStreams('BV1GJ411x7h7', 137649199)
+      const guarded = pending.catch((e) => e)
+      await vi.advanceTimersByTimeAsync(2500)
+      await vi.advanceTimersByTimeAsync(3500)
+      const err = await guarded
+      expect(err).toMatchObject({ kind: 'risk_control' })
+      expect(call).toBe(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('dashStreams does not retry non-412 failures (network errors surface immediately)', async () => {
+    let call = 0
+    const fetchImpl = async (url: string) => {
+      if (url.includes('playurl')) {
+        call += 1
+        return jsonResponse({ code: 0, data: {} }, 500)
+      }
+      return jsonResponse(NAV_PAYLOAD)
+    }
+    const client = new BilibiliClient(async () => 'SESSDATA=abc', fetchImpl)
+    await expect(client.dashStreams('BV1GJ411x7h7', 137649199)).rejects.toMatchObject({ kind: 'bad_response' })
+    expect(call).toBe(1)
+  })
+  // 批 A3-① 后 412 不再单发即抛——先走完重试阶梯才 surface（fake timers 推进 5s 退避）。
+  it('maps HTTP 412 onto risk_control (after the retry ladder is exhausted)', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = makeClient(
+        makeFetch({
+          [NAV_URL]: jsonResponse(NAV_PAYLOAD),
+          '/playurl/': jsonResponse({ code: 0, data: {} }, 412)
+        })
+      )
+      const pending = client.dashStreams('BV1GJ411x7h7', 137649199).catch((e) => e)
+      await vi.advanceTimersByTimeAsync(2500)
+      await vi.advanceTimersByTimeAsync(3500)
+      await expect(pending).resolves.toMatchObject({ kind: 'risk_control' })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('fetchSubtitleBody reads the bare-JSON subtitle file', async () => {

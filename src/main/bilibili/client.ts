@@ -22,6 +22,25 @@ import { cookiesFromCrossDomainUrl, cookiesFromSetCookieHeader, parseQrGenerate,
 
 const DEFAULT_API_HOST = 'https://api.bilibili.com'
 const DEFAULT_PASSPORT_HOST = 'https://passport.bilibili.com'
+
+/** 可中止的等待（批 A3-① 重试阶梯用）：取消信号到达时立即 reject，不等满定时器。 */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('任务已取消'))
+      return
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(new Error('任务已取消'))
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
 /**
  * The passport endpoints gate the QR state on the Referer: with the main-site
  * referer the poll keeps answering 86101 (未扫码) even after the phone
@@ -197,16 +216,38 @@ export class BilibiliClient {
    * DASH stream candidates via the WBI-signed playurl gateway (dm_img
    * risk-control params included; qn=32 is the 480P ceiling we allow —
    * paid-quality tiers are never requested).
+   *
+   * 批 A3-① (plan 2026-09-19): HTTP 412 风控重试阶梯。风控是 per-video 的
+   * （dm-params.ts），dm_img 参数每次调用随机重建 + 新时间戳，所以**间隔重试
+   * 拿到的就是新参数组合**；阶梯 = qn 32 → 32（间隔 2s）→ 16（降级，间隔 3s），
+   * 仍 412 就如实把 risk_control 抛给调用方（合法无帧降级，不猜不缠）。
    */
-  async dashStreams(bvid: string, cid: number): Promise<BiliDashStreams> {
+  async dashStreams(bvid: string, cid: number, signal?: AbortSignal): Promise<BiliDashStreams> {
     const keys = await this.getWbiKeys()
-    const base = { bvid, cid: String(cid), qn: '32', fnval: '16', fourk: '0', try_look: '1' }
-    const signed = signedPlayUrlParams(base, keys, buildDmImgParams(), Math.floor(Date.now() / 1000))
-    const query = new URLSearchParams(signed).toString()
-    const payload = await this.requestEnvelope(`${this.apiHost}/x/player/wbi/playurl?${query}`, true)
-    const streams = parseDashStreams(payload)
-    if (streams == null) throw new BilibiliApiError('bad_response', `bilibili playurl payload unusable for ${bvid}`)
-    return streams
+    const ladder: Array<{ qn: string; delayMs: number }> = [
+      { qn: '32', delayMs: 0 },
+      { qn: '32', delayMs: 2000 },
+      { qn: '16', delayMs: 3000 }
+    ]
+    for (const [i, step] of ladder.entries()) {
+      if (signal?.aborted) throw new Error('任务已取消')
+      if (step.delayMs > 0) await abortableSleep(step.delayMs, signal)
+      const base = { bvid, cid: String(cid), qn: step.qn, fnval: '16', fourk: '0', try_look: '1' }
+      const signed = signedPlayUrlParams(base, keys, buildDmImgParams(), Math.floor(Date.now() / 1000))
+      const query = new URLSearchParams(signed).toString()
+      try {
+        const payload = await this.requestEnvelope(`${this.apiHost}/x/player/wbi/playurl?${query}`, true)
+        const streams = parseDashStreams(payload)
+        if (streams == null) throw new BilibiliApiError('bad_response', `bilibili playurl payload unusable for ${bvid}`)
+        return streams
+      } catch (err) {
+        const kind = (err as BilibiliApiError).kind
+        // 只有 412 值得重试；其余（网络/信封/负载）原样抛出，不mask真错误。
+        if (kind !== 'risk_control' || i === ladder.length - 1) throw err
+      }
+    }
+    /* 不可达：循环必抛或必返（防御性收尾，保持类型完整）。 */
+    throw new BilibiliApiError('risk_control', `bilibili risk control (HTTP 412) for ${bvid}`)
   }
 
   /** b23.tv short links answer with a redirect to the full /video/BV… URL. */
