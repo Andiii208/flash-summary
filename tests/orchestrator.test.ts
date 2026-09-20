@@ -443,7 +443,7 @@ describe('orchestrator stage executors', () => {
   // 在 64x64、提交态 10s 间隔下去重后只剩 1-2 帧，而 makeDeps 默认的常量
   // 网格会让任何源都去重成 1 帧——曾按并行会话在飞的「20s 间隔 + 覆盖桶」
   // 校准（那是未提交行为），在干净 HEAD 上直接红。下个会话不要改回 testsrc。
-  it('批6: 重跑抽取先清 destDir——帧数变少不留孤儿文件', async () => {
+  it('批6: 重跑抽取先清 destDir——帧数变少不留孤儿文件', { timeout: 30000 }, async () => {
     const { execFileSync } = await import('child_process')
     const { ffmpegPath } = await import('../src/main/media/binaries')
     const { decodeGrid8x8 } = await import('../src/main/media/grid')
@@ -497,7 +497,9 @@ describe('orchestrator stage executors', () => {
   // 的证据）并让 Obsidian 导出的 copyFileSync 抛错。
   // 帧源同批6 重跑用例：mandelbrot 高熵动画 + 真实 decodeGrid8x8——testsrc
   // 在提交态 10s 间隔下去重后只剩 1-2 帧，常量网格更是任何源都只剩 1 帧。
-  it('修复轮 I3: 重跑帧数变少后 DB 行数与盘上文件数一致（无悬空 keyframes 行）', async () => {
+  // CI 机（慢于本机）上这条 real-ffmpeg 用例实测 5.1s 撞默认 5s 超时——2026-09-20 push 后 CI 红，
+  // 按仓库既有手法显式给足超时（与 tests/orchestrator-bili-direct-frames.test.ts 同款）。
+  it('修复轮 I3: 重跑帧数变少后 DB 行数与盘上文件数一致（无悬空 keyframes 行）', { timeout: 30000 }, async () => {
     const { execFileSync } = await import('child_process')
     const { ffmpegPath } = await import('../src/main/media/binaries')
     const { decodeGrid8x8 } = await import('../src/main/media/grid')
