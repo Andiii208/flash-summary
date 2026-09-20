@@ -1,6 +1,6 @@
 ---
 name: ui-layout
-description: SEU Summary 的排版与观感规范——刻度 token、六个共享基元、宽度断点、主题与一致性约定。凡改动 renderer 样式/布局/组件的会话必须先读本文件。
+description: SEU Summary 的排版与观感规范——刻度 token、七个共享基元、宽度断点、主题与一致性约定。凡改动 renderer 样式/布局/组件的会话必须先读本文件。
 version: 1.0.0
 ---
 
