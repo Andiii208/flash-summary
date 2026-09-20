@@ -242,8 +242,12 @@ export interface NotesBridge {
   exportMarkdown(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   /** Obsidian 批1: structured markdown into the user's vault (+ attachments). */
   exportObsidian(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; version?: number }>>
-  /** Obsidian 批2: whole-course export + derived pages (_概念/_index). */
-  exportCourseObsidian(courseId: string): Promise<ApiResult<{ canceled: boolean; exported?: number; skipped?: number }>>
+  /** Obsidian 批2: whole-course export + derived pages (_概念/_index).
+   *  批3 (P23): 写失败的篇目带原因返回（「无笔记」是合法状态，不入 failures）——
+   *  此前失败与「没笔记」都只体现为 skipped，vault 不可写时用户以为只是没笔记。 */
+  exportCourseObsidian(
+    courseId: string
+  ): Promise<ApiResult<{ canceled: boolean; exported?: number; skipped?: number; failures?: Array<{ lessonId: string; reason: string }> }>>
   /** 2026-09-04 roadmap 2.2: Anki TSV decks (concepts + quiz), one file per deck. */
   exportAnki(lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>>
   /** M3.3 (map expansion): the knowledge tree as a standalone paper-white SVG. */

@@ -758,6 +758,56 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
+  it('批3 (P23): 整课导出失败时 toast 报篇数与原因（不再只说「跳过 N 篇」）', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
+    )
+    const bridge = makeBridge()
+    // 版权提醒已免除（本用例只关心导出结果的话术）。
+    fakeState.copyrightNoticeOptOut = true
+    ;(bridge.notes.exportCourseObsidian as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok({
+        canceled: false,
+        exported: 1,
+        skipped: 4,
+        failures: [
+          { lessonId: 'l2', reason: 'EISDIR: illegal operation on a directory' },
+          { lessonId: 'l3', reason: 'EPERM: operation not permitted' },
+          { lessonId: 'l4', reason: '第三条原因不该挤进 toast' }
+        ]
+      })
+    )
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library')
+    click([...host.querySelectorAll('.note-library-group-head button')].find((b) => b.textContent === '导出 Obsidian') ?? null)
+    await vi.waitFor(() => {
+      const toast = host.querySelector('.toast')?.textContent ?? ''
+      expect(toast).toContain('导出 1 篇')
+    })
+    const toast = host.querySelector('.toast')?.textContent ?? ''
+    expect(toast).toContain('3 篇失败')
+    // 前两条原因进 toast，其余引导到日志（逐条落日志在 ipc 用例里钉）。
+    expect(toast).toContain('EISDIR')
+    expect(toast).toContain('EPERM')
+    expect(toast).not.toContain('第三条原因不该挤进 toast')
+    expect(toast).toContain('详见日志')
+    // 4 篇 skipped 里 3 篇是失败、1 篇是真无笔记——两者分开说。
+    expect(toast).toContain('另有 1 个课时无笔记')
+    expect(toast).not.toContain('无笔记已跳过')
+    // 等这条 info toast 自动过期（3.5s）再结束用例——测试环境不 unmount 组件
+    // （tests/helpers/preact.ts 只清 body），留着的自动消失定时器会在环境拆除
+    // 之后触发一次渲染，preact 的 rAF 那时已不存在（vitest 报 unhandled rejection）。
+    await vi.waitFor(
+      () => {
+        expect(host.querySelector('.toast')).toBeNull()
+      },
+      { timeout: 6000, interval: 100 }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  })
+
   it('批2 (P5): 批量升级成功的是当前课时时刷新当前笔记，且笔记库仍只刷一次', async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第1讲' }

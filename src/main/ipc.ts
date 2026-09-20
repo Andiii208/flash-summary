@@ -1418,6 +1418,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const vaultResult = await resolveObsidianVault(ctx.db)
       if ('canceled' in vaultResult) return ok({ canceled: true })
       const result = exportCourseToObsidian(ctx.db, ctx.libraryRoot, id, vaultResult.vault)
+      // 批3 (P23): 每篇失败逐条落日志——toast 只放得下前两条原因，日志才是可复核的现场。
+      // vault 路径经 Logger 的 redact 落盘（日志纪律：脱敏在 logger 里做，调用方不加料）。
+      for (const failure of result.failures) {
+        ctx.logger.warn(`obsidian course export failed: course=${id} lesson=${failure.lessonId} reason=${failure.reason}`)
+      }
       return ok({ canceled: false, ...result })
     } catch (e) {
       return err(e)

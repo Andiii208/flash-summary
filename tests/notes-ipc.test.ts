@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
@@ -134,6 +134,16 @@ function seedKeyframe(lessonId = 'l1'): void {
 
 function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   return ipc.invoke(channel, ...args)
+}
+
+/** 该上下文的全部日志行（批3: 「逐条落日志」这类断言读真实落盘文件）。 */
+function readLogs(): string {
+  const logsDir = join(dir, 'userdata', 'logs')
+  if (!existsSync(logsDir)) return ''
+  return readdirSync(logsDir)
+    .filter((file) => file.endsWith('.log'))
+    .map((file) => readFileSync(join(logsDir, file), 'utf8'))
+    .join('\n')
 }
 
 describe('notes:attachments (2026-09-04)', () => {
@@ -1259,7 +1269,7 @@ describe('notes:exportCourseObsidian (Obsidian 批2, plan 2026-09-08-obsidian-ex
         value?: { canceled: boolean; exported?: number; skipped?: number }
       }
       expect(res.ok).toBe(true)
-      expect(res.value).toEqual({ canceled: false, exported: 2, skipped: 1 })
+      expect(res.value).toEqual({ canceled: false, exported: 2, skipped: 1, failures: [] })
       const { readFileSync, existsSync } = await import('fs')
       const courseDir = join(vault, 'Flash Summary', '课程')
       expect(existsSync(join(courseDir, '第2节课.md'))).toBe(true)
@@ -1284,6 +1294,34 @@ describe('notes:exportCourseObsidian (Obsidian 批2, plan 2026-09-08-obsidian-ex
     const res = (await invoke('notes:exportCourseObsidian', 'nope')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('课程不存在')
+  })
+
+  it('批3 (P23): 写失败的篇目带原因透出，并逐条落日志', async () => {
+    const ctx = makeCtx()
+    seedCourseLessons()
+    const vault = join(dir, 'vault')
+    // 目标文件位置被一个**目录**占着 → 这一篇写失败（EISDIR），另一篇照常导出。
+    mkdirSync(join(vault, 'Flash Summary', '课程', '第2节课.md'), { recursive: true })
+    const prev = process.env.SEU_OBSIDIAN_PATH
+    process.env.SEU_OBSIDIAN_PATH = vault
+    try {
+      registerIpc(ctx, ipc as never)
+      const res = (await invoke('notes:exportCourseObsidian', 'c1')) as {
+        ok: boolean
+        value?: { canceled: boolean; exported?: number; skipped?: number; failures?: Array<{ lessonId: string; reason: string }> }
+      }
+      expect(res.ok).toBe(true)
+      expect(res.value?.exported).toBe(1)
+      // l2 写失败 + l3 无笔记——只有前者进 failures（后者是合法状态）。
+      expect(res.value?.skipped).toBe(2)
+      expect(res.value?.failures?.map((f) => f.lessonId)).toEqual(['l2'])
+      expect((res.value?.failures?.[0]?.reason ?? '').length).toBeGreaterThan(0)
+      // 日志落盘：toast 只放得下前两条原因，逐条记录才是可复核的现场。
+      expect(readLogs()).toContain('obsidian course export failed: course=c1 lesson=l2 reason=')
+    } finally {
+      if (prev == null) delete process.env.SEU_OBSIDIAN_PATH
+      else process.env.SEU_OBSIDIAN_PATH = prev
+    }
   })
 })
 

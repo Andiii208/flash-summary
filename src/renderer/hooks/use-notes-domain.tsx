@@ -342,6 +342,16 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
         if (res.value?.canceled) return
         const exported = res.value?.exported ?? 0
         const skipped = res.value?.skipped ?? 0
+        // 批3 (P23): 失败篇目带原因到达——此前 vault 不可写时界面只说「N 个课时
+        // 无笔记已跳过」，用户以为那些课时只是没有笔记。失败优先于跳过说。
+        const failures = res.value?.failures ?? []
+        if (failures.length > 0) {
+          const reasons = failures.slice(0, 2).map((f) => f.reason).join('；')
+          const noNote = Math.max(0, skipped - failures.length)
+          const noNoteSuffix = noNote > 0 ? `，另有 ${noNote} 个课时无笔记` : ''
+          toast(`已将《${label}》导出 ${exported} 篇，${failures.length} 篇失败：${reasons}；详见日志${noNoteSuffix}`, 'info')
+          return
+        }
         const skipSuffix = skipped > 0 ? `，${skipped} 个课时无笔记已跳过` : ''
         toast(`已将《${label}》${exported} 个课时导出到 Obsidian 仓库（含概念聚合页）${skipSuffix}`, 'success')
       })

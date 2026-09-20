@@ -68,6 +68,33 @@ function citedAttachments(db: Db, lessonId: string, noteJson: string): { attachm
   return { attachments, refToFile }
 }
 
+/** 批3 (P23): 一次整课导出里某一篇写失败（lessonId + 可读原因）。 */
+export interface ObsidianExportFailure {
+  lessonId: string
+  reason: string
+}
+
+/** 失败原因截断上限——足够看懂，又不把整段栈灌进 toast 与日志行。 */
+const FAILURE_REASON_MAX = 200
+
+/**
+ * 批3 (P23): 「该课时还没笔记」是**合法状态**，不是失败——用它把整课导出里的
+ * 「跳过」与「写失败」分开（此前 catch 是空的，两者都只体现为 skipped +1）。
+ */
+export class LessonHasNoNoteError extends Error {
+  constructor() {
+    super('该课时尚无笔记')
+    this.name = 'LessonHasNoNoteError'
+  }
+}
+
+/** 异常 → 一行可读原因（截断；空消息退化成「未知原因」）。 */
+function failureReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const trimmed = message.trim()
+  return (trimmed === '' ? '未知原因' : trimmed).slice(0, FAILURE_REASON_MAX)
+}
+
 /** Write one lesson's structured markdown into the vault; idempotent per lesson. */
 export function exportLessonToObsidian(db: Db, libraryRoot: string, lessonId: string, vault: string): { path: string; version: number } {
   const row = db
@@ -79,7 +106,7 @@ export function exportLessonToObsidian(db: Db, libraryRoot: string, lessonId: st
        WHERE n.lesson_id = ? ORDER BY n.version DESC LIMIT 1`
     )
     .get(lessonId) as { version: number; created_at: string; note_json: string; lessonTitle: string | null; courseName: string | null; source: string | null; bili_bvid: string | null } | undefined
-  if (row == null) throw new Error('该课时尚无笔记')
+  if (row == null) throw new LessonHasNoNoteError()
   const { attachments, refToFile } = citedAttachments(db, lessonId, row.note_json)
   const meta: ObsidianMeta = {
     course: row.courseName ?? '课程',
@@ -146,23 +173,32 @@ export function rebuildVaultIndex(db: Db, vault: string): void {
   writeFileSync(join(root, '_index.md'), projectVaultIndex(rows.map((r) => ({ course: r.courseName, lessons: r.lessons }))), 'utf8')
 }
 
-/** 批2: whole-course export — every lesson with a note, then derived pages. */
-export function exportCourseToObsidian(db: Db, libraryRoot: string, courseId: string, vault: string): { exported: number; skipped: number } {
+/** 批2: whole-course export — every lesson with a note, then derived pages.
+ *  批3 (P23): 写失败的篇目**带原因返回**（此前 catch 是空的，「跳过 N 篇」是唯一
+ *  线索——vault 落在 OneDrive/只读位置时 N 篇全是这么静默丢掉的）。 */
+export function exportCourseToObsidian(
+  db: Db,
+  libraryRoot: string,
+  courseId: string,
+  vault: string
+): { exported: number; skipped: number; failures: ObsidianExportFailure[] } {
   const lessons = db.prepare('SELECT id FROM lessons WHERE course_id = ?').all(courseId) as Array<{ id: string }>
   let exported = 0
   let skipped = 0
+  const failures: ObsidianExportFailure[] = []
   for (const lesson of lessons) {
     try {
       exportLessonToObsidian(db, libraryRoot, lesson.id, vault)
       exported += 1
-    } catch {
+    } catch (error) {
       // 诚实跳过：无笔记课时计入 skipped，不中断整课导出。
       skipped += 1
+      if (!(error instanceof LessonHasNoNoteError)) failures.push({ lessonId: lesson.id, reason: failureReason(error) })
     }
   }
   if (exported > 0) {
     rebuildCourseConceptIndex(db, courseId, vault)
     rebuildVaultIndex(db, vault)
   }
-  return { exported, skipped }
+  return { exported, skipped, failures }
 }
