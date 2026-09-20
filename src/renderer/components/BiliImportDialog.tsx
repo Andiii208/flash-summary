@@ -209,7 +209,9 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   }
 
   const onImportClick = (): void => {
-    if (preview == null || busy) return
+    // 批5 (P15): qr 相位下按钮已 disabled，这里再加同一守卫（双保险）——
+    // 再点一次会重新取码，把手机上那张已经扫过的码作废。
+    if (preview == null || busy || loginPhase === 'qr') return
     if (preview.selected.length === 0) {
       toast('请至少选择一个分P', 'error')
       return
@@ -319,8 +321,15 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
             </button>
           )}
         </div>
-        <button class="btn primary bili-import-btn" disabled={busy || preview == null || preview.selected.length === 0} onClick={onImportClick}>
-          {busyKind === 'import' ? '导入中…' : busyKind === 'login' ? '登录中…' : loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
+        {/* 批5 (P15): 扫码等待期间主按钮不可点——此前 finally 里 setBusy(false) 之后
+            按钮恢复可点，再点一次走 startLoginFlow() 重新取码，覆写 qrcodeKey，
+            手机上那张已扫的码就此失效而界面还停在「等待扫码…」。 */}
+        <button
+          class="btn primary bili-import-btn"
+          disabled={busy || loginPhase === 'qr' || preview == null || preview.selected.length === 0}
+          onClick={onImportClick}
+        >
+          {busyKind === 'import' ? '导入中…' : busyKind === 'login' ? '登录中…' : loginPhase === 'qr' ? '等待扫码…' : loggedIn ? '导入并生成笔记' : '扫码登录后导入'}
         </button>
         {/* 声明批5: 边界说明放在动作旁边——用户正要点「导入」，此刻才看得进去。
             说的是应用实际做了什么（拒绝付费内容、只要低清晰度），不是免责套话。 */}

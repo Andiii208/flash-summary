@@ -128,6 +128,27 @@ describe('BiliImportDialog (批1 双源并列: first-class import dialog)', () =
     expect(host.textContent).toContain('等待扫码')
   })
 
+  it('批5 (P15): 扫码等待期间主按钮禁用并读「等待扫码…」，再点不会重新取码', async () => {
+    const bridge = makeBridge({ loginStatus: vi.fn(async () => ({ ok: true, value: { status: 'waiting' as const } })) })
+    const host = await resolveTo(makeProps(bridge))
+    const main = (): HTMLButtonElement => host.querySelector('.bili-import-btn') as HTMLButtonElement
+    expect(main().disabled).toBe(false)
+    click(main())
+    await flush()
+    expect(bridge.bilibili.login).toHaveBeenCalledOnce()
+    expect(host.querySelector('.bili-qr')).not.toBeNull()
+    // 等待扫码：按钮置灰 + busy 三件套的文案形态（省略号）。二维码渲染（QRCode
+    // toDataURL）在 finally 之前，等它落地才算真的进相位。
+    await waitFor(() => expect(main().textContent).toContain('等待扫码…'))
+    expect(main().disabled).toBe(true)
+    // 再点一次不能让 qrcodeKey 被重新取码覆写（手机上已扫的码会就此失效）。
+    // 这里用原生事件派发（绕过 disabled 的激活抑制），量的正是 onImportClick 的同一守卫。
+    click(main())
+    await flush()
+    expect(bridge.bilibili.login).toHaveBeenCalledOnce()
+    expect(host.querySelector('.bili-qr')).not.toBeNull()
+  })
+
   it('a failed resolve surfaces the error as a toast and no preview appears', async () => {
     const bridge = makeBridge({ resolve: vi.fn(async () => ({ ok: false, error: '该视频为付费内容，不支持导入' })) })
     const toast = vi.fn()
