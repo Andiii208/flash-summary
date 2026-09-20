@@ -53,18 +53,27 @@ export function NoteUpgradeDialog({ open, courseLabel, loading, items, busy, sta
     })
   }
   const allSelected = items.length > 0 && items.every((item) => selected.has(item.lessonId))
+  // 批2 (P6，含评审补口): 已完成课时在**这一处**统一裁掉，而且**计数与禁用都基于
+  // 裁完的集合**——否则会出现一个新的死角：跑完一轮成功后 done 项仍留在 selected
+  // 里（行显示「✓ 已升级」、checkbox 保持勾选），按钮却还写着「升级所选（1）」且
+  // 可点，点下去 `onRun([])` 被 hook 的空数组早退吃掉：无 toast、无状态变化、弹层
+  // 原样留着（本方案 §0 把这类「点了完全没反应」定为 high）。toggle/全选/reseed 不动。
+  const runnable = [...selected].filter((lessonId) => statusOf(lessonId) !== 'done')
   return (
     <Dialog
       open={open}
       title={`升级旧笔记 — ${courseLabel}`}
-      message={loading ? '正在读取体检结果…' : '默认勾选体检不达标的课时；升级只重新生成笔记，不重新下载视频。'}
-      confirmLabel={busy ? '升级中…' : `升级所选（${selected.size}）`}
-      confirmDisabled={busy || loading || selected.size === 0}
+      message={
+        loading
+          ? '正在读取体检结果…'
+          : runnable.length === 0 && selected.size > 0
+            ? '所选课时都已升级，无需重跑。'
+            : '默认勾选体检不达标的课时；升级只重新生成笔记，不重新下载视频。'
+      }
+      confirmLabel={busy ? '升级中…' : `升级所选（${runnable.length}）`}
+      confirmDisabled={busy || loading || runnable.length === 0}
       cancelDisabled={busy}
-      // 批2 (P6): 已完成课时在**确认这一处**统一裁掉——重试时不再对已成功的课时
-      // 重跑一次全量多模态生成（白烧钱、多存一个新版本）。toggle/全选/reseed 不动，
-      // 用户仍能看到「✓ 已升级」并保持勾选状态。
-      onConfirm={() => onRun([...selected].filter((lessonId) => statusOf(lessonId) !== 'done'))}
+      onConfirm={() => onRun(runnable)}
       onCancel={onClose}
     >
       {!loading && items.length > 0 && (

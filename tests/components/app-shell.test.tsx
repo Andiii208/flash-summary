@@ -833,8 +833,10 @@ describe('App shell (useAppState over a mocked bridge)', () => {
       const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选'))
       expect(btn?.textContent).toContain('（2）')
     })
-    const confirm = (): void => {
-      click([...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) ?? null)
+    const confirm = (): HTMLButtonElement => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) as HTMLButtonElement
+      click(btn)
+      return btn
     }
     confirm()
     await vi.waitFor(() => {
@@ -843,6 +845,12 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await vi.waitFor(() => {
       expect(host.querySelector('.note-upgrade-reason')).not.toBeNull()
     })
+    // 评审补口①：按钮计数必须等于**实际会跑**的数量——l1 已 ✓ 已升级被裁掉，
+    // 所以是（1）而不是（2）。只把裁剪放在确认回调里会让计数撒谎。
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选'))
+      expect(btn?.textContent).toBe('升级所选（1）')
+    })
     // 第二次点「升级所选」：l1 已 ✓ 已升级 → 被裁掉；只有 l2 再跑一次。
     confirm()
     await vi.waitFor(() => {
@@ -850,6 +858,60 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
     expect(regenerateMock.mock.calls.filter((c) => c[0] === 'l1')).toHaveLength(1)
     expect(regenerateMock.mock.calls.filter((c) => c[0] === 'l2')).toHaveLength(2)
+    // 评审补口②：全部已升级时按钮不能是「可点但点了没反应」的死角——
+    // 计数归零、按钮禁用、并说明原因（重试载荷为空 → hook 早退 → 静默无反应）。
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) as HTMLButtonElement
+      expect(btn.textContent).toBe('升级所选（0）')
+      expect(btn.disabled).toBe(true)
+    })
+    expect(host.querySelector('.dialog-message')?.textContent).toContain('所选课时都已升级，无需重跑')
+    const beforeIdleClick = regenerateMock.mock.calls.length
+    confirm()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(regenerateMock.mock.calls.length).toBe(beforeIdleClick)
+  })
+
+  it('批2 (P6 评审补口): 单课时升级成功后按钮归零并禁用，不再「写着（1）却点了没反应」', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
+    )
+    const bridge = makeBridge()
+    ;(bridge.notes.courseHealth as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok([{ lessonId: 'l1', lessonTitle: '第一讲', version: 1, warnCount: 2, grade: 'weak', promptVersion: 0 }])
+    )
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library')
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '升级旧笔记') ?? null)
+    await waitForSelector('.note-upgrade-list')
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选'))
+      expect(btn?.textContent).toBe('升级所选（1）')
+    })
+    // 最常见路径：勾 1 课 → 升级成功 → 行显示「✓ 已升级」。
+    click([...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) ?? null)
+    await vi.waitFor(() => {
+      expect(bridge.notes.regenerate).toHaveBeenCalledTimes(1)
+    })
+    await vi.waitFor(() => {
+      expect(host.querySelector('.note-upgrade-row.done')).not.toBeNull()
+    })
+    // 缺陷复现点：此前的按钮仍是「升级所选（1）」且可点，点下去 onRun([]) 被
+    // 静默吃掉——无 toast、无状态变化、弹层原样留着。
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) as HTMLButtonElement
+      expect(btn.textContent).toBe('升级所选（0）')
+      expect(btn.disabled).toBe(true)
+    })
+    expect(host.querySelector('.dialog-message')?.textContent).toContain('所选课时都已升级，无需重跑')
+    // 全选（含 done 项）也不会把按钮重新点活——runnable 永远是裁完的那一份。
+    click(host.querySelector('.note-upgrade-all input'))
+    await new Promise((r) => setTimeout(r, 20))
+    const afterSelectAll = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) as HTMLButtonElement
+    expect(afterSelectAll.textContent).toBe('升级所选（0）')
+    expect(afterSelectAll.disabled).toBe(true)
   })
 
   it('批4 a11y: 主 tab 内容面板补 role=tabpanel，与激活 tab 双向 aria 关联', async () => {

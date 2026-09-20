@@ -626,20 +626,30 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
    *  stored transcripts/keyframes; the handler's own guards apply per call). */
   const runNoteUpgrade = useCallback(
     (lessonIds: string[]): void => {
+      // 空载荷＝没有可跑的课时。**调用方（NoteUpgradeDialog）负责先裁掉已完成项，
+      // 并据此禁用按钮**——这里直接返回，界面上不会出现「点了没反应」（评审补口：
+      // 裁剪若只做在确认回调里，按钮会写着「升级所选（1）」却什么都不执行）。
       if (lessonIds.length === 0) return
       void (async () => {
-        setNoteUpgradeRun({ busy: true, running: new Set(lessonIds), done: new Set(), failed: new Map() })
+        // 批2 (P6，含评审补口): 状态**跨轮累积**——done 记的是「这次会话里已经成功的
+        // 课时」。此前每轮开头把 done/failed 清空，于是重试一轮之后上一轮的成功项又变回
+        // idle：行上的「✓ 已升级」消失，第三次点击会把它们**再跑一遍全量生成**（正是
+        // P6 要消灭的浪费），而对话框的「升级所选（N）」也跟着撒谎。同一课时永远只落在
+        // done/failed 一边：成功把它从 failed 划掉，失败把它从 done 划掉。
+        const done = new Set(noteUpgradeRun.done)
+        const failed = new Map(noteUpgradeRun.failed)
+        setNoteUpgradeRun({ busy: true, running: new Set(lessonIds), done: new Set(done), failed: new Map(failed) })
         setNoteRegenBusy(true)
-        const done = new Set<string>()
-        // 批2 (P4): 记下每课的真实失败原因（res.error），不再只留一个「失败」。
-        const failed = new Map<string, string>()
         try {
           for (const lessonId of lessonIds) {
             const res = await bridge.notes.regenerate(lessonId)
             if (res.ok) {
               done.add(lessonId)
+              failed.delete(lessonId)
             } else {
+              // 批2 (P4): 记下每课的真实失败原因（res.error），不再只留一个「失败」。
               failed.set(lessonId, res.error ?? '未知原因')
+              done.delete(lessonId)
             }
           }
           // 批2 (P5): 升级成功的是**当前打开的这一课**时，把笔记与徽标一起刷新——
@@ -649,7 +659,8 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
           await loadNoteIndex()
         } finally {
           setNoteRegenBusy(false)
-          setNoteUpgradeRun({ busy: false, running: new Set(), done, failed })
+          // 落状态时另拷一份，避免把 state 里的对象继续就地改。
+          setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(done), failed: new Map(failed) })
         }
         // 批2 (P4): toast 汇总第一条真实原因，其余引导到行内（每行都写了原因）。
         const firstReason = failed.values().next().value ?? ''
@@ -659,7 +670,7 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
         else toast('升级失败：所选课时都未能重新生成', 'error')
       })()
     },
-    [bridge, toast, loadNote, loadNoteIndex, currentLesson]
+    [bridge, toast, loadNote, loadNoteIndex, currentLesson, noteUpgradeRun]
   )
 
   /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
