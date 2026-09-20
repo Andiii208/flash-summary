@@ -4,6 +4,10 @@
  * files), then walks the main views over CDP and saves PNGs.
  *
  *   node scripts/ui-shots.mjs [outDir] [--prefix=name]
+ *                            [--light|--dark] [--bili] [--compliance] [--my-study]
+ *
+ * 专项机位（拍完即退出，不走主流程清单）：--bili（B站导入对话框）、
+ * --compliance（声明层四个界面）、--my-study（「我的学习」全屏弹层，批4 P9）。
  *
  * Library isolation: copies app.db(-wal/-shm) into a temp dir and points
  * SEU_SUMMARY_DOCS_OVERRIDE at it — the running installed app and the real
@@ -297,6 +301,54 @@ async function main() {
       await cdp.eval('document.documentElement.dataset.theme = "dark"')
       await sleep(400)
       await cdp.shot(shotName('b4-preview-dark'))
+      await cdp.eval('document.documentElement.dataset.theme = "light"')
+      await sleep(300)
+      return
+    }
+
+    // --my-study (批4, plan 2026-09-20, P9/D5): 「我的学习」全屏弹层。走真实入口
+    // 键打开（与 Ctrl+M 同一个状态），不注入任何状态；light/dark 各一张。
+    if (process.argv.includes('--my-study')) {
+      const opened = await cdp.eval(`(() => {
+        const btn = document.querySelector('[data-testid="my-study-open"]')
+        if (btn == null) return false
+        btn.click()
+        return true
+      })()`)
+      if (opened !== true) throw new Error('my-study entry button not found')
+      await waitFor('my study dialog', async () => {
+        try {
+          return { ok: (await cdp.eval("document.querySelector('[data-testid=\"my-study-dialog\"]') != null")) === true, value: true }
+        } catch {
+          return { ok: false }
+        }
+      }, 15000)
+      // 展开第一门课：课时行也入镜（弹层的价值正是侧栏装不下的那些行）。
+      await cdp.eval(`(() => {
+        const head = document.querySelector('[data-testid="my-study-dialog"] .course-head')
+        if (head == null) return false
+        head.click()
+        return true
+      })()`)
+      await sleep(500)
+      await cdp.shot(shotName('m1-my-study-light'))
+      // 关键数字（提交信息取这里）：卡尺寸 / 视口 / 标题字号 / 课程行数。
+      const geom = await cdp.eval(`(() => {
+        const card = document.querySelector('[data-testid="my-study-dialog"]')
+        const head = card.querySelector('.study-panel-head h3')
+        const box = card.getBoundingClientRect()
+        return {
+          cardW: Math.round(box.width), cardH: Math.round(box.height),
+          vw: innerWidth, vh: innerHeight,
+          headFontPx: Math.round(parseFloat(getComputedStyle(head).fontSize)),
+          courseRows: card.querySelectorAll('.course-head').length
+        }
+      })()`)
+      console.log(`my-study dialog: ${JSON.stringify(geom)}`)
+
+      await cdp.eval('document.documentElement.dataset.theme = "dark"')
+      await sleep(500)
+      await cdp.shot(shotName('m2-my-study-dark'))
       await cdp.eval('document.documentElement.dataset.theme = "light"')
       await sleep(300)
       return

@@ -284,6 +284,16 @@
   padding: var(--space-4) var(--space-5);
 }
 
+/* ---- 近全屏模态：四个自绘弹层此前各自手写同一套层语法（逐字重复四份），
+        第四个「我的学习」本该是第五份。成员只挂选择器，规则体不得再出现
+        position / inset / z-index / background / padding。 ---- */
+.fullscreen-overlay, .course-browser-overlay, .course-map-overlay, .bili-dialog-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  background: var(--scrim);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--space-3);
+}
+
 /* ---- base ---- */
 * { box-sizing: border-box; }
 
@@ -534,6 +544,27 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 .study-group { display: flex; flex-direction: column; gap: var(--space-1); }
 .study-group-head { display: flex; align-items: center; gap: var(--space-icon); padding: 0 var(--space-hair); }
 .study-hint { margin: 0; padding: 0 var(--space-hair); font-size: var(--font-size-xs); line-height: var(--leading-relaxed); color: var(--text-muted); }
+/* 批4 (plan 2026-09-20, P9/D5): 「我的学习」标题行——入口键由调用方从
+   headerAction 传进来（侧栏给的是全屏展开图标键）。 */
+.study-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* 入口键沿用「全部课程」那枚的形制（.course-browser-open），但这里没有 34px 的
+   行高可拉伸（.all-courses-row 是 stretch），给它自己的高度。 */
+.study-panel-head .course-browser-open { height: 22px; }
+
+/* ---- 我的学习近全屏展开（批4, plan 2026-09-20, P9/D5）----
+   覆盖层走 .fullscreen-overlay 基元（选择器在顶部基元块），卡片与「全部课程」
+   同款近全屏；面板本体在弹层里不再自套一层边框/内边距——弹层卡已经是那一层。 */
+.my-study-card {
+  width: min(1100px, 96vw); height: 92vh;
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px;
+}
+.my-study-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 2px; }
+.my-study-card .study-panel { border: none; background: transparent; padding: 0; }
+/* 弹层里的标题是那枚 h3（弹层不重复一个 h2），所以把它提到模态标题的档位
+   （16px/650，与 .course-browser-head h2 同档）。 */
+.my-study-card .study-panel-head h3 { font-size: var(--font-size-lg); font-weight: 650; color: var(--text); }
 
 .search-input {
   width: 100%;
@@ -857,13 +888,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 
 /* ---- course browser (批4, plan 2026-09-13) — near-fullscreen modal (D5-A),
-   same modal language as CourseMapDialog: scroll lock, focus trap, Esc. ---- */
-.course-browser-overlay {
-  position: fixed; inset: 0; z-index: 40;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center;
-  padding: 12px;
-}
+   same modal language as CourseMapDialog: scroll lock, focus trap, Esc.
+   批4 (plan 2026-09-20): 覆盖层语法走 .fullscreen-overlay 基元（选择器在顶部
+   基元块），这里只留卡片自身的尺寸/头部/列表规则。 ---- */
 .course-browser-card {
   width: min(1440px, 98vw); height: 92vh;
   display: flex; flex-direction: column;
@@ -2030,11 +2057,7 @@ button.concept-ref:hover { color: var(--accent); }
 .mindmap-crumbs-hint { font-size: var(--font-size-xs); color: var(--text-muted); }
 
 /* M4.1 (map expansion): course-level mind map dialog. */
-.course-map-overlay {
-  position: fixed; inset: 0; z-index: 40;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center; padding: 24px;
-}
+/* 批4: 覆盖层语法走 .fullscreen-overlay 基元（选择器在顶部基元块）。 */
 .course-map-card {
   width: min(1100px, 96vw); max-height: 92vh;
   display: flex; flex-direction: column;
@@ -2417,11 +2440,7 @@ button.concept-ref:hover { color: var(--accent); }
 
 /* ---- B站导入对话框 (plan 2026-09-06 M5 面板 → 批1 双源并列升格为一级对话框；
         token 驱动、反截断、双主题兼容) ---- */
-.bili-dialog-overlay {
-  position: fixed; inset: 0; z-index: 40;
-  background: var(--scrim);
-  display: flex; align-items: center; justify-content: center; padding: 24px;
-}
+/* 批4: 覆盖层语法走 .fullscreen-overlay 基元（选择器在顶部基元块）。 */
 .bili-dialog-card {
   width: min(560px, 96vw); max-height: 92vh; overflow-y: auto;
   display: flex; flex-direction: column; gap: var(--space-3);

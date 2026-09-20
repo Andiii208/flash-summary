@@ -542,6 +542,37 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForGone('[data-testid="course-browser"]')
   })
 
+  // 批4 (plan 2026-09-20, P9/D5): 「我的学习」全屏展开——入口键挂在标题旁，
+  // Ctrl+M 同款开关；选课时先选中再关闭（弹层挡着笔记页，「选了没反应」最坏）。
+  it('批4 (P9/D5): 我的学习可全屏展开（入口键 / Ctrl+M），选课时关闭并落到该课时', async () => {
+    const bridge = makeBridge()
+    fakeState.courses = [{ id: 'c1', name: '数据结构', isMine: true, lessons: [{ id: 'l1', title: '第1讲', hasNote: false }] }]
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+
+    click(host.querySelector('[data-testid="my-study-open"]'))
+    await waitForSelector('[data-testid="my-study-dialog"]')
+    expect(host.querySelector('[data-testid="my-study-dialog"]')?.getAttribute('aria-label')).toBe('我的学习')
+
+    // Ctrl+M 是同款开关（关 → 开）。
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true }))
+    await waitForGone('[data-testid="my-study-dialog"]')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', ctrlKey: true }))
+    await waitForSelector('[data-testid="my-study-dialog"]')
+
+    // 展开课程 → 点课时：弹层关闭，且该课时真的被选中（qa:history 在选择路径上）。
+    const dialog = host.querySelector('[data-testid="my-study-dialog"]') as HTMLElement
+    click(dialog.querySelector('.course-head'))
+    await vi.waitFor(() => {
+      if (dialog.querySelector('.lesson-row') == null) throw new Error('waiting for lesson row')
+    })
+    click(dialog.querySelector('.lesson-row'))
+    await waitForGone('[data-testid="my-study-dialog"]')
+    await vi.waitFor(() => {
+      expect(bridge.qa.history).toHaveBeenCalledWith('l1')
+    })
+  })
+
   // 批1 (plan 2026-09-20, P13): 三个自绘 overlay 同为 z-index 40，层级相同时由
   // DOM 顺序决定——浏览器整体返回 null 之前一直盖在课程导图弹层上，用户点
   // 「导图」看不到任何可见反应（弹层既看不见也点不着）。

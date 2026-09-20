@@ -41,7 +41,7 @@ version: 1.0.0
 或该删未删的条目都会红；allowlist 用 `node scripts/style-padding-baseline.mjs` 重新生成
 （打印当前值清单与出现位置）。修 padding 时优先直接改走 token 并从清单里删条目。
 
-## 2. 六个共享基元
+## 2. 七个共享基元
 
 同一视觉角色**只允许一处定义**。成员把选择器挂进基元的选择器列表，**成员规则里不得
 再出现被基元接管的属性**（padding / border-radius / 字号 / 高度）——否则就是新的漂移。
@@ -54,6 +54,7 @@ version: 1.0.0
 | `.group-head` | 12.5px / 620 / `--text-secondary` | 笔记库分组标题、`MyStudyPanel` 组头（侧栏一级 `.sidebar-head h2` 是 14px/650，内容区小节标题见 `.subheading` 14px/620） |
 | `.count-pill` | 高 16px 药丸、等宽数字、`flex-shrink: 0` | 树节点数、笔记库计数、侧栏课程数、全部课程数 |
 | `.tag` | 高 18px 药丸（去掉半像素 padding） | `.chip`、`.badge`、`.formula-tag`、`.callout-tag`、`.quiz-tag`、`.bili-chip` |
+| `.fullscreen-overlay` | `position: fixed; inset: 0; z-index: 40` + `--scrim` 遮罩 + 居中 + `padding: var(--space-3)` | 近全屏弹层的**覆盖层**：`.course-browser-overlay`（全部课程）、`.course-map-overlay`（课程导图）、`.bili-dialog-overlay`（B站导入）；`.fullscreen-overlay` 本体用于「我的学习」全屏弹层。卡片自身的尺寸/头部/列表仍各自所有；共享确认弹层 `.dialog-backdrop` 是另一档（z-index 60、grid 居中），不并入 |
 
 空态只有**两种**形态：卡（`.empty-state`，大区）与一行小字（`.msg`，小区）。
 
@@ -88,6 +89,9 @@ version: 1.0.0
 - **弹层**：确认类用共享 `ui/Dialog`（底部右下两键；额外行动键走 `extraActions` 靠左，
   弹层只有一行按钮）；视图类自绘弹层用右上关闭键 + `aria-label`。弹窗有 `max-height: 86vh`
   与唯一的滚动区 `.dialog-body`（**不要**再给子元素加 max-height/overflow）。
+  **近全屏弹层的覆盖层一律挂 `.fullscreen-overlay` 基元**（§2），成员不再自写
+  position/inset/z-index/遮罩/padding；同一批同时开着两层时，DOM 后者居上，所以
+  「导图」这类从弹层里打开的第二层必须渲染在更后面。
 - **时间口径**：时间戳用 `formatTime`（mm:ss）/ `formatStamp`（绝对）/ `formatRelativeStamp`
   （一周内相对）；时长用 `formatDuration`（中文单位）。实现只有 `shared/format.ts` 与
   `shared/notes/format.ts` 两处，不许再抄。
@@ -109,6 +113,14 @@ version: 1.0.0
 ```bash
 npm run build
 node scripts/ui-shots.mjs .ui-shots/xxx --light   # 或 --dark；13 张主流程截图
+```
+
+专项机位（各自拍完即退出，不走主流程清单）：
+
+```bash
+node scripts/ui-shots.mjs .ui-shots/bili --light --bili          # B站导入对话框
+node scripts/ui-shots.mjs .ui-shots/consent --light --compliance # 声明层四个界面
+node scripts/ui-shots.mjs .ui-shots/my-study --light --my-study  # 「我的学习」全屏弹层
 ```
 
 几何量测用 `scripts/ui-probe.mjs`（与 ui-shots 同一套库隔离缝，只读）：

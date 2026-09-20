@@ -200,6 +200,40 @@ describe('窄窗断点与弹窗高度（批5）', () => {
   })
 })
 
+/**
+ * 批4 (plan 2026-09-20, P9/D5): 近全屏模态基元。四个自绘 overlay 此前各自手写
+ * 同一套层语法（position/inset/z-index/--scrim/居中），第四个「我的学习」本该是
+ * 第五份手写。成员只挂选择器；被基元接管的属性不得再出现在成员自己的规则里。
+ */
+describe('近全屏模态基元（批4）', () => {
+  /** 该选择器是否还自有一条规则（`选择器 {`，行首起算）。 */
+  const hasOwnRule = (selector: string): boolean =>
+    new RegExp(`(?:^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{`).test(stripped)
+
+  it('四个自绘 overlay 共用一条基元规则，成员不再各自声明定位/遮罩/内边距', () => {
+    // 基元是多选择器列表（bodyOf 只认单选择器），这里自己取声明体。
+    const m = /(?:^|\n)\s*\.fullscreen-overlay[^{]*\{([^}]*)\}/.exec(stripped)
+    expect(m, 'style.css 必须定义 .fullscreen-overlay 基元').not.toBeNull()
+    const body = m![1].replace(/\s+/g, ' ')
+    expect(body).toContain('position: fixed')
+    expect(body).toContain('z-index: 40')
+    expect(body).toContain('background: var(--scrim)')
+    expect(body).toContain('padding: var(--space-3)')
+    for (const sel of ['.course-browser-overlay', '.course-map-overlay', '.bili-dialog-overlay']) {
+      expect(stripped, `${sel} 必须在基元的选择器列表里`).toContain(sel)
+      expect(hasOwnRule(sel), `${sel} 不该再自写一条覆盖层规则（成员只挂选择器）`).toBe(false)
+    }
+    // 全站只剩这一处 z-index: 40（此前三处逐字重复 + 新增一处）。
+    expect((stripped.match(/z-index: 40/g) ?? []).length).toBe(1)
+  })
+
+  it('共享确认弹层是另一档（z-index 60、grid 居中），不并入这个基元', () => {
+    const body = bodyOf('.dialog-backdrop')
+    expect(body).toContain('z-index: 60')
+    expect(body).not.toContain('z-index: 40')
+  })
+})
+
 describe('长内容反截断合同（批4）', () => {
   it('报错原文（含长 URL/JSON）所在的两处容器都允许任意断行', () => {
     expect(bodyOf('.qa-error-msg')).toContain('overflow-wrap: anywhere')
@@ -225,16 +259,16 @@ const KNOWN_PADDING_VIOLATIONS: Record<string, string> = {
   '10px': '存量：反馈正文/B站预览（.feedback-body/.bili-preview）',
   '12px 16px 12px 18px': '存量：追问回答（.qa-a）',
   '12px 2px 0': '存量：手动兜底（.manual-fallback）',
-  '12px': '存量：课程浏览覆盖层/反馈块（.course-browser-overlay/.feedback-block）',
+  '12px': '存量：反馈块（.feedback-block 的 padding-top）——批4 起覆盖层走 .fullscreen-overlay 基元',
   '14px': '存量：B站二维码（.bili-qr）',
-  '16px': '存量：课程浏览卡/导图卡（.course-browser-card/.course-map-card）',
+  '16px': '存量：课程浏览卡/导图卡/我的学习卡（.course-browser-card/.course-map-card/.my-study-card）',
   '18px 0 8px': '存量：空态当前行（.note-empty-current）',
   '18px 20px': '存量：弹窗（.dialog）',
   '18px': '存量：Provider 说明/B站对话框卡（.provider-cap-notes/.bili-dialog-card）',
   '1px 5px': '存量：行内代码（.md-lite code 等）',
   '1px 8px': '存量：证据折叠/时间戳（.evidence-fold/.timeline-stamp）',
   '20px': '存量：引导步骤/Markdown 列表（.guide-steps/.md-lite .md-list）',
-  '24px': '存量：空课程行/导图覆盖层（.lesson-row.empty/.course-map-overlay）',
+  '24px': '存量：空课程行（.lesson-row.empty 的 padding-left）——批4 起覆盖层走 .fullscreen-overlay 基元',
   '27px': '存量：课程卡副题（.course-card-sub）',
   '2px 10px': '存量：toast 动作/目录项（.toast-action/.toc-item）',
   '2px 5px': '存量：面包屑（.crumb）',

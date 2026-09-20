@@ -10,6 +10,7 @@ import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
 import { CourseBrowser } from './components/CourseBrowser'
 import { MyStudyPanel } from './components/MyStudyPanel'
+import { MyStudyDialog } from './components/MyStudyDialog'
 import { TaskPanel } from './components/TaskPanel'
 import { NoteViewer, type LessonContext } from './components/NoteViewer'
 import { QaPanel, type QaEntry } from './components/QaPanel'
@@ -183,6 +184,10 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   // the login state the user navigated for.
   const [courseBrowserOpen, setCourseBrowserOpen] = useState(false)
   const closeCourseBrowser = useCallback((): void => setCourseBrowserOpen(false), [])
+  // 批4 (plan 2026-09-20, P9/D5): 「我的学习」近全屏展开——同一套三件套
+  // （状态 / 快捷键 / 挂载点），快捷键 Ctrl+M（应用菜单未占用该组合）。
+  const [myStudyOpen, setMyStudyOpen] = useState(false)
+  const closeMyStudy = useCallback((): void => setMyStudyOpen(false), [])
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   // 声明批2 (plan 2026-09-11): nothing renders before the 使用须知 gate is
@@ -229,6 +234,13 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
       if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setCourseBrowserOpen((open) => !open)
+        return
+      }
+      // 批4 (plan 2026-09-20, P9/D5): Ctrl+M 开关「我的学习」全屏弹层——与
+      // Ctrl+K 同款 effect 模式；这个 chord 同样不在应用菜单里。
+      if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault()
+        setMyStudyOpen((open) => !open)
         return
       }
       const next = tabForHotkey(e.key, { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey, shift: e.shiftKey })
@@ -342,6 +354,26 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         courseMapBusy={state.courseMapBusy}
         onClose={closeCourseBrowser}
       />
+      {/* 批4 (plan 2026-09-20, P9/D5): 「我的学习」全屏弹层——渲染在课程浏览器
+          之后、课程导图之前：三者同为 .fullscreen-overlay（z-index 40），DOM 后者
+          居上，所以从弹层里点「导图」仍能落在最上层。 */}
+      <MyStudyDialog
+        open={myStudyOpen}
+        mine={state.mineCourses}
+        extracted={state.extractedCourses}
+        sameCourses={state.sameCourses}
+        selectedLesson={state.currentLesson}
+        expanded={state.expanded}
+        harvestInflight={state.harvestInflight}
+        courseMapBusy={state.courseMapBusy}
+        onRemoveCourse={state.removeCourse}
+        onCourseMap={state.openCourseMap}
+        onToggle={state.toggleCourse}
+        onSelect={state.selectLesson}
+        onHarvestLessons={state.harvestLessons}
+        onToggleMine={state.toggleMine}
+        onClose={closeMyStudy}
+      />
       {/* 批1 (P13): rendered AFTER the browser as a defensive backstop — any
           future path that opens the map while the browser is up still lands on
           top instead of behind. z-index untouched (the three overlays stay
@@ -440,6 +472,18 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 onSelect={state.selectLesson}
                 onHarvestLessons={state.harvestLessons}
                 onToggleMine={state.toggleMine}
+                // 批4 (plan 2026-09-20, P9/D5): 标题旁的全屏展开入口（Ctrl+M 同款）。
+                headerAction={
+                  <button
+                    class="course-browser-open"
+                    data-testid="my-study-open"
+                    title="全屏展开我的学习（Ctrl+M）"
+                    aria-label="全屏展开我的学习"
+                    onClick={() => setMyStudyOpen(true)}
+                  >
+                    <Maximize2 size={13} strokeWidth={1.75} />
+                  </button>
+                }
               />
               <section class="all-courses">
                 <div class="all-courses-row">

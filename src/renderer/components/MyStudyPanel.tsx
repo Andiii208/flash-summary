@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import type { JSX } from 'preact'
+import type { ComponentChildren, JSX } from 'preact'
 import { ChevronDown, ChevronRight } from 'lucide-preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { CourseTree } from './CourseTree'
@@ -25,6 +25,9 @@ export interface MyStudyPanelProps {
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
   onToggleMine: (courseId: string, mine: boolean) => void
+  /** 批4 (P9/D5): 标题行右侧的动作位——侧栏传「全屏展开」图标键，全屏弹层传
+   *  「关闭」。面板本体保持纯展示：入口由调用方决定，两个宿主的标题行同形。 */
+  headerAction?: ComponentChildren
 }
 
 interface StudyGroupProps {
@@ -105,7 +108,10 @@ export function MyStudyPanel(props: MyStudyPanelProps): JSX.Element {
   const empty = mine.length === 0 && extracted.length === 0 && sameCourses.length === 0
   return (
     <div class="study-panel">
-      <h3 class="study-group-head group-head">我的学习</h3>
+      <div class="study-panel-head">
+        <h3 class="study-group-head group-head">我的学习</h3>
+        {props.headerAction}
+      </div>
       {empty ? (
         <p class="study-hint">
           在下方「全部课程」里找到你的课，点课程行右侧的星标收藏；生成笔记后它会自动出现在这里。
