@@ -8,6 +8,8 @@ import { Dialog } from '../ui/Dialog'
 
 const CAPABILITY_LABELS: Record<string, string> = { asr: 'ASR 转写', multimodal: '多模态总结' }
 const CAPABILITY_ORDER: ReadonlyArray<string> = ['asr', 'multimodal']
+/** 标签表里没有的能力（老库遗留行等）：不把内部标识当用户文案印出去。 */
+const UNKNOWN_CAPABILITY_LABEL = '未知能力'
 
 /** 2026-09-05 批4: the capabilities explained against the pipeline —
  *  the terms no longer appear bare in the form.
@@ -94,8 +96,12 @@ function ProviderRowView({ provider, bindings, onEdit, onDelete }: ProviderRowPr
             ? '未绑定能力'
             : bound.map((b) => (
                 <Fragment key={b.capability}>
-                <span class="badge" title={`${CAPABILITY_LABELS[b.capability] ?? b.capability} 绑定的模型`}>
-                  {CAPABILITY_LABELS[b.capability] ?? b.capability}: {b.model}
+                {/* P25 二次评审：能力面只剩两项，库里的行由 migration 013 清理；万一
+                    还有迁移之外的遗留行（或将来新增能力忘了加标签），徽标渲染的是
+                    「未知能力」而不是裸的内部标识（旧写法会把 `text` 这种内部串直接
+                    印到用户眼前）。 */}
+                <span class="badge" title={`${CAPABILITY_LABELS[b.capability] ?? UNKNOWN_CAPABILITY_LABEL} 绑定的模型`}>
+                  {CAPABILITY_LABELS[b.capability] ?? UNKNOWN_CAPABILITY_LABEL}: {b.model}
                 </span>
                 {/* A1: 多模态绑定的是纯文本模型时说清楚——否则生成时图片被静默丢弃或造成整段重发。 */}
                 {b.capability === 'multimodal' && modelHasVision(b.model) === false && (
