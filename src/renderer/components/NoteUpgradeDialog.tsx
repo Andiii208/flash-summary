@@ -32,11 +32,13 @@ export interface NoteUpgradeDialogProps {
   items: NoteHealthInfo[]
   busy: boolean
   statusOf: (lessonId: string) => UpgradeStatus
+  /** 批2 (plan 2026-09-20, P4): 该课时的失败原因（main 侧 res.error 原文）。 */
+  reasonOf?: (lessonId: string) => string | undefined
   onRun: (lessonIds: string[]) => void
   onClose: () => void
 }
 
-export function NoteUpgradeDialog({ open, courseLabel, loading, items, busy, statusOf, onRun, onClose }: NoteUpgradeDialogProps): JSX.Element | null {
+export function NoteUpgradeDialog({ open, courseLabel, loading, items, busy, statusOf, reasonOf, onRun, onClose }: NoteUpgradeDialogProps): JSX.Element | null {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   // Items arrive async — reseed the default selection whenever they land.
   useEffect(() => {
@@ -59,7 +61,10 @@ export function NoteUpgradeDialog({ open, courseLabel, loading, items, busy, sta
       confirmLabel={busy ? '升级中…' : `升级所选（${selected.size}）`}
       confirmDisabled={busy || loading || selected.size === 0}
       cancelDisabled={busy}
-      onConfirm={() => onRun([...selected])}
+      // 批2 (P6): 已完成课时在**确认这一处**统一裁掉——重试时不再对已成功的课时
+      // 重跑一次全量多模态生成（白烧钱、多存一个新版本）。toggle/全选/reseed 不动，
+      // 用户仍能看到「✓ 已升级」并保持勾选状态。
+      onConfirm={() => onRun([...selected].filter((lessonId) => statusOf(lessonId) !== 'done'))}
       onCancel={onClose}
     >
       {!loading && items.length > 0 && (
@@ -75,10 +80,16 @@ export function NoteUpgradeDialog({ open, courseLabel, loading, items, busy, sta
           </label>
           {items.map((item) => {
             const status = statusOf(item.lessonId)
+            const reason = status === 'failed' ? reasonOf?.(item.lessonId) : undefined
             return (
               <label key={item.lessonId} class={`note-upgrade-row${status === 'done' ? ' done' : ''}`}>
                 <input type="checkbox" checked={selected.has(item.lessonId)} disabled={busy || status === 'done'} onChange={() => toggle(item.lessonId)} />
-                <span class="note-upgrade-title">{item.lessonTitle}</span>
+                <span class="note-upgrade-title">
+                  {item.lessonTitle}
+                  {/* 批2 (P4): 失败原因就地可见（标题下方一行小字）——「失败」两个字此前是
+                      全部信息，而 main 侧的守卫（任务占用 / 未绑模型 / 超时）本来就给了原因。 */}
+                  {reason != null && <span class="msg note-upgrade-reason">{reason}</span>}
+                </span>
                 <span class="badge ok" title={`当前版本`}>
                   v{item.version}
                 </span>

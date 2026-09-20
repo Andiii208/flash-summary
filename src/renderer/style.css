@@ -1447,6 +1447,8 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .dialog:has(.note-upgrade-list) { width: min(560px, calc(100vw - 48px)); }
 .note-upgrade-all { display: flex; gap: var(--space-2); align-items: center; font-size: var(--font-size-xs); color: var(--text-muted); }
 .note-upgrade-row { display: flex; gap: var(--space-2); align-items: center; font-size: var(--font-size-sm); border: 1px solid var(--border); }
+/* 批2 (P4): 失败原因落在标题下方一行（`.msg` 提供小字形态，这里只让它成行）。 */
+.note-upgrade-reason { display: block; }
 .note-upgrade-row.done { opacity: 0.55; }
 .note-upgrade-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
 .note-upgrade-grade.weak { color: var(--danger); }

@@ -665,6 +665,145 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(listMock.mock.calls.length).toBe(before + 1)
   })
 
+  it('批2 (P4): 批量升级把每课失败原因显示在行内，toast 也带上第一条原因', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
+      { lessonId: 'l2', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第二讲' }
+    )
+    const bridge = makeBridge()
+    ;(bridge.notes.courseHealth as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok([
+        { lessonId: 'l1', lessonTitle: '第一讲', version: 1, warnCount: 2, grade: 'weak', promptVersion: 0 },
+        { lessonId: 'l2', lessonTitle: '第二讲', version: 1, warnCount: 3, grade: 'weak', promptVersion: 0 }
+      ])
+    )
+    // 一个成功、一个失败（main 侧守卫的原文，此前被整段丢弃）。
+    ;(bridge.notes.regenerate as ReturnType<typeof vi.fn>).mockImplementation(async (lessonId: string) =>
+      lessonId === 'l2'
+        ? { ok: false, error: '任务运行中，请等待完成后再重新生成笔记' }
+        : ok({ version: 2, images: 0, hitRate: { hits: 0, total: 0 } })
+    )
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library')
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '升级旧笔记') ?? null)
+    await waitForSelector('.note-upgrade-list')
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选'))
+      expect(btn?.textContent).toContain('（2）')
+    })
+    click([...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) ?? null)
+    await vi.waitFor(() => {
+      expect(bridge.notes.regenerate).toHaveBeenCalledTimes(2)
+    })
+    await vi.waitFor(() => {
+      expect(host.querySelector('.note-upgrade-reason')).not.toBeNull()
+    })
+    // 行内原因 = 该课时自己的 res.error（不是一句「失败」）。
+    const reasons = [...host.querySelectorAll('.note-upgrade-reason')].map((el) => el.textContent ?? '')
+    expect(reasons).toEqual(['任务运行中，请等待完成后再重新生成笔记'])
+    // toast 汇总第一条原因（其余引导到各行）。
+    await vi.waitFor(() => {
+      const toast = host.querySelector('.toast')?.textContent ?? ''
+      expect(toast).toContain('1 个课时失败：任务运行中，请等待完成后再重新生成笔记')
+    })
+  })
+
+  it('批2 (P5): 批量升级成功的是当前课时时刷新当前笔记，且笔记库仍只刷一次', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第1讲' }
+    )
+    const bridge = makeBridge()
+    ;(bridge.notes.courseHealth as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok([{ lessonId: 'l1', lessonTitle: '第1讲', version: 1, warnCount: 2, grade: 'weak', promptVersion: 0 }])
+    )
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library')
+    const latestMock = bridge.notes.latest as unknown as { mock: { calls: unknown[][] } }
+    const listMock = bridge.notes.list as unknown as { mock: { calls: unknown[][] } }
+    const latestBefore = latestMock.mock.calls.length
+    // CI 慢时序：先等在途刷新静止再取基线（同批4 的既有守卫）。
+    await vi.waitFor(async () => {
+      const seen = listMock.mock.calls.length
+      await new Promise((r) => setTimeout(r, 250))
+      expect(listMock.mock.calls.length).toBe(seen)
+    })
+    const listBefore = listMock.mock.calls.length
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '升级旧笔记') ?? null)
+    await waitForSelector('.note-upgrade-list')
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选'))
+      expect(btn?.textContent).toContain('（1）')
+    })
+    click([...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) ?? null)
+    await vi.waitFor(() => {
+      expect(bridge.notes.regenerate).toHaveBeenCalledTimes(1)
+    })
+    // P5: 被升级的正是当前课时 → 重新拉一次笔记（否则屏幕停在旧版本与旧徽标）。
+    await vi.waitFor(() => {
+      expect(latestMock.mock.calls.length).toBe(latestBefore + 1)
+    })
+    expect(latestMock.mock.calls.at(-1)?.[0]).toBe('l1')
+    // 刷库仍只有一次（逐课刷全库是 N 倍开销——P5 没有把它变成第二次）。
+    await vi.waitFor(() => {
+      expect(listMock.mock.calls.length).toBe(listBefore + 1)
+    })
+    expect(listMock.mock.calls.length).toBe(listBefore + 1)
+  })
+
+  it('批2 (P6): 重试只跑未完成的课时——已成功的课时不再进确认载荷', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
+      { lessonId: 'l2', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第二讲' }
+    )
+    const bridge = makeBridge()
+    ;(bridge.notes.courseHealth as ReturnType<typeof vi.fn>).mockResolvedValue(
+      ok([
+        { lessonId: 'l1', lessonTitle: '第一讲', version: 1, warnCount: 2, grade: 'weak', promptVersion: 0 },
+        { lessonId: 'l2', lessonTitle: '第二讲', version: 1, warnCount: 3, grade: 'weak', promptVersion: 0 }
+      ])
+    )
+    const regenerateMock = bridge.notes.regenerate as ReturnType<typeof vi.fn>
+    // l2 第一次失败、第二次成功（显式计数，不依赖 mock.calls 的记账时机）。
+    let l2Attempts = 0
+    regenerateMock.mockImplementation(async (lessonId: string) => {
+      if (lessonId === 'l2' && ++l2Attempts === 1) {
+        return { ok: false, error: '该课时存在排队/运行中的任务，请等待完成后再重新生成笔记' }
+      }
+      return ok({ version: 2, images: 0, hitRate: { hits: 0, total: 0 } })
+    })
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library')
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '升级旧笔记') ?? null)
+    await waitForSelector('.note-upgrade-list')
+    await vi.waitFor(() => {
+      const btn = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选'))
+      expect(btn?.textContent).toContain('（2）')
+    })
+    const confirm = (): void => {
+      click([...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) ?? null)
+    }
+    confirm()
+    await vi.waitFor(() => {
+      expect(regenerateMock).toHaveBeenCalledTimes(2)
+    })
+    await vi.waitFor(() => {
+      expect(host.querySelector('.note-upgrade-reason')).not.toBeNull()
+    })
+    // 第二次点「升级所选」：l1 已 ✓ 已升级 → 被裁掉；只有 l2 再跑一次。
+    confirm()
+    await vi.waitFor(() => {
+      expect(regenerateMock).toHaveBeenCalledTimes(3)
+    })
+    expect(regenerateMock.mock.calls.filter((c) => c[0] === 'l1')).toHaveLength(1)
+    expect(regenerateMock.mock.calls.filter((c) => c[0] === 'l2')).toHaveLength(2)
+  })
+
   it('批4 a11y: 主 tab 内容面板补 role=tabpanel，与激活 tab 双向 aria 关联', async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)

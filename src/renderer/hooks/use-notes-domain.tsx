@@ -54,7 +54,9 @@ export interface NotesDomain {
     showMoreNotes: () => void
     /** 质量批4: 存量升级对话框数据 + 逐课运行状态（笔记库课程组入口）。 */
     noteUpgrade: { open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }
-    noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }
+    /** 批2 (plan 2026-09-20, P4): failed 是 lessonId → 失败原因——此前只记「失败」，
+     *  用户看不到是任务占用、未绑模型还是超时（同一批每课同一个隐藏原因）。 */
+    noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlyMap<string, string> }
     openNoteUpgrade: (courseId: string, label: string) => void
     closeNoteUpgrade: () => void
     runNoteUpgrade: (lessonIds: string[]) => void
@@ -143,11 +145,11 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     loading: false,
     items: []
   })
-  const [noteUpgradeRun, setNoteUpgradeRun] = useState<{ busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlySet<string> }>({
+  const [noteUpgradeRun, setNoteUpgradeRun] = useState<{ busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlyMap<string, string> }>({
     busy: false,
     running: new Set(),
     done: new Set(),
-    failed: new Set()
+    failed: new Map()
   })
   // 批5: feedback polish busy state (independent of regenerate).
   const [notePolishBusy, setNotePolishBusy] = useState(false)
@@ -574,7 +576,7 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   const openNoteUpgrade = useCallback(
     (courseId: string, label: string): void => {
       setNoteUpgrade({ open: true, courseId, label, loading: true, items: [] })
-      setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Set() })
+      setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Map() })
       void (async () => {
         const res = await bridge.notes.courseHealth(courseId)
         if (res.ok && res.value != null) {
@@ -590,7 +592,7 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
 
   const closeNoteUpgrade = useCallback((): void => {
     setNoteUpgrade((prev) => ({ ...prev, open: false }))
-    setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Set() })
+    setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Map() })
   }, [])
 
   /** 质量批4: upgrade sequentially — one notes:regenerate per lesson (reuse
@@ -599,31 +601,38 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     (lessonIds: string[]): void => {
       if (lessonIds.length === 0) return
       void (async () => {
-        setNoteUpgradeRun({ busy: true, running: new Set(lessonIds), done: new Set(), failed: new Set() })
+        setNoteUpgradeRun({ busy: true, running: new Set(lessonIds), done: new Set(), failed: new Map() })
         setNoteRegenBusy(true)
         const done = new Set<string>()
-        const failed = new Set<string>()
+        // 批2 (P4): 记下每课的真实失败原因（res.error），不再只留一个「失败」。
+        const failed = new Map<string, string>()
         try {
           for (const lessonId of lessonIds) {
             const res = await bridge.notes.regenerate(lessonId)
             if (res.ok) {
               done.add(lessonId)
             } else {
-              failed.add(lessonId)
+              failed.set(lessonId, res.error ?? '未知原因')
             }
           }
-          // 批4: 批量完成后刷一次笔记库——逐课各刷一次全库，批量升级时是 N 倍开销。
+          // 批2 (P5): 升级成功的是**当前打开的这一课**时，把笔记与徽标一起刷新——
+          // 此前只刷库索引，用户停在被升级的课时上看到的还是旧版本与旧徽标，
+          // 很容易读成「没生效」。刷库仍只此一次（逐课刷全库是 N 倍开销）。
+          if (currentLesson !== '' && done.has(currentLesson)) await loadNote(currentLesson)
           await loadNoteIndex()
         } finally {
           setNoteRegenBusy(false)
           setNoteUpgradeRun({ busy: false, running: new Set(), done, failed })
         }
-        const failedSuffix = failed.size > 0 ? `，${failed.size} 个课时失败（可重试）` : ''
+        // 批2 (P4): toast 汇总第一条真实原因，其余引导到行内（每行都写了原因）。
+        const firstReason = failed.values().next().value ?? ''
+        const failedSuffix =
+          failed.size > 0 ? `，${failed.size} 个课时失败：${firstReason}${failed.size > 1 ? '；其余原因见各行' : ''}` : ''
         if (done.size > 0) toast(`已升级 ${done.size} 个课时笔记，体检徽标可复核结果${failedSuffix}`, failed.size > 0 ? 'info' : 'success')
         else toast('升级失败：所选课时都未能重新生成', 'error')
       })()
     },
-    [bridge, toast, loadNoteIndex]
+    [bridge, toast, loadNote, loadNoteIndex, currentLesson]
   )
 
   /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */

@@ -141,6 +141,8 @@ export function makeBridge(): SeuSummaryBridge {
       attachmentData: vi.fn(async () => ok(null)),
       regenerate: vi.fn(async () => ok({ version: 1, images: 0, hitRate: { hits: 0, total: 0 } })),
       polish: vi.fn(async () => ok({ version: 2, hitRate: { hits: 0, total: 0 } })),
+      // 批2 (plan 2026-09-20, P2): 定向补全——默认「没改善」，测试按需覆写。
+      repair: vi.fn(async () => ok({ version: 1, repaired: false, health: { warnCount: 1, grade: 'fair' as const, warnCountBeforeRepair: null }, transcriptHitRate: null })),
       exportPdfDialog: vi.fn(async () => ok({ canceled: true })),
       exportPdfWrite: vi.fn(async () => ok({ path: 'x.pdf', bytes: 1 })),
       revealFile: vi.fn(async () => ok(true))

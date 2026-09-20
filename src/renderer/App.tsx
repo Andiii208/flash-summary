@@ -304,6 +304,8 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
                 ? ('failed' as const)
                 : ('idle' as const)
         }
+        // 批2 (plan 2026-09-20, P4): 每行失败原因就地可见（main 侧守卫的原文）。
+        reasonOf={(lessonId) => state.noteUpgradeRun.failed.get(lessonId)}
         onRun={state.runNoteUpgrade}
         onClose={state.closeNoteUpgrade}
       />
