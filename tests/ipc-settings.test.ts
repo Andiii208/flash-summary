@@ -112,6 +112,48 @@ describe('settings IPC (U3)', () => {
     }
   })
 
+  // 批1 (plan 2026-09-20, P21): cacheDir 承接任务产物，taskDir 每次调用重新
+  // join——跑到一半换根会把产物劈到新旧两处，旧目录再也没有入口回收。
+  // 守卫与 chooseLibrary 同款：有任务在跑/排队/未完成（崩溃留下的可续跑行）
+  // 就拒绝更换。
+  it('批1 (P21): settings:setCacheDir 有未完成任务时被拒，且不动已保存的设置', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '第1讲', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t-live', 'l1', 'transcribing', '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z')").run()
+
+    const res = (await invoke(ctx, 'settings:setCacheDir', join(dir, 'new-cache'))) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('任务')
+    // 拒绝就是拒绝：设置保持原值（默认 cache 目录），没有被半途改写。
+    const after = (await invoke(ctx, 'settings:get')) as { ok: true; value: { cacheDir: string } }
+    expect(after.value.cacheDir).toBe(join(dir, 'cache'))
+  })
+
+  it('批1 (P21): 崩溃留下的非终态行同样挡住更换（与 chooseLibrary 口径一致）', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '第1讲', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t-stuck', 'l1', 'downloading_video', '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z')").run()
+
+    const res = (await invoke(ctx, 'settings:setCacheDir', join(dir, 'new-cache'))) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('任务')
+  })
+
+  it('批1 (P21): 终态任务（succeeded/failed）不挡更换——产物已收口，换根是安全的', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '第1讲', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t-ok', 'l1', 'succeeded', '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z')").run()
+    db.prepare("INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t-bad', 'l1', 'failed', '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z')").run()
+
+    const target = join(dir, 'new-cache')
+    const res = (await invoke(ctx, 'settings:setCacheDir', target)) as { ok: true; value: { cacheDir: string } }
+    expect(res.ok).toBe(true)
+    expect(res.value.cacheDir).toBe(target)
+  })
+
   it('settings:setTheme rejects an invalid theme', async () => {
     const ctx = makeCtx()
     const res = await invoke(ctx, 'settings:setTheme', 'neon') as { ok: false; error: string }

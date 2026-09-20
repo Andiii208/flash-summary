@@ -895,6 +895,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       // 批2 (audit 2026-09-19): 缓存目录承接任务产物落盘——UNC（\\server\share）
       // 会随网络/凭据漂移，任务跑到一半目录不可达就是永久失败；只收本机路径。
       if (d.startsWith('\\\\') || d.startsWith('//')) throw new Error('缓存目录不支持网络路径（UNC），请选择本机磁盘目录')
+      // 批1 (plan 2026-09-20, P21): cacheDir 是每次调用重读的设置，而任务的
+      // taskDir 也每次重新 join——跑到一半换根会把同一任务的产物劈到新旧两个
+      // 目录，旧目录里几 GB 的视频/音频再没有任何入口回收（cleanStaleCache /
+      // tasks:delete 都只扫当前 cacheDir）。与 chooseLibrary 同一道守卫：有任务
+      // 在跑、排队或未完成（崩溃留下的可续跑行）时拒绝更换。
+      const unfinished = ctx.db
+        .prepare("SELECT COUNT(*) AS n FROM tasks WHERE state NOT IN ('succeeded', 'failed')")
+        .get() as { n: number }
+      if (queue.members().length > 0 || unfinished.n > 0) {
+        throw new Error('有任务在运行、排队或未完成，请先取消或清理任务后再更换缓存目录')
+      }
       assertWritable(d)
       ctx.setSetting('cacheDir', d)
       return ok({ cacheDir: resolveCacheDir(d, ctx.settings().libraryRoot) })
