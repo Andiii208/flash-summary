@@ -488,7 +488,7 @@ async function probeMindmap(cdp, out) {
   await cdp.shot(join(ROOT, '.ui-shots', 'mindmap', 'fitted.png'))
 }
 
-/** 窄窗（Emulation 覆盖视口）下的笔记页与任务页。 */
+/** 窄窗（Emulation 覆盖视口）下的笔记页、任务页与笔记库。 */
 async function probeNarrow(cdp, out) {
   await cdp.setViewport(NARROW, 600)
   await selectNotedLesson(cdp)
@@ -500,6 +500,20 @@ async function probeNarrow(cdp, out) {
   await clickTab(cdp, '任务')
   await sleep(900)
   out.narrowTasks = await cdp.json(MEASURE)
+  // 批6 6.4 (P24/D12)：列表页的空白量——笔记库盒宽 vs 内容盒右缘（任务历史行宽由
+  // MEASURE 的 history 给）。窗口最大化后右侧白屏就是这两个数。
+  await goHome(cdp)
+  await sleep(500)
+  await clickTab(cdp, '笔记')
+  await sleep(900)
+  out.narrowLibrary = await cdp.json(`(() => {
+    const lib = document.querySelector('.note-library')
+    const content = document.querySelector('.content')
+    if (lib == null || content == null) return null
+    const lr = lib.getBoundingClientRect()
+    const cr = content.getBoundingClientRect()
+    return { w: Math.round(lr.width), right: Math.round(lr.right), contentRight: Math.round(cr.right), viewportW: innerWidth, blank: Math.round(cr.right - lr.right), rows: document.querySelectorAll('[data-testid="note-library-row"]').length }
+  })()`)
   await cdp.clearViewport()
 }
 
@@ -531,6 +545,10 @@ function summarize(out) {
     const n = out.noteSearch
     if (n.error != null) lines.push(`笔记搜索：${n.error}`)
     else lines.push(`笔记搜索「${n.keyword}」→ 标题「${n.heading}」· 行 ${n.before?.rows}→${n.rows} · 分组 ${n.before?.groups}→${n.groups}${n.empty != null ? ` · 空态「${n.empty}」` : ''}`)
+  }
+  if (out.narrowLibrary != null) {
+    const l = out.narrowLibrary
+    lines.push(`笔记库盒 ${l.w} · 内容盒右缘 ${l.contentRight} · 右侧空白 ${l.blank} · 行 ${l.rows}（视口 ${l.viewportW}）`)
   }
   if (out.tasksPage != null) {
     const cols = (page) => page.history.map((r) => `${one(r.errW)}${r.timeHidden ? '(时间收起)' : ''}`).join('/')

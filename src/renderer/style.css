@@ -1983,7 +1983,7 @@ button.concept-ref:hover { color: var(--accent); }
    整改前全仓只有 prefers-reduced-motion 的 @media —— 窗口到下限 960 时，
    860（面板轴）与 640（正文轴）两个 max-width 同时失效，只能靠 flex 硬挤
    （实测：笔记工具行 25→43px 高、任务失败原因列 440→128px）。
-   断点只有两个：1180 = 内容盒装不下 860；1024 = 装不下 640。
+   断点：1180 = 内容盒装不下 860；1024 = 装不下 640；1600 = 宽屏列表档（批6 新增）。
    ========================================================================== */
 @media (max-width: 1180px) {
   /* 内容区让出横向内边距（24 → 16），工具行交给已有的 flex-wrap。 */
@@ -1997,6 +1997,25 @@ button.concept-ref:hover { color: var(--accent); }
   /* 正文列改流式：max-width 在窄窗下本来就失效，明确写出来，避免「有时 640
      有时全宽」的不可预期。侧栏的自动收起由 App 侧 matchMedia 负责（见 App.tsx）。 */
   .note-body, .note-masthead { max-width: none; }
+}
+
+/* 批6 (P24/D12, plan 2026-09-20-ux-issues-remediation): 宽屏档。此前两个断点全是
+   max-width（窄窗方向），窗口一放大，定宽列表列就把右侧堆成白屏——实测 2560 视口：
+   内容盒 2256、面板右缘 1188、正文右缘 968，右侧分别空 1372 / 1592px。列表型页面
+   放开 --content-max 吃满内容盒，把空白换成信息密度；**阅读列不动**（.note-viewer
+   阅读态 860 / .note-body 640，宽屏留白是阅读铁律的既定代价，见 SKILL §3/§6）。
+   只放宽 max-width：不新增刻度 token、不动弹层与基元。
+
+   为什么后两条带状态守卫：笔记库与近期追问**挂在阅读页容器里**（.note-library 在
+   .note-viewer 内、.qa-recent 在 .qa-log 内，两层都有 860 帽），只放宽列表本身量不
+   出效果（实测笔记库盒仍 860）。所以只在「容器里装的是列表、没有正文」的**列表态**
+   放开容器——阅读态（有 .note-body / 有对话 .qa-pair）的 860 帽原样保留。 */
+@media (min-width: 1600px) {
+  .task-panel, .note-library, .qa-recent { max-width: none; }
+  .note-viewer:has(.note-library):not(:has(.note-body)),
+  .qa-panel:has(.qa-recent) { max-width: none; }
+  .note-viewer:has(.note-library):not(:has(.note-body)) .note-library,
+  .qa-panel:has(.qa-recent) .qa-log { max-width: none; }
 }
 
 /* M1.2 (map expansion 2026-09-05): in-view toolbar — depth controls + search.

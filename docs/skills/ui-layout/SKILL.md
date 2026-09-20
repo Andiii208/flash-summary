@@ -64,7 +64,7 @@ version: 1.0.0
 |---|---|---|
 | `@media (max-width: 1180px)` | 内容盒装不下 860（面板轴） | 内容区横向内边距 24 → 16；任务行的时间列收起（让位给失败原因，完整时间戳仍在 `title` 里） |
 | `@media (max-width: 1024px)` | 装不下 640（正文轴） | 正文列与题头改流式；App 侧 `matchMedia` 让侧栏**挂载时**默认收起（不监听 resize，免得夺走用户的手动展开） |
-| `@media (min-width: 1600px)` | 宽屏：定宽列表列装不满内容盒（窗口最大化后右侧大片空白） | **列表型**页面放开 `--content-max` 吃满内容盒（任务历史 `.task-panel`、笔记库 `.note-library`、近期追问 `.qa-recent`）；**阅读列不动**——`.note-viewer` 仍 860、`.note-body` 仍 640，宽屏留白是阅读铁律的既定代价 |
+| `@media (min-width: 1600px)` | 宽屏：定宽列表列装不满内容盒（窗口最大化后右侧大片空白） | **列表型**页面放开 `--content-max` 吃满内容盒（任务历史 `.task-panel`、笔记库 `.note-library`、近期追问 `.qa-recent`）；笔记库/近期追问挂在阅读页容器里，所以只在其**列表态**放开容器（`.note-viewer:has(.note-library):not(:has(.note-body))`、`.qa-panel:has(.qa-recent)`）。**阅读列不动**——`.note-viewer` 阅读态仍 860、`.note-body` 仍 640，宽屏留白是阅读铁律的既定代价 |
 
 新增断点前先问：能不能用现有的三个解决？`tests/style-scale.test.ts` 钉住了「窄窗
 只有 1180 与 1024、宽屏只有 1600」——加第四个要同时改测试，也就是要过审。

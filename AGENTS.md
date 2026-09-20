@@ -31,7 +31,7 @@ npm run lint && npm run typecheck && npm test
 - busy 视觉：慢操作一律「文案加省略号 + disabled」（如「添加中…」），hook 侧做 in-flight 守卫防连点；不新增第三种 busy 形态。
 - 模态层统一用共享 `ui/Dialog`（含滚动锁/Esc/居中遮罩）；自绘弹层必须挂 `useModalScrollLock`。
 - 笔记字段里的用户可见文本一律经 `MdLite`/`InlineText` 渲染——模型会自由输出 `**加粗**`，纯文本插值会印出字面星号。
-- **排版（间距/行高/字距/断点/基元/主题色）的唯一事实源是 `docs/skills/ui-layout/SKILL.md`**（2026-09-18 排版整改八批沉淀）：刻度 token 只取那几档、同一角色只允许一处定义、宽度断点只有 1180/1024——都有钉住测试（`tests/style-scale.test.ts` 等）。改 renderer 样式前先读它。
+- **排版（间距/行高/字距/断点/基元/主题色）的唯一事实源是 `docs/skills/ui-layout/SKILL.md`**（2026-09-18 排版整改八批沉淀）：刻度 token 只取那几档、同一角色只允许一处定义、宽度断点只有 1180/1024（窄窗）与 1600（宽屏列表档，2026-09-20 批6 P24/D12 新增）——都有钉住测试（`tests/style-scale.test.ts` 等）。改 renderer 样式前先读它。
 
 ## 声明层纪律（2026-09-11 起，违反即「设计声明与实现漂移」复发）
 

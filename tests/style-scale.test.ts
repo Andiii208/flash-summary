@@ -182,6 +182,22 @@ function bodyOf(selector: string): string {
   return m![1].replace(/\s+/g, ' ')
 }
 
+/** 取某个 @media 块的声明体。媒体块里有嵌套规则，`[^}]*` 会在第一个 } 截断——按花括号配平扫。 */
+function mediaBlock(condition: string): string {
+  const start = stripped.indexOf(`@media ${condition}`)
+  expect(start, `style.css 必须有 @media ${condition}`).toBeGreaterThanOrEqual(0)
+  const bodyStart = stripped.indexOf('{', start) + 1
+  let depth = 0
+  for (let i = bodyStart - 1; i < stripped.length; i++) {
+    if (stripped[i] === '{') depth++
+    else if (stripped[i] === '}') {
+      depth--
+      if (depth === 0) return stripped.slice(bodyStart, i)
+    }
+  }
+  throw new Error(`@media ${condition} 未闭合`)
+}
+
 describe('窄窗断点与弹窗高度（批5）', () => {
   it('弹窗有高度钳制、且滚动区只有一个（.dialog-body）', () => {
     expect(bodyOf('.dialog')).toContain('max-height: 86vh')
@@ -194,9 +210,26 @@ describe('窄窗断点与弹窗高度（批5）', () => {
     }
   })
 
-  it('全站只有两个宽度断点：1180（装不下 860）与 1024（装不下 640）', () => {
-    const breakpoints = [...stripped.matchAll(/@media\s*\(max-width:\s*(\d+)px\)/g)].map((m) => m[1])
-    expect([...new Set(breakpoints)].sort()).toEqual(['1024', '1180'])
+  it('全站只有三个宽度断点：窄窗 1180/1024 与宽屏 1600（批6 P24/D12）', () => {
+    const narrow = [...stripped.matchAll(/@media\s*\(max-width:\s*(\d+)px\)/g)].map((m) => m[1])
+    expect([...new Set(narrow)].sort()).toEqual(['1024', '1180'])
+    const wide = [...stripped.matchAll(/@media\s*\(min-width:\s*(\d+)px\)/g)].map((m) => m[1])
+    expect([...new Set(wide)].sort(), '宽屏档只有 1600 一档（加档要过审）').toEqual(['1600'])
+  })
+
+  it('宽屏档只放宽列表列——阅读列（640/860）不进去', () => {
+    const body = mediaBlock('(min-width: 1600px)')
+    // 列表本身放开。
+    expect(body).toContain('.task-panel')
+    expect(body).toContain('.note-library')
+    expect(body).toContain('.qa-recent')
+    // 阅读列不得成为任何规则的主语（`.note-body {` / `.note-viewer,` 这种）。
+    // `.note-viewer` 只允许带「列表态」守卫出现（:not(:has(.note-body))）。
+    expect(/(^|[\s,])\.note-body\s*[,{]/.test(body), '.note-body 的 640 是阅读铁律，宽屏不放开').toBe(false)
+    expect(/(^|[\s,])\.note-viewer\s*[,{]/.test(body), '.note-viewer 阅读态仍 860').toBe(false)
+    expect(body, '列表态的容器应放开（否则列表本身放宽量不出效果）').toContain(
+      '.note-viewer:has(.note-library):not(:has(.note-body))'
+    )
   })
 })
 
