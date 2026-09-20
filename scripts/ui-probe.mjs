@@ -427,16 +427,35 @@ async function probeNoteSearch(cdp, out, keyword) {
   await cdp.shot(join(ROOT, '.ui-shots', 'note-search', 'filtered.png'))
 }
 
-/** 导图缩放几何。 */
+/**
+ * 导图缩放几何。批6 (6.0, plan 2026-09-20-ux-issues-remediation)：补三个此前取不到的字段——
+ *   - overX/overY：`.mindmap-scroll` 的溢出差（scrollWidth − clientWidth，算法同 MEASURE 的
+ *     OV，此前只服务 .note-toolbar/.note-actions/.note-body，从未量过画布）——「常驻幽灵横滚」
+ *     只有这个数说得清；
+ *   - wrapH：`.mindmap-wrap` 宿主高度——笔记宿主此前没有确定高度，容器被 SVG 内容撑起；
+ *   - drawnW/drawnH/fits 改按**新元素盒模型**（元素盒 = 视口窗口 × 缩放）重算：旧式
+ *     `w * scale` 假定「元素盒 = 布局原宽」，在 6.2 之后会重复计缩放、fits 语义漂移，
+ *     所以这里去掉乘法，直接取元素盒本身。
+ * 既有字段名（含易混的 scrollW——它量的是 clientWidth）一律不动，避免破坏既有记录格式。
+ */
 const MINDMAP_GEOMETRY = `(() => {
   const sc = document.querySelector('.mindmap-scroll')
   const svg = document.querySelector('.mindmap-scroll svg')
   if (sc == null || svg == null) return { found: false }
+  const wrap = document.querySelector('.mindmap-wrap')
   const w = Number(svg.getAttribute('width'))
   const h = Number(svg.getAttribute('height'))
   const vb = (svg.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number)
   const scale = w / vb[2]
-  return { found: true, scale, scrollW: sc.clientWidth, scrollH: sc.clientHeight, svgW: w, svgH: h, drawnW: Math.round(w * scale), drawnH: Math.round(h * scale), fits: w * scale <= sc.clientWidth + 1 && h * scale <= sc.clientHeight + 1 }
+  return {
+    found: true, scale,
+    scrollW: sc.clientWidth, scrollH: sc.clientHeight,
+    wrapH: wrap == null ? null : Math.round(wrap.getBoundingClientRect().height),
+    svgW: w, svgH: h,
+    drawnW: Math.round(w), drawnH: Math.round(h),
+    overX: sc.scrollWidth - sc.clientWidth, overY: sc.scrollHeight - sc.clientHeight,
+    fits: w <= sc.clientWidth + 1 && h <= sc.clientHeight + 1
+  }
 })()`
 
 /** 导图三态：首屏适应 / 放大后适应 / 窄窗适应（批3 T15）。 */
@@ -524,7 +543,7 @@ function summarize(out) {
   }
   for (const [key, label] of [['mindmap', '导图首屏'], ['mindmapZoomed', '放大后'], ['mindmapRefit', '适应后'], ['mindmapNarrow', '窄窗适应']]) {
     const m = out[key]
-    if (m?.found === true) lines.push(`${label} scale ${m.scale.toFixed(3)} · 画布 ${m.scrollW}×${m.scrollH} · 内容 ${m.svgW}×${m.svgH} → ${m.drawnW}×${m.drawnH} · 装得下 ${m.fits}`)
+    if (m?.found === true) lines.push(`${label} scale ${m.scale.toFixed(3)} · 画布 ${m.scrollW}×${m.scrollH} · 宿主高 ${m.wrapH} · 内容 ${m.svgW}×${m.svgH} → 元素盒 ${m.drawnW}×${m.drawnH} · 溢出 ${m.overX}/${m.overY} · 装得下 ${m.fits}`)
   }
   return lines
 }
