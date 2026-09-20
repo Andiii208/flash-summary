@@ -215,14 +215,25 @@ function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: num
   const [open, setOpen] = useState(defaultOpen ?? depth < 2)
   const hasChildren = node.children.length > 0
   return (
-    <div class="tree-row-wrap">
+    /* 批5 (P19, D10): 标准 ARIA 树——treeitem 落在「整棵子树」这一层，子行容器
+       是它的 role="group" 子元素（ARIA 要求 group 必须是 treeitem 的孩子，否则
+       层级在无障碍树里断掉）。aria-label 不是可选项：treeitem 里嵌着可聚焦的
+       toggle 按钮，而 Chrome 对含嵌入控件的 treeitem 不做名字计算——实测不带
+       aria-label 时分支行在无障碍树里无名（只剩「treeitem, 已展开, 层级 N」）。 */
+    <div
+      class="tree-row-wrap"
+      role="treeitem"
+      aria-label={node.title}
+      aria-level={depth + 1}
+      aria-expanded={hasChildren ? open : undefined}
+    >
       <div class={`tree-row depth-${depth}`} style={`margin-left:${depth * 16}px`}>
         {hasChildren ? (
+          /* 按钮保留自己的 aria-expanded：treeitem 不可聚焦（本批不做 roving
+             tabindex），Tab 落在按钮上时展开态仍要报得出来。 */
           <button class="tree-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
             <span class="tree-caret">{open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>
-            <span class="tree-title" role={depth === 0 ? 'treeitem' : undefined}>
-              {node.title}
-            </span>
+            <span class="tree-title">{node.title}</span>
             {!open && <span class="tree-count">{node.children.length}</span>}
           </button>
         ) : (
@@ -232,7 +243,11 @@ function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: num
           </span>
         )}
       </div>
-      {open && node.children.map((child, i) => <TreeNodeRows key={i} node={child} depth={depth + 1} defaultOpen={defaultOpen} />)}
+      {open && hasChildren && (
+        <div role="group">
+          {node.children.map((child, i) => <TreeNodeRows key={i} node={child} depth={depth + 1} defaultOpen={defaultOpen} />)}
+        </div>
+      )}
     </div>
   )
 }

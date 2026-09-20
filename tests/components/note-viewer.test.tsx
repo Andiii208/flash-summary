@@ -129,6 +129,36 @@ describe('NoteViewer', () => {
     expect(host.textContent).toContain('根')
   })
 
+  // 批5 (P19, D10): 树此前只有 depth 0 的标题带 role="treeitem"，子行无角色、
+  // 展开态挂在 toggle 按钮上——读屏拿到的是一堆无结构内容。
+  it('批5 (P19): 知识结构树是完整的 ARIA 树（treeitem/aria-level/group）', () => {
+    const deep: Note = {
+      ...NOTE,
+      knowledgeTree: { title: '根', children: [{ title: '分支A', children: [{ title: '子节A1', children: [{ title: '叶子A1a', children: [] }] }] }] }
+    }
+    const host = mount(<NoteViewer note={deep} />)
+    expect(host.querySelector('.tree-view')?.getAttribute('role')).toBe('tree')
+    const items = (): Element[] => Array.from(host.querySelectorAll('[role="treeitem"]'))
+    // 默认展开到 depth 2：根/分支A/子节A1 三行可见（叶子收在折叠的子节A1 里）。
+    expect(items().map((el) => el.getAttribute('aria-label'))).toEqual(['根', '分支A', '子节A1'])
+    expect(items().map((el) => el.getAttribute('aria-level'))).toEqual(['1', '2', '3'])
+    // 展开态在 treeitem 上（toggle 按钮自己也留着——它才是可聚焦的那个）。
+    expect(items().map((el) => el.getAttribute('aria-expanded'))).toEqual(['true', 'true', 'false'])
+    // 子行容器是父 treeitem 的 group 孩子：层级在无障碍树里不断（Chrome 实测口径）。
+    const chapter = items().find((el) => el.getAttribute('aria-label') === '分支A')
+    const group = chapter?.querySelector(':scope > [role="group"]')
+    expect(group).not.toBeNull()
+    expect(Array.from(group!.children).map((child) => child.getAttribute('role'))).toEqual(['treeitem'])
+    // 折叠的分支行不渲染子行容器。
+    expect(items().find((el) => el.getAttribute('aria-label') === '子节A1')?.querySelector(':scope > [role="group"]')).toBeNull()
+    // 展开后：第 4 个 treeitem 出现（叶子），展开态跟着变；叶子没有展开态可报。
+    click(items()[2]!.querySelector('.tree-toggle') as HTMLButtonElement)
+    expect(items().map((el) => el.getAttribute('aria-label'))).toEqual(['根', '分支A', '子节A1', '叶子A1a'])
+    expect(items().map((el) => el.getAttribute('aria-level'))).toEqual(['1', '2', '3', '4'])
+    expect(items()[2]!.getAttribute('aria-expanded')).toBe('true')
+    expect(items()[3]!.getAttribute('aria-expanded')).toBeNull()
+  })
+
   it('binds the nearest keyframe onto a timeline card without evidence refs', () => {
     const host = mount(<NoteViewer note={NOTE} attachmentManifest={[ATTACHMENT]} getAttachment={(ref) => (ref === ATTACHMENT.ref ? ATTACHMENT : null)} />)
     const card = host.querySelectorAll('.timeline-card')[1]!
