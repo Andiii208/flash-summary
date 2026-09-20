@@ -525,26 +525,67 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const harvest = await ctx.harvestCoursePage({ courseId: cid, teclId: course.tecl_id, teclCode: course.tecl_code })
       const now = new Date().toISOString()
       const keepIds = harvest.lessons.map((entry) => `${cid}-L${entry.index}`)
-      ctx.db.transaction(() => {
+      // 批1 (plan 2026-09-20, D1 推荐侧): a lesson that has already produced
+      // anything — notes, transcripts, keyframes, PPT pages, tasks or Q&A —
+      // is never deleted by a harvest and never gets its title/play_ref
+      // overwritten. The platform list shifts as lessons are added, so a
+      // shorter harvest is NOT evidence the lesson is gone; the same rule
+      // removeCourse already follows («该课程已有笔记，为保护数据不允许删除»).
+      const driftLog: string[] = []
+      const harvestCounts = ctx.db.transaction(() => {
+        const protectedRows = ctx.db
+          .prepare(
+            `SELECT l.id AS id, l.title AS title, l.play_ref AS play_ref FROM lessons l
+             WHERE l.course_id = ?
+               AND (EXISTS(SELECT 1 FROM notes n WHERE n.lesson_id = l.id)
+                 OR EXISTS(SELECT 1 FROM transcripts t WHERE t.lesson_id = l.id)
+                 OR EXISTS(SELECT 1 FROM keyframes k WHERE k.lesson_id = l.id)
+                 OR EXISTS(SELECT 1 FROM ppt_pages p WHERE p.lesson_id = l.id)
+                 OR EXISTS(SELECT 1 FROM tasks tk WHERE tk.lesson_id = l.id)
+                 OR EXISTS(SELECT 1 FROM qa q WHERE q.lesson_id = l.id))`
+          )
+          .all(cid) as Array<{ id: string; title: string; play_ref: string | null }>
+        const protectedById = new Map(protectedRows.map((row) => [row.id, row]))
         const upsert = ctx.db.prepare(
           `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET title = excluded.title, play_ref = excluded.play_ref, fetched_at = excluded.fetched_at`
         )
+        // 漂移冻结：受保护行的名字不被平台的新列表改写，否则笔记还挂在
+        // 行上、行名已经变成另一节课（用户对着旧标题找不到自己的笔记）。
+        const insertFrozen = ctx.db.prepare(
+          `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO NOTHING`
+        )
         for (const entry of harvest.lessons) {
-          upsert.run(`${cid}-L${entry.index}`, cid, entry.title, entry.ref, now)
+          const id = `${cid}-L${entry.index}`
+          const existing = protectedById.get(id)
+          if (existing == null) {
+            upsert.run(id, cid, entry.title, entry.ref, now)
+            continue
+          }
+          if (existing.title !== entry.title || existing.play_ref !== entry.ref) {
+            driftLog.push(`${id} «${existing.title}»(${existing.play_ref ?? '-'}) → «${entry.title}»(${entry.ref})`)
+          }
+          insertFrozen.run(id, cid, entry.title, entry.ref, now)
         }
         // The platform list shifts as lessons are added: drop previously
         // harvested rows that this harvest no longer covers (an empty
-        // harvest keeps everything — likely a page-change anomaly).
-        if (keepIds.length > 0) {
-          ctx.db
-            .prepare(
-              `DELETE FROM lessons WHERE course_id = ? AND id LIKE ? AND id NOT IN (${keepIds.map(() => '?').join(',')})`
-            )
-            .run(cid, `${cid}-L%`, ...keepIds)
-        }
+        // harvest keeps everything — likely a page-change anomaly). Rows with
+        // produced artifacts are excluded from the delete on top of that.
+        if (keepIds.length === 0) return { dropped: 0, keptProtected: protectedRows.length }
+        const protectedClause =
+          protectedRows.length > 0 ? ` AND id NOT IN (${protectedRows.map(() => '?').join(',')})` : ''
+        const deleted = ctx.db
+          .prepare(
+            `DELETE FROM lessons WHERE course_id = ? AND id LIKE ? AND id NOT IN (${keepIds.map(() => '?').join(',')})${protectedClause}`
+          )
+          .run(cid, `${cid}-L%`, ...keepIds, ...protectedRows.map((row) => row.id))
+        return { dropped: deleted.changes, keptProtected: protectedRows.length }
       })()
-      ctx.logger.info(`harvestLessons: course=${cid} entries=${harvest.lessons.length}`)
+      for (const drift of driftLog) ctx.logger.info(`harvestLessons drift (kept): ${drift}`)
+      ctx.logger.info(
+        `harvestLessons: course=${cid} entries=${harvest.lessons.length} dropped=${harvestCounts.dropped} keptProtected=${harvestCounts.keptProtected}`
+      )
       if (ownsHarvest) ctx.harvestRuntime.finish(cid, { ok: true, lessons: harvest.lessons.length })
       return ok({ lessons: harvest.lessons.length })
     } catch (e) {

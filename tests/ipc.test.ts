@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, mkdirSync, writeFileSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
@@ -354,6 +354,131 @@ describe('ipc handlers over a real context', () => {
       { id: 'c1-L1', title: '第2节课', play_ref: '1' },
       { id: 'c1-L2', title: '第3节课', play_ref: '2' }
     ])
+  })
+
+  // 批1 (plan 2026-09-20, P20/D1 推荐侧): a harvest must never destroy work.
+  // The six dependency tables mirror 001_initial.ts's ON DELETE CASCADE list —
+  // if any of them has a row, the lesson is frozen against the harvest's DELETE.
+  const DEPENDENCY_ROWS: Array<{ lessonId: string; label: string; sql: string }> = [
+    {
+      lessonId: 'c1-L3',
+      label: 'notes',
+      sql: "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n3', 'c1-L3', 1, '{}', 'p', 'm', '2026-08-30T00:00:00Z')"
+    },
+    {
+      lessonId: 'c1-L4',
+      label: 'transcripts',
+      sql: "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('c1-L4', '[]', 'p', 'm', '2026-08-30T00:00:00Z')"
+    },
+    {
+      lessonId: 'c1-L5',
+      label: 'keyframes',
+      sql: "INSERT INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES ('k5', 'c1-L5', 0, 'x.jpg', 'h', '2026-08-30T00:00:00Z')"
+    },
+    {
+      lessonId: 'c1-L6',
+      label: 'ppt_pages',
+      sql: "INSERT INTO ppt_pages (id, lesson_id, page_index, file_path, created_at) VALUES ('p6', 'c1-L6', 0, 'x.png', '2026-08-30T00:00:00Z')"
+    },
+    {
+      lessonId: 'c1-L7',
+      label: 'tasks',
+      sql: "INSERT INTO tasks (id, lesson_id, state, created_at, updated_at) VALUES ('t7', 'c1-L7', 'succeeded', '2026-08-30T00:00:00Z', '2026-08-30T00:00:00Z')"
+    },
+    {
+      lessonId: 'c1-L8',
+      label: 'qa',
+      sql: "INSERT INTO qa (id, lesson_id, question, answer, created_at) VALUES ('q8', 'c1-L8', '问', '答', '2026-08-30T00:00:00Z')"
+    }
+  ]
+
+  function seedHarvestCourse(): AppContext {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, tecl_id, tecl_code, fetched_at) VALUES ('c1', '课程', '154717', 'TC1', '2026-08-30T00:00:00Z')").run()
+    return ctx
+  }
+
+  function lessonIds(): string[] {
+    return (db.prepare("SELECT id FROM lessons WHERE course_id = 'c1' ORDER BY id").all() as Array<{ id: string }>).map((r) => r.id)
+  }
+
+  function logText(): string {
+    const logsDir = join(dir, 'userdata', 'logs')
+    return readdirSync(logsDir)
+      .map((f) => readFileSync(join(logsDir, f), 'utf8'))
+      .join('\n')
+  }
+
+  it('批1 (P20): 六类产物任一存在即受保护——重收割不再删掉这些课时', async () => {
+    const ctx = seedHarvestCourse()
+    for (const dep of DEPENDENCY_ROWS) {
+      db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, 'c1', ?, ?, '2026-08-30T00:00:00Z')").run(
+        dep.lessonId,
+        `旧 ${dep.label}`,
+        dep.lessonId.slice(-1)
+      )
+      db.prepare(dep.sql).run()
+    }
+    // 无任何依赖行的旧课时——它才是本次收割该清理的对象。
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L9', 'c1', '第10节课', '9', '2026-08-30T00:00:00Z')").run()
+
+    ctx.harvestCoursePage = async () => ({ lessons: [{ index: 0, title: '第1节课', ref: '0' }] })
+    const res = (await ipc.invoke('school:harvestLessons', 'c1')) as { ok: boolean }
+    expect(res.ok).toBe(true)
+
+    // 六个带产物的旧课时全部留下，只有真空行 c1-L9 被清理。
+    expect(lessonIds()).toEqual(['c1-L0', 'c1-L3', 'c1-L4', 'c1-L5', 'c1-L6', 'c1-L7', 'c1-L8'])
+    // 级联没被触发：笔记仍在它自己的行上。
+    expect((db.prepare("SELECT COUNT(*) AS n FROM notes WHERE lesson_id = 'c1-L3'").get() as { n: number }).n).toBe(1)
+    // 日志给出三个数：本次真删了几行、几行因有产物被保住。
+    const logs = logText()
+    expect(logs).toContain('harvestLessons: course=c1 entries=1 dropped=1 keptProtected=6')
+  })
+
+  it('批1 (P20): 漂移冻结——有产出的课时 title/play_ref 不被改写，无产物行照常更新', async () => {
+    const ctx = seedHarvestCourse()
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L3', 'c1', '第4节课', '3', '2026-08-30T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n3', 'c1-L3', 1, '{}', 'p', 'm', '2026-08-30T00:00:00Z')"
+    ).run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L4', 'c1', '第5节课', '4', '2026-08-30T00:00:00Z')").run()
+
+    // 平台把序号挪了一格：本次收割说 L3 是「第5节课」、L4 是「第6节课」。
+    ctx.harvestCoursePage = async () => ({
+      lessons: [
+        { index: 3, title: '第5节课', ref: '4' },
+        { index: 4, title: '第6节课', ref: '5' }
+      ]
+    })
+    const res = (await ipc.invoke('school:harvestLessons', 'c1')) as { ok: boolean }
+    expect(res.ok).toBe(true)
+
+    const rows = db.prepare("SELECT id, title, play_ref FROM lessons WHERE course_id = 'c1' ORDER BY id").all() as Array<{
+      id: string
+      title: string
+      play_ref: string | null
+    }>
+    // 带笔记的行冻结在原名上（笔记还挂着，行名不能变成另一节课）；
+    // 空行照常跟随平台更新。
+    expect(rows).toEqual([
+      { id: 'c1-L3', title: '第4节课', play_ref: '3' },
+      { id: 'c1-L4', title: '第6节课', play_ref: '5' }
+    ])
+    // 漂移不是静默的——日志留一条，且这条记录挂在受保护的行上。
+    expect(logText()).toContain('harvestLessons drift (kept): c1-L3')
+  })
+
+  it('批1 (P20): 空收割仍不删任何行（现状钉住）', async () => {
+    const ctx = seedHarvestCourse()
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L9', 'c1', '第10节课', '9', '2026-08-30T00:00:00Z')").run()
+
+    ctx.harvestCoursePage = async () => ({ lessons: [] })
+    const res = (await ipc.invoke('school:harvestLessons', 'c1')) as { ok: boolean; value?: { lessons: number } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.lessons).toBe(0)
+    expect(lessonIds()).toEqual(['c1-L9'])
+    expect(logText()).toContain('harvestLessons: course=c1 entries=0 dropped=0 keptProtected=0')
   })
 
   it('school:removeCourse deletes empty courses but protects processed ones (批4 C6)', async () => {
