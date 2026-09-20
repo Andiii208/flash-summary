@@ -262,6 +262,12 @@ export interface NotesBridge {
   attachmentData(lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>>
   /** 批 A2 (2026-09-19): 课时封面（B 站导入落盘）；无封面返回 ok(null)。 */
   cover(lessonId: string): Promise<ApiResult<string | null>>
+  /**
+   * 批3 (plan 2026-09-20, P1/D8): 从 B 站重新取一次封面并落盘（导入时只抓一次，
+   * 失败即静默放弃；012 之前导入的课时根本没有封面）。只有 B 站源的课时能补取，
+   * SEU 源如实返回 err；失败路径不动库里既有的 cover_path。
+   */
+  backfillCover(lessonId: string): Promise<ApiResult<{ coverPath: string }>>
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */
   regenerate(
     lessonId: string

@@ -24,7 +24,7 @@ import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachmentManifest, readAttachmentData, readLessonCover } from './notes/attachments'
 import { saveLessonCover } from './notes/cover'
-import { buildBilibiliSourceUrl } from './bilibili/source-url'
+import { buildBilibiliSourceUrl, isValidBilibiliBvid } from './bilibili/source-url'
 import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor, loadValidRefs, loadCleanSegments, repairStoredNote } from './notes/summarize'
 import { polishNote } from './notes/polish'
 import { FEEDBACK_TAGS } from '../shared/feedback-tags'
@@ -439,17 +439,24 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       // 批 A2 (plan 2026-09-19): 封面落库。B 站导入时封面 pic 早已解析，此前只活到
       // 导入对话框的预览缩略图——落成 attachments/<lessonId>/cover.jpg，笔记首屏复用。
       // best-effort：封面获取/落盘失败绝不能弄坏导入（SEU 源与失败态都是合法无封面）。
+      // 批3 (plan 2026-09-20, P1): 导入日志如实记封面成败——此前这条日志只有
+      // pages=N，封面抓失败时界面与日志都不提一个字（用户分不清「平台没给」与「抓失败」）。
+      let coverOutcome: 'ok' | 'fetched-failed' | 'skipped' = view.coverUrl === '' ? 'skipped' : 'fetched-failed'
       if (view.coverUrl !== '') {
         const coverDataUrl = await ctx.bilibili.fetchImageAsDataUrl(view.coverUrl).catch(() => null)
         if (coverDataUrl != null) {
           const setCover = ctx.db.prepare('UPDATE lessons SET cover_path = ? WHERE id = ?')
+          let stored = 0
           for (const lessonId of lessonIds) {
             const coverPath = saveLessonCover(ctx.libraryRoot, lessonId, coverDataUrl)
-            if (coverPath != null) setCover.run(coverPath, lessonId)
+            if (coverPath == null) continue
+            setCover.run(coverPath, lessonId)
+            stored += 1
           }
+          if (stored === lessonIds.length) coverOutcome = 'ok'
         }
       }
-      ctx.logger.info(`bilibili import: ${courseId} pages=${lessonIds.length}`)
+      ctx.logger.info(`bilibili import: ${courseId} pages=${lessonIds.length} cover=${coverOutcome}`)
       return ok({ courseId, lessonIds })
     } catch (e) {
       return err(e)
@@ -1670,6 +1677,36 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     try {
       const id = assertSafeId(lessonId, 'lessonId')
       return ok(readLessonCover(ctx.db, id, ctx.libraryRoot))
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 批3 (plan 2026-09-20, P1/D8): 封面回填。导入时封面只抓一次（失败即静默放弃），
+  // migration 012 之前导入的 B 站课时更是永远没有封面——这里从库内的 bvid 重走
+  // viewInfo → pic → data URL → 落盘 → 写回 cover_path。零新依赖（复用现有 B 站
+  // 客户端与 saveLessonCover）。红线同 lessons:openSource：只接受 lessonId，
+  // 请求用的 BV 号从库里取并再过一次形态校验（库内值被改坏也不外发）。
+  handle(ipc, 'notes:backfillCover', async (_e, lessonId: unknown) => {
+    try {
+      const id = assertSafeId(lessonId, 'lessonId')
+      const row = ctx.db
+        .prepare('SELECT l.source AS source, l.bili_page AS page, c.bili_bvid AS bvid FROM lessons l LEFT JOIN courses c ON c.id = l.course_id WHERE l.id = ?')
+        .get(id) as { source: string; page: number | null; bvid: string | null } | undefined
+      if (row == null) return err(new Error('课时不存在'))
+      if (row.source !== 'bilibili' || row.bvid == null || !isValidBilibiliBvid(row.bvid)) {
+        return err(new Error('只有 B 站导入的课时能补取封面'))
+      }
+      const view = await ctx.bilibili.viewInfo(row.bvid)
+      if (view.coverUrl === '') return err(new Error('该视频没有可用封面'))
+      const coverDataUrl = await ctx.bilibili.fetchImageAsDataUrl(view.coverUrl)
+      if (coverDataUrl == null) return err(new Error('封面下载失败，请稍后重试'))
+      const coverPath = saveLessonCover(ctx.libraryRoot, id, coverDataUrl)
+      if (coverPath == null) return err(new Error('封面落盘失败，请检查资料库目录是否可写'))
+      // 只在真的拿到新封面之后才动库里的列——失败路径不碰既有 cover_path。
+      ctx.db.prepare('UPDATE lessons SET cover_path = ? WHERE id = ?').run(coverPath, id)
+      ctx.logger.info(`lesson cover backfilled: lesson=${id} bvid=${row.bvid}`)
+      return ok({ coverPath })
     } catch (e) {
       return err(e)
     }

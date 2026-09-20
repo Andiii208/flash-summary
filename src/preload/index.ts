@@ -88,7 +88,7 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('notes:exportMarkdown', lessonId),
     exportObsidian: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; version?: number }>> =>
       ipcRenderer.invoke('notes:exportObsidian', lessonId),
-    exportCourseObsidian: (courseId: string): Promise<ApiResult<{ canceled: boolean; exported?: number; skipped?: number }>> =>
+    exportCourseObsidian: (courseId: string): Promise<ApiResult<{ canceled: boolean; exported?: number; skipped?: number; failures?: Array<{ lessonId: string; reason: string }> }>> =>
       ipcRenderer.invoke('notes:exportCourseObsidian', courseId),
     exportAnki: (lessonId: string): Promise<ApiResult<{ canceled: boolean; paths: string[] }>> =>
       ipcRenderer.invoke('notes:exportAnki', lessonId),
@@ -103,6 +103,8 @@ const api: SeuSummaryBridge = {
     attachmentData: (lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>> =>
       ipcRenderer.invoke('notes:attachmentData', lessonId, ref),
     cover: (lessonId: string): Promise<ApiResult<string | null>> => ipcRenderer.invoke('notes:cover', lessonId),
+    // 批3 (plan 2026-09-20, P1): B 站封面回填（导入时抓失败/012 之前导入的课时）。
+    backfillCover: (lessonId: string): Promise<ApiResult<{ coverPath: string }>> => ipcRenderer.invoke('notes:backfillCover', lessonId),
     regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>> =>
       ipcRenderer.invoke('notes:regenerate', lessonId),
     polish: (lessonId: string, feedback: { tags: string[]; text: string }): Promise<ApiResult<{ version: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>> =>

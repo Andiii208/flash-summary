@@ -139,6 +139,10 @@ export function makeBridge(): SeuSummaryBridge {
       courseTree: vi.fn(async () => ok({ tree: { title: 't', children: [] }, lessons: 0, skipped: 0 })),
       attachments: vi.fn(async () => ok([])),
       attachmentData: vi.fn(async () => ok(null)),
+      // 批 A2/批3 (plan 2026-09-20, P1): 封面与封面回填——默认无封面 + 回填成功，
+      // 测试按需覆写（渲染层两条路径都会打到这两个桩）。
+      cover: vi.fn(async () => ok(null)),
+      backfillCover: vi.fn(async () => ok({ coverPath: 'attachments/l1/cover.jpg' })),
       regenerate: vi.fn(async () => ok({ version: 1, images: 0, hitRate: { hits: 0, total: 0 } })),
       polish: vi.fn(async () => ok({ version: 2, hitRate: { hits: 0, total: 0 } })),
       // 批2 (plan 2026-09-20, P2): 定向补全——默认「没改善」，测试按需覆写。

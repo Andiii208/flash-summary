@@ -593,6 +593,53 @@ describe('NoteViewer 封面 banner（批 A2, plan 2026-09-19）', () => {
     const host = mount(<NoteViewer note={NOTE} lesson={lesson} />)
     expect(host.querySelector('.note-cover')).toBeNull()
   })
+
+  // 批3 (plan 2026-09-20, P1/D8): 封面回填入口——只在「B 站源 + 没有落库封面」时出现，
+  // SEU 源不给会失败的按钮（平台本来就没有封面）。
+  it('B 站源且无封面 → 出现「重新获取封面」，点击触发回填', () => {
+    const onBackfillCover = vi.fn()
+    const host = mount(
+      <NoteViewer note={NOTE} lesson={lesson} courseSource="bilibili" onBackfillCover={onBackfillCover} />
+    )
+    const button = host.querySelector<HTMLButtonElement>('.note-cover-backfill')
+    expect(button?.textContent).toBe('重新获取封面')
+    expect(button?.disabled).toBe(false)
+    click(button)
+    expect(onBackfillCover).toHaveBeenCalledTimes(1)
+  })
+
+  it('SEU 源不给这个入口；已有封面时也不给（没什么可补的）', () => {
+    const seu = mount(<NoteViewer note={NOTE} lesson={lesson} courseSource="seu" onBackfillCover={() => undefined} />)
+    expect(seu.querySelector('.note-cover-backfill')).toBeNull()
+    const covered = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        courseSource="bilibili"
+        coverDataUrl="data:image/jpeg;base64,Y292ZXI="
+        onBackfillCover={() => undefined}
+      />
+    )
+    expect(covered.querySelector('.note-cover-backfill')).toBeNull()
+  })
+
+  it('回填在途：按钮读「获取中…」并禁用（busy 三件套）', () => {
+    const onBackfillCover = vi.fn()
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        courseSource="bilibili"
+        coverBackfillBusy
+        onBackfillCover={onBackfillCover}
+      />
+    )
+    const button = host.querySelector<HTMLButtonElement>('.note-cover-backfill')
+    expect(button?.textContent).toBe('获取中…')
+    expect(button?.disabled).toBe(true)
+    click(button)
+    expect(onBackfillCover).not.toHaveBeenCalled()
+  })
 })
 
 describe('NoteViewer 时间线章节分组（B1, plan 2026-09-19）', () => {

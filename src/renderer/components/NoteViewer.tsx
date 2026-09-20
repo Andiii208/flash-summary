@@ -63,6 +63,13 @@ export interface NoteViewerProps {
   onNavigateLesson?: (lessonId: string) => void
   /** 批 A2 (plan 2026-09-19): 课时封面 data URL；null 时用第一张关键帧兜底。 */
   coverDataUrl?: string | null
+  /** 批3 (plan 2026-09-20, P1): 当前课程来源——只有 B 站源给「重新获取封面」入口
+   *  （SEU 源平台没有封面，不给会失败的按钮）。课程级来源是课时来源的可靠代理。 */
+  courseSource?: 'seu' | 'bilibili'
+  /** 批3: 封面回填在途态（按钮读「获取中…」并禁用）。 */
+  coverBackfillBusy?: boolean
+  /** 批3: 从 B 站重新取一次封面（无封面且有入口时才渲染）。 */
+  onBackfillCover?: () => void
   /** 批2 (plan 2026-09-20, P7): main 侧算好的转写摘引命中率（渲染层没有转写）。
    *  喂给下面那个 noteHealth —— 徽标与升级列表因此同一口径。 */
   noteTranscriptHitRate?: { hits: number; total: number } | null
@@ -137,6 +144,9 @@ export function NoteViewer({
   onNavigateLesson,
     onOpenSource,
     coverDataUrl = null,
+  courseSource = 'seu',
+  coverBackfillBusy = false,
+  onBackfillCover,
   noteTranscriptHitRate = null,
   regenBusy = false,
   onRegenerate,
@@ -426,6 +436,18 @@ function noteReadMinutes(note: Note): number {
       {note != null && lesson != null && (
         <header class="note-masthead">
           {coverSrc != null && <img class="note-cover" src={coverSrc} alt="" loading="lazy" />}
+          {/* 批3 (plan 2026-09-20, P1/D8): 没有落库封面且是 B 站源时才给这个入口——
+              导入时只抓一次，失败即静默放弃；012 之前导入的课时根本没有封面。 */}
+          {coverDataUrl == null && courseSource === 'bilibili' && onBackfillCover != null && (
+            <button
+              class="btn small ghost note-cover-backfill"
+              title="从 B 站重新取一次封面（此前抓取失败或导入时还没有这个能力）"
+              disabled={coverBackfillBusy}
+              onClick={onBackfillCover}
+            >
+              {coverBackfillBusy ? '获取中…' : '重新获取封面'}
+            </button>
+          )}
           <h2 class={`note-title${lesson.courseName.length > 28 ? ' note-title-long' : ''}`} title={lesson.courseName}>
             {lesson.courseName}
           </h2>

@@ -15,6 +15,14 @@ const BILIBILI_VIDEO_BASE = 'https://www.bilibili.com/video/'
 /** 与 bilibili/url-parse.ts 同一把尺子（BV 号形态）。 */
 const BV_PATTERN = /^BV[0-9A-Za-z]{10}$/
 
+/**
+ * 库内 BV 号形态校验（唯一一把尺子）：拼外链与向 B 站请求都要先过它。
+ * 批3 (P1): 封面回填从库内取 bvid 再发请求——库内值被改坏时拒绝，不外发。
+ */
+export function isValidBilibiliBvid(bvid: unknown): bvid is string {
+  return typeof bvid === 'string' && BV_PATTERN.test(bvid)
+}
+
 /** 秒数净化：非有限值/负数 → 0；小数向下取整。渲染层传的是帧/条目 at，不该有怪值，但不信。 */
 export function sanitizeJumpSeconds(at: unknown): number {
   if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return 0
@@ -26,7 +34,7 @@ export function sanitizeJumpSeconds(at: unknown): number {
  * `page` 是多 P 视频的分 P 序号（1-based，lessons.bili_page）——>1 时才带 `p=` 参数。
  */
 export function buildBilibiliSourceUrl(bvid: string, at: unknown, page?: number | null): string | null {
-  if (typeof bvid !== 'string' || !BV_PATTERN.test(bvid)) return null
+  if (!isValidBilibiliBvid(bvid)) return null
   const seconds = sanitizeJumpSeconds(at)
   const params = [`t=${seconds}`]
   if (typeof page === 'number' && Number.isInteger(page) && page > 1) params.push(`p=${page}`)

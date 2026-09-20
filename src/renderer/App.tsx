@@ -586,6 +586,9 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               getAttachment={state.getAttachment}
               attachmentVersion={state.attachmentVersion}
               coverDataUrl={state.coverDataUrl}
+              courseSource={state.currentCourseSource}
+              coverBackfillBusy={state.coverBackfillBusy}
+              onBackfillCover={state.currentLesson !== '' ? () => state.backfillNoteCover(state.currentLesson) : undefined}
               noteTranscriptHitRate={state.noteTranscriptHitRate}
               lesson={state.lessonContextOrIndex}
               lessonOptions={state.currentCourseLessons}

@@ -4,6 +4,7 @@ import { render } from 'preact'
 import { mount, click, input } from '../helpers/preact'
 import type { CourseTreeInfo, SeuSummaryBridge } from '../../src/shared/bridge'
 import type { ApiResult } from '../../src/shared/api-result'
+import type { Note } from '../../src/shared/notes/schema'
 import { makeBridge, ok, fakeState, NOTE_ROWS, TASK_ROWS, setListTotals } from '../helpers/fake-app-bridge'
 
 /**
@@ -32,6 +33,24 @@ async function waitForGone(selector: string): Promise<void> {
     },
     { timeout: 3000, interval: 25 }
   )
+}
+
+/** 批3 (P1): 一个能过渲染层的最小笔记（封面回填用例只需 masthead 出现）。 */
+const COVER_NOTE: Note = {
+  chapters: [],
+  quotes: [],
+  overview: '本讲介绍复杂度分析。',
+  knowledgeTree: { title: '复杂度', children: [{ title: 'O(n)', children: [] }] },
+  timeline: [{ at: 65, title: '引入', detail: '开始讲解', refs: [], evidence: [] }],
+  concepts: [{ term: '大O', definition: '渐进上界', refs: [] }],
+  formulasAndSteps: [],
+  methodology: '先定义后举例。',
+  examCues: ['必考：复杂度计算'],
+  questionsAndGaps: ['如何分析递归复杂度？'],
+  quiz: [],
+  conceptLinks: [],
+  transcriptRefs: [],
+  evidence: []
 }
 
 /** M2 批 A: 全部课程默认折叠——先展开组，课程行才存在于 DOM。 */
@@ -799,6 +818,60 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // 等这条 info toast 自动过期（3.5s）再结束用例——测试环境不 unmount 组件
     // （tests/helpers/preact.ts 只清 body），留着的自动消失定时器会在环境拆除
     // 之后触发一次渲染，preact 的 rAF 那时已不存在（vitest 报 unhandled rejection）。
+    await vi.waitFor(
+      () => {
+        expect(host.querySelector('.toast')).toBeNull()
+      },
+      { timeout: 6000, interval: 100 }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  })
+
+  it('批3 (P1): B 站课时「重新获取封面」——在途禁用、连点只发一次、成功后刷新封面', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '数据结构', teacher: '汪海', lessonTitle: '第1讲' }
+    )
+    const bridge = makeBridge()
+    // 课程树要在 makeBridge 之后注入（makeBridge 会 resetFakeState）——来源 bilibili
+    // 才给「重新获取封面」入口。
+    fakeState.courses = [{ id: 'c1', name: '数据结构', source: 'bilibili', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] }]
+    ;(bridge.notes as unknown as { latest: unknown }).latest = vi.fn(async () => ok({ note: COVER_NOTE, transcriptHitRate: null }))
+    // 第一次取封面（loadNote 那条路径）无封面，回填之后能读到新图。
+    let coverReads = 0
+    ;(bridge.notes as unknown as { cover: unknown }).cover = vi.fn(async () => {
+      coverReads += 1
+      return ok(coverReads > 1 ? 'data:image/jpeg;base64,Y292ZXI=' : null)
+    })
+    // 回填请求挂着不返回——量「在途」这一窗口里的按钮与守卫。
+    const gate: { settle?: () => void } = {}
+    const backfill = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          gate.settle = () => resolve(ok({ coverPath: 'attachments/l1/cover.jpg' }))
+        })
+    )
+    ;(bridge.notes as unknown as { backfillCover: unknown }).backfillCover = backfill
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-masthead')
+    const button = (): HTMLButtonElement | null => host.querySelector<HTMLButtonElement>('.note-cover-backfill')
+    expect(button()?.textContent).toBe('重新获取封面')
+    expect(button()?.disabled).toBe(false)
+    // 连点两次（同一 tick）——第二次落在按钮被禁用之前，靠 hook 侧 in-flight 守卫拦下。
+    click(button())
+    click(button())
+    await vi.waitFor(() => expect(backfill).toHaveBeenCalledTimes(1))
+    expect(button()?.textContent).toBe('获取中…')
+    expect(button()?.disabled).toBe(true)
+    gate.settle?.()
+    // 成功后刷新封面（走与 loadNote 同一条 refreshCover 路径），入口随之消失。
+    await vi.waitFor(() => {
+      expect(host.querySelector('.note-cover')?.getAttribute('src')).toBe('data:image/jpeg;base64,Y292ZXI=')
+    })
+    expect(button()).toBeNull()
+    await vi.waitFor(() => expect(host.querySelector('.toast')?.textContent).toContain('已重新获取封面'))
+    // 等 toast 自动过期再结束（同上面的收尾理由）。
     await vi.waitFor(
       () => {
         expect(host.querySelector('.toast')).toBeNull()

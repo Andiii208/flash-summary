@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { saveLessonCover, COVER_FILE_NAME } from '../src/main/notes/cover'
@@ -47,5 +47,17 @@ describe('saveLessonCover（批 A2, plan 2026-09-19）', () => {
     expect(saveLessonCover(dir, 'l1', 'data:image/png;base64,')).toBeNull()
     const huge = 'data:image/png;base64,' + 'A'.repeat(3 * 1024 * 1024)
     expect(saveLessonCover(dir, 'l1', huge)).toBeNull()
+  })
+
+  // 批3 (plan 2026-09-20, P1): 回填会再落一次盘——旧图必须被新图替换（不是两份文件、
+  // 也不是留着旧字节），且 cover_path 保持同一个库内相对路径。
+  it('回填覆盖旧封面：同一路径、字节换成新图', () => {
+    const oldPath = saveLessonCover(dir, 'l1', PNG_DATA_URL)
+    const jpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ=='
+    const newPath = saveLessonCover(dir, 'l1', jpeg)
+    expect(newPath).toBe(oldPath)
+    const absolute = resolveLibraryPath(dir, newPath as string)
+    expect(readFileSync(absolute).toString('base64')).toBe('/9j/4AAQSkZJRgABAQAAAQ==')
+    expect(readdirSync(join(attachmentsPath(dir), 'l1'))).toEqual([COVER_FILE_NAME])
   })
 })

@@ -88,6 +88,10 @@ export interface NotesDomain {
     attachmentVersion: number
     /** 批 A2: 课时封面 data URL（无封面 null，NoteViewer 用首帧兜底）。 */
     coverDataUrl: string | null
+    /** 批3 (plan 2026-09-20, P1): 封面回填在途态（busy 三件套 + ref in-flight 守卫）。 */
+    coverBackfillBusy: boolean
+    /** 批3: 从 B 站重新取一次封面（仅 B 站源课时有入口）。 */
+    backfillNoteCover: (lessonId: string) => void
     noteRegenBusy: boolean
     regenerateNote: (lessonId: string) => void
     /** 批2 (plan 2026-09-20, P2): 定向补全在途态（只按体检问题修，不发图）。 */
@@ -144,6 +148,9 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   const [attachmentVersion, setAttachmentVersion] = useState(0)
   /** 批 A2 (plan 2026-09-19): 课时封面 data URL（B 站导入落盘；无封面为 null）。 */
   const [coverDataUrl, setCoverDataUrl] = useState<string | null>(null)
+  /** 批3 (plan 2026-09-20, P1): 封面回填在途态 + 同 tick 连点守卫（一次点击一个请求）。 */
+  const [coverBackfillBusy, setCoverBackfillBusy] = useState(false)
+  const coverBackfillBusyRef = useRef(false)
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
   // 质量批4 (plan 2026-09-08 note-quality-overhaul): 存量升级——对话框与逐课状态。
   const [noteUpgrade, setNoteUpgrade] = useState<{ open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }>({
@@ -174,6 +181,20 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   /** M4.1: open course-level mind map (null = closed). */
   const [courseMap, setCourseMap] = useState<CourseMapInfo | null>(null)
 
+  /** 批 A2/批3: 取当前课时封面（best-effort——拿不到就 null，首屏退回关键帧兜底）。
+   *  批3 (P1): 抽出来给 loadNote 与「重新获取封面」共用——回填成功后走同一条刷新路径。 */
+  const refreshCover = useCallback(
+    async (lessonId: string): Promise<void> => {
+      try {
+        const cover = (await bridge.notes.cover(lessonId)) as ApiResult<string | null>
+        if (lessonRef.current === lessonId) setCoverDataUrl(cover.ok ? (cover.value ?? null) : null)
+      } catch {
+        if (lessonRef.current === lessonId) setCoverDataUrl(null)
+      }
+    },
+    [bridge]
+  )
+
   // All three lesson-scoped loaders guard on lessonRef: a slow response for
   // a previously selected lesson must not overwrite the current one's panel.
   const loadNote = useCallback(async (lessonId: string): Promise<void> => {
@@ -186,15 +207,37 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
       setNoteTranscriptHitRate(res.value.transcriptHitRate ?? null)
     }
     // 批 A2: 封面与笔记并行取（best-effort——拿不到就 null，首屏退回无图）。
-    void (async () => {
-      try {
-        const cover = (await bridge.notes.cover(lessonId)) as ApiResult<string | null>
-        if (lessonRef.current === lessonId) setCoverDataUrl(cover.ok ? (cover.value ?? null) : null)
-      } catch {
-        if (lessonRef.current === lessonId) setCoverDataUrl(null)
-      }
-    })()
-  }, [bridge])
+    void refreshCover(lessonId)
+  }, [bridge, refreshCover])
+
+  /**
+   * 批3 (plan 2026-09-20, P1/D8): 从 B 站重新取一次封面——导入时封面只抓一次，
+   * 失败即静默放弃，012 之前导入的课时更是永远没有封面。成功后刷新 coverDataUrl
+   * （同一条 refreshCover 路径，取图口径只有一份）；失败如实 toast，不动既有封面。
+   * busy 三件套 + hook 侧 in-flight 守卫（ref 守同 tick 连点，state 只管视觉）。
+   */
+  const backfillNoteCover = useCallback(
+    (lessonId: string): void => {
+      if (coverBackfillBusyRef.current) return
+      coverBackfillBusyRef.current = true
+      setCoverBackfillBusy(true)
+      void (async () => {
+        try {
+          const res = await bridge.notes.backfillCover(lessonId)
+          if (!res.ok) {
+            toast(res.error ?? '补取封面失败', 'error')
+            return
+          }
+          await refreshCover(lessonId)
+          toast('已重新获取封面', 'success')
+        } finally {
+          coverBackfillBusyRef.current = false
+          setCoverBackfillBusy(false)
+        }
+      })()
+    },
+    [bridge, toast, refreshCover]
+  )
 
   // F4 (review): per-ref attachment cache. getAttachment returns undefined
   // while a fetch is in flight, and the view re-renders on arrival via
@@ -801,6 +844,8 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     getAttachment,
     attachmentVersion,
     coverDataUrl,
+    coverBackfillBusy,
+    backfillNoteCover,
     noteRegenBusy,
     regenerateNote,
     noteRepairBusy,
