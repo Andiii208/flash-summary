@@ -139,4 +139,25 @@ describe('B3/B1/B2/B4 prompt 条款汇总（plan 2026-09-19）', () => {
     for (const clause of ['9.12', '9.13', '9.14']) expect(NOTE_QUALITY_PROMPT).toContain(clause)
     expect(NOTE_QUALITY_PROMPT).toContain('不得改写')
   })
+
+  // 下一轮（2026-09-20 真实验收实证后）：evidence 引用 0/0（18 张图确实到达模型也不引）
+  // 与章节 10 章且与时间线一一对应（9.13 要求 3-8）——两条 prompt 收紧 + pv 5→6。
+  it('9.15 evidence 合法 few-shot 在位（真 ID 形态，非占位符）', () => {
+    expect(NOTE_QUALITY_PROMPT).toContain('9.15')
+    // few-shot 必须用**合法真形态**（9.7 修正课的教训：占位符示例过不了归一层）。
+    expect(NOTE_QUALITY_PROMPT).toContain('kf:bili-BV1tNpbekEht-P1-kf-1')
+    expect(NOTE_QUALITY_PROMPT).not.toContain('kf:<证据ID>')
+    expect(NOTE_QUALITY_PROMPT).toContain('逐字节一致')
+  })
+
+  it('timeline 每条都应引用证据（宁可留空不得编造）', () => {
+    // 该句在形状规则 2 与图片后指令里（SYSTEM_PROMPT = 形状 + 质量）。
+    expect(SYSTEM_PROMPT).toContain('都应引用与其画面内容对应的证据')
+    expect(SYSTEM_PROMPT).toContain('宁可留空也不得编造')
+  })
+
+  it('9.13 章节收紧：每章覆盖多条时间线、不得一一对应', () => {
+    expect(NOTE_QUALITY_PROMPT).toContain('不得与时间线条目一一对应')
+    expect(NOTE_QUALITY_PROMPT).toContain('长视频取 6-8')
+  })
 })
