@@ -173,6 +173,63 @@ export async function extractKeyframes(
   }))
 }
 
+/**
+ * 浏览器 HTTP 头（Referer + UA）——B 站 CDN 对无 Referer 的请求回 403
+ * （防盗链流），而 ffmpeg 自己不发 Referer。与 orchestrator 的
+ * streamFetchArgs 同一份常量（单一事实源）。
+ */
+export const STREAM_HTTP_HEADERS =
+  'Referer: https://www.bilibili.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\r\n'
+
+/** keyframesFromUrlArgs 的纯参数构建（-headers 浏览器头 + -i URL + 双输出）。 */
+export function keyframesFromUrlArgs(url: string, pattern: string, thumbPattern: string, everySeconds: number): string[] {
+  return [
+    '-y',
+    '-headers',
+    STREAM_HTTP_HEADERS,
+    '-i',
+    url,
+    '-filter_complex',
+    `[0:v]fps=1/${everySeconds},split[a][b];[b]${THUMB_SCALE_FILTER}[t]`,
+    '-map', '[a]', '-q:v', '2', pattern,
+    '-map', '[t]', '-q:v', '4', thumbPattern
+  ]
+}
+
+/**
+ * A3-② (plan 2026-09-19): 字幕快路径**免下载抽帧**——ffmpeg 直读流 URL
+ * （ Referer 头见 STREAM_HTTP_HEADERS），省掉「为抽帧而下整片」的 3-8 分钟。
+ * 与 extractKeyframes 同一 fps/双输出口径；**抽不到任何帧时抛错**，让调用方
+ * 回落「下载后抽帧」旧路径（URL 时效/风控时保底）。
+ */
+export async function extractKeyframesFromUrl(
+  url: string,
+  outDir: string,
+  everySeconds: number,
+  ffmpeg?: string,
+  signal?: AbortSignal
+): Promise<KeyframeResult[]> {
+  const { mkdirSync, readdirSync } = await import('fs')
+  mkdirSync(outDir, { recursive: true })
+  const pattern = join(outDir, 'frame-%04d.jpg')
+  const thumbPattern = thumbPathFor(pattern)
+  await run(ffmpeg ?? requireBin('ffmpeg'), keyframesFromUrlArgs(url, pattern, thumbPattern, everySeconds), {
+    signal,
+    timeoutMs: 30 * 60 * 1000
+  })
+  const files = readdirSync(outDir)
+    .filter((f) => /^frame-\d{4}\.jpg$/.test(f))
+    .sort()
+  const results = files.map((f, i) => ({
+    filePath: join(outDir, f),
+    timestampSeconds: i * everySeconds
+  }))
+  if (results.length === 0) {
+    throw new Error(`直读流 URL 未抽出任何帧（URL 可能已失效或被风控）：${url.slice(0, 80)}`)
+  }
+  return results
+}
+
 export interface MediaInfo {
   durationSeconds: number
   width: number

@@ -3,11 +3,11 @@
  * All I/O goes through injected deps so tests can stub the network,
  * ffmpeg, and providers while the orchestration logic stays real.
  */
-import { mkdirSync, rmSync, existsSync, readFileSync, statSync, writeFileSync, renameSync } from 'fs'
+import {mkdirSync, rmSync, existsSync, readFileSync, statSync, writeFileSync, renameSync, readdirSync} from 'fs'
 import { join } from 'path'
 import type { Db } from '../db/open'
 import { attachmentsPath } from '../library/paths'
-import { extractAudio, extractKeyframes, run as runProcess, pickAudioSource } from '../media/ffmpeg'
+import { extractAudio, extractKeyframes, extractKeyframesFromUrl, run as runProcess, pickAudioSource, STREAM_HTTP_HEADERS } from '../media/ffmpeg'
 import { thumbPathFor, THUMB_SCALE_FILTER } from '../media/grid'
 import { chunkPlan, cutChunk } from '../media/audio-split'
 import { dedupeKeyframes, type Grid8x8 } from '../../shared/phash'
@@ -319,7 +319,7 @@ export function streamFetchArgs(url: string, target: string): string[] {
   return [
     '-y',
     '-headers',
-    'Referer: https://www.bilibili.com/\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\r\n',
+    STREAM_HTTP_HEADERS,
     '-i',
     url,
     '-c',
@@ -413,6 +413,21 @@ export function makeDownload(deps: OrchestratorDeps): StageExecutor {
     // keyframes, plus the audio stream only when ASR will run. Panorama/
     // paid-quality guards are SEU concepts; the disk guard applies to both.
     if (fetched?.bilibili === true) {
+      // A3-② (plan 2026-09-19): 字幕快路径免下载抽帧——有字幕时先试 ffmpeg 直读
+      // 流 URL 抽帧，省掉「为抽帧而下整片」的 3-8 分钟；失败（URL 时效/风控）
+      // 立即回落下面的整片下载旧路径（逐字节保留，回退保底）。
+      if (fetched.hasSubtitle === true && fetched.videoStreamUrl != null) {
+        const framesDir = join(taskDir(deps, ctx.taskId), 'frames-direct')
+        try {
+          rmSync(framesDir, { recursive: true, force: true })
+          const candidates = await extractKeyframesFromUrl(fetched.videoStreamUrl, framesDir, KEYFRAME_INTERVAL_SECONDS, deps.ffmpeg, ctx.signal)
+          recordStage(deps, ctx.taskId, ctx.stage, { bilibili: true, directFramesDir: framesDir, directFrames: candidates.length })
+          return { status: 'ok' }
+        } catch (err) {
+          if (isCancelled(ctx, err)) return cancelResult()
+          // 直读失败 → 继续走整片下载（下面原路径）。
+        }
+      }
       const streams = [
         ...(fetched.videoStreamUrl != null ? [{ label: '视频流', url: fetched.videoStreamUrl, path: join(taskDir(deps, ctx.taskId), 'video.ts') }] : []),
         ...(fetched.hasSubtitle !== true && fetched.audioStreamUrl != null
@@ -640,7 +655,7 @@ export function makeTranscribe(deps: OrchestratorDeps): StageExecutor {
 /** 5. extracting_visuals — SEU: screen keyframes + PPT; bilibili: video-stream keyframes only. */
 export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
   return async (ctx: StageContext) => {
-    const dl = stageOutput<{ teacherPath: string; screenPath: string; bilibili?: boolean; videoPath?: string; audioPath?: string }>(
+    const dl = stageOutput<{ teacherPath: string; screenPath: string; bilibili?: boolean; videoPath?: string; audioPath?: string; directFramesDir?: string }>(
       deps,
       ctx.taskId,
       'downloading_video'
@@ -654,11 +669,25 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
       // DASH video stream; no platform PPT exists. No stream (risk-control
       // degradation at fetch time) → legal evidence-less note.
       if (dl.bilibili === true) {
-        if (dl.videoPath == null || !streamComplete(dl.videoPath)) {
-          recordStage(deps, ctx.taskId, ctx.stage, { keyframes: 0, ppt: 0, skipped: 'no-video-stream' })
-          return { status: 'ok' }
+        // A3-②: candidates 双来源——字幕快路径的直读目录优先，否则下载的文件。
+        let candidates: Awaited<ReturnType<typeof extractKeyframes>>
+        if (dl.directFramesDir != null) {
+          if (!existsSync(dl.directFramesDir)) {
+            // 快路径产物丢了（任务缓存被清）——如实无帧，不假装有画面。
+            recordStage(deps, ctx.taskId, ctx.stage, { keyframes: 0, ppt: 0, skipped: 'direct-frames-missing' })
+            return { status: 'ok' }
+          }
+          candidates = readdirSync(dl.directFramesDir)
+            .filter((f) => /^frame-\d{4}\.jpg$/.test(f))
+            .sort()
+            .map((f, i) => ({ filePath: join(dl.directFramesDir as string, f), timestampSeconds: i * KEYFRAME_INTERVAL_SECONDS }))
+        } else {
+          if (dl.videoPath == null || !streamComplete(dl.videoPath)) {
+            recordStage(deps, ctx.taskId, ctx.stage, { keyframes: 0, ppt: 0, skipped: 'no-video-stream' })
+            return { status: 'ok' }
+          }
+          candidates = await extractKeyframes(dl.videoPath, outDir, KEYFRAME_INTERVAL_SECONDS, deps.ffmpeg, ctx.signal)
         }
-        const candidates = await extractKeyframes(dl.videoPath, outDir, KEYFRAME_INTERVAL_SECONDS, deps.ffmpeg, ctx.signal)
         const kept = dedupeKeyframes(candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })), 5, { coverageBuckets: KEYFRAME_COVERAGE_BUCKETS })
         const destDir = join(attachmentsPath(deps.libraryRoot), ctx.lessonId, 'keyframes')
         // 批6: 重跑防孤儿——destDir 整体先清再写。本次保留帧变少时，上一次
@@ -681,8 +710,9 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
           if (existsSync(thumbSrc)) renameSync(thumbSrc, thumbPathFor(dest))
           insertKf.run(`${ctx.lessonId}-kf-${i}`, ctx.lessonId, frame.timestampSeconds, storedAttachmentsPath(ctx.lessonId, 'keyframes', `kf-${String(i).padStart(4, '0')}-${Math.round(frame.timestampSeconds)}s.jpg`), frame.hash, nowIso(deps))
         }
-        if (existsSync(dl.videoPath)) rmSync(dl.videoPath, { force: true })
-        rmSync(`${dl.videoPath}.ok`, { force: true })
+        if (dl.videoPath != null && existsSync(dl.videoPath)) rmSync(dl.videoPath, { force: true })
+        if (dl.videoPath != null) rmSync(`${dl.videoPath}.ok`, { force: true })
+        if (dl.directFramesDir != null) rmSync(dl.directFramesDir, { recursive: true, force: true })
         recordStage(deps, ctx.taskId, ctx.stage, { keyframes: kept.length, ppt: 0 })
         return { status: 'ok' }
       }
