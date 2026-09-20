@@ -386,6 +386,13 @@ export interface BilibiliBridge {
   import(payload: { bvid: string; pages: number[] }): Promise<ApiResult<{ courseId: string; lessonIds: string[] }>>
 }
 
+/** 批 D (plan 2026-09-19): 原片跳转。渲染层只传 lessonId 与秒数——
+ *  URL 由 main 侧常量基准 + 库内 bvid 拼出（红线：不接受渲染层传入的 URL）。 */
+export interface LessonsBridge {
+  /** B 站课时：在默认浏览器打开原片并定位到 `at` 秒；SEU 源如实报错（平台无时间参数）。 */
+  openSource(lessonId: string, at: number): Promise<ApiResult<true>>
+}
+
 export interface SeuSummaryBridge {
   school: SchoolBridge
   bilibili: BilibiliBridge
@@ -393,6 +400,8 @@ export interface SeuSummaryBridge {
   tasks: TasksBridge
   notes: NotesBridge
   qa: QaBridge
+  /** 批 D (plan 2026-09-19): 原片跳转（B 站 ?t=；SEU 源拒绝）。 */
+  lessons: LessonsBridge
   settings: SettingsBridge
   log: LogBridge
   /** 声明批6: 反馈入口（只给入口、不上报）。 */

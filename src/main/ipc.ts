@@ -24,6 +24,7 @@ import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachmentManifest, readAttachmentData, readLessonCover } from './notes/attachments'
 import { saveLessonCover } from './notes/cover'
+import { buildBilibiliSourceUrl } from './bilibili/source-url'
 import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor } from './notes/summarize'
 import { polishNote, loadValidRefs } from './notes/polish'
 import { FEEDBACK_TAGS } from '../shared/feedback-tags'
@@ -1637,6 +1638,26 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     }
   })
 
+  // 批 D (plan 2026-09-19): B 站原片时间戳跳转。渲染层只传 lessonId + 秒数；
+  // URL 由 main 侧拼（常量基准 + 库内 bvid，过 BV 正则）——红线：不接受渲染层传入的 URL。
+  // SEU 源如实拒绝：平台播放页没有时间参数，2026-09-19 前「不做」的边界按源收窄。
+  handle(ipc, 'lessons:openSource', async (_e, lessonId: unknown, at: unknown) => {
+    try {
+      const id = assertSafeId(lessonId, 'lessonId')
+      const row = ctx.db
+        .prepare('SELECT l.source AS source, l.bili_page AS page, c.bili_bvid AS bvid FROM lessons l LEFT JOIN courses c ON c.id = l.course_id WHERE l.id = ?')
+        .get(id) as { source: string; page: number | null; bvid: string | null } | undefined
+      if (row == null) return err(new Error('课时不存在'))
+      if (row.source !== 'bilibili') return err(new Error('SEU 来源的课时没有可跳转的原片页面'))
+      if (row.bvid == null) return err(new Error('这节课没有关联的 B 站视频'))
+      const url = buildBilibiliSourceUrl(row.bvid, at, row.page)
+      if (url == null) return err(new Error('库内 BV 号不合法，拒绝跳转'))
+      await shell.openExternal(url)
+      return ok(true as const)
+    } catch (e) {
+      return err(e)
+    }
+  })
 
   // 2026-09-04: regenerate the note from stored transcripts/keyframes — no
   // re-download. Guarded: refuses while a task for this lesson is queued/running.

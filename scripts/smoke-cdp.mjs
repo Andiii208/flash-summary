@@ -122,8 +122,10 @@ const EXPECTED_BRIDGE = {
   bilibili: ['login', 'loginStatus', 'logout', 'session', 'resolve', 'import'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
-  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'exportPng', 'courseTree', 'attachments', 'attachmentData', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
+  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'exportPng', 'courseTree', 'attachments', 'attachmentData', 'cover', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
+  // 批 D (plan 2026-09-19): 原片跳转（B 站 ?t=；SEU 源拒绝）。
+  lessons: ['openSource'],
   settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'acceptDisclaimer', 'optOutCopyrightNotice', 'exportLibraryBackup', 'onMigrateProgress'],
   log: ['rendererError'],
   feedback: ['openForm', 'diagnostics']
@@ -147,13 +149,16 @@ const PROBES = [
   ['notes:exportObsidian (missing note)', "s.notes.exportObsidian('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:exportCourseObsidian (missing)', "s.notes.exportCourseObsidian('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:courseTree (missing)', "s.notes.courseTree('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
+  ['notes:cover (missing lesson)', "s.notes.cover('smoke-none')", (r) => r.ok === true && r.value === null],
   ['notes:polish (empty feedback)', "s.notes.polish('smoke-none', { tags: [], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:polish (missing note)', "s.notes.polish('smoke-none', { tags: ['too_brief'], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],
   ['qa:recent', 's.qa.recent()', (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:history (missing)', "s.qa.history('smoke-none')", (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:ask (no binding)', "s.qa.ask('smoke-none', 'probe')", (r) => r.ok === false && typeof r.error === 'string'],
   ['providers:bind (bad capability)', "s.providers.bind('bogus', 'p', 'm')", (r) => r.ok === false && typeof r.error === 'string'],
-  ['log:rendererError', `s.log.rendererError(${JSON.stringify(PROBE_LOG_LINE)})`, (r) => r.ok === true && r.value === true]
+  ['log:rendererError', `s.log.rendererError(${JSON.stringify(PROBE_LOG_LINE)})`, (r) => r.ok === true && r.value === true],
+  // 批 D (plan 2026-09-19): 原片跳转只探**错误路径**——成功路径会真的打开浏览器（有副作用）。
+  ['lessons:openSource (missing lesson)', "s.lessons.openSource('smoke-none', 60)", (r) => r.ok === false && typeof r.error === 'string']
 ]
 
 async function main() {
@@ -355,7 +360,7 @@ async function main() {
       const db = new Database(dbFile, { readonly: true })
       try {
         const migrations = db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n
-        record('L4 all eleven migrations applied', migrations === 11, `schema_migrations rows ${migrations}`)
+        record('L4 all twelve migrations applied', migrations === 12, `schema_migrations rows ${migrations}`)
         const courseRows = db.prepare('SELECT COUNT(*) AS n FROM courses').get().n
         record('L4 empty library has zero courses', courseRows === 0, `courses ${courseRows}`)
       } finally {

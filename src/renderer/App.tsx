@@ -585,6 +585,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onUpgradeCourse={state.openNoteUpgrade}
               onExportCourseObsidian={state.exportCourseObsidian}
               onGoTasks={goTasks}
+              onOpenSource={state.currentCourseSource === 'bilibili' ? state.openSourceAt : undefined}
 prevLesson={state.lessonNeighbors.prev}
               nextLesson={state.lessonNeighbors.next}
               onNavigateLesson={state.openLessonNotes}
@@ -795,6 +796,10 @@ interface AppState extends NotesDomain, TasksDomain {
   switchLesson: (lessonId: string) => void
   /** 批A: sibling lessons of the selected lesson's course (chip dropdown). */
   currentCourseLessons: LessonChipLesson[]
+  /** 批 D (plan 2026-09-19): 当前课时所属课程的来源——决定「跳原片」按钮渲不渲染。 */
+  currentCourseSource: 'seu' | 'bilibili'
+  /** 批 D (plan 2026-09-19): 在默认浏览器打开原片并定位到 at 秒（main 侧拼 URL）。 */
+  openSourceAt: (at: number) => void
   addManual: (courseId: string, lessonId: string) => Promise<boolean>
   /** B站导入落地 (plan 2026-09-06 M5): refresh + queue tasks per P. */
   biliImported: (courseId: string, lessonIds: string[]) => void
@@ -1001,6 +1006,18 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast]
   )
 
+  // 批 D (plan 2026-09-19): B 站原片时间戳跳转。URL 在 main 侧拼（红线：不接受渲染层 URL）；
+  // SEU 源的课时不渲染按钮（honesty：不给必然失败的入口），真被调用也由 main 如实拒绝。
+  const openSourceAt = useCallback(
+    (at: number): void => {
+      if (currentLesson === '') return
+      void (async () => {
+        const res = await bridge.lessons.openSource(currentLesson, at)
+        if (!res.ok) toast(res.error ?? '打开原片失败', 'error')
+      })()
+    },
+    [bridge, currentLesson, toast]
+  )
   
 const copyReport = useCallback((): void => {
     void navigator.clipboard
@@ -1476,7 +1493,9 @@ const copyReport = useCallback((): void => {
       if (c.lessons.some((l) => l.id === currentLesson)) return c
     }
     return null
-  }, [tree, currentLesson])  
+  }, [tree, currentLesson])
+  const currentCourseSource: 'seu' | 'bilibili' = currentCourse?.source ?? 'seu'
+  
 const currentCourseLessons = useMemo<LessonChipLesson[]>(
     () => (currentCourse?.lessons ?? []).map((l) => ({ id: l.id, title: l.title, hasNote: l.hasNote })),
     [currentCourse]
@@ -1778,6 +1797,8 @@ const currentCourseLessons = useMemo<LessonChipLesson[]>(
     goHome,
     switchLesson,
     currentCourseLessons,
+    currentCourseSource,
+    openSourceAt,
     addManual,
     biliImported,
     ask,

@@ -118,6 +118,10 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('qa:history', lessonId),
     recent: (): Promise<ApiResult<QaRecentInfo[]>> => ipcRenderer.invoke('qa:recent')
   },
+  // 批 D (plan 2026-09-19): 原片跳转——渲染层只传 lessonId 与秒数，URL 在 main 侧拼（红线）。
+  lessons: {
+    openSource: (lessonId: string, at: number): Promise<ApiResult<true>> => ipcRenderer.invoke('lessons:openSource', lessonId, at)
+  },
   settings: {
     get: (): Promise<ApiResult<AppSettingsInfo>> => ipcRenderer.invoke('settings:get'),
     setCacheDir: (dir: string): Promise<ApiResult<{ cacheDir: string }>> => ipcRenderer.invoke('settings:setCacheDir', dir),
