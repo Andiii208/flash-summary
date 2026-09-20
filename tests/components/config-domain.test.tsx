@@ -55,10 +55,10 @@ const NEW_PROVIDER = { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', api
 describe('useConfigDomain · Provider 保存（批4 P8/D4）', () => {
   it('保存后没有任何多模态绑定：当场指路，而不是等建任务才报错', async () => {
     const { bridge, toast } = await mountDomain()
-    await save({ ...NEW_PROVIDER, capabilities: ['text'], models: { text: 'gpt-4o' } })
+    await save({ ...NEW_PROVIDER, capabilities: ['asr'], models: { asr: 'mimo-v2.5-asr' } })
 
     expect(bridge.providers.save).toHaveBeenCalledOnce()
-    expect(bridge.providers.bind).toHaveBeenCalledWith('text', 'p', 'gpt-4o')
+    expect(bridge.providers.bind).toHaveBeenCalledWith('asr', 'p', 'mimo-v2.5-asr')
     expect(toast).toHaveBeenCalledWith('已保存。生成笔记还需要多模态总结模型——在上面勾选并绑定', 'info')
   })
 
@@ -76,7 +76,7 @@ describe('useConfigDomain · Provider 保存（批4 P8/D4）', () => {
       providers: [{ id: 'p9', name: '旧', baseUrl: 'https://api.deepseek.com/v1', hasKey: true }],
       bindings: [{ capability: 'multimodal', providerId: 'p9', model: 'deepseek-chat' }]
     })
-    await save({ ...NEW_PROVIDER, capabilities: ['text'], models: { text: 'gpt-4o' } })
+    await save({ ...NEW_PROVIDER, capabilities: ['asr'], models: { asr: 'mimo-v2.5-asr' } })
     expect(toast).toHaveBeenCalledWith('已绑定 1 项能力 → OpenAI', 'success')
   })
 })
@@ -106,15 +106,15 @@ describe('useConfigDomain · 取消勾选即解绑（批4 P14）', () => {
         { id: 'p2', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', hasKey: true }
       ],
       bindings: [
-        { capability: 'asr', providerId: 'p1', model: 'mimo-v2.5-asr' },
-        { capability: 'multimodal', providerId: 'p2', model: 'deepseek-chat' }
+        { capability: 'multimodal', providerId: 'p1', model: 'mimo-v2.5' },
+        { capability: 'asr', providerId: 'p2', model: 'mimo-v2.5-asr' }
       ]
     })
-    await save({ id: 'p1', name: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: '', capabilities: ['text'], models: { text: 'mimo-v2.5' } })
+    await save({ id: 'p1', name: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: '', capabilities: ['asr'], models: { asr: 'mimo-v2.5-asr' } })
 
     expect(bridge.providers.unbind).toHaveBeenCalledTimes(1)
-    expect(bridge.providers.unbind).toHaveBeenCalledWith('asr')
-    expect(bridge.providers.bind).toHaveBeenCalledWith('text', 'p1', 'mimo-v2.5')
+    expect(bridge.providers.unbind).toHaveBeenCalledWith('multimodal')
+    expect(bridge.providers.bind).toHaveBeenCalledWith('asr', 'p1', 'mimo-v2.5-asr')
   })
 
   it('新建 provider 没有原有绑定：不调 unbind', async () => {
@@ -129,7 +129,7 @@ describe('useConfigDomain · 取消勾选即解绑（批4 P14）', () => {
       bindings: [{ capability: 'asr', providerId: 'p1', model: 'mimo-v2.5-asr' }]
     })
     bridge.providers.unbind = vi.fn(async () => ({ ok: false, error: '数据库忙' }))
-    await save({ id: 'p1', name: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: '', capabilities: ['text'], models: { text: 'mimo-v2.5' } })
+    await save({ id: 'p1', name: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: '', capabilities: ['multimodal'], models: { multimodal: 'mimo-v2.5' } })
 
     expect(toast).toHaveBeenCalledWith('Provider 已保存，但能力 asr 解绑失败：数据库忙', 'error')
     expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('已绑定 1 项能力'), 'success')

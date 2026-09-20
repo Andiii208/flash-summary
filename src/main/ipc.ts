@@ -115,10 +115,12 @@ function str(v: unknown, name: string): string {
 /**
  * 批4 (plan 2026-09-20, P14): 能力白名单——providers:bind 与 providers:unbind
  * 共用同一份判定（两处各写一份就是新的漂移：绑得进、解不掉，或者反之）。
+ * 2026-09-21 (P25): 能力面收敛为两项，`'text'` 从此也进拒绝集——老库里残留的
+ * text 绑定行由 migration 013 清掉，桥面不再接受任何新写入。
  */
-function requireCapability(v: unknown): 'asr' | 'multimodal' | 'text' {
+function requireCapability(v: unknown): 'asr' | 'multimodal' {
   const capability = str(v, 'capability')
-  if (capability !== 'asr' && capability !== 'multimodal' && capability !== 'text') throw new Error('unknown capability')
+  if (capability !== 'asr' && capability !== 'multimodal') throw new Error('unknown capability')
   return capability
 }
 
@@ -1997,7 +1999,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const capability = ctx.qaCapability()
       const client = ctx.chatFor(capability)
       const binding = ctx.providers().bindings.find((b) => b.capability === capability)
-      if (binding == null) throw new Error('未绑定问答模型，请在设置中配置 text 或 multimodal 能力')
+      if (binding == null) throw new Error('未绑定问答模型，请在设置中配置多模态总结模型')
       const answer = await client.chat(messages, binding.model)
       const qaId = recordQa(ctx.db, id, q, answer)
       return ok({ id: qaId, answer })

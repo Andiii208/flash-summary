@@ -15,8 +15,7 @@ function makeSettings(): ProviderSettings {
     ],
     bindings: [
       { capability: 'asr', providerId: 'p1', model: 'whisper-1' },
-      { capability: 'multimodal', providerId: 'p1', model: 'gpt-4o' },
-      { capability: 'text', providerId: 'p2', model: 'qwen2.5' }
+      { capability: 'multimodal', providerId: 'p2', model: 'qwen2.5' }
     ]
   }
 }
@@ -25,8 +24,9 @@ describe('capability resolution', () => {
   it('resolves each capability independently', () => {
     const s = makeSettings()
     expect(resolveCapability(s, 'asr')).toEqual({ provider: s.providers[0], model: 'whisper-1' })
-    expect(resolveCapability(s, 'multimodal')?.model).toBe('gpt-4o')
-    expect(resolveCapability(s, 'text')?.model).toBe('qwen2.5')
+    // 两个能力各自指向不同 provider（P25 收敛后只有这两项，绑定表里没有第三项）。
+    expect(resolveCapability(s, 'multimodal')).toEqual({ provider: s.providers[1], model: 'qwen2.5' })
+    expect(s.bindings).toHaveLength(2)
   })
 
   it('returns null for unbound capabilities or keyless providers', () => {

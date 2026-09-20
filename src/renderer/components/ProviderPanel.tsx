@@ -6,15 +6,16 @@ import { EmptyState } from './EmptyState'
 import { modelHasVision } from '../../shared/model-vision'
 import { Dialog } from '../ui/Dialog'
 
-const CAPABILITY_LABELS: Record<string, string> = { asr: 'ASR 转写', multimodal: '多模态总结', text: '文本问答' }
-const CAPABILITY_ORDER: ReadonlyArray<string> = ['asr', 'multimodal', 'text']
+const CAPABILITY_LABELS: Record<string, string> = { asr: 'ASR 转写', multimodal: '多模态总结' }
+const CAPABILITY_ORDER: ReadonlyArray<string> = ['asr', 'multimodal']
 
-/** 2026-09-05 批4: the three capabilities explained against the pipeline —
- *  the terms no longer appear bare in the form. */
+/** 2026-09-05 批4: the capabilities explained against the pipeline —
+ *  the terms no longer appear bare in the form.
+ *  2026-09-21 (P25): 三项改两项——「文本问答」不再是可绑定能力，追问走多模态
+ *  绑定，所以第二行把「追问」并进多模态的角色说明里。 */
 const CAPABILITY_NOTES: ReadonlyArray<{ id: string; role: string }> = [
   { id: 'asr', role: '把课程录音转成文字（任务·转写阶段）' },
-  { id: 'multimodal', role: '看课件截图与转写生成五视图笔记（任务·总结阶段）' },
-  { id: 'text', role: '在「追问」页回答提问' }
+  { id: 'multimodal', role: '看课件截图与转写生成五视图笔记（任务·总结阶段），并在「追问」页回答提问' }
 ]
 
 /** M3 批 D: 常见 Provider 预设——选一个自动填三件套，仍可手改。
@@ -227,8 +228,7 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
   const [capabilities, setCapabilities] = useState<ReadonlySet<string>>(new Set(['asr', 'multimodal']))
   const [models, setModels] = useState<Record<string, string>>({
     asr: PROVIDER_PRESETS[0]!.asrModel ?? '',
-    multimodal: PROVIDER_PRESETS[0]!.model,
-    text: PROVIDER_PRESETS[0]!.model
+    multimodal: PROVIDER_PRESETS[0]!.model
   })
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
 
@@ -249,7 +249,7 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
     // 批4 (D4): 预设有 asrModel 就一并回填；没有则不动 asr（也不自动勾选）——
     // 猜一个语音模型名会让用户拿 chat 模型去转写。
     setModels((prev) =>
-      hit.asrModel == null ? { ...prev, multimodal: chatModel, text: chatModel } : { ...prev, multimodal: chatModel, text: chatModel, asr: hit.asrModel }
+      hit.asrModel == null ? { ...prev, multimodal: chatModel } : { ...prev, multimodal: chatModel, asr: hit.asrModel }
     )
   }
 

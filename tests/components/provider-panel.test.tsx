@@ -42,12 +42,25 @@ describe('ProviderPanel 首启默认值（批4 P8/D4）', () => {
   it('默认勾选 multimodal + asr——只勾 asr 的旧默认让保存成功后管线仍不可用', () => {
     const { host } = mountPanel()
     const boxes = capabilityBoxes(host)
-    expect(boxes).toHaveLength(3)
-    // 顺序固定 asr / multimodal / text（CAPABILITY_ORDER）。
-    expect(boxes.map((b) => b.checked)).toEqual([true, true, false])
+    // P25 (2026-09-21): 能力面收敛为两项，「文本问答」不再是可绑定能力。
+    expect(boxes).toHaveLength(2)
+    // 顺序固定 asr / multimodal（CAPABILITY_ORDER）。
+    expect(boxes.map((b) => b.checked)).toEqual([true, true])
     // 多模态模型跟着默认预设走，ASR 留空（OpenAI 预设不预填语音模型）。
     expect(modelInput(host, '多模态总结模型')!.value).toBe('gpt-4o')
     expect(modelInput(host, 'ASR 转写模型')!.value).toBe('')
+  })
+
+  // P25: 界面不再出现第三项的任何痕迹——复选框、图例、模型输入框三处都不该有。
+  it('能力组只有 ASR 与多模态两项，界面不再出现「文本问答」', () => {
+    const { host } = mountPanel()
+    const labels = [...host.querySelectorAll('.capability-check')].map((el) => el.textContent ?? '')
+    expect(labels).toEqual(['ASR 转写', '多模态总结'])
+    expect(host.textContent).not.toContain('文本问答')
+    // 图例也只剩两条，且多模态那条把「追问」并进自己的角色说明。
+    const notes = [...host.querySelectorAll('.provider-cap-notes li')].map((el) => el.textContent ?? '')
+    expect(notes).toHaveLength(2)
+    expect(notes[1]).toContain('追问')
   })
 
   it('勾了 asr 却空模型：保存被挡，且输入框下有一行可见原因（不再静默）', () => {

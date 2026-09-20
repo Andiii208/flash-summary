@@ -1,10 +1,15 @@
 /**
  * Provider configuration model (spec §4).
  *
- * Multiple providers; capabilities bound independently:
+ * Multiple providers; exactly two capabilities bound independently:
  * - asr:        provider + model (required for transcription)
- * - multimodal: provider + model (default note generation path)
- * - text:       provider + model (optional fallback)
+ * - multimodal: provider + model (default note generation path; Q&A too)
+ *
+ * 2026-09-21 (P25, plan 2026-09-20-ux-issues-remediation.md 补批): the third
+ * capability `text` is gone — it never had a real consumer of its own (the
+ * follow-up Q&A path was its only user, and a multimodal model answers text
+ * questions anyway), and the user asked for two options, not three. Q&A now
+ * resolves through the `multimodal` binding (see `qaCapability`).
  */
 export interface ProviderConfig {
   id: string
@@ -16,7 +21,7 @@ export interface ProviderConfig {
   createdAt: string
 }
 
-export type Capability = 'asr' | 'multimodal' | 'text'
+export type Capability = 'asr' | 'multimodal'
 
 export interface CapabilityBinding {
   capability: Capability

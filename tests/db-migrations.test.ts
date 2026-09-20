@@ -4,6 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
 import { appliedVersions } from '../src/main/db/migrate'
+import { migration013 } from '../src/main/db/migrations/013_drop_text_capability'
 
 let dir: string
 let db: Db
@@ -20,14 +21,14 @@ afterEach(() => {
 
 describe('migrations', () => {
   it('applies all migrations on a fresh database', () => {
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
   })
 
   it('is idempotent when reopened', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
   })
 
   it('applies only pending migrations on an upgraded database', () => {
@@ -35,7 +36,7 @@ describe('migrations', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
   })
 
   it('adds play-page reference columns (006)', () => {
@@ -189,6 +190,30 @@ describe('artifacts and history', () => {
     expect(cover).toBeDefined()
     expect(cover?.notnull).toBe(0)
     expect(cover?.dflt_value).toBeNull()
+  })
+
+  // P25/D13 (2026-09-21): 能力面收敛为两项，老库遗留的 text 绑定行被删掉——
+  // 只删这一种行，其它绑定与 CHECK 约束都不动。
+  it('migration 013: deletes the legacy text binding and nothing else', () => {
+    db.prepare("INSERT INTO providers (id, name, base_url, api_key, created_at) VALUES ('p1', 'P', 'https://x/v1', '', '2026-08-30T00:00:00Z')").run()
+    const insert = db.prepare('INSERT INTO capability_bindings (capability, provider_id, model) VALUES (?, ?, ?)')
+    insert.run('asr', 'p1', 'mimo-v2.5-asr')
+    insert.run('multimodal', 'p1', 'mimo-v2.5')
+    insert.run('text', 'p1', 'qwen2.5')
+
+    migration013.up(db)
+
+    const rows = db.prepare('SELECT capability, provider_id, model FROM capability_bindings ORDER BY capability').all()
+    expect(rows).toEqual([
+      { capability: 'asr', provider_id: 'p1', model: 'mimo-v2.5-asr' },
+      { capability: 'multimodal', provider_id: 'p1', model: 'mimo-v2.5' }
+    ])
+    // 幂等：再跑一次不动任何行（没有 text 行可删）。
+    migration013.up(db)
+    expect(db.prepare('SELECT COUNT(*) AS n FROM capability_bindings').get()).toEqual({ n: 2 })
+    // CHECK 约束保持原样（migration 003 不动它）——'text' 仍能插入，只是没有
+    // 任何代码路径会写它（桥面 requireCapability 拒绝）。
+    expect(() => insert.run('text', 'p1', 'qwen2.5')).not.toThrow()
   })
 
   it('keeps note versions unique per lesson', () => {

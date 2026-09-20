@@ -302,6 +302,29 @@ describe('ipc handlers over a real context', () => {
     expect(((await ipc.invoke('providers:list')) as { value?: { bindings: unknown[] } }).value?.bindings).toHaveLength(1)
   })
 
+  // P25 (2026-09-21): 能力面收敛为两项——「文本问答」不再是能力，桥面拒绝写入；
+  // 追问链路改走多模态绑定，老库里遗留的 text 行不再劫持 Q&A。
+  it('P25: providers:bind 拒绝已删除的 text 能力，追问能力恒为 multimodal', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const saved = (await ipc.invoke('providers:save', { name: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: 'sk-1' })) as {
+      value?: { id: string }
+    }
+    const providerId = saved.value!.id
+
+    const rejected = (await ipc.invoke('providers:bind', 'text', providerId, 'qwen2.5')) as { ok: boolean; error?: string }
+    expect(rejected.ok).toBe(false)
+    expect(rejected.error).toContain('capability')
+
+    // 模拟老库遗留（migration 013 之前的形态）：直接插一行 text 绑定。
+    ctx.db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('text', ?, 'qwen2.5')").run(providerId)
+    expect(ctx.qaCapability()).toBe('multimodal')
+
+    // 多模态绑定存在时，追问取用的就是它（不再是 text）。
+    expect((await ipc.invoke('providers:bind', 'multimodal', providerId, 'mimo-v2.5')) as { ok: boolean }).toMatchObject({ ok: true })
+    expect(ctx.providers().bindings.find((b) => b.capability === ctx.qaCapability())?.model).toBe('mimo-v2.5')
+  })
+
   it('refuses IPC from a non-app sender frame (review E1)', async () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)

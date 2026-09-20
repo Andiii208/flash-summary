@@ -198,9 +198,9 @@ describe('ProviderPanel (capability model inputs)', () => {
   it('ProviderPanel saves one model PER capability from per-field inputs (2026-09-05 批4)', () => {
     const onSave = vi.fn()
     const host = mount(<ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />)
-    // Check all three capability boxes; per-capability model inputs appear.
+    // 两个能力都勾上（P25 收敛后只有 asr / multimodal）；per-capability 模型输入框随勾选态出现。
     const boxes = host.querySelectorAll('.capability-check input[type="checkbox"]')
-    expect(boxes).toHaveLength(3)
+    expect(boxes).toHaveLength(2)
     for (const box of boxes) if (!(box as HTMLInputElement).checked) click(box)
     const modelInput = (label: string): HTMLInputElement => host.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement
     // 批4 (P8/D4, 2026-09-20 Andiii 订正): ASR 提示只推荐小米 MiMo——原句把
@@ -211,14 +211,14 @@ describe('ProviderPanel (capability model inputs)', () => {
     input(modelInput('ASR 转写模型'), 'whisper-1')
     input(host.querySelector('input[type="password"]') as HTMLInputElement, 'sk-test')
     const submit = Array.from(host.querySelectorAll('button')).find((b) => b.textContent!.includes('保存并绑定'))
-    expect(submit?.textContent).toContain('3 项能力')
+    expect(submit?.textContent).toContain('2 项能力')
     click(submit ?? null)
     expect(onSave).toHaveBeenCalledWith({
       name: 'OpenAI',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      capabilities: ['asr', 'multimodal', 'text'],
-      models: { asr: 'whisper-1', multimodal: 'gpt-4o', text: 'gpt-4o' }
+      capabilities: ['asr', 'multimodal'],
+      models: { asr: 'whisper-1', multimodal: 'gpt-4o' }
     })
   })
 

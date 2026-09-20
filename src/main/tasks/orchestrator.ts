@@ -40,8 +40,10 @@ export interface OrchestratorDeps {
   ffmpeg: string
   ffprobe: string
   school: SchoolClient
-  /** Chat client factory for a capability (asr uses its HTTP endpoints). */
-  chat: (capability: 'asr' | 'multimodal' | 'text') => OpenAiCompatibleClient
+  /** Chat client factory for a capability (asr uses its HTTP endpoints).
+   *  2026-09-21 (P25): 能力面两项——`text` 已删除，两个调用点分别是
+   *  `transcribing` 的 asr 与 `summarizing` 的 multimodal。 */
+  chat: (capability: 'asr' | 'multimodal') => OpenAiCompatibleClient
   /** Decodes a jpg into an 8x8 luminance grid for phash. */
   gridDecoder: (path: string) => Grid8x8
   /** Stream fetch: url → local file. Default remuxes via ffmpeg; tests stub it. */

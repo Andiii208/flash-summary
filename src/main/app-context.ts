@@ -86,7 +86,9 @@ export interface AppContext {
   ffprobePath: () => string
   /** 8x8 luminance grid decoder for keyframe dedupe. */
   gridDecoder: (path: string) => Grid8x8
-  /** Resolve which capability should answer lesson Q&A (text if bound, else multimodal). */
+  /** Resolve which capability should answer lesson Q&A. 2026-09-21 (P25): 能力面
+   *  收敛为两项后追问一律走多模态绑定（`text` 不再是能力，多模态模型本来就能
+   *  回答文本问题——追问上下文里就有转写与笔记）。保留 dep 名与签名，调用点不变。 */
   qaCapability: () => Capability
   /** User settings (U3): libraryRoot/cacheDir/theme. */
   settings: () => AppSettings
@@ -567,10 +569,7 @@ export function createContext(overrides: Partial<{
     ffprobePath,
     // 批3: 有 64px 缩略图解缩略图（哈希专用、只读 KB 级），没有回落原图。
     gridDecoder: decodeGridPreferThumb,
-    qaCapability: () => {
-      const s = providers()
-      return s.bindings.some((b) => b.capability === 'text') ? 'text' : 'multimodal'
-    },
+    qaCapability: () => 'multimodal',
     settings,
     setSetting: (key, value) => setSetting(db, key, value),
     cacheDir,
