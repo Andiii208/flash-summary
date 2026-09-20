@@ -242,6 +242,20 @@ describe('长内容反截断合同（批4）', () => {
 })
 
 /**
+ * 批6 (plan 2026-09-20-ux-issues-remediation, P10/D6): 阅读列铁律。
+ * 导图视图此前是五个视图里唯一的破格者（`.note-body[data-view='mindmap']
+ * { max-width: none }`，正文列从 640 撑到 860 面板轴），用户原话「没跟前面几个
+ * 板块保持一致、溢出了」。破格已删，这里钉住「没有例外」这条口径——大地图的横向
+ * 滚动交给画布内部（元素盒随缩放），不再靠放宽正文列解决。
+ */
+describe('正文列铁律（批6，P10/D6）', () => {
+  it('正文列是 640，且没有任何视图再破格到面板轴', () => {
+    expect(bodyOf('.note-body')).toContain('max-width: 640px')
+    expect(stripped, '导图视图的破格规则已删（P10）').not.toContain('data-view')
+  })
+})
+
+/**
  * 批8 (plan 2026-09-19): padding 刻度基线。SKILL §1 纪律要求 padding 也走
  * --space-* 刻度，但存量攒了一批逐处手写的野值（gap/line-height/letter-spacing
  * 早已收口，padding 一直没管）。一刀切会制造大片红，务实路径 = 基线 allowlist

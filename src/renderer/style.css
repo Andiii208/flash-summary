@@ -54,7 +54,8 @@
      分层作用。 */
   --scrim: rgba(10, 12, 18, 0.45);
   /* 批B: the single content column — every page shares one width and one
-     left edge (导图视图是唯一破格例外). */
+     left edge. 批6 (P10/D6): 导图视图曾是这个 860 轴上的唯一破格例外
+     （正文列 640 → 860），破格已删，五个视图同轴。 */
   --content-max: 860px;
   --shadow-sm: 0 1px 2px rgba(28, 34, 28, 0.04), 0 1px 4px rgba(28, 34, 28, 0.03);
   --shadow: 0 2px 6px rgba(28, 34, 28, 0.05), 0 8px 20px rgba(28, 34, 28, 0.06);
@@ -605,7 +606,8 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 .content h2 { font-size: var(--font-size-xl); margin: 2px 0 14px; font-family: var(--font-display); font-weight: 400; letter-spacing: var(--tracking); }
 
 /* ---- 批B: single content column — one width token, one left edge ---- */
-/* 页面板与内部容器一律靠左、共用 --content-max；导图视图唯一破格全宽。
+/* 页面板与内部容器一律靠左、共用 --content-max（批6 P10/D6：导图视图的「唯一
+   破格全宽」已删，正文列也回到 640）。
    批3 (plan 2026-09-07 v07): .note-viewer previously had NO width rule —
    its page head ran full-window while empty state/library sat in the 680
    reading column, three right edges on one tab. */
@@ -2190,14 +2192,17 @@ button.concept-ref:hover { color: var(--accent); }
    .md-lite .md-para 各写一套 14px/1.7 渲染）。现在正文的字号与行高**只在这里
    声明一次**，段落规则继承——次级文字（概念定义/步骤解释/自测答案）才拿得回
    自己的字号。 */
+/* 批6 (P10/D6, plan 2026-09-20-ux-issues-remediation): 导图视图此前破格
+   （`.note-body[data-view='mindmap'] { max-width: none }`，640 → 860 面板轴），
+   是五个视图里唯一的例外——用户原话「没跟前面几个板块保持一致、溢出了」。SKILL
+   §6 把 640 钉成阅读排版铁律，这条破格已删；大地图的横向滚动交给画布内部（同批
+   6.2 修完幽灵滚动条后，滚动条只在图真的比 640 宽时出现）。 */
 .note-body {
   max-width: 640px;
   font-family: var(--font-serif);
   font-size: 15px;
   line-height: var(--leading-loose);
 }
-/* 导图视图破格：吃满内容区宽度，横向大图少滚动。 */
-.note-body[data-view='mindmap'] { max-width: none; }
 .note-body .btn, .note-body .md-h, .note-body .callout-tag, .note-body .formula-tag,
 .note-body .refs-toggle, .note-body .tree-view, .note-body .thumb-origin, .note-body .msg,
 .note-body .badge, .note-body .tree-count { font-family: var(--font-ui); }
