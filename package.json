@@ -1,6 +1,6 @@
 {
   "name": "seu-summary",
-  "version": "0.7.7",
+  "version": "0.7.8",
   "description": "Flash Summary - turn SEU Kedacom course recordings and Bilibili videos into structured study notes (Windows)",
   "main": "./out/main/index.cjs",
   "author": "Flash Summary contributors",

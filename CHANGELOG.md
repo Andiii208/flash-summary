@@ -2,9 +2,9 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布] — 2026-09-19/20 · 笔记体验整改 v4（未打 tag）
+## [0.7.8] — 2026-09-20 · 笔记体验整改 v4 + B 站原片跳转 + 证据引用攻坚 + A3 视觉供给链收尾
 
-> 触发：Andiii 实测「花了上十分钟，结果产出一篇全是文字、没有任何截图的低质量笔记」。方案与全程取证：`docs/plans/2026-09-19-note-experience-overhaul.md`（综合主稿，与 `2026-09-19-note-visual-richness.md`、`2026-09-19-audit-remediation-plan.md`、`2026-09-18-non-lecture-and-long-video.md` 对拍后落地）。工艺规范同步见 `docs/skills/note-craft/SKILL.md` v2.1.0；spec §4/§5 已先行登记。**本线与 [0.7.7] 并行推进、同未打 tag，发布时合并。**
+> 触发：Andiii 实测「花了上十分钟，结果产出一篇全是文字、没有任何截图的低质量笔记」。方案与全程取证：`docs/plans/2026-09-19-note-experience-overhaul.md`（综合主稿，与 `2026-09-19-note-visual-richness.md`、`2026-09-19-audit-remediation-plan.md`、`2026-09-18-non-lecture-and-long-video.md` 对拍后落地）。工艺规范同步见 `docs/skills/note-craft/SKILL.md` v2.1.0；spec §4/§5 已先行登记。**本版同时收编从未单独发布的 [0.7.7]（全面审查整改八批）——0.7.5 收编 0.7.4 的同款先例：一个安装包、两段整改，Release notes 覆盖两者。**
 
 ### Added
 
@@ -58,9 +58,9 @@
 
 ### 测试与门禁
 
-本线工作期间测试 **1119 → 1268**（123 文件）；smoke **34/34**（含批 D 新通道探针）；lint/typecheck 零错误；真实库回购截图留 `.ui-shots-seeded/`（gitignored）。**未打 tag**，与 0.7.6 走查、0.7.7 收编同节奏，tag 等 Andiii 统一裁。
+本线工作期间测试 **1119 → 1277**（124 文件，含 CI 时序加固两条）；smoke **34/34**（含批 D 新通道探针）；lint/typecheck 零错误；真实库回购截图留 `.ui-shots-seeded/`（gitignored）。**真机验收实证**（同课 74min、mimo-v2.5、18 帧全发）：金句 3/3 讲者原话逐字、TL;DR 78 字、evidence 命中 0/0 → 17/17、章节 10 → 6。
 
-## [0.7.7] — 2026-09-20 · 全面审查整改收编（批1–批8，未打 tag）
+## [0.7.7] — 2026-09-20 · 全面审查整改收编（批1–批8；未单独发布，由 [0.7.8] 一并收编）
 
 本版本收编审查整改计划（`docs/plans/2026-09-19-audit-remediation-plan.md`）全部八批（提交 `7501248…b80654d`）：
 
