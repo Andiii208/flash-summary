@@ -61,7 +61,7 @@ The first-run experience recommends a single provider that supports both ASR and
 All provider communication uses OpenAI-compatible APIs. The default note generation path uses a multimodal model; follow-up Q&A uses the **same multimodal binding** (see the 2026-09-21 annotation below).
 
 > **批注（2026-09-21，模型设置两项化 P25，见 docs/plans/2026-09-20-ux-issues-remediation.md 补批）**：
-> 能力面由三项（ASR / 多模态 / 文本问答）收敛为**两项（ASR / 多模态）**——用户原话要求「直接改成 asr 语音转写模型和多模态模型这两个选项，不要设置成当前的三个选项」。依据：`text` 从来没有独立的真实消费点，追问链路是它唯一的用处，而多模态模型本身就能回答文本问题（追问上下文里本来就有转写与笔记）。因此 **Q&A 走多模态绑定**（`qaCapability()` 恒返回 `multimodal`）；原先「绑了 text 就用 text、否则回落到 multimodal」的二选一消失。老库里遗留的 `capability_bindings.capability = 'text'` 行由 migration 013 删除（能力面已不存在，留着只会在 Provider 列表渲染一个 UI 无法维护的徽标）；`capability_bindings` 的 CHECK 约束不动（改它要重建表，收益为零）。
+> 能力面由三项（ASR / 多模态 / 文本问答）收敛为**两项（ASR / 多模态）**——用户原话要求「直接改成 asr 语音转写模型和多模态模型这两个选项，不要设置成当前的三个选项」。依据：`text` 从来没有独立的真实消费点，追问链路是它唯一的用处，而多模态模型本身就能回答文本问题（追问上下文里本来就有转写与笔记）。因此 **Q&A 走多模态绑定**（`qaCapability()` 恒返回 `multimodal`）；原先「绑了 text 就用 text、否则回落到 multimodal」的二选一消失。老库里遗留的 `capability_bindings.capability = 'text'` 行由 migration 013 删除（能力面已不存在，留着只会在 Provider 列表渲染一个 UI 无法维护的徽标）；`capability_bindings` 的 CHECK 约束不动（改它要重建表，收益为零）。**已绑多模态的账号**追问不受影响；**只绑过 `text`、从未绑过多模态的账号**升级后追问会得到可执行的提示「未绑定问答模型，请在设置中配置多模态总结模型」，需要自己把多模态模型绑上——migration 不代用户改写绑定（把原先给 Q&A 用的文本模型搬到多模态能力上，会让笔记生成按用户从未声明的配置跑起来，且按 §4 的视觉能力判据这类模型不发图，属越权且静默降级）。
 
 > **批注（2026-09-19）**：“绑定的多模态模型”按具体模型判定视觉能力。已知无视觉（如 deepseek-chat）时生成路径**不发图**；未知类型保守发图。划分不依赖于用户声明，而依赖于维护的模型知识表（猜错的代价不对称：说无视觉=丢画面，说有视觉=白烧 token）。
 
