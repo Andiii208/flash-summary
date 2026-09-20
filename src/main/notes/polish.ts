@@ -12,7 +12,7 @@ import type { Db } from '../db/open'
 import { parseNote, type Note } from './schema'
 import { dropUnknownEvidence, evidenceHitRate } from '../../shared/notes/evidence'
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
-import { saveNoteVersion, stripFences, loadCleanSegments, loadSummarizeInputs, buildUserParts } from './summarize'
+import { saveNoteVersion, stripFences, loadCleanSegments, loadSummarizeInputs, buildUserParts, loadValidRefs } from './summarize'
 import { feedbackTagInstructions } from '../../shared/feedback-tags'
 import { cleanTranscriptTimed, sampleTranscriptLines } from '../../shared/notes/transcript-clean'
 import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
@@ -66,17 +66,6 @@ function loadTranscript(db: Db, lessonId: string): string {
   } catch {
     return ''
   }
-}
-
-/** Every evidence id this lesson actually has — polish may only cite these.
- *  批4 起导出复用（notes:courseHealth 的命中率口径同源）。 */
-export function loadValidRefs(db: Db, lessonId: string): Array<{ ref: string }> {
-  const pages = db.prepare('SELECT page_index FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index').all(lessonId) as Array<{ page_index: number }>
-  const keyframes = db.prepare('SELECT id FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds').all(lessonId) as Array<{ id: string }>
-  return [
-    ...pages.map((p) => ({ ref: `ppt:${p.page_index}` })),
-    ...keyframes.map((k) => ({ ref: `kf:${k.id}` }))
-  ]
 }
 
 /** The polish user message: original note + feedback + transcript excerpt. */

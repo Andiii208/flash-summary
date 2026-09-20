@@ -604,6 +604,8 @@ prevLesson={state.lessonNeighbors.prev}
               pdfBusy={state.pdfBusy}
               exportBusy={state.exportBusy}
               onRegenerate={state.currentLesson !== '' ? () => state.regenerateNote(state.currentLesson) : undefined}
+              repairBusy={state.noteRepairBusy}
+              onRepair={state.currentLesson !== '' ? () => state.repairNote(state.currentLesson) : undefined}
               onExportPdf={state.currentLesson !== '' && state.note != null ? () => state.exportNotePdf(state.currentLesson) : undefined}
               onExport={state.currentLesson !== '' ? () => state.exportNote(state.currentLesson) : undefined}
               onExportObsidian={state.currentLesson !== '' && state.note != null ? () => state.exportNoteObsidian(state.currentLesson) : undefined}

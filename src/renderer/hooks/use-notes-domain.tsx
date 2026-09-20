@@ -82,6 +82,10 @@ export interface NotesDomain {
     coverDataUrl: string | null
     noteRegenBusy: boolean
     regenerateNote: (lessonId: string) => void
+    /** 批2 (plan 2026-09-20, P2): 定向补全在途态（只按体检问题修，不发图）。 */
+    noteRepairBusy: boolean
+    /** 批2: 对已存盘的最新版笔记按体检问题补全一次。 */
+    repairNote: (lessonId: string) => void
     /** 批5: feedback polish (busy + submit → new note version). */
     notePolishBusy: boolean
     polishNote: (lessonId: string, feedback: { tags: string[]; text: string }) => void
@@ -525,6 +529,47 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     [bridge, toast, loadNote, loadNoteIndex]
   )
 
+  /**
+   * 批2 (plan 2026-09-20, P2): 定向补全——体检面板的「按体检结果补全」。
+   * 与 regenerate 的差别：不发图片、只跑一次、修不好就保留原稿（版本号不变）。
+   * busy 三件套 + hook 侧 in-flight 守卫（ref 守住同 tick 连点，state 只管视觉）。
+   */
+  const [noteRepairBusy, setNoteRepairBusy] = useState(false)
+  const noteRepairBusyRef = useRef(false)
+  const repairNote = useCallback(
+    (lessonId: string): void => {
+      if (noteRepairBusyRef.current) return
+      noteRepairBusyRef.current = true
+      setNoteRepairBusy(true)
+      void (async () => {
+        try {
+          const res = await bridge.notes.repair(lessonId)
+          if (!res.ok) {
+            toast(res.error ?? '补全失败', 'error')
+            return
+          }
+          const result = res.value
+          if (result == null) {
+            toast('补全失败：返回数据缺失', 'error')
+            return
+          }
+          // 「N 项 → M 项」只在真的采纳过返修时才说（口径与生成路径同一份体检）。
+          if (result.repaired && result.health.warnCountBeforeRepair != null) {
+            toast(`已补全：体检 ${result.health.warnCountBeforeRepair} 项 → ${result.health.warnCount} 项`, 'success')
+          } else {
+            toast('补完没有改善，已保留原稿', 'info')
+          }
+          await loadNote(lessonId)
+          await loadNoteIndex()
+        } finally {
+          noteRepairBusyRef.current = false
+          setNoteRepairBusy(false)
+        }
+      })()
+    },
+    [bridge, toast, loadNote, loadNoteIndex]
+  )
+
   /** 质量批4: open the upgrade picker — fetch the course's per-lesson health. */
   const openNoteUpgrade = useCallback(
     (courseId: string, label: string): void => {
@@ -698,6 +743,8 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     coverDataUrl,
     noteRegenBusy,
     regenerateNote,
+    noteRepairBusy,
+    repairNote,
     notePolishBusy,
     polishNote,
     pdfBusy,

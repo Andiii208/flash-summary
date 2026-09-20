@@ -67,6 +67,10 @@ export interface NoteViewerProps {
   regenBusy?: boolean
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
   onRegenerate?: () => void
+  /** 批2 (plan 2026-09-20, P2): 定向补全在途态（体检面板的「按体检结果补全」）。 */
+  repairBusy?: boolean
+  /** 批2: 只按体检问题修一次——不发图、修不好保留原稿。 */
+  onRepair?: () => void
   /** 2026-09-04: export the full-lesson PDF handout. */
   pdfBusy?: boolean
   /** 健康巡查 2026-09-12 批5: the in-flight export kind (null = idle) —
@@ -129,6 +133,8 @@ export function NoteViewer({
     coverDataUrl = null,
   regenBusy = false,
   onRegenerate,
+  repairBusy = false,
+  onRepair,
   pdfBusy = false,
   exportBusy = null,
   onExportPdf,
@@ -388,8 +394,18 @@ function noteReadMinutes(note: Note): number {
               </li>
             ))}
           </ul>
+          {health.warnCount > 0 && onRepair != null && (
+            <button
+              class="btn small note-repair-btn"
+              title="只按体检问题修，不重新发送画面；修不好就保留原稿"
+              onClick={onRepair}
+              disabled={repairBusy || regenBusy}
+            >
+              {repairBusy ? '补全中…' : '按体检结果补全'}
+            </button>
+          )}
           {health.warnCount > 0 && onRegenerate != null && (
-            <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
+            <button class="btn small" onClick={onRegenerate} disabled={regenBusy || repairBusy}>
               {regenBusy ? '生成中…' : '重新生成此笔记'}
             </button>
           )}

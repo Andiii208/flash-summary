@@ -887,3 +887,38 @@ describe('批 D (plan 2026-09-19): 跳原片（B 站 ?t=）', () => {
     expect(host.querySelector('.timeline-open-src')).toBeNull()
   })
 })
+
+describe('批2 (plan 2026-09-20, P2): 体检面板的「按体检结果补全」', () => {
+  function openHealthPanel(props: Record<string, unknown>): HTMLElement {
+    const host = mount(<NoteViewer note={NOTE} {...props} />)
+    click(host.querySelector('.note-health-toggle'))
+    return host
+  }
+
+  it('给了 onRepair 时与「重新生成此笔记」并列出现，点击回调一次', () => {
+    const onRepair = vi.fn()
+    const host = openHealthPanel({ onRepair, onRegenerate: () => undefined })
+    const repair = host.querySelector('.note-repair-btn') as HTMLButtonElement
+    expect(repair).not.toBeNull()
+    expect(repair.textContent).toBe('按体检结果补全')
+    // 语义不同：一个按体检问题修、一个重出整稿——title 说明边界（不发画面、修不好保留原稿）。
+    expect(repair.getAttribute('title')).toContain('不重新发送画面')
+    expect(repair.disabled).toBe(false)
+    click(repair)
+    expect(onRepair).toHaveBeenCalledTimes(1)
+  })
+
+  it('不给 onRepair 时不渲染该按钮（不给会失败的入口）', () => {
+    const host = openHealthPanel({ onRegenerate: () => undefined })
+    expect(host.querySelector('.note-repair-btn')).toBeNull()
+  })
+
+  it('在途时按钮 disabled 且文案加省略号；与重新生成互锁（同一课时只允许一路写）', () => {
+    const host = openHealthPanel({ onRepair: () => undefined, repairBusy: true, onRegenerate: () => undefined })
+    const repair = host.querySelector('.note-repair-btn') as HTMLButtonElement
+    expect(repair.disabled).toBe(true)
+    expect(repair.textContent).toBe('补全中…')
+    const regenerate = [...host.querySelectorAll('.note-health-panel button')].find((b) => b.textContent?.includes('重新生成')) as HTMLButtonElement
+    expect(regenerate.disabled).toBe(true)
+  })
+})

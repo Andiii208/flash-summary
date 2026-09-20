@@ -395,6 +395,19 @@ export function transcriptHitRateFor(db: Db, lessonId: string, note: Note): { hi
   return transcriptRefHitRate(verifyNoteRefs(note, segments).stats)
 }
 
+/** Every evidence id this lesson actually has — 润色与补全只允许引用这些。
+ *  批4 起 `notes:courseHealth` 复用（命中率口径同源）。
+ *  批2 (plan 2026-09-20, P2)：从 polish.ts 搬到本模块——定向补全（repairStoredNote）
+ *  与生成路径共用它，留在 polish 会形成 summarize → polish → summarize 的循环。 */
+export function loadValidRefs(db: Db, lessonId: string): Array<{ ref: string }> {
+  const pages = db.prepare('SELECT page_index FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index').all(lessonId) as Array<{ page_index: number }>
+  const keyframes = db.prepare('SELECT id FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds').all(lessonId) as Array<{ id: string }>
+  return [
+    ...pages.map((p) => ({ ref: `ppt:${p.page_index}` })),
+    ...keyframes.map((k) => ({ ref: `kf:${k.id}` }))
+  ]
+}
+
 
 /** Insert the note as a new version row (pruning beyond KEEP_VERSIONS); returns the version number. */
 export function saveNoteVersion(db: Db, lessonId: string, note: Note, model: string): number {
@@ -579,5 +592,92 @@ export async function summarizeLesson(
     }
   } catch (err) {
     return { error: `笔记生成失败: ${(err as Error).message}` }
+  }
+}
+
+/** 批2 (plan 2026-09-20, P2) 定向补全的结果。 */
+export interface RepairStoredNoteResult {
+  /** 采纳时是新版本号；未采纳时是原版本号（**没有**新版本落库）。 */
+  version: number
+  repaired: boolean
+  health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; warnCountBeforeRepair: number | null }
+  transcriptHitRate: { hits: number; total: number } | null
+}
+
+/**
+ * 批2 (plan 2026-09-20, P2)：对**已存盘**的最新版笔记做一次定向补全。
+ *
+ * 与 `summarizeLesson` 的区别就是它存在的理由——生成路径只会「重新出一份稿」，
+ * 体检报 warn 之后用户唯一的行动是重跑整条多模态生成。这里只按体检问题修：
+ *   - **不读图片、零附件 IO**（不碰 `loadSummarizeInputs`，不触发融合/哈希/缩略图），
+ *     只带转写——多模态费用不翻倍（spec §5 批注⑥）；
+ *   - **只跑一次**，不做循环返修；
+ *   - warn 数没下降就**保留原稿、不存新版本**；warn=0 时**根本不调模型**。
+ *
+ * 口径约束（P3 的闭环）：前置体检与返修复检用**同一份** `loadValidRefs`。
+ * 严禁传空 refs——`evidenceFindings` 在 `total === 0` 时返回空，空 refs 会让证据
+ * 命中率 warn 永远不出现，从而把「只差命中率」的笔记误判成补全成功。
+ */
+export async function repairStoredNote(
+  db: Db,
+  client: OpenAiCompatibleClient,
+  lessonId: string,
+  signal?: AbortSignal
+): Promise<RepairStoredNoteResult | { error: string }> {
+  const binding = db.prepare("SELECT model FROM capability_bindings WHERE capability = 'multimodal'").get() as
+    | { model: string }
+    | undefined
+  if (binding == null) return { error: '未绑定多模态模型，请在设置中配置' }
+  const row = db
+    .prepare('SELECT version, note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
+    .get(lessonId) as { version: number; note_json: string } | undefined
+  if (row == null) return { error: '该课时还没有笔记，请先生成笔记' }
+  let note: Note
+  try {
+    note = parseNote(row.note_json)
+  } catch {
+    return { error: '笔记数据损坏，无法补全' }
+  }
+  const segments = loadCleanSegments(db, lessonId)
+  if (segments == null) return { error: '转写结果缺失，请先运行完整任务生成转写' }
+  const evidenceRefs = loadValidRefs(db, lessonId)
+  const hitRate = evidenceHitRate(note, evidenceRefs)
+  const transcriptHitRate = transcriptHitRateFor(db, lessonId, note)
+  const health = noteHealth(note, hitRate, transcriptHitRate)
+  // warn=0 → 没有可修的问题，一次模型调用都不花（空转不烧钱）。
+  if (health.warnCount === 0) return { error: '这份笔记没有需要补全的问题' }
+
+  const attempt = await repairOnce(
+    client,
+    binding.model,
+    note,
+    health.findings,
+    formatTimedTranscript(segments),
+    segments,
+    new Set(evidenceRefs.map((ref) => ref.ref)),
+    evidenceRefs,
+    signal
+  )
+  // 未改善（调用失败 / 解析失败 / warn 数没降）→ 原稿原样保留，**不存新版本**。
+  if (attempt == null || attempt.warnCount >= health.warnCount) {
+    return {
+      version: row.version,
+      repaired: false,
+      health: { warnCount: health.warnCount, grade: health.grade, warnCountBeforeRepair: null },
+      transcriptHitRate
+    }
+  }
+  const repairedTranscriptHitRate = transcriptRefHitRate(attempt.stats)
+  const repairedHitRate = evidenceHitRate(attempt.note, evidenceRefs)
+  const version = saveNoteVersion(db, lessonId, attempt.note, binding.model)
+  return {
+    version,
+    repaired: true,
+    health: {
+      warnCount: attempt.warnCount,
+      grade: noteHealth(attempt.note, repairedHitRate, repairedTranscriptHitRate).grade,
+      warnCountBeforeRepair: health.warnCount
+    },
+    transcriptHitRate: repairedTranscriptHitRate
   }
 }

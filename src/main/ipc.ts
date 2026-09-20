@@ -25,8 +25,8 @@ import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachmentManifest, readAttachmentData, readLessonCover } from './notes/attachments'
 import { saveLessonCover } from './notes/cover'
 import { buildBilibiliSourceUrl } from './bilibili/source-url'
-import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor } from './notes/summarize'
-import { polishNote, loadValidRefs } from './notes/polish'
+import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor, loadValidRefs, loadCleanSegments, repairStoredNote } from './notes/summarize'
+import { polishNote } from './notes/polish'
 import { FEEDBACK_TAGS } from '../shared/feedback-tags'
 import { printToPdfFile } from './notes/pdf-export'
 import { parseNote } from '../shared/notes/schema'
@@ -1707,6 +1707,39 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       try {
         const client = ctx.chatFor('multimodal')
         const result = await summarizeLesson(ctx.db, client, id, ctx.libraryRoot)
+        if ('error' in result) return err(new Error(result.error))
+        return ok(result)
+      } finally {
+        releaseNoteInflight(id)
+      }
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 批2 (plan 2026-09-20, P2): 定向补全——对**已存盘**的最新版笔记按体检问题修一次。
+  // 与 regenerate 的差别是它存在的理由：不发图片（只带转写，多模态费用不翻倍）、
+  // 只跑一次、warn 数没下降就保留原稿不存新版本（判据与生成路径同一口径，见
+  // repairStoredNote）。守卫与 regenerate 同款：转写缺失 → 队列占用 → 该课时有在跑
+  // 任务 → 在途登记（与 regenerate/polish 共用，防 version 撞 UNIQUE）。
+  handle(ipc, 'notes:repair', async (_e, lessonId: unknown) => {
+    try {
+      const id = assertSafeId(lessonId, 'lessonId')
+      // 输入检查先行（与 regenerate 同序）：转写缺失不该伪装成「未绑模型」。
+      if (loadCleanSegments(ctx.db, id) == null) return err(new Error('转写结果缺失，请先运行完整任务生成转写'))
+      if (queue.current() != null) return err(new Error('任务运行中，请等待完成后再补全笔记'))
+      const runningForLesson = ctx.db
+        .prepare("SELECT COUNT(*) AS n FROM tasks WHERE lesson_id = ? AND state IN ('pending','summarizing','transcribing','extracting_visuals','extracting_audio','downloading_video','fetching_course')")
+        .get(id) as { n: number }
+      if (runningForLesson.n > 0) return err(new Error('该课时存在排队/运行中的任务，请等待完成后再补全笔记'))
+      // 绑定检查放在 chatFor 之前：chatFor 抛的是「能力 multimodal 未绑定 Provider」，
+      // 而用户需要的是可执行的下一步（与 summarizeLesson 内返修同源的那句话）。
+      const binding = ctx.db.prepare("SELECT model FROM capability_bindings WHERE capability = 'multimodal'").get()
+      if (binding == null) return err(new Error('未绑定多模态模型，请在设置中配置'))
+      if (!claimNoteInflight(id, 'repair')) return err(new Error('该课时已有笔记生成或润色在进行中，请稍候'))
+      try {
+        const client = ctx.chatFor('multimodal')
+        const result = await repairStoredNote(ctx.db, client, id)
         if ('error' in result) return err(new Error(result.error))
         return ok(result)
       } finally {

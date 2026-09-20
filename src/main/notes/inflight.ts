@@ -7,9 +7,13 @@
  * INSERT 撞 UNIQUE(id) —— 用户看到一句原始 SQL 错误，笔记停在上一个
  * 版本。这个模块级 Map 让同一课时同时只允许一路（polish × regenerate
  * 互斥），claim 返回 false 即拒绝。
+ *
+ * 批2 (plan 2026-09-20, P2): repair（定向补全）走的是**同一条**写路径
+ * （读最新版 → 返修 → 采纳才 saveNoteVersion），所以共用这本登记——
+ * 三个 kind 两两互斥。
  */
 
-export type NoteInflightKind = 'polish' | 'regenerate'
+export type NoteInflightKind = 'polish' | 'regenerate' | 'repair'
 
 const inflight = new Map<string, NoteInflightKind>()
 

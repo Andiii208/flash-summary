@@ -278,9 +278,21 @@ export interface NotesBridge {
       droppedRefs?: number
     }>
   >
+  /**
+   * 批2 (plan 2026-09-20, P2): 按体检结果定向补全**已存盘**的笔记——不发图片
+   * （只带转写，多模态费用不翻倍）、只跑一次、warn 数没下降就保留原稿
+   * （`repaired: false` 且版本号不变）。判据与生成路径同一口径（含证据/转写命中率）。
+   */
+  repair(lessonId: string): Promise<
+    ApiResult<{
+      version: number
+      repaired: boolean
+      health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; warnCountBeforeRepair: number | null }
+      transcriptHitRate?: { hits: number; total: number } | null
+    }>
+  >
   /** 2026-09-04: PDF handout step 1 — system save dialog for the target file. */
-  exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>>
-  /** 2026-09-04: PDF handout step 2 — print the main window (handout already
+  exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>>  /** 2026-09-04: PDF handout step 2 — print the main window (handout already
    *  rendered into #print-root) and write the file; returns the path + size. */
   /** E3 (review): the one-shot token from exportPdfDialog — never a raw path. */
   exportPdfWrite(token: string): Promise<ApiResult<{ path: string; bytes: number }>>

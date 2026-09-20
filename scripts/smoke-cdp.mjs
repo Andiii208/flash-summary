@@ -122,7 +122,7 @@ const EXPECTED_BRIDGE = {
   bilibili: ['login', 'loginStatus', 'logout', 'session', 'resolve', 'import'],
   providers: ['list', 'save', 'remove', 'bind', 'test'],
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
-  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'exportPng', 'courseTree', 'attachments', 'attachmentData', 'cover', 'regenerate', 'polish', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
+  notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'exportPng', 'courseTree', 'attachments', 'attachmentData', 'cover', 'regenerate', 'polish', 'repair', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
   // 批 D (plan 2026-09-19): 原片跳转（B 站 ?t=；SEU 源拒绝）。
   lessons: ['openSource'],
@@ -152,6 +152,8 @@ const PROBES = [
   ['notes:cover (missing lesson)', "s.notes.cover('smoke-none')", (r) => r.ok === true && r.value === null],
   ['notes:polish (empty feedback)', "s.notes.polish('smoke-none', { tags: [], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],
   ['notes:polish (missing note)', "s.notes.polish('smoke-none', { tags: ['too_brief'], text: '' })", (r) => r.ok === false && typeof r.error === 'string'],
+  // 批2 (plan 2026-09-20, P2): 定向补全只探**错误路径**——成功路径会真的调模型。
+  ['notes:repair (missing lesson)', "s.notes.repair('smoke-none')", (r) => r.ok === false && typeof r.error === 'string'],
   ['qa:recent', 's.qa.recent()', (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:history (missing)', "s.qa.history('smoke-none')", (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:ask (no binding)', "s.qa.ask('smoke-none', 'probe')", (r) => r.ok === false && typeof r.error === 'string'],
