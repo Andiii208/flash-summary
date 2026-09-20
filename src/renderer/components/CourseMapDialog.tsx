@@ -4,6 +4,7 @@ import type { TreeNode } from '../../shared/notes/schema'
 import { MindMap } from './MindMap'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
 import { useFocusTrap } from '../ui/use-focus-trap'
+import { isTopmostModalLayer } from '../ui/modal-layer'
 
 export interface CourseMapInfo {
   courseName: string
@@ -26,7 +27,9 @@ export function CourseMapDialog({ info, onClose }: { info: CourseMapInfo; onClos
   useFocusTrap(true, cardRef)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      // 批1 (P13 验收项「Esc 只关一层」): 地图弹层渲染在浏览器之后（DOM 后者居上），
+      // 两层同开时它是最上层、先关；被确认弹层压住时不响应。
+      if (e.key === 'Escape' && isTopmostModalLayer(cardRef.current)) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

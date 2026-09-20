@@ -9,6 +9,7 @@ import { subjectInkVar } from '../../shared/subject-ink'
 import { Dialog } from '../ui/Dialog'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
 import { useFocusTrap } from '../ui/use-focus-trap'
+import { isTopmostModalLayer } from '../ui/modal-layer'
 
 export interface CourseBrowserProps {
   open: boolean
@@ -90,7 +91,8 @@ export function CourseBrowser({
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      // 批1 (P13 验收项「Esc 只关一层」): 被压在课程导图/我的学习弹层下面时不响应。
+      if (e.key === 'Escape' && isTopmostModalLayer(cardRef.current)) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

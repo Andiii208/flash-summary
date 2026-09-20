@@ -5,6 +5,7 @@ import type { BilibiliResolveResult, SeuSummaryBridge } from '../../shared/bridg
 import { formatDuration } from '../../shared/format'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
 import { useFocusTrap } from '../ui/use-focus-trap'
+import { isTopmostModalLayer } from '../ui/modal-layer'
 import { OWN_ACCOUNT_HINT } from './TopBar'
 
 export interface BiliImportDialogProps {
@@ -186,10 +187,11 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   }, [open, loginPhase, bridge])
 
   // Esc closes — same convention as Dialog/CourseMapDialog (批3 统一).
+  // 批1 (P13 验收项「Esc 只关一层」): 只有最上层的模态层响应。
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && isTopmostModalLayer(cardRef.current)) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

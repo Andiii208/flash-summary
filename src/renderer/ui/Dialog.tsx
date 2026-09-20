@@ -2,6 +2,7 @@ import type { JSX } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 import { useModalScrollLock } from './use-modal-scroll-lock'
 import { useFocusTrap } from './use-focus-trap'
+import { isTopmostModalLayer } from './modal-layer'
 
 export interface DialogProps {
   open: boolean
@@ -48,7 +49,9 @@ export function Dialog({ open, title, message, confirmLabel = '确认', danger =
     // 声明批2: a persistent gate has no Escape exit (see DialogProps).
     if (!open || persistent) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCancel()
+      // 批1 (P13 验收项「Esc 只关一层」): 只有最上层的模态层响应——确认弹层
+      // 压在自绘 overlay 之上时，一次 Esc 不再把底下那层一起关掉。
+      if (e.key === 'Escape' && isTopmostModalLayer(dialogRef.current)) onCancel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

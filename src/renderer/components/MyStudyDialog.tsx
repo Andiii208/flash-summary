@@ -3,6 +3,7 @@ import type { JSX } from 'preact'
 import { MyStudyPanel, type MyStudyPanelProps } from './MyStudyPanel'
 import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
 import { useFocusTrap } from '../ui/use-focus-trap'
+import { isTopmostModalLayer } from '../ui/modal-layer'
 
 export interface MyStudyDialogProps extends Omit<MyStudyPanelProps, 'headerAction'> {
   open: boolean
@@ -23,7 +24,8 @@ export function MyStudyDialog({ open, onClose, onSelect, ...panelProps }: MyStud
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      // 批1 (P13 验收项「Esc 只关一层」): 与其余三个自绘弹层同一份「最上层才响应」判定。
+      if (e.key === 'Escape' && isTopmostModalLayer(cardRef.current)) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
