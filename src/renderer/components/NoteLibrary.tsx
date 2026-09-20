@@ -14,6 +14,8 @@ export interface NoteLibraryProps {
   /** 健康巡查 2026-09-12 批5: the in-flight export kind — the course-export
    *  button reads «导出中…» and disables while any export runs. */
   exportBusy?: string | null
+  /** 批2 (plan 2026-09-20, P17): 课程体检在飞——「升级旧笔记」读「读取中…」并禁用。 */
+  upgradeBusy?: boolean
   /** 批C 批2: 搜索词（受控）——过滤在主进程做，这里只负责输入与展示。 */
   query?: string
   onQuery?: (value: string) => void
@@ -53,7 +55,7 @@ function groupByCourse(entries: NoteIndexInfo[]): LibraryGroup[] {
  * 批6: course-grouped collapsible sections; v-badge explains itself.
  * 质量批4: per-course «升级旧笔记» entry in the group head.
  */
-export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian, exportBusy = null, query = '', onQuery, total, onMore }: NoteLibraryProps): JSX.Element {
+export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCourseObsidian, exportBusy = null, upgradeBusy = false, query = '', onQuery, total, onMore }: NoteLibraryProps): JSX.Element {
   const groups = useMemo(() => groupByCourse(entries), [entries])
   const searching = query.trim() !== ''
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -118,12 +120,13 @@ export function NoteLibrary({ entries, onOpenLesson, onUpgradeCourse, onExportCo
                   <button
                     class="btn small note-library-upgrade"
                     title="按体检结果升级该课程的旧笔记（复用已落库转写，零下载）"
+                    disabled={upgradeBusy}
                     onClick={(e) => {
                       e.stopPropagation()
                       onUpgradeCourse(group.courseId!, group.label)
                     }}
                   >
-                    升级旧笔记
+                    {upgradeBusy ? '读取中…' : '升级旧笔记'}
                   </button>
                 )}
               </div>

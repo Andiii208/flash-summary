@@ -57,6 +57,9 @@ export interface NotesDomain {
     showMoreNotes: () => void
     /** 质量批4: 存量升级对话框数据 + 逐课运行状态（笔记库课程组入口）。 */
     noteUpgrade: { open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }
+    /** 批2 (plan 2026-09-20, P17): 「升级旧笔记」按钮的在途态（课程体检在飞）。
+     *  与 noteUpgrade.loading 区分——后者是对话框内列表的加载态。 */
+    noteUpgradeLoading: boolean
     /** 批2 (plan 2026-09-20, P4): failed 是 lessonId → 失败原因——此前只记「失败」，
      *  用户看不到是任务占用、未绑模型还是超时（同一批每课同一个隐藏原因）。 */
     noteUpgradeRun: { busy: boolean; running: ReadonlySet<string>; done: ReadonlySet<string>; failed: ReadonlyMap<string, string> }
@@ -156,6 +159,9 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     done: new Set(),
     failed: new Map()
   })
+  /** 批2 (P17): 「升级旧笔记」入口的在途态 + 同 tick 连点守卫。 */
+  const [noteUpgradeLoading, setNoteUpgradeLoading] = useState(false)
+  const noteUpgradeLoadingRef = useRef(false)
   // 批5: feedback polish busy state (independent of regenerate).
   const [notePolishBusy, setNotePolishBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -585,15 +591,26 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   /** 质量批4: open the upgrade picker — fetch the course's per-lesson health. */
   const openNoteUpgrade = useCallback(
     (courseId: string, label: string): void => {
+      // 批2 (plan 2026-09-20, P17): in-flight 守卫——连点两次此前会并发拉两次课程
+      // 体检，晚到的响应覆盖先到的（用户看到的是哪一门课全看网络时序）。
+      // ref 守同 tick 的连点，state 只管按钮的视觉与文案。
+      if (noteUpgradeLoadingRef.current) return
+      noteUpgradeLoadingRef.current = true
+      setNoteUpgradeLoading(true)
       setNoteUpgrade({ open: true, courseId, label, loading: true, items: [] })
       setNoteUpgradeRun({ busy: false, running: new Set(), done: new Set(), failed: new Map() })
       void (async () => {
-        const res = await bridge.notes.courseHealth(courseId)
-        if (res.ok && res.value != null) {
-          setNoteUpgrade((prev) => ({ ...prev, open: true, loading: false, items: res.value as NoteHealthInfo[] }))
-        } else {
-          setNoteUpgrade((prev) => ({ ...prev, open: false, loading: false }))
-          toast(res.error ?? '读取体检结果失败', 'error')
+        try {
+          const res = await bridge.notes.courseHealth(courseId)
+          if (res.ok && res.value != null) {
+            setNoteUpgrade((prev) => ({ ...prev, open: true, loading: false, items: res.value as NoteHealthInfo[] }))
+          } else {
+            setNoteUpgrade((prev) => ({ ...prev, open: false, loading: false }))
+            toast(res.error ?? '读取体检结果失败', 'error')
+          }
+        } finally {
+          noteUpgradeLoadingRef.current = false
+          setNoteUpgradeLoading(false)
         }
       })()
     },
@@ -754,6 +771,7 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     setNoteQuery,
     showMoreNotes: () => setNoteLimit((n) => n + NOTE_PAGE),
     noteUpgrade,
+    noteUpgradeLoading,
     noteUpgradeRun,
     openNoteUpgrade,
     closeNoteUpgrade,

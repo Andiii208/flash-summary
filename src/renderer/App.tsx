@@ -597,6 +597,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onLibraryMore={state.showMoreNotes}
               onOpenLesson={state.selectLesson}
               onUpgradeCourse={state.openNoteUpgrade}
+              upgradeBusy={state.noteUpgradeLoading}
               onExportCourseObsidian={state.exportCourseObsidian}
               onGoTasks={goTasks}
               onOpenSource={state.currentCourseSource === 'bilibili' ? state.openSourceAt : undefined}

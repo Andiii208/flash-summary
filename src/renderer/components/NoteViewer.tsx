@@ -49,6 +49,8 @@ export interface NoteViewerProps {
   onOpenLesson?: (lessonId: string) => void
   /** 质量批4: upgrade a course's stale notes from the library group head. */
   onUpgradeCourse?: (courseId: string, label: string) => void
+  /** 批2 (plan 2026-09-20, P17): 课程体检在飞——「升级旧笔记」按钮读「读取中…」并禁用。 */
+  upgradeBusy?: boolean
   /** Obsidian 批2: export the whole course into the vault. */
   onExportCourseObsidian?: (courseId: string, label: string) => void
   /** A7: jump to the tasks tab when the selected lesson has no note. */
@@ -127,6 +129,7 @@ export function NoteViewer({
   onLibraryMore,
   onOpenLesson,
   onUpgradeCourse,
+  upgradeBusy = false,
   onExportCourseObsidian,
   onGoTasks,
   prevLesson = null,
@@ -474,7 +477,7 @@ function noteReadMinutes(note: Note): number {
                   onQuery={onLibraryQuery}
                   total={libraryTotal}
                   onMore={onLibraryMore}
-                  onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
+                  onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} upgradeBusy={upgradeBusy} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
               </>
             ) : (
               <EmptyState title="尚无笔记" hint="运行任务生成后自动显示；已有的笔记会列在这里供直接打开。" />
@@ -488,7 +491,7 @@ function noteReadMinutes(note: Note): number {
                   onQuery={onLibraryQuery}
                   total={libraryTotal}
                   onMore={onLibraryMore}
-                  onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
+                  onOpenLesson={onOpenLesson} onUpgradeCourse={onUpgradeCourse} upgradeBusy={upgradeBusy} onExportCourseObsidian={onExportCourseObsidian} exportBusy={exportBusy} />
             </>
           ) : null}
         </>

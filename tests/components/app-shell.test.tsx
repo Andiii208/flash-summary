@@ -670,6 +670,49 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(listMock.mock.calls.length).toBe(before + 1)
   })
 
+  it('批2 (P17): 「升级旧笔记」连点只发起一次课程体检；在途时按钮禁用并读「读取中…」', async () => {
+    NOTE_ROWS.push(
+      { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
+    )
+    const bridge = makeBridge()
+    // 体检请求挂着不返回——量「在途」这一窗口里的按钮与守卫。
+    const healthGate: { settle?: () => void } = {}
+    ;(bridge.notes.courseHealth as ReturnType<typeof vi.fn>).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          healthGate.settle = () =>
+            resolve(ok([{ lessonId: 'l1', lessonTitle: '第一讲', version: 1, warnCount: 2, grade: 'weak', promptVersion: 0 }]))
+        })
+    )
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-library')
+    const upgradeBtn = (): HTMLButtonElement =>
+      [...host.querySelectorAll('button')].find((b) => b.textContent === '升级旧笔记' || b.textContent === '读取中…') as HTMLButtonElement
+    // 连点两次（同一 tick）——第二次落在按钮还没被禁用之前，靠 hook 侧 in-flight 守卫拦下。
+    click(upgradeBtn())
+    click(upgradeBtn())
+    await vi.waitFor(() => {
+      expect(bridge.notes.courseHealth).toHaveBeenCalledTimes(1)
+    })
+    // 在途：文案加省略号 + disabled（busy 三件套，与同排「导出 Obsidian」同款）。
+    const busy = upgradeBtn()
+    expect(busy.textContent).toBe('读取中…')
+    expect(busy.disabled).toBe(true)
+    // 在途期间再点一次（同 task-panel 的「连点不出第二个 IPC」口径）。
+    click(busy)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(bridge.notes.courseHealth).toHaveBeenCalledTimes(1)
+    // 体检落地后按钮复位，可再次打开。
+    healthGate.settle?.()
+    await waitForSelector('.note-upgrade-list')
+    await vi.waitFor(() => {
+      expect(upgradeBtn().textContent).toBe('升级旧笔记')
+    })
+    expect(upgradeBtn().disabled).toBe(false)
+  })
+
   it('批2 (P4): 批量升级把每课失败原因显示在行内，toast 也带上第一条原因', async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
