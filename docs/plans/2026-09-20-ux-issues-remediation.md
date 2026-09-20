@@ -1,6 +1,6 @@
 # 方案：UX 问题整改（2026-09-20）
 
-> 状态：**待审（未动任何代码）**。v2：按第 2 轮评审意见修订；v3：按第 3 轮评审补全 notes:latest 测试消费方；v4：按终审补 preload 改动点与批 6 探针扩展；v5：补入第 6 项反馈「窗口最大化右侧空白」（P24，本次会话 `ui-probe` 实测取证，见 §6 末条）（修订记录见 §6）。
+> 状态：**待审（未动任何代码）**。v2：按第 2 轮评审意见修订；v3：按第 3 轮评审补全 notes:latest 测试消费方；v4：按终审补 preload 改动点与批 6 探针扩展；v5：补入第 6 项反馈「窗口最大化右侧空白」（P24，本次会话 `ui-probe` 实测取证）；v6：按 Andiii 订正把 ASR 预设与提示文案改成只留小米 MiMo（见 §6）（修订记录见 §6）。
 > 触发：Andiii 第 1 轮试用反馈——24 条已确认问题，覆盖八个面：视频封面 / 笔记体检与补全 / 模型设置与新用户引导 / 我的学习全屏展开 / 思维导图板块排版 / 窗口最大化右侧空白 / 渲染层全站普查 / 主进程任务链路普查。
 > 取证方式：本方案每条根因都已逐条打开源文件核对（下文 `file:line` 均为本次会话实读；第 1 轮审查材料中未逐条复核的少数条目已标注来源）。第 2 轮评审给出的 7 条意见（B1–B7）亦已逐条打开源文件复核，复核结论并入 §6。
 > 排序原则（按 Andiii 要求）：**先修功能不可用/失败 → 再修引导与信息架构 → 再修观感与布局**。
@@ -266,11 +266,11 @@
 
 **4.1 Provider 首启引导（P8，文案与默认值见 D4）**
 - 落点 `src/renderer/components/ProviderPanel.tsx`：
-  - `:215-216` 初始 `capabilities` 与 `models` 按 D4 推荐改（默认含 multimodal；asr 模型按预设有无已知值预填）；`PROVIDER_PRESETS`（:22-28）加可选 `asrModel` 字段——只收仓库里已核实的两例：OpenAI→`whisper-1`、小米 MiMo→`mimo-v2.5-asr`（依据同文件 :30 `ASR_MODEL_HINT` 已列的示例；表外不留空想）。
+  - `:215-216` 初始 `capabilities` 与 `models` 按 D4 推荐改（默认含 multimodal；asr 模型按预设有无已知值预填）；`PROVIDER_PRESETS`（:22-28）加可选 `asrModel` 字段——**只给小米 MiMo 一例**：小米 MiMo→`mimo-v2.5-asr`（依据同文件 :30 `ASR_MODEL_HINT` 已列的示例）。**OpenAI 不预填**（2026-09-20 Andiii 决定：ASR 预设只留小米，不要 OpenAI），其余预设（OpenAI/DeepSeek/硅基流动/自定义）一律不预填 asr、也不因预设而自动勾选 asr。
   - `:233` `applyPreset` 在回填 multimodal/text 之余，预设有 asrModel 时一并回填 asr（没有则不动 asr，也不自动勾选）。
-  - `submit()`（:248-265）/`canSave`（:285-289）：勾了 asr 但模型为空时，保存按钮 disabled **且**在 asr 输入框下给一行可见原因（「ASR 需要专门的语音模型，如 whisper-1 / mimo-v2.5-asr」）——不再静默 return。
+  - `submit()`（:248-265）/`canSave`（:285-289）：勾了 asr 但模型为空时，保存按钮 disabled **且**在 asr 输入框下给一行可见原因——不再静默 return。同批把 `:30` 的 `ASR_MODEL_HINT` 改成**只推荐小米**：「ASR 需要专门的语音模型，推荐小米 MiMo 的 `mimo-v2.5-asr`」（原句把 `whisper-1` 与小米并列，按 Andiii 2026-09-20 决定去掉 OpenAI 示例）。
   - `use-config-domain.ts:93-124` `saveProvider`：保存后若当前没有任何 multimodal 绑定，立即 toast「已保存。生成笔记还需要多模态总结模型——在上面勾选并绑定」，不等建任务才说。
-- 测试：组件测试（默认勾选含 multimodal；只勾 asr 且空模型时 disabled + 可见原因；切 OpenAI 预设回填 whisper-1；保存后缺 multimodal 的 toast 文案）。
+- 测试：组件测试（默认勾选含 multimodal；只勾 asr 且空模型时 disabled + 可见原因；**切小米 MiMo 预设回填 `mimo-v2.5-asr`；切 OpenAI 预设不预填 asr**；保存后缺 multimodal 的 toast 文案）。
 - 门禁：四门禁。
 
 **4.2 能力解绑（P14）**
@@ -367,7 +367,7 @@
 - **D1 — 重新收割的删除边界**。推荐：**有依赖行（notes/transcripts/keyframes/ppt_pages/tasks/qa 任一）的课时永不删**；真空行才删；带产物行的 title/play_ref 不覆盖（漂移只记日志）。理由：`removeCourse` 已立「该课程已有笔记，为保护数据不允许删除」（`ipc.ts:673-675`），同一纪律必须覆盖这条更隐蔽的路径；「序号漂移改名」会让用户对着旧标题找不到已生成的笔记。备选：永不删任何行（只提示）——更保守，但平台真的下架课时后列表里会留永久空行。若你更想要备选，批 1.1 的 DELETE 整个去掉即可。
 - **D2 — 定向补全的入口与范围**。推荐：**单课入口**（体检面板「按体检结果补全」按钮，title 写明「只按体检问题修，不重新发送画面；修不好保留原稿」），批量升级对话框**不加**「补全」列。理由：补全与重生成是两种成本/语义不同的操作，一次只让用户面对一个选择；批量补全可以在单课稳定后单独开。行为边界（不发图、只跑一次、不改善不存新版本）已写进批 2.0 的 spec 批注，**需你确认这段 spec 文字**。
 - **D3 — 体检徽标同源的方式**。推荐：`notes:latest` 返回扩为 `{ note, transcriptHitRate }`（保留无笔记时 `ok(null)` 早退），渲染层把该值喂给**同一个** `noteHealth`。理由：判据仍然只有一份（`shared/notes/health.ts`），渲染侧 info 级「配图覆盖率」不丢；代价是一次桥面变更（已排在批 2 的 smoke 里，三个消费方已全部列出）。备选：整包 health 由 main 算——会丢配图覆盖率 info，除非 main 也重跑一遍分配函数（第二套判据，漂移风险）。
-- **D4 — Provider 首启默认值**。推荐：新建表单默认勾选 **multimodal + asr**；`asr` 模型按预设有无**已核实**的 ASR 模型预填（OpenAI→`whisper-1`、小米 MiMo→`mimo-v2.5-asr`；DeepSeek/硅基流动/自定义不预填，因为仓库里没有核实过的值）；预填不出的预设（如 DeepSeek）默认只勾 multimodal；勾了 asr 却空模型时保存被挡并给出可见原因；保存后缺 multimodal 立即 toast 指路。理由：spec §4 已写首启推荐「同一 provider 同时支持 ASR 与 multimodal」，当前实现与 spec 相反；ASR 模型只填仓库已核实的两个示例（`ASR_MODEL_HINT` 同文件已列），不猜。
+- **D4 — Provider 首启默认值**（2026-09-20 Andiii 订正：ASR 预设只留小米）。推荐：新建表单默认勾选 **multimodal + asr**；`asr` 模型**只在小米 MiMo 预设下预填 `mimo-v2.5-asr`**，OpenAI/DeepSeek/硅基流动/自定义一律不预填 asr（**OpenAI 的 `whisper-1` 不写进预设表**）；预填不出 asr 的预设（如 DeepSeek、OpenAI）默认只勾 multimodal；勾了 asr 却空模型时保存被挡并给出可见原因；保存后缺 multimodal 立即 toast 指路。理由：spec §4 已写首启推荐「同一 provider 同时支持 ASR 与 multimodal」，当前实现与 spec 相反；ASR 预填只留 Andiii 指定的那一家，其余不猜；`ASR_MODEL_HINT`（同文件 :30）作为输入框下的示例文案照旧保留。
 - **D5 — 我的学习全屏形态**。推荐：入口按钮挂「我的学习」标题旁 + **Ctrl+M** 快捷键，弹层形制完全照抄全屏课程浏览器（近全屏、滚动锁、focus trap、Esc、右上关闭键），overlay 基元抽出来四处共用，onSelect 包一层「选中即关闭」。理由：与既有「全部课程」全屏页完全同构，用户不需要学第二次；快捷键与 Ctrl+K 同款 effect 模式，应用菜单未占用 Ctrl+M。若你不想要快捷键，只去掉那支 effect 即可，其余不变。
 - **D6 — 导图正文列宽**。推荐：**回到 640**，删掉破格规则。理由：这是你说的「没跟前面几个板块保持一致」；SKILL §6 把 640 钉成阅读排版铁律，导图是唯一例外；大地图的横向滚动交给画布内部（6.2 修完后滚动条只在图真的更宽时出现）。代价：同屏看到的导图比现在小一圈——若你实测后觉得太小，替代方案是「导图宿主仍 640，但允许画布横向溢出到 860 面板轴」，那会重新引入不一致，我不推荐。
 - **D7 — 导图在笔记宿主的高度**。推荐：`height: min(60vh, 640px)` + 画布内部滚动（与课程导图弹层同一策略）。理由：工具栏不再被滚出视口、「适应窗口」竖直半边生效；具体数值是一次性容器预算（同弹层 `86vh` 先例），**请你在实拍后定档**——批 6 会跑 `ui-probe --mindmap` 把四态数字写进提交信息，你看了不满意只改这一个值。
@@ -421,4 +421,5 @@
 - **B5（props 全量透传与「选中即关闭」自相矛盾）——已修**：批 4.3 明确 `MyStudyDialog` 必须把 onSelect 包一层（先例在组件内：`CourseBrowser.tsx:396-399` 的 `onSelectLesson(lesson.id); onClose()`），其余 props 透传；验收项与测试同步。
 - **B6（ui-shots 无机位、实拍不可执行）——已修**：批 4.3 改为「给 `scripts/ui-shots.mjs` 加 `--my-study` 分支（照 :229-232 `--bili` 模式）+ 同步 SKILL §7 清单描述」，并给出退路；批 6 的 `ui-probe --mindmap` 经核实 flag 存在于 `scripts/ui-probe.mjs:561`，保留。
 - **B7（行号偏差）——已修/已核对**：采纳并改正——`views.ts:139-143` → `:135-139`；`db/open.ts:11` → `:10`；`NoteLibrary.tsx:104-115` → `:105-116`；`md-lite.ts:46` → `:41`（parseInline）/`:49`（code 分支）；`labels.ts` → `src/renderer/labels.ts`；`openai-client.ts` → `src/main/providers/openai-client.ts`。**两条经复核原引用正确、按原样保留**：`use-notes-domain.tsx:483-484`（`grep -n "await loadNote(lessonId)\|await loadNoteIndex()"` → 483/484/518/519/571，单条路径确为 483-484）与 `:571`（批量路径 loadNoteIndex 就在 571）；`App.tsx:444-452`（course-browser-open 按钮块，`class` 在 :445、`data-testid` 在 :446）。另 `App.tsx:417-430` 复核为 MyStudyPanel 完整块（:417 开、:430 `/>`），保留。
+- **v6（ASR 预设只留小米，2026-09-20 Andiii 订正）——已改**：Andiii 在方案执行期间明确「asr 预设只写小米，不要 open ai」。据此订正三处：① §2 批4.1 的 `PROVIDER_PRESETS.asrModel` 只给小米 MiMo 一例（`mimo-v2.5-asr`），OpenAI/DeepSeek/硅基流动/自定义一律不预填 asr、也不因预设自动勾选 asr；② 同批把 `ASR_MODEL_HINT`（`ProviderPanel.tsx:30`）改为「ASR 需要专门的语音模型，推荐小米 MiMo 的 `mimo-v2.5-asr`」——原句把 `whisper-1` 与小米并列，属用户可见文案，一并去掉 OpenAI 示例；③ 批4 的测试断言从「切 OpenAI 预设回填 whisper-1」改为「切小米 MiMo 预设回填 `mimo-v2.5-asr`、切 OpenAI 预设不预填 asr」。§3 的 D4 与 §4 批4 验收项同步。执行工作流已按方案正文读取，此订正发生在批4 之前，批4 实现者按新口径落地。
 - **v5（P24 窗口最大化空白，第 6 项反馈补入）——已修**：第 1 轮排查中「窗口放大排查员」报出 10 条发现，被分级员全部判为不进方案（理由：定宽正文列是 2026-09-18 排版整改的既定决策、非缺陷）。终审后逐条对照 Andiii 原话时发现：**用户的第 6 项反馈在方案里没有着落**——分级员可以把发现判为「不进方案」，但不能让用户点名的问题无声消失。本次会话实测取证（`node scripts/ui-probe.mjs --width=2560 --out=.ui-shots/probe-wide.json`：内容盒 2256 vs 面板右缘 1188 vs 正文右缘 968，右侧空白 1372/1592px；任务行恒 860）确认为真问题，补为 P24、列入批 6（新增 6.4）与决策项 D12，其余 23 条的批次与结论未动。教训记入：**每条用户原话都必须在方案里有明确着落——修，或作为决策项给出「不修/换解法」的理由；分级是筛噪音，不是销项**。
