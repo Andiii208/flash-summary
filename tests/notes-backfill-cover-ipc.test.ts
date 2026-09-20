@@ -233,6 +233,48 @@ describe('notes:backfillCover（批3, plan 2026-09-20, P1/D8）', () => {
     expect(calls).toEqual([])
   })
 
+  // 批3 评审补口: view 接口失败是最可能的一条（方案 §5 点名的风控），而 client 抛的是
+  // 英文技术串、渲染层原样 toast——必须翻成人话，且不动既有封面。
+  it('B 站风控（412）：人话错误，不带英文技术串，不动既有 cover_path', async () => {
+    const ctx = makeCtx(async (url) => {
+      if (url.includes('/x/web-interface/view')) {
+        return { ...(await jsonResponse({})), ok: false, status: 412 }
+      }
+      throw new Error(`no fixture route for ${url}`)
+    })
+    seedLessons(ctx)
+    db.prepare("UPDATE lessons SET cover_path = 'attachments/l-bili/old.jpg' WHERE id = 'l-bili'").run()
+    const res = (await invoke(ctx, 'notes:backfillCover', 'l-bili')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('限流')
+    expect(res.error).not.toContain('risk control')
+    const row = db.prepare('SELECT cover_path FROM lessons WHERE id = ?').get('l-bili') as { cover_path: string | null }
+    expect(row.cover_path).toBe('attachments/l-bili/old.jpg')
+  })
+
+  it('连不上 B 站：人话错误且不带英文技术串', async () => {
+    const ctx = makeCtx(async () => {
+      throw new Error('getaddrinfo ENOTFOUND api.bilibili.com')
+    })
+    seedLessons(ctx)
+    const res = (await invoke(ctx, 'notes:backfillCover', 'l-bili')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('连接 B 站失败')
+    expect(res.error).not.toContain('ENOTFOUND')
+  })
+
+  it('响应不可用（payload 解析失败）：兜底人话，不带英文技术串', async () => {
+    const ctx = makeCtx(async (url) => {
+      if (url.includes('/x/web-interface/view')) return jsonResponse({ code: 0, data: { nothing: true } })
+      throw new Error(`no fixture route for ${url}`)
+    })
+    seedLessons(ctx)
+    const res = (await invoke(ctx, 'notes:backfillCover', 'l-bili')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('稍后重试')
+    expect(res.error).not.toContain('payload unusable')
+  })
+
   it('桥面有 backfillCover 且只吃 lessonId（preload 与 bridge.ts 同步）', async () => {
     const fs = await import('fs')
     const preloadSource = fs.readFileSync('src/preload/index.ts', 'utf8')

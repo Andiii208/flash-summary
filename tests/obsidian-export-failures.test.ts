@@ -72,6 +72,11 @@ describe('exportCourseToObsidian 失败可见（批3, P23）', () => {
     for (const failure of result.failures) {
       expect(failure.reason.length).toBeGreaterThan(0)
       expect(failure.reason.length).toBeLessThanOrEqual(200)
+      // 批3 评审补口: 绝对路径折成 `…\文件名`——reason 同时进日志与 toast，
+      // toast 不经过 Logger 的 redact，所以必须在产生时就折掉目录链。
+      expect(failure.reason).not.toMatch(/[A-Za-z]:[\\/]/)
+      expect(failure.reason).not.toContain(dir)
+      expect(failure.reason).toContain('…\\')
     }
     // exported=0 → 索引不重建（现状保留）。
     expect(existsSync(join(fileAsVault(), 'Flash Summary', '_index.md'))).toBe(false)

@@ -16,6 +16,7 @@ import { getSetting, setSetting } from '../settings/store'
 import { parseNote } from '../../shared/notes/schema'
 import { projectObsidianNote, projectConceptIndex, projectVaultIndex, type ObsidianMeta, type ObsidianAttachment } from '../../shared/notes/obsidian'
 import { safeFileName } from '../../shared/notes/export-name'
+import { foldAbsolutePaths } from '../logger'
 
 export const OBSIDIAN_VAULT_KEY = 'obsidianVaultPath'
 /** Everything lands in one recognizable subfolder — deletable as a unit. */
@@ -88,11 +89,18 @@ export class LessonHasNoNoteError extends Error {
   }
 }
 
-/** 异常 → 一行可读原因（截断；空消息退化成「未知原因」）。 */
+/**
+ * 异常 → 一行可读原因（截断；空消息退化成「未知原因」）。
+ *
+ * 批3 (P23 评审补口): 绝对路径先折成 `…\文件名`。Node 的 errno 消息会带上用户的
+ * 完整目录链（`open 'C:\Users\…\vault\第2节课.md'`），而**toast 不经过 Logger 的
+ * redact**——这条 reason 同时进日志与界面，所以在产生时折一次，两个出口都不带
+ * 完整路径（与 logger 的 `foldAbsolutePaths` 同一把尺子）。
+ */
 function failureReason(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   const trimmed = message.trim()
-  return (trimmed === '' ? '未知原因' : trimmed).slice(0, FAILURE_REASON_MAX)
+  return foldAbsolutePaths(trimmed === '' ? '未知原因' : trimmed).slice(0, FAILURE_REASON_MAX)
 }
 
 /** Write one lesson's structured markdown into the vault; idempotent per lesson. */

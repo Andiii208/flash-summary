@@ -44,7 +44,7 @@ import { DISCLAIMER_TEXT_VERSION } from '../shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../shared/copyright-notice'
 import { FEEDBACK_FORM_URL } from '../shared/feedback'
 import { buildDiagnostics, type DiagnosticsTask } from './feedback/diagnostics'
-import { redact } from './logger'
+import { redactCredentials } from './logger'
 import { claimNoteInflight, releaseNoteInflight } from './notes/inflight'
 import { upsertLessonCatalog, describeCatalogDrift } from './lessons/catalog'
 import type { Note } from '../shared/notes/schema'
@@ -73,6 +73,7 @@ import { migrateLibrary } from './library/migrate'
 import { writeLibraryPointer } from './library/pointer'
 import { getSetting, SETTINGS_KEYS } from './settings/store'
 import { fetchBilibiliLesson } from './bilibili/pipeline'
+import { BilibiliApiError } from './bilibili/client'
 import { nextPendingChainTask } from './bilibili/chain'
 import { biliCourseId, biliLessonId, parseBiliInput } from './bilibili/url-parse'
 
@@ -80,6 +81,22 @@ import { biliCourseId, biliLessonId, parseBiliInput } from './bilibili/url-parse
 function maxPagesFrom(db: Db): number | undefined {
   const parsed = Number(getSetting(db, 'courseListMaxPages', ''))
   return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : undefined
+}
+
+/**
+ * 批3 (P1 评审补口): B 站 view 接口失败 → 人话。
+ *
+ * `BilibiliClient` 抛的是英文技术串（`bilibili risk control (HTTP 412) for …`），
+ * 渲染层把 `res.error` 原样 toast——封面回填的失败路径必须说人话，且每种失败给得出
+ * 下一步。风控是最可能的一种（方案 §5：每次点击打一次 view 接口）。
+ */
+function coverViewErrorMessage(error: unknown): string {
+  const kind = error instanceof BilibiliApiError ? error.kind : null
+  if (kind === 'risk_control') return 'B 站限流了（风控），请稍后再试'
+  if (kind === 'not_found') return 'B 站找不到这个视频，可能已被删除'
+  if (kind === 'auth_required' || kind === 'forbidden') return 'B 站要求登录后才能读取视频信息，请先在设置里登录 B 站'
+  if (kind === 'network') return '连接 B 站失败，请检查网络后重试'
+  return '获取 B 站视频信息失败，请稍后重试'
 }
 
 function ok<T>(value: T): ApiResult<T> {
@@ -1049,7 +1066,10 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       })
       // Second redaction pass: this text leaves the app on the user's clipboard,
       // so a credential leak here is worse than one sitting in a log file.
-      return ok({ text: redact(text) })
+      // 批3 (P23 评审补口): 这一支刻意**不折绝对路径**——日志目录正是开发者唯一能用
+      // 来找日志的线索（tests/ipc-feedback.test.ts 有钉住断言），而路径不是凭据；
+      // 日志侧走的是带路径折叠的 redact()。
+      return ok({ text: redactCredentials(text) })
     } catch (e) {
       return err(e)
     }
@@ -1426,7 +1446,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if ('canceled' in vaultResult) return ok({ canceled: true })
       const result = exportCourseToObsidian(ctx.db, ctx.libraryRoot, id, vaultResult.vault)
       // 批3 (P23): 每篇失败逐条落日志——toast 只放得下前两条原因，日志才是可复核的现场。
-      // vault 路径经 Logger 的 redact 落盘（日志纪律：脱敏在 logger 里做，调用方不加料）。
+      // vault 路径两道折：reason 产生时已把绝对路径折成 `…\文件名`（obsidian-export.ts
+      // 的 failureReason，因为 toast 不经过 redact），落盘再过 Logger 的 redact
+      // （其绝对路径规则见 logger.ts 的 foldAbsolutePaths）。
       for (const failure of result.failures) {
         ctx.logger.warn(`obsidian course export failed: course=${id} lesson=${failure.lessonId} reason=${failure.reason}`)
       }
@@ -1697,7 +1719,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       if (row.source !== 'bilibili' || row.bvid == null || !isValidBilibiliBvid(row.bvid)) {
         return err(new Error('只有 B 站导入的课时能补取封面'))
       }
-      const view = await ctx.bilibili.viewInfo(row.bvid)
+      // 批3 (P1 评审补口): 这一步是最可能失败的一步（方案 §5 点名的风控风险：每次点击
+      // 打一次 B 站 view 接口），而 client 抛的是英文技术串（如
+      // `bilibili risk control (HTTP 412) for api.bilibili.com/x/web-interface/view`）。
+      // 渲染层把 res.error 原样 toast，所以这里必须翻成人话——风控/未登录/找不到/
+      // 网络各有各的下一步。
+      let view: Awaited<ReturnType<typeof ctx.bilibili.viewInfo>>
+      try {
+        view = await ctx.bilibili.viewInfo(row.bvid)
+      } catch (error) {
+        return err(new Error(coverViewErrorMessage(error)))
+      }
       if (view.coverUrl === '') return err(new Error('该视频没有可用封面'))
       const coverDataUrl = await ctx.bilibili.fetchImageAsDataUrl(view.coverUrl)
       if (coverDataUrl == null) return err(new Error('封面下载失败，请稍后重试'))

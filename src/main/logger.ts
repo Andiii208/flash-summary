@@ -57,10 +57,51 @@ export class Logger {
 }
 
 /**
+ * 绝对路径 → `…\末段`：把用户的目录链折掉，只留文件名。
+ *
+ * 批3 (plan 2026-09-20, P23 评审补口)：vault 不可写这类错误的原文长这样——
+ * `EISDIR: illegal operation on a directory, open 'C:\Users\<用户名>\…\vault\第2节课.md'`。
+ * 方案 3.2 的落点写着「vault 路径脱敏走既有 redact」，而 redact 此前只罩凭据与 URL，
+ * **没有任何文件系统路径规则**（那句声明当时不成立）。现在补上这条规则，日志侧由
+ * `redact()` 统一执行；**toast 不经过 redact**，所以失败原因在产生时就调本函数折一次
+ * （`notes/obsidian-export.ts`）——同一把尺子，两个出口都不带完整目录链。
+ *
+ * 只折 Windows 盘符与 UNC 两种绝对形态（本产品 Windows only）：引号包裹的（Node 的
+ * errno 消息）允许含空格，未加引号的遇到空白即止（避免把后面的散文当路径吃掉）。
+ */
+export function foldAbsolutePaths(message: string): string {
+  return message
+    .replace(/(["'])((?:[A-Za-z]:[\\/]|\\\\(?:\?[\\/])?)[^"']*)\1/g, (_match, quote: string, path: string) => `${quote}${foldPathTail(path)}${quote}`)
+    // 盘符前必须是词边界：`https://…` 里的 `s:/` 不是盘符（否则 URL 规则刚折好的
+    // origin+path 会被这条规则再吃一次，实测会变成 `http…\v.mp4…`）。
+    .replace(/(?<![A-Za-z0-9_])(?:[A-Za-z]:[\\/]|\\\\(?:\?[\\/])?)[^\s"'<>|?*]+/g, (path) => foldPathTail(path))
+}
+
+/** 取路径的最后一段（`C:\a\b.md` → `…\b.md`）。 */
+function foldPathTail(path: string): string {
+  const segments = path.split(/[\\/]+/).filter((segment) => segment !== '')
+  const tail = segments[segments.length - 1] ?? ''
+  return tail === '' ? '…' : `…\\${tail}`
+}
+
+/**
  * Redact credential-bearing substrings before they reach disk:
- * cookies/tokens/keys are replaced, URLs are reduced to origin+path.
+ * cookies/tokens/keys are replaced, URLs are reduced to origin+path,
+ * absolute paths are folded to their file name.
  */
 export function redact(message: string): string {
+  return foldAbsolutePaths(redactCredentials(message))
+}
+
+/**
+ * 凭据与 URL 规则（**不含**绝对路径折叠）。
+ *
+ * 只有「用户会复制出去给开发者定位问题」的诊断文本用这一支（`ipc.ts` 的
+ * `feedback:diagnostics`）：那里的日志目录路径正是开发者唯一能用来找日志的线索
+ * （`tests/ipc-feedback.test.ts` 有钉住断言），而路径不是凭据。日志侧的默认出口是
+ * `redact()`——它额外折掉目录链（批3 P23：vault 不可写的 errno 原文会带用户完整目录链）。
+ */
+export function redactCredentials(message: string): string {
   return message
     // Bearer scheme first: the generic name=value rule would only eat the
     // word "Bearer" and leave the token behind (review 2026-09-05).

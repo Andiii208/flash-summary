@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync, utimesSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { Logger, redact, MAX_LOG_FILES } from '../src/main/logger'
+import { Logger, redact, redactCredentials, MAX_LOG_FILES } from '../src/main/logger'
 
 let dir: string
 
@@ -89,6 +89,46 @@ describe('redact (U5 安全红线)', () => {
     expect(out).not.toContain('abc123def456')
     expect(out).not.toContain('nut789xyz')
     expect(out).not.toContain('tok012abc')
+  })
+
+  // 批3 (P23 评审补口): 方案 3.2 要求「vault 路径脱敏走既有 redact」，而此前 redact
+  // 没有任何文件系统路径规则（那句声明不成立）。现在补上，并把真实失败原文钉住。
+  it('批3: 绝对路径折成 …\\末段（vault 不可写的 errno 原文不再带完整目录链）', () => {
+    const raw =
+      "obsidian course export failed: course=c1 lesson=l2 reason=EISDIR: illegal operation on a directory, open 'C:\\Users\\26895\\AppData\\Roaming\\seu-summary\\vault\\Flash Summary\\课程\\第2节课.md'"
+    const out = redact(raw)
+    expect(out).not.toContain('Users')
+    expect(out).not.toContain('AppData')
+    // 文件名留着——够定位是哪一篇。
+    expect(out).toContain("open '…\\第2节课.md'")
+    expect(out).toContain('EISDIR')
+  })
+
+  it('批3: redactCredentials 保留路径（诊断文本要给开发者日志目录），凭据两支都罩', () => {
+    const text = '日志目录：C:\\Users\\x\\AppData\\Roaming\\seu-summary\\logs'
+    // 诊断文本（用户复制出去给开发者定位）刻意不折路径——logs 目录是唯一线索。
+    expect(redactCredentials(text)).toContain('C:\\Users\\x\\AppData\\Roaming\\seu-summary\\logs')
+    expect(redact(text)).toBe('日志目录：…\\logs')
+    expect(redactCredentials('api_key=sk-live-abc123')).not.toContain('sk-live-abc123')
+  })
+
+  it('批3: UNC 路径与未加引号的路径同样折；URL 与相对路径不受影响', () => {
+    const out = redact('vault=\\\\nas\\share\\vault\\a.md 库=C:\\Users\\x\\Library 相对=attachments\\l1\\cover.jpg')
+    expect(out).not.toContain('nas\\share')
+    expect(out).not.toContain('Users')
+    expect(out).toContain('…\\a.md')
+    expect(out).toContain('…\\Library')
+    // 相对路径不是绝对路径——原样保留（红act 只管绝对形态）。
+    expect(out).toContain('attachments\\l1\\cover.jpg')
+    // URL 规则照旧（含 auth_key 的直链只剩 origin+path）。
+    expect(redact('GET https://dncvsvod.seu.edu.cn/x.mp4?auth_key=SECRET done')).not.toContain('SECRET')
+    // 本会话实测过的真实原文形态：EPERM 带 `\\?\` 长路径前缀，路径出现在引号内与外两处。
+    const eperm = redact(
+      "EPERM, Permission denied: \\\\?\\C:\\Users\\26895\\AppData\\Local\\Temp\\seu-1 '\\\\?\\C:\\Users\\26895\\AppData\\Local\\Temp\\seu-1'"
+    )
+    expect(eperm).not.toContain('Users')
+    expect(eperm).not.toContain('AppData')
+    expect(eperm).toContain('…\\seu-1')
   })
 })
 
