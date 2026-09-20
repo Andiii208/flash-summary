@@ -1997,9 +1997,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const qaCtx = assembleContext(ctx.db, id, note)
       const messages = buildQaMessages(qaCtx, q)
       const capability = ctx.qaCapability()
-      const client = ctx.chatFor(capability)
+      // 绑定检查放在 chatFor 之前：chatFor 抛的是「能力 multimodal 未绑定 Provider」，
+      // 而用户需要的是可执行的下一步（与 notes:repair 的先例同款）。顺序在这里是
+      // 可核对的判据——binding 为空时 chatFor 必先抛，放在它后面这句就到不了用户眼前。
       const binding = ctx.providers().bindings.find((b) => b.capability === capability)
       if (binding == null) throw new Error('未绑定问答模型，请在设置中配置多模态总结模型')
+      const client = ctx.chatFor(capability)
       const answer = await client.chat(messages, binding.model)
       const qaId = recordQa(ctx.db, id, q, answer)
       return ok({ id: qaId, answer })

@@ -697,6 +697,41 @@ describe('ipc handlers over a real context', () => {
     const res = (await ipc.invoke('qa:ask', 'l1', '什么是极限?')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('未绑定')
+    // 绑定检查在 chatFor 之前（P25 补口）：用户看到的是可执行的下一步，而不是
+    // chatFor 那句「能力 multimodal 未绑定 Provider」。这两条断言就是顺序的判据
+    // ——检查若留在 chatFor 之后，chatFor 必先抛，下面第一条会红。
+    expect(res.error).toContain('多模态总结模型')
+    expect(res.error).not.toContain('未绑定 Provider')
+  })
+
+  // P25: 追问走的是**多模态绑定**——绑了两个能力时，请求必须打到多模态那个
+  // provider 与模型上（不是 asr 的）。这里只换掉网络边界，能力解析与 IPC 全走真实路径。
+  it('P25: 追问取用多模态绑定的 provider 与模型', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
+    const asrProvider = (await ipc.invoke('providers:save', { name: 'ASR 商', baseUrl: 'https://asr.example.com/v1', apiKey: 'sk-asr' })) as { value?: { id: string } }
+    const mmProvider = (await ipc.invoke('providers:save', { name: '多模态商', baseUrl: 'https://mm.example.com/v1', apiKey: 'sk-mm' })) as { value?: { id: string } }
+    expect((await ipc.invoke('providers:bind', 'asr', asrProvider.value!.id, 'asr-model')) as { ok: boolean }).toMatchObject({ ok: true })
+    expect((await ipc.invoke('providers:bind', 'multimodal', mmProvider.value!.id, 'mm-model')) as { ok: boolean }).toMatchObject({ ok: true })
+
+    const calls: Array<{ url: string; body: { model?: string } }> = []
+    const original = globalThis.fetch
+    globalThis.fetch = (async (url: string, init: { body?: BodyInit }) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init.body)) as { model?: string } })
+      return new Response(JSON.stringify({ choices: [{ message: { content: '极限是无限逼近的取值。' } }] }), { status: 200 })
+    }) as typeof globalThis.fetch
+    try {
+      const res = (await ipc.invoke('qa:ask', 'l1', '什么是极限?')) as { ok: boolean; value?: { answer: string } }
+      expect(res.ok).toBe(true)
+      expect(res.value?.answer).toBe('极限是无限逼近的取值。')
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.url).toBe('https://mm.example.com/v1/chat/completions')
+    expect(calls[0]!.body.model).toBe('mm-model')
   })
 
   it('school:addManualCourse registers durable rows and is idempotent', async () => {
