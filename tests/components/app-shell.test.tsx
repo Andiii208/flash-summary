@@ -597,6 +597,13 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     const confirm = [...host.querySelectorAll('.dialog-actions button')].find((b) => b.textContent?.startsWith('升级所选')) as HTMLButtonElement
     expect(confirm).not.toBeUndefined()
     const listMock = bridge.notes.list as unknown as { mock: { calls: unknown[][] } }
+    // CI 慢时序下 mount 的 200ms 去抖刷新可能晚于对话框交互才落——先等在途刷新
+    // 静止（250ms 无新调用）再取基线，否则基线少算、把在途刷新误判成「多刷」。
+    await vi.waitFor(async () => {
+      const seen = listMock.mock.calls.length
+      await new Promise((r) => setTimeout(r, 250))
+      expect(listMock.mock.calls.length).toBe(seen)
+    })
     const before = listMock.mock.calls.length
     click(confirm)
     await vi.waitFor(() => {
