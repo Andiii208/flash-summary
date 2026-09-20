@@ -1531,6 +1531,13 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
 .capability-models { display: flex; flex-direction: column; gap: var(--space-2); }
 .capability-model-row { display: flex; align-items: center; gap: var(--space-2); }
 .capability-model-row label { flex: 0 0 92px; font-size: var(--font-size-sm); color: var(--text-muted); }
+/* 批4 (P8/D4): 勾了 ASR 却没填模型时的可见原因——缩进对齐到输入框左缘
+   （label 固定 92px + 行内 gap），此前这里只有一枚静默 disabled 的保存按钮。 */
+.capability-model-reason {
+  margin: 0 0 0 calc(92px + var(--space-2));
+  font-size: var(--font-size-xs);
+  color: var(--warning);
+}
 /* 批0 排版: 这组复选框此前没有任何布局规则，三个 label 以行内文本挤成一句，与同一张
    表单里的 .capability-model-row 完全不成一体。 */
 .capability-group { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }

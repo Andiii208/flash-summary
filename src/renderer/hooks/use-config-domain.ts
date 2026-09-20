@@ -28,7 +28,9 @@ export interface ConfigDomain {
   /** 批5: a finished migration survives as a persistent restart notice on the
       settings page — it used to live only in a 3.5s toast. */
   libraryMigrated: boolean
-  refreshProviders: () => Promise<void>
+  /** 批4 (P8/D4): 返回刷新后的绑定（供保存路径判断「有没有多模态」），
+      失败时为 null——调用方照旧可以只 await。 */
+  refreshProviders: () => Promise<ProvidersListResult | null>
   refreshSettings: () => Promise<void>
   /** 2026-09-05 批4: one model PER capability — the UI no longer binds every
    *  checked capability to a single shared model string. */
@@ -69,15 +71,16 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   /** 批6 (D4): 备份进行中——按钮禁用 + 文案省略号，防连点重复写盘。 */
   const [libraryBackupBusy, setLibraryBackupBusy] = useState(false)
 
-  const refreshProviders = useCallback(async (): Promise<void> => {
+  const refreshProviders = useCallback(async (): Promise<ProvidersListResult | null> => {
     const res = await bridge.providers.list()
     // 批4: a silent failure here left the settings page eternally blank.
     if (res.ok && res.value != null) {
       setProviders(res.value)
       setLoadError((e) => (e.providers == null ? e : { ...e, providers: null }))
-    } else {
-      setLoadError((e) => ({ ...e, providers: res.error ?? '加载失败' }))
+      return res.value
     }
+    setLoadError((e) => ({ ...e, providers: res.error ?? '加载失败' }))
+    return null
   }, [bridge])
 
   const refreshSettings = useCallback(async (): Promise<void> => {
@@ -114,8 +117,15 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
               return
             }
           }
+          const after = await refreshProviders()
+          // 批4 (P8/D4): 保存成功不等于管线可用——缺多模态绑定时当场指路，不等
+          // 用户建任务才以 toast 发现（那时已经白等一轮）。判据取刷新后的真实绑定，
+          // 不是「这次勾了什么」——多模态可能绑在另一个 provider 上。
+          if (after != null && !after.bindings.some((b) => b.capability === 'multimodal')) {
+            toast('已保存。生成笔记还需要多模态总结模型——在上面勾选并绑定', 'info')
+            return
+          }
           toast(`已绑定 ${input.capabilities.length} 项能力 → ${input.name}`, 'success')
-          await refreshProviders()
         } finally {
           setProviderBusy(false)
         }

@@ -203,7 +203,9 @@ describe('ProviderPanel (capability model inputs)', () => {
     expect(boxes).toHaveLength(3)
     for (const box of boxes) if (!(box as HTMLInputElement).checked) click(box)
     const modelInput = (label: string): HTMLInputElement => host.querySelector(`input[aria-label="${label}"]`) as HTMLInputElement
-    expect(modelInput('ASR 转写模型')!.placeholder).toContain('whisper-1')
+    // 批4 (P8/D4, 2026-09-20 Andiii 订正): ASR 提示只推荐小米 MiMo——原句把
+    // whisper-1 与小米并列，用户可见文案里不再出现 OpenAI 的语音模型示例。
+    expect(modelInput('ASR 转写模型')!.placeholder).toContain('mimo-v2.5-asr')
     expect(modelInput('ASR 转写模型')!.value).toBe('')
     expect(modelInput('多模态总结模型')!.value).toBe('gpt-4o')
     input(modelInput('ASR 转写模型'), 'whisper-1')

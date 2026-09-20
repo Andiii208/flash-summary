@@ -19,15 +19,17 @@ const CAPABILITY_NOTES: ReadonlyArray<{ id: string; role: string }> = [
 
 /** M3 批 D: 常见 Provider 预设——选一个自动填三件套，仍可手改。
  * A1 (plan 2026-09-19): 预设里 2/4 是已知纯文本模型（deepseek-chat / Qwen2.5-7B），绑给「多模态」会白烧图片（甚至静默重发翻倍耗时）。在「用户正在做选择的位置」放事实。 * 2026-09-20 订正：小米 MiMo（mimo-v2.5）经用户核实是多模态，撤下无视觉标注。 */
-const PROVIDER_PRESETS: Array<{ label: string; name: string; baseUrl: string; model: string }> = [
+const PROVIDER_PRESETS: Array<{ label: string; name: string; baseUrl: string; model: string; asrModel?: string }> = [
   { label: 'OpenAI', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
   { label: 'DeepSeek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { label: '硅基流动', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct' },
-  { label: '小米 MiMo', name: '小米 MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5' },
+  // 批4 (D4, 2026-09-20 Andiii 订正): 只有小米 MiMo 预填 ASR 模型——其余预设一律
+  // 不预填、也不因切预设自动勾选 ASR（不猜用户的服务商有没有语音模型）。
+  { label: '小米 MiMo', name: '小米 MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', model: 'mimo-v2.5', asrModel: 'mimo-v2.5-asr' },
   { label: '自定义…', name: '', baseUrl: '', model: '' }
 ]
 
-const ASR_MODEL_HINT = 'ASR 需要专门的语音模型，如 whisper-1 / mimo-v2.5-asr'
+const ASR_MODEL_HINT = 'ASR 需要专门的语音模型，推荐小米 MiMo 的 mimo-v2.5-asr'
 const CHAT_MODEL_HINT = '如 gpt-4o / deepseek-chat'
 
 /** One save: the provider identity plus a model PER bound capability. */
@@ -172,16 +174,23 @@ function ProviderForm(p: ProviderFormProps): JSX.Element {
       {p.capabilities.size > 0 && (
         <div class="capability-models">
           {CAPABILITY_ORDER.filter((id) => p.capabilities.has(id)).map((id) => (
-            <div key={id} class="capability-model-row">
-              <label>{CAPABILITY_LABELS[id]}模型</label>
-              <input
-                class="qa-input"
-                value={p.models[id] ?? ''}
-                placeholder={id === 'asr' ? ASR_MODEL_HINT : CHAT_MODEL_HINT}
-                aria-label={`${CAPABILITY_LABELS[id]}模型`}
-                onInput={(e) => p.onModel(id, (e.target as HTMLInputElement).value)}
-              />
-            </div>
+            <Fragment key={id}>
+              <div class="capability-model-row">
+                <label>{CAPABILITY_LABELS[id]}模型</label>
+                <input
+                  class="qa-input"
+                  value={p.models[id] ?? ''}
+                  placeholder={id === 'asr' ? ASR_MODEL_HINT : CHAT_MODEL_HINT}
+                  aria-label={`${CAPABILITY_LABELS[id]}模型`}
+                  onInput={(e) => p.onModel(id, (e.target as HTMLInputElement).value)}
+                />
+              </div>
+              {/* 批4 (P8/D4): 勾了 ASR 但模型为空时给一行可见原因——此前保存按钮
+                  只是静默 disabled，用户按了没反应也看不出为什么。 */}
+              {id === 'asr' && (p.models[id] ?? '').trim() === '' && (
+                <p class="capability-model-reason">ASR 需要专门的语音模型——填上模型名，或取消勾选「ASR 转写」。</p>
+              )}
+            </Fragment>
           ))}
         </div>
       )}
@@ -211,9 +220,16 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
   const [name, setName] = useState(PROVIDER_PRESETS[0]!.name)
   const [baseUrl, setBaseUrl] = useState(PROVIDER_PRESETS[0]!.baseUrl)
   const [apiKey, setApiKey] = useState('')
-  // B3: one key entry can bind several capabilities at once.
-  const [capabilities, setCapabilities] = useState<ReadonlySet<string>>(new Set(['asr']))
-  const [models, setModels] = useState<Record<string, string>>({ asr: '', multimodal: PROVIDER_PRESETS[0]!.model, text: PROVIDER_PRESETS[0]!.model })
+  // 批4 (P8/D4): 首启默认勾 multimodal + asr——spec §4 的首启推荐就是「同一个
+  // provider 同时支持 ASR 与多模态」，旧默认只勾 asr 且模型留空，保存被静默拒绝，
+  // 用户保存成功后管线仍不可用。ASR 模型只在该预设给出已知值时才预填（小米 MiMo），
+  // 否则留空 + 下面那行可见原因。
+  const [capabilities, setCapabilities] = useState<ReadonlySet<string>>(new Set(['asr', 'multimodal']))
+  const [models, setModels] = useState<Record<string, string>>({
+    asr: PROVIDER_PRESETS[0]!.asrModel ?? '',
+    multimodal: PROVIDER_PRESETS[0]!.model,
+    text: PROVIDER_PRESETS[0]!.model
+  })
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
 
   const configured = providers?.providers ?? []
@@ -230,7 +246,11 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
     setName(hit.name)
     setBaseUrl(hit.baseUrl)
     const chatModel = hit.model
-    setModels((prev) => ({ ...prev, multimodal: chatModel, text: chatModel }))
+    // 批4 (D4): 预设有 asrModel 就一并回填；没有则不动 asr（也不自动勾选）——
+    // 猜一个语音模型名会让用户拿 chat 模型去转写。
+    setModels((prev) =>
+      hit.asrModel == null ? { ...prev, multimodal: chatModel, text: chatModel } : { ...prev, multimodal: chatModel, text: chatModel, asr: hit.asrModel }
+    )
   }
 
   const toggleCapability = (id: string): void => {
