@@ -253,66 +253,130 @@ describe('MindMap M1.3 缩放与平移', () => {
     expect(viewBoxOf(host)).toEqual(afterZoom)
   })
 
-  it('zoom clamps at 3x, and 适应窗口 fits the whole map back into the viewport', () => {
+  it('zoom clamps at 3x, and 放大后元素盒 = 布局原宽（真实溢出照常可滚）', () => {
+    const host = mountMindMap(TREE)
+    const svg = host.querySelector('svg')!
+    const contentW = Number(svg.getAttribute('width'))
+    const [, , w0] = viewBoxOf(host)
+    for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 })
+    // 放大：视口窗口小于内容（窗口 = 内容/3），元素盒回到布局原宽。
+    expect(viewBoxOf(host)[2]).toBeCloseTo(w0! / 3, 4)
+    expect(Number(svg.getAttribute('width'))).toBeCloseTo(contentW, 4)
+  })
+
+  it('批6 (P11): 元素盒 = 视口窗口 × 缩放——缩态装得进容器、放大态 = 布局原宽、viewBox 不越出内容', () => {
     const host = mountMindMap(TREE)
     const svg = host.querySelector('svg')!
     const contentW = Number(svg.getAttribute('width'))
     const contentH = Number(svg.getAttribute('height'))
-    const [, , w0] = viewBoxOf(host)
-    for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 })
-    expect(viewBoxOf(host)[2]).toBeCloseTo(w0! / 3, 4)
-
+    const fit = (): void => {
+      const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '适应窗口')
+      act(() => {
+        button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+    }
     stubViewport(host, 400, 300)
-    const fit = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '适应窗口')
-    act(() => {
-      fit?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-    // 批3 (T15): 适应窗口把整张图缩到装进视口（只缩小不放大，scale 夹在 0.4..1）。
-    const scale = contentW / viewBoxOf(host)[2]!
-    expect(scale).toBeCloseTo(Math.min(1, Math.max(0.4, Math.min(400 / contentW, 300 / contentH))), 4)
-    expect(contentW * scale).toBeLessThanOrEqual(400 + 0.5)
-    expect(contentH * scale).toBeLessThanOrEqual(300 + 0.5)
+    const states: Array<[string, () => void]> = [
+      ['首屏 1:1', () => {}],
+      ['放大 3x', () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 }) }],
+      ['适应窗口', fit],
+      ['缩到下限', () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: 120 }) }],
+      ['再适应窗口', fit]
+    ]
+    for (const [label, step] of states) {
+      step()
+      const box = { w: Number(svg.getAttribute('width')), h: Number(svg.getAttribute('height')) }
+      const vb = viewBoxOf(host)
+      const scale = box.w / vb[2]!
+      // 元素盒 = 视口窗口 × 缩放（缩放倍率本身没有漂移）。
+      expect(box.w, `${label}: 元素盒宽 = 窗口宽 × scale`).toBeCloseTo(vb[2]! * scale, 4)
+      expect(box.h, `${label}: 元素盒高 = 窗口高 × scale`).toBeCloseTo(vb[3]! * scale, 4)
+      if (scale < 1) {
+        // 缩态：整幅内容缩到装得进容器（幽灵横滚条消失的条件）。
+        expect(box.w, `${label}: 缩态元素盒宽 ≤ 容器宽`).toBeLessThanOrEqual(400 + 0.5)
+        expect(box.h, `${label}: 缩态元素盒高 ≤ 容器高`).toBeLessThanOrEqual(300 + 0.5)
+        expect(vb[2], `${label}: 缩态窗口 = 整幅内容`).toBeCloseTo(contentW, 4)
+      } else {
+        expect(box.w, `${label}: 放大态元素盒 = 布局原宽`).toBeCloseTo(contentW, 4)
+      }
+      // 视口窗口不越出内容（否则画布边出现空白带）。
+      expect(vb[0], `${label}: viewBox 左缘不越界`).toBeGreaterThanOrEqual(-1e-6)
+      expect(vb[1], `${label}: viewBox 上缘不越界`).toBeGreaterThanOrEqual(-1e-6)
+      expect(vb[0]! + vb[2]!, `${label}: viewBox 右缘不越界`).toBeLessThanOrEqual(contentW + 1e-6)
+      expect(vb[1]! + vb[3]!, `${label}: viewBox 下缘不越界`).toBeLessThanOrEqual(contentH + 1e-6)
+    }
+    // 适应窗口：只缩小不放大，scale 夹在 0.4..1，且整幅图真的进了视口。
+    fit()
+    const fitted = Number(svg.getAttribute('width')) / viewBoxOf(host)[2]!
+    expect(fitted).toBeCloseTo(Math.min(1, Math.max(0.4, Math.min(400 / contentW, 300 / contentH))), 4)
   })
 
   it('keyboard +/-/0 zooms and fits while the canvas holds focus', () => {
     const host = mountMindMap(TREE)
+    const svg = host.querySelector('svg')!
     const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
+    const contentW = Number(svg.getAttribute('width'))
     const [, , w0] = viewBoxOf(host)
     act(() => {
       container.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }))
     })
     expect(viewBoxOf(host)[2]).toBeLessThan(w0!)
-    // 0 = 适应窗口（批3 起不再是回到 1:1）。
+    // 0 = 适应窗口（批3 起不再是回到 1:1）：窗口回到整幅内容、元素盒随之缩进容器。
     stubViewport(host, 400, 300)
     act(() => {
       container.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }))
     })
-    expect(viewBoxOf(host)[2]).toBeGreaterThan(w0!)
+    expect(viewBoxOf(host)[2]).toBeCloseTo(contentW, 4)
+    expect(Number(svg.getAttribute('width'))).toBeLessThanOrEqual(400 + 0.5)
   })
 
-  it('background drag pans the viewBox; a drag on a node does not', () => {
+  it('background drag pans within the content bounds; a drag on a node does not', () => {
     const host = mountMindMap(TREE)
     const svg = host.querySelector('svg')!
     const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
+    const contentW = Number(svg.getAttribute('width'))
+    const contentH = Number(svg.getAttribute('height'))
     const pointer = (type: string, target: EventTarget, init: MouseEventInit & { pointerId?: number }): void => {
       act(() => {
         target.dispatchEvent(new MouseEvent(type, { bubbles: true, ...init }))
       })
     }
+    // 1:1 时视口窗口就是整幅内容，没有可平移的余量——拖拽不改变视口（批6 P11 的钳制）。
     pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 1 })
     pointer('pointermove', container, { clientX: 160, clientY: 130, pointerId: 1 })
     pointer('pointerup', container, { clientX: 160, clientY: 130, pointerId: 1 })
-    const [x, y] = viewBoxOf(host)
-    expect(x).toBeCloseTo(-60, 4)
-    expect(y).toBeCloseTo(-30, 4)
+    expect(viewBoxOf(host)[0]).toBeCloseTo(0, 4)
+    expect(viewBoxOf(host)[1]).toBeCloseTo(0, 4)
+    // 放大后窗口小于内容，拖拽才真的有平移量（dx/scale）。
+    fireWheel(host, { ctrlKey: true, deltaY: -120 })
+    const [x0, y0, winW, winH] = viewBoxOf(host)
+    const zoom = Number(svg.getAttribute('width')) / winW!
+    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 2 })
+    pointer('pointermove', container, { clientX: 80, clientY: 80, pointerId: 2 })
+    pointer('pointerup', container, { clientX: 80, clientY: 80, pointerId: 2 })
+    const [x1, y1] = viewBoxOf(host)
+    expect(x1).toBeCloseTo(x0! + 20 / zoom, 4)
+    expect(y1).toBeCloseTo(y0! + 20 / zoom, 4)
     // After pointerup the gesture is over — further moves change nothing.
-    pointer('pointermove', container, { clientX: 300, clientY: 300, pointerId: 1 })
-    expect(viewBoxOf(host)[0]).toBeCloseTo(-60, 4)
+    pointer('pointermove', container, { clientX: 300, clientY: 300, pointerId: 2 })
+    expect(viewBoxOf(host)[0]).toBeCloseTo(x1!, 4)
+    // 两个方向都钳在 [0, 内容 − 窗口]：窗口不得跑出内容。
+    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 3 })
+    pointer('pointermove', container, { clientX: 9999, clientY: 9999, pointerId: 3 })
+    pointer('pointerup', container, { clientX: 9999, clientY: 9999, pointerId: 3 })
+    expect(viewBoxOf(host)[0]).toBeCloseTo(0, 4)
+    expect(viewBoxOf(host)[1]).toBeCloseTo(0, 4)
+    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 4 })
+    pointer('pointermove', container, { clientX: -9999, clientY: -9999, pointerId: 4 })
+    pointer('pointerup', container, { clientX: -9999, clientY: -9999, pointerId: 4 })
+    expect(viewBoxOf(host)[0]).toBeCloseTo(contentW - winW!, 4)
+    expect(viewBoxOf(host)[1]).toBeCloseTo(contentH - winH!, 4)
     // A drag starting on a node is a click, not a pan.
-    pointer('pointerdown', host.querySelector('.mindmap-node')!, { clientX: 10, clientY: 10, pointerId: 2 })
-    pointer('pointermove', container, { clientX: 200, clientY: 200, pointerId: 2 })
-    pointer('pointerup', container, { clientX: 200, clientY: 200, pointerId: 2 })
-    expect(viewBoxOf(host)[0]).toBeCloseTo(-60, 4)
+    const before = viewBoxOf(host)
+    pointer('pointerdown', host.querySelector('.mindmap-node')!, { clientX: 10, clientY: 10, pointerId: 5 })
+    pointer('pointermove', container, { clientX: 200, clientY: 200, pointerId: 5 })
+    pointer('pointerup', container, { clientX: 200, clientY: 200, pointerId: 5 })
+    expect(viewBoxOf(host)).toEqual(before)
   })
 })
 

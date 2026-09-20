@@ -20,13 +20,52 @@ const IDENTITY_VIEW: View = Object.freeze({ scale: 1, x: 0, y: 0 })
  *  胶囊盒宽按同一套单位模型算（CJK = 1 个字宽）。 */
 const LABEL_FONT_SIZE = 11
 
+/**
+ * 批6 (P11, plan 2026-09-20-ux-issues-remediation): 视口窗口的**用户单位**尺寸。
+ *
+ * 旧模型把元素盒钉死在布局原宽（`<svg width={frame.width}>`），缩放只改 viewBox，
+ * 于是 892px 的元素盒配 859px 的容器 = 常驻 49px 幽灵横滚条（「适应窗口」也消不掉）。
+ * 新模型：窗口 = min(内容/缩放, 内容)——缩到装得下时窗口就是整幅内容（元素盒 =
+ * 内容 × 缩放，装得进容器），放大时窗口小于内容（元素盒 = 布局原宽，真实溢出照常可滚）。
+ * 缩放倍率不变：元素盒 / 窗口 = scale。
+ */
+function viewportWindow(scale: number, layoutWidth: number, layoutHeight: number): { width: number; height: number } {
+  return { width: Math.min(layoutWidth / scale, layoutWidth), height: Math.min(layoutHeight / scale, layoutHeight) }
+}
+
+/** 视口偏移钳到 [0, 内容 − 窗口]——窗口不得越出内容，否则画布边出现空白带。 */
+function clampOffset(value: number, max: number): number {
+  return Math.min(Math.max(value, 0), Math.max(0, max))
+}
+
+/**
+ * 滚动容器的**内容盒**尺寸：clientWidth/Height 含 padding，画布元素盒必须装进
+ * 内容盒（`.mindmap-scroll` 的 8px padding 会让「刚好按 clientWidth 缩」的元素盒
+ * 溢出 16px）。happy-dom 里没有样式表，`parseFloat('')` 得 NaN——按 0 处理，组件
+ * 测试只需 stub clientWidth/Height 的老写法继续有效。
+ */
+function contentBoxSize(el: HTMLElement): { width: number; height: number } {
+  const style = getComputedStyle(el)
+  const px = (value: string): number => parseFloat(value) || 0
+  return {
+    width: el.clientWidth - px(style.paddingLeft) - px(style.paddingRight),
+    height: el.clientHeight - px(style.paddingTop) - px(style.paddingBottom)
+  }
+}
+
 /** Zoom to `nextScale` keeping the layout point at viewport fractions fx/fy fixed. */
 function zoomAt(view: View, nextScale: number, fx: number, fy: number, layoutWidth: number, layoutHeight: number): View {
   const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale))
   if (scale === view.scale) return view
-  const anchorX = view.x + fx * (layoutWidth / view.scale)
-  const anchorY = view.y + fy * (layoutHeight / view.scale)
-  return { scale, x: anchorX - fx * (layoutWidth / scale), y: anchorY - fy * (layoutHeight / scale) }
+  const before = viewportWindow(view.scale, layoutWidth, layoutHeight)
+  const after = viewportWindow(scale, layoutWidth, layoutHeight)
+  const anchorX = view.x + fx * before.width
+  const anchorY = view.y + fy * before.height
+  return {
+    scale,
+    x: clampOffset(anchorX - fx * after.width, layoutWidth - after.width),
+    y: clampOffset(anchorY - fy * after.height, layoutHeight - after.height)
+  }
 }
 
 /** M2.3: all paths at depth ≥ 2 — the nodes the recall mode masks. */
@@ -200,17 +239,21 @@ export function MindMap({
    * 批3 (T15, D11): 把整张图装进视口。此前打开一张两课时的地图，svg 938×1420
    * 而滚动视口只有 525 高——竖直只显示约 37%，用户得先滚再找。scale 夹在
    * MIN_SCALE..1（不放大，只缩小到装得下），并把滚动位置居中到内容上。
+   *
+   * 批6 (P11): 量的是**内容盒**而不是 clientWidth/Height——clientWidth 含 padding，
+   * 而 `.mindmap-scroll` 有 8px padding：按 clientWidth 算出来的元素盒加上 padding
+   * 正好比容器宽 16px，就是那条「适应窗口也消不掉」的幽灵横滚（6.0 探针量到的
+   * overX 就是它）。
    */
   const fitToViewport = useCallback((): boolean => {
     const el = scrollRef.current
     if (el == null || frame.width <= 0 || frame.height <= 0) return false
-    const vw = el.clientWidth
-    const vh = el.clientHeight
-    if (vw <= 0 || vh <= 0) return false
-    const target = Math.min(1, Math.max(MIN_SCALE, Math.min(vw / frame.width, vh / frame.height)))
+    const box = contentBoxSize(el)
+    if (box.width <= 0 || box.height <= 0) return false
+    const target = Math.min(1, Math.max(MIN_SCALE, Math.min(box.width / frame.width, box.height / frame.height)))
     setView(zoomAt(IDENTITY_VIEW, target, 0.5, 0.5, frame.width, frame.height))
     if (typeof el.scrollTo === 'function') {
-      el.scrollTo({ left: Math.max(0, (frame.width - vw) / 2), top: Math.max(0, (frame.height - vh) / 2) })
+      el.scrollTo({ left: Math.max(0, (frame.width - box.width) / 2), top: Math.max(0, (frame.height - box.height) / 2) })
     }
     return true
   }, [frame.width, frame.height])
@@ -319,10 +362,12 @@ export function MindMap({
   const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
     const pan = panRef.current
     if (pan == null || e.pointerId !== pan.pointerId) return
+    // 批6 (P11): 平移同样钳在内容边界内（窗口越界 = 画布边出现空白带）。
+    const win = viewportWindow(pan.origin.scale, frame.width, frame.height)
     setView({
       scale: pan.origin.scale,
-      x: pan.origin.x - (e.clientX - pan.startX) / pan.origin.scale,
-      y: pan.origin.y - (e.clientY - pan.startY) / pan.origin.scale
+      x: clampOffset(pan.origin.x - (e.clientX - pan.startX) / pan.origin.scale, frame.width - win.width),
+      y: clampOffset(pan.origin.y - (e.clientY - pan.startY) / pan.origin.scale, frame.height - win.height)
     })
   }
 
@@ -392,6 +437,9 @@ export function MindMap({
   }
 
   const searching = matched.size > 0
+  /* 批6 (P11): 元素盒 = 视口窗口 × 缩放（不再是布局原宽）——缩放倍率仍然是
+     元素盒/viewBox = scale，但缩到装得下时元素盒跟着变小，幽灵横滚条消失。 */
+  const win = viewportWindow(view.scale, frame.width, frame.height)
 
   return (
     <div class="mindmap-wrap" data-testid="mindmap">
@@ -512,9 +560,9 @@ export function MindMap({
       >
       <svg
         ref={rootRef}
-        width={frame.width}
-        height={frame.height}
-        viewBox={`${view.x} ${view.y} ${frame.width / view.scale} ${frame.height / view.scale}`}
+        width={win.width * view.scale}
+        height={win.height * view.scale}
+        viewBox={`${view.x} ${view.y} ${win.width} ${win.height}`}
         role="img"
         aria-label={`知识导图：${tree.title}`}
       >
