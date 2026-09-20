@@ -114,6 +114,8 @@ export function makeBridge(): SeuSummaryBridge {
       save: vi.fn(async () => ok({ id: 'p', hasKey: true })),
       remove: vi.fn(async () => ok(true)),
       bind: vi.fn(async () => ok(true)),
+      // 批4 (plan 2026-09-20, P14): 取消勾选随保存解绑。
+      unbind: vi.fn(async () => ok(true)),
       test: vi.fn(async () => ok({ latencyMs: 12, answer: 'ok' }))
     },
     tasks: {

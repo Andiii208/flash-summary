@@ -113,6 +113,16 @@ function str(v: unknown, name: string): string {
 }
 
 /**
+ * 批4 (plan 2026-09-20, P14): 能力白名单——providers:bind 与 providers:unbind
+ * 共用同一份判定（两处各写一份就是新的漂移：绑得进、解不掉，或者反之）。
+ */
+function requireCapability(v: unknown): 'asr' | 'multimodal' | 'text' {
+  const capability = str(v, 'capability')
+  if (capability !== 'asr' && capability !== 'multimodal' && capability !== 'text') throw new Error('unknown capability')
+  return capability
+}
+
+/**
  * 批2 (audit 2026-09-19): id 字符校验——凡拼进文件路径或当 DB 行键的入参都先过
  * 这里。纪律沿用 tasks:delete 的既有 inline 校验：首字符必须字母数字，«.» «..»
  * «../x» 因此无法解析到别的目录（join(root, '.') 就是 root 本身）；再补长度上限
@@ -799,9 +809,18 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
   handle(ipc, 'providers:bind', (_e, capability: unknown, providerId: unknown, model: unknown) => {
     try {
-      const cap = str(capability, 'capability')
-      if (cap !== 'asr' && cap !== 'multimodal' && cap !== 'text') throw new Error('unknown capability')
+      const cap = requireCapability(capability)
       ctx.bind(cap, str(providerId, 'providerId'), str(model, 'model'))
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+  // 批4 (plan 2026-09-20, P14): 取消勾选的能力随保存解绑——此前渲染层只能绑、
+  // 不能解，用户取消勾选后列表徽标与任务管线照旧用它。
+  handle(ipc, 'providers:unbind', (_e, capability: unknown) => {
+    try {
+      ctx.unbind(requireCapability(capability))
       return ok(true)
     } catch (e) {
       return err(e)

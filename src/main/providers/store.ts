@@ -77,3 +77,10 @@ export function setBinding(db: Db, binding: CapabilityBinding): void {
      ON CONFLICT(capability) DO UPDATE SET provider_id = excluded.provider_id, model = excluded.model`
   ).run(binding.capability, binding.providerId, binding.model)
 }
+
+/** 批4 (plan 2026-09-20, P14): 解绑一项能力——每个 capability 至多一行
+ *  （003_providers 的 PRIMARY KEY(capability)），所以按 capability 删即可。
+ *  取消勾选后列表徽标与任务管线一起停用，用户以为关掉了就真的关掉了。 */
+export function clearBinding(db: Db, capability: Capability): void {
+  db.prepare('DELETE FROM capability_bindings WHERE capability = ?').run(capability)
+}

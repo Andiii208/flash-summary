@@ -126,6 +126,9 @@ export interface ProvidersBridge {
   save(input: { id?: string; name: string; baseUrl: string; apiKey: string }): Promise<ApiResult<{ id: string; hasKey: boolean }>>
   remove(id: string): Promise<ApiResult<boolean>>
   bind(capability: string, providerId: string, model: string): Promise<ApiResult<boolean>>
+  /** 批4 (plan 2026-09-20, P14): 解绑一项能力——取消勾选随保存生效，否则用户
+   *  以为关掉了，列表徽标与任务管线照旧用它。 */
+  unbind(capability: string): Promise<ApiResult<boolean>>
   /** M3 批 D: probe a form-configured provider without storing anything. */
   test(input: { baseUrl: string; apiKey: string; model: string }): Promise<ApiResult<{ latencyMs: number; answer: string }>>
 }

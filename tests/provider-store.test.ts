@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
 import { type Cryptor } from '../src/main/auth/session-crypto'
-import { loadProviderSettings, upsertProvider, deleteProvider, setBinding } from '../src/main/providers/store'
+import { loadProviderSettings, upsertProvider, deleteProvider, setBinding, clearBinding } from '../src/main/providers/store'
 import { validateProvider } from '../src/main/providers/model'
 
 /** XOR stub cryptor standing in for DPAPI (same as session tests). */
@@ -84,6 +84,23 @@ describe('provider store (DPAPI-encrypted keys)', () => {
 
     const settings = loadProviderSettings(db, stubCryptor)
     expect(settings.bindings).toEqual([{ capability: 'asr', providerId: 'p1', model: 'whisper-large' }])
+  })
+
+  it('批4 (P14): clearBinding 删掉该能力，其它能力的绑定不受影响', () => {
+    const p = validateProvider({ id: 'p1', name: 'A', baseUrl: 'https://a/v1', apiKey: 'k' })
+    upsertProvider(db, stubCryptor, p)
+    setBinding(db, { capability: 'asr', providerId: 'p1', model: 'mimo-v2.5-asr' })
+    setBinding(db, { capability: 'multimodal', providerId: 'p1', model: 'mimo-v2.5' })
+
+    clearBinding(db, 'asr')
+    const settings = loadProviderSettings(db, stubCryptor)
+    expect(settings.bindings).toEqual([{ capability: 'multimodal', providerId: 'p1', model: 'mimo-v2.5' }])
+    // Provider 行本身不动——解绑能力不等于删 provider。
+    expect(settings.providers).toHaveLength(1)
+
+    // 解绑未绑定的能力是幂等的（取消勾选可能重复提交）。
+    clearBinding(db, 'asr')
+    expect(loadProviderSettings(db, stubCryptor).bindings).toHaveLength(1)
   })
 
   it('refuses to read a plaintext (unencrypted) key from the database', () => {

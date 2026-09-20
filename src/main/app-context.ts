@@ -21,7 +21,7 @@ import { loadMainRenderer } from './nav-guard'
 import { SchoolClient } from './school/client'
 import { BilibiliClient, type FetchLike } from './bilibili/client'
 import { harvestPlayPage, type PlayHarvestResult, type PlayPageTarget } from './school/play-harvest'
-import { loadProviderSettings, upsertProvider, deleteProvider, setBinding } from './providers/store'
+import { loadProviderSettings, upsertProvider, deleteProvider, setBinding, clearBinding } from './providers/store'
 import { resolveCapability, validateProvider, type ProviderSettings, type Capability, type ProviderConfig } from './providers/model'
 import { OpenAiCompatibleClient } from './providers/openai-client'
 import { ffmpegPath, ffprobePath } from './media/binaries'
@@ -58,6 +58,8 @@ export interface AppContext {
   saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string }) => ProviderConfig
   removeProvider: (id: string) => void
   bind: (capability: Capability, providerId: string, model: string) => void
+  /** 批4 (plan 2026-09-20, P14): 解绑一项能力（取消勾选随保存生效）。 */
+  unbind: (capability: Capability) => void
   chatFor: (capability: Capability) => OpenAiCompatibleClient
   login: () => Promise<void>
   logout: () => Promise<void>
@@ -502,6 +504,7 @@ export function createContext(overrides: Partial<{
     },
     removeProvider: (id) => deleteProvider(db, id),
     bind: (capability, providerId, model) => setBinding(db, { capability, providerId, model }),
+    unbind: (capability) => clearBinding(db, capability),
     chatFor,
     login: async () => {
       try {

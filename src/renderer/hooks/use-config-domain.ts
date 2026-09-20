@@ -107,12 +107,26 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
             return
           }
           const providerId = (saved.value as { id: string }).id
+          // 批4 (P14): 该 provider 原有、本次未勾选的能力随保存解绑——此前只有
+          // bind 没有 unbind，用户取消勾选后列表徽标与任务管线照旧用它（「关了
+          // 却还开着」）。原有绑定取自已加载的列表，按 providerId 过滤。
+          const toUnbind = (providers?.bindings ?? []).filter(
+            (b) => b.providerId === providerId && !input.capabilities.includes(b.capability)
+          )
           // 批6: a failed binding used to abandon the refresh — the list then
           // showed a stale state while the provider row WAS saved.
           for (const capability of input.capabilities) {
             const bound = await bridge.providers.bind(capability, providerId, (input.models[capability] ?? '').trim())
             if (!bound.ok) {
               toast(`Provider 已保存，但能力 ${capability} 绑定失败：${bound.error ?? '未知错误'}`, 'error')
+              await refreshProviders()
+              return
+            }
+          }
+          for (const binding of toUnbind) {
+            const released = await bridge.providers.unbind(binding.capability)
+            if (!released.ok) {
+              toast(`Provider 已保存，但能力 ${binding.capability} 解绑失败：${released.error ?? '未知错误'}`, 'error')
               await refreshProviders()
               return
             }
@@ -125,13 +139,14 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
             toast('已保存。生成笔记还需要多模态总结模型——在上面勾选并绑定', 'info')
             return
           }
-          toast(`已绑定 ${input.capabilities.length} 项能力 → ${input.name}`, 'success')
+          const boundPart = `已绑定 ${input.capabilities.length} 项能力`
+          toast(toUnbind.length > 0 ? `${boundPart}，解绑 ${toUnbind.length} 项能力 → ${input.name}` : `${boundPart} → ${input.name}`, 'success')
         } finally {
           setProviderBusy(false)
         }
       })()
     },
-    [bridge, toast, refreshProviders]
+    [bridge, toast, refreshProviders, providers]
   )
 
   const removeProvider = useCallback(

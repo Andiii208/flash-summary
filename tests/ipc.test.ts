@@ -110,7 +110,7 @@ describe('ipc handlers over a real context', () => {
     for (const channel of [
       'school:login', 'school:logout', 'school:session', 'school:listCourses', 'school:addManualCourse', 'school:harvestLessons', 'school:netCheck',
       'bilibili:login', 'bilibili:loginStatus', 'bilibili:logout', 'bilibili:session',
-      'providers:list', 'providers:save', 'providers:delete', 'providers:bind',
+      'providers:list', 'providers:save', 'providers:delete', 'providers:bind', 'providers:unbind',
       'tasks:create',
       'notes:latest',
       'qa:ask', 'qa:history'
@@ -277,6 +277,29 @@ describe('ipc handlers over a real context', () => {
     const res = (await ipc.invoke('providers:bind', 'voice', 'p1', 'm')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('capability')
+  })
+
+  // 批4 (plan 2026-09-20, P14): 取消勾选的能力随保存解绑——渲染层此前只能绑不能解。
+  it('批4 (P14): providers:unbind 删掉该能力的绑定行，非法 capability 拒绝', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const saved = (await ipc.invoke('providers:save', { name: 'MiMo', baseUrl: 'https://api.xiaomimimo.com/v1', apiKey: 'sk-1' })) as {
+      value?: { id: string }
+    }
+    const providerId = saved.value!.id
+    expect((await ipc.invoke('providers:bind', 'asr', providerId, 'mimo-v2.5-asr')) as { ok: boolean }).toMatchObject({ ok: true })
+    expect((await ipc.invoke('providers:bind', 'multimodal', providerId, 'mimo-v2.5')) as { ok: boolean }).toMatchObject({ ok: true })
+
+    const released = (await ipc.invoke('providers:unbind', 'asr')) as { ok: boolean }
+    expect(released.ok).toBe(true)
+    const listed = (await ipc.invoke('providers:list')) as { value?: { bindings: Array<{ capability: string; providerId: string; model: string }> } }
+    expect(listed.value?.bindings).toEqual([{ capability: 'multimodal', providerId, model: 'mimo-v2.5' }])
+
+    // 与 providers:bind 同一份白名单（smoke 也有同款探针）。
+    const bogus = (await ipc.invoke('providers:unbind', 'voice')) as { ok: boolean; error?: string }
+    expect(bogus.ok).toBe(false)
+    expect(bogus.error).toContain('capability')
+    expect(((await ipc.invoke('providers:list')) as { value?: { bindings: unknown[] } }).value?.bindings).toHaveLength(1)
   })
 
   it('refuses IPC from a non-app sender frame (review E1)', async () => {

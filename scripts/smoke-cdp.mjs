@@ -120,7 +120,7 @@ function findFreePort(start) {
 const EXPECTED_BRIDGE = {
   school: ['login', 'logout', 'session', 'listCourses', 'onRefreshProgress', 'addManualCourse', 'courseTree', 'harvestLessons', 'harvestState', 'removeCourse', 'netCheck', 'setMine'],
   bilibili: ['login', 'loginStatus', 'logout', 'session', 'resolve', 'import'],
-  providers: ['list', 'save', 'remove', 'bind', 'test'],
+  providers: ['list', 'save', 'remove', 'bind', 'unbind', 'test'],
   tasks: ['create', 'list', 'runAsync', 'cancel', 'remove', 'clearFinished', 'onProgress'],
   notes: ['latest', 'list', 'courseHealth', 'exportMarkdown', 'exportObsidian', 'exportCourseObsidian', 'exportAnki', 'exportSvg', 'exportPng', 'courseTree', 'attachments', 'attachmentData', 'cover', 'backfillCover', 'regenerate', 'polish', 'repair', 'exportPdfDialog', 'exportPdfWrite', 'revealFile'],
   qa: ['ask', 'history', 'recent'],
@@ -160,6 +160,9 @@ const PROBES = [
   ['qa:history (missing)', "s.qa.history('smoke-none')", (r) => r.ok === true && Array.isArray(r.value)],
   ['qa:ask (no binding)', "s.qa.ask('smoke-none', 'probe')", (r) => r.ok === false && typeof r.error === 'string'],
   ['providers:bind (bad capability)', "s.providers.bind('bogus', 'p', 'm')", (r) => r.ok === false && typeof r.error === 'string'],
+  // 批4 (plan 2026-09-20, P14): 解绑与绑定共用同一份能力白名单——只探错误路径，
+  // 成功路径会删库里的真实绑定。
+  ['providers:unbind (bad capability)', "s.providers.unbind('bogus')", (r) => r.ok === false && typeof r.error === 'string'],
   ['log:rendererError', `s.log.rendererError(${JSON.stringify(PROBE_LOG_LINE)})`, (r) => r.ok === true && r.value === true],
   // 批 D (plan 2026-09-19): 原片跳转只探**错误路径**——成功路径会真的打开浏览器（有副作用）。
   ['lessons:openSource (missing lesson)', "s.lessons.openSource('smoke-none', 60)", (r) => r.ok === false && typeof r.error === 'string']

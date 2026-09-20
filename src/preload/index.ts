@@ -60,6 +60,9 @@ const api: SeuSummaryBridge = {
     remove: (id: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('providers:delete', id),
     bind: (capability: string, providerId: string, model: string): Promise<ApiResult<boolean>> =>
       ipcRenderer.invoke('providers:bind', capability, providerId, model),
+    // 批4 (plan 2026-09-20, P14): 解绑——声明必须与 bridge.ts 一致（整对象按
+    // SeuSummaryBridge 标注，签名漂移就是 TS2322）。
+    unbind: (capability: string): Promise<ApiResult<boolean>> => ipcRenderer.invoke('providers:unbind', capability),
     test: (input: { baseUrl: string; apiKey: string; model: string }): Promise<ApiResult<{ latencyMs: number; answer: string }>> =>
       ipcRenderer.invoke('providers:test', input)
   },
