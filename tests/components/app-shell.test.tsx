@@ -518,6 +518,55 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForGone('[data-testid="course-browser"]')
   })
 
+  // 批1 (plan 2026-09-20, P13): 三个自绘 overlay 同为 z-index 40，层级相同时由
+  // DOM 顺序决定——浏览器整体返回 null 之前一直盖在课程导图弹层上，用户点
+  // 「导图」看不到任何可见反应（弹层既看不见也点不着）。
+  it('批1 (P13): 全屏浏览器里点课程卡「导图」→ 浏览器关闭、地图弹层可见、Esc 只关一层', async () => {
+    const bridge = makeBridge()
+    bridge.notes.courseTree = vi.fn(async () => ok({ tree: { title: '数据结构', children: [{ title: '第1讲', children: [] }] }, lessons: 1, skipped: 0 }))
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    click(host.querySelector('[data-testid="course-browser-open"]'))
+    await waitForSelector('[data-testid="course-browser"]')
+
+    const mapKey = host.querySelector<HTMLButtonElement>('[data-testid="course-browser"] button[aria-label^="查看课程导图"]')
+    expect(mapKey).not.toBeNull()
+    click(mapKey)
+
+    await waitForSelector('[data-testid="course-map-dialog"]')
+    // 浏览器先关：遮罩随之消失，导图弹层才是唯一在屏的一层。
+    await waitForGone('[data-testid="course-browser"]')
+    expect(bridge.notes.courseTree).toHaveBeenCalledWith('c1')
+
+    // Esc 只关地图这一层——浏览器不会「跟着一起被关」（它已经关了，也不会回来）。
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await waitForGone('[data-testid="course-map-dialog"]')
+    expect(host.querySelector('[data-testid="course-browser"]')).toBeNull()
+  })
+
+  // 批1 (P13) 的防御性半边：地图弹层现在渲染在浏览器之后，任何「浏览器开着
+  // 打开地图」的路径都盖在上面而不是被埋掉。
+  it('批1 (P13): 地图弹层渲染在浏览器之后——两层同时在 DOM 里时地图在上', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    const sidebarMapKey = host.querySelector<HTMLButtonElement>('.sidebar button[aria-label^="查看课程导图"]')
+    expect(sidebarMapKey).not.toBeNull()
+    click(sidebarMapKey)
+    await waitForSelector('[data-testid="course-map-dialog"]')
+
+    click(host.querySelector('[data-testid="course-browser-open"]'))
+    await waitForSelector('[data-testid="course-browser"]')
+    const overlays = [...host.querySelectorAll('.course-browser-overlay, .course-map-overlay')]
+    expect(overlays.map((el) => el.className)).toEqual(['course-browser-overlay', 'course-map-overlay'])
+
+    // 收尾：两层都关掉——helpers/preact 的 afterEach 只清 DOM，挂着不关会把
+    // window 键监听与 body 滚动锁留给下一个用例（两层都听 Esc）。
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await waitForGone('[data-testid="course-browser"]')
+    await waitForGone('[data-testid="course-map-dialog"]')
+  })
+
   it('批4: 搜索态也分块——≥150 门命中只渲染 150 行，「显示更多」按页加长（重置 effect 对搜索态生效）', async () => {
     const courses: CourseTreeInfo[] = Array.from({ length: 260 }, (_, i) => ({
       id: `s${i}`,

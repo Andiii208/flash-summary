@@ -289,7 +289,6 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onClearLesson={state.clearLesson}
       />
       <ToastArea toasts={state.toasts} onDismiss={state.dismissToast} />
-      {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
       <NoteUpgradeDialog
         open={state.noteUpgrade.open}
         courseLabel={state.noteUpgrade.label}
@@ -329,11 +328,23 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         onToggleMine={state.toggleMine}
         onHarvestLessons={state.harvestLessons}
         onRemoveCourse={state.removeCourse}
-        onCourseMap={state.openCourseMap}
+        // 批1 (plan 2026-09-20, P13): the three self-drawn overlays share
+        // z-index 40, so DOM order decides — the browser used to cover the
+        // map dialog completely (the user clicked 导图 and saw nothing).
+        // Close first, then open: same convention as picking a lesson.
+        onCourseMap={(courseId) => {
+          closeCourseBrowser()
+          state.openCourseMap(courseId)
+        }}
         harvestInflight={state.harvestInflight}
         courseMapBusy={state.courseMapBusy}
         onClose={closeCourseBrowser}
       />
+      {/* 批1 (P13): rendered AFTER the browser as a defensive backstop — any
+          future path that opens the map while the browser is up still lands on
+          top instead of behind. z-index untouched (the three overlays stay
+          peers; the shared confirm layer is a different tier). */}
+      {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
       <div class="app-main">
         <aside class={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`} ref={sidebarRef}>
           {/* A1 (plan 2026-09-13): the toggle lives at the END of the header
