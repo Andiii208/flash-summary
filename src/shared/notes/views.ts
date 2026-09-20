@@ -131,11 +131,20 @@ function flattenTree(node: { title: string; children: unknown[] }, depth = 0): s
 
 // ---------------- structured block projections ----------------
 
-/** Shared: does this string look like markdown (## / list / bold / table)? */
+/** Shared: does this string look like markdown (## / list / bold / code / table)?
+ *  批5 (P18): 这是**唯一**的 markdown 判据——概览与 tldr 都走它（`markdownBlock`），
+ *  渲染层的 paragraph 分支因此可以安心保持纯文本。 */
 export function looksLikeMarkdown(text: string): boolean {
   // 批4: 补表格判据。此前只有「## / 列表 / 加粗」三条，一份**只有表格**的
   // overview 会落到纯 `<p>` 分支，把 `|` 原样印出来。
-  return /(^|\n)\s{0,3}(#{1,4}\s|[-*]\s|\d+\.\s)/.test(text) || /\*\*[^*]+\*\*/.test(text) || hasTable(text)
+  // 批5: 补行内代码判据。`md-lite` 的 parseInline 认 `code`（单反引号），但
+  // 判据不认——只含 `xxx` 的一句话会走纯 `<p>`，把字面反引号印在读者眼前。
+  return (
+    /(^|\n)\s{0,3}(#{1,4}\s|[-*]\s|\d+\.\s)/.test(text) ||
+    /\*\*[^*]+\*\*/.test(text) ||
+    /`[^`\n]+`/.test(text) ||
+    hasTable(text)
+  )
 }
 
 function detailedBlocks(note: Note): BlockSection[] {
@@ -144,8 +153,10 @@ function detailedBlocks(note: Note): BlockSection[] {
   const chapters = note.chapters ?? []
   const quotes = note.quotes ?? []
   // B3: tldr 是“合上时间线也能独立读懂”的第一句话——排在概览之前，空时不占位。
+  // 批5 (P18): tldr 与概览走**同一个** markdownBlock 判据——模型会在这句话里
+  // 写 `xxx` 行内代码，此前直造 paragraph 块会把字面反引号印出来。
   const overviewBlocks: ViewBlock[] = [
-    ...(note.tldr != null && note.tldr.trim() !== '' ? [{ block: 'paragraph', text: note.tldr.trim() } as ViewBlock] : []),
+    ...(note.tldr != null && note.tldr.trim() !== '' ? [markdownBlock(note.tldr.trim())] : []),
     markdownBlock(note.overview)
   ]
   const sections: BlockSection[] = [
@@ -169,7 +180,7 @@ function detailedBlocks(note: Note): BlockSection[] {
 
 function standardBlocks(note: Note): BlockSection[] {
   const standardOverviewBlocks: ViewBlock[] = [
-    ...(note.tldr != null && note.tldr.trim() !== '' ? [{ block: 'paragraph', text: note.tldr.trim() } as ViewBlock] : []),
+    ...(note.tldr != null && note.tldr.trim() !== '' ? [markdownBlock(note.tldr.trim())] : []),
     markdownBlock(note.overview)
   ]
   const sections: BlockSection[] = [

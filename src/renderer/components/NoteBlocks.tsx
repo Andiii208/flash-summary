@@ -40,6 +40,9 @@ export function NoteBlocks({ blocks, getAttachment, manifest, version, onOpenSou
 function BlockRenderer({ block, getAttachment, manifest, version, onOpenSource }: { block: ViewBlock; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void }): JSX.Element {
   switch (block.block) {
     case 'paragraph':
+      // 批5 (P18): 纯文本分支保持不变——markdown 判据只有一份，在
+      // shared/notes/views.ts 的 looksLikeMarkdown（投影层已分流；这里再判一次
+      // 就是第二套判据，必然漂移）。
       return <p class="note-para">{block.text}</p>
     case 'markdown':
       return <MdLite text={block.text} />

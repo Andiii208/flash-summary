@@ -211,6 +211,12 @@ describe('looksLikeMarkdown', () => {
   it('批4: 公式不改变分块判据，但带公式的列表照样触发 markdown 分支', () => {
     expect(looksLikeMarkdown('- 公式：$L = -\\sum y\\log p$')).toBe(true)
   })
+
+  it('批5 (P18): 认出只含行内代码的一句话（此前会印出字面反引号）', () => {
+    expect(looksLikeMarkdown('先跑 `npm run lint`，全绿再提交。')).toBe(true)
+    // 单个反引号不成对 → 不是代码跨度，仍是普通文本。
+    expect(looksLikeMarkdown('价格大约 5` 上下')).toBe(false)
+  })
 })
 
 describe('B3 tldr（plan 2026-09-19-note-experience-overhaul）', () => {
@@ -235,6 +241,22 @@ describe('B3 tldr（plan 2026-09-19-note-experience-overhaul）', () => {
     const note: Note = { ...sampleNote, tldr: '   ' }
     const sections = projectNoteBlocks(note, 'standard')
     expect(sections.find((s) => s.heading === '课程概览')?.blocks).toHaveLength(1)
+  })
+
+  // 批5 (P18): tldr 曾直造 paragraph 块，绕过了 looksLikeMarkdown——一句话里
+  // 的 `行内代码` 会连着反引号一起印在读者眼前。现在两个视图的 tldr 与概览
+  // 走同一个 markdownBlock（判据只有一份）。
+  it('批5 (P18): 含行内代码的 tldr 走 markdown 块（与概览同一判据）', () => {
+    const note: Note = { ...sampleNote, tldr: '先跑 `npm run lint`，全绿再提交。' }
+    for (const view of ['detailed', 'standard'] as const) {
+      const overview = projectNoteBlocks(note, view).find((s) => s.heading === '课程概览')
+      expect(overview?.blocks[0]).toEqual({ block: 'markdown', text: '先跑 `npm run lint`，全绿再提交。' })
+    }
+  })
+
+  it('批5 (P18): 含行内代码的概览同样走 markdown 块', () => {
+    const note = parseNote(JSON.stringify({ ...sampleNote, overview: '本讲围绕 `O(n log n)` 展开。' }))
+    expect(projectNoteBlocks(note, 'detailed')[0].blocks[0]).toEqual({ block: 'markdown', text: '本讲围绕 `O(n log n)` 展开。' })
   })
 })
 

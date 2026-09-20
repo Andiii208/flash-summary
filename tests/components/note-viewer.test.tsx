@@ -96,6 +96,17 @@ describe('NoteViewer', () => {
     expect(host.querySelector('.timeline-stamp')?.textContent).toBe('01:05')
   })
 
+  // 批5 (P18): tldr 曾直造 paragraph 块（不过 markdown 判据），一句话里的
+  // `行内代码` 会连着反引号一起印出来。现在它与概览同判据，渲染成 <code>。
+  it('批5 (P18): 含行内代码的 tldr 渲染成 <code>，不再印字面反引号', () => {
+    const note: Note = { ...NOTE, tldr: '先跑 `npm run lint`，全绿再提交。' }
+    const host = mount(<NoteViewer note={note} />)
+    const overview = host.querySelector('.note-section')
+    expect(overview?.textContent).toContain('课程概览')
+    expect(overview?.querySelector('.md-lite code')?.textContent).toBe('npm run lint')
+    expect(host.textContent).not.toContain('`')
+  })
+
   it('批3: the reading-view tree offers 全部展开/收起 (parity with the mind map)', () => {
     // tools() 取树视图工具行里的两个按钮（批6 起顺序固定为 收起 → 展开）。
     const deep: Note = {
