@@ -21,6 +21,8 @@ import {
  */
 
 const NOTE: Note = {
+  chapters: [],
+  quotes: [],
   overview: '本讲介绍复杂度分析。',
   knowledgeTree: { title: '复杂度', children: [{ title: 'O(n)', children: [] }] },
   timeline: [{ at: 65, title: '引入', detail: '开始讲解', refs: [], evidence: [] }],

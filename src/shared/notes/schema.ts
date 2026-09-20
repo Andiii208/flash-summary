@@ -115,11 +115,42 @@ export interface TreeNode {
  * 常量住在 shared 是因为渲染层也要读它（main 不能被渲染层 import）。
  * 0 表示「该列启用之前生成的」，所以存量笔记天然算旧版本。
  */
-export const CURRENT_PROMPT_VERSION = 2
+export const CURRENT_PROMPT_VERSION = 5
 export const CURRENT_SCHEMA_VERSION = 2
+
+/**
+ * B1 (plan 2026-09-19-note-experience-overhaul): 章节——长内容的第一结构
+ *（通义听悟「章节速览」/B 站 AI 总结同款心智）。3-8 章；`at` 为章起始秒，
+ * 时间线条目在阅读层按 at 归章（不要求模型显式挂靠）。默认 []：旧笔记零迁移。
+ */
+export const ChapterSchema = z.object({
+  at: z.coerce.number().nonnegative(),
+  title: z.string(),
+  summary: z.string()
+})
+
+export type Chapter = z.infer<typeof ChapterSchema>
+
+/**
+ * B2 (plan 2026-09-19-note-experience-overhaul): 金句——讲者原话的逐字摘引
+ *（Glasp 的核心功能位；与 09-18 方案 D1=A 的 highlights 是同一字段，不建两份）。
+ * 宁空勿编；at/text 过与 transcriptRefs 同一套核验（越界钳制、摘引匹配不上清空）。
+ */
+export const QuoteSchema = z.object({
+  at: z.coerce.number().nonnegative(),
+  text: z.string()
+})
+
+export type Quote = z.infer<typeof QuoteSchema>
 
 export const NoteSchema = z.object({
   overview: z.string(),
+  /**
+   * B3 (plan 2026-09-19-note-experience-overhaul): 一句话总结——Eightify 式「预览
+   * 价值」的数据位：合上时间线之前，先回答「这讲/这支视频讲了什么、值不值得读」。
+   * 可选（宁空勿编：内容太少不足以概括时省略）；旧笔记零迁移加载。
+   */
+  tldr: z.string().optional(),
   knowledgeTree: TreeNodeSchema,
   timeline: z.array(TimelineEntrySchema).default([]),
   concepts: z.array(ConceptSchema).default([]),
@@ -130,6 +161,10 @@ export const NoteSchema = z.object({
   examCues: z.array(z.string()).default([]),
   /** 疑问与缺口 */
   questionsAndGaps: z.array(z.string()).default([]),
+  /** B2: 金句（讲者原话，带时间锚；默认 [] —— 旧笔记零迁移加载）。 */
+  quotes: z.array(QuoteSchema).default([]),
+  /** B1: 章节（3-8 章，阅读层按 at 归章；默认 [] —— 旧笔记零迁移加载）。 */
+  chapters: z.array(ChapterSchema).default([]),
   /** 自测题（问答翻转，逐题锚定概念/考点；无题时整块省略） */
   quiz: z.array(QuizItemSchema).default([]),
   /** M3.1: 跨节点关联线（term/标题解析失败整条丢弃） */
@@ -359,6 +394,12 @@ function withNormalizedTimestamps(raw: unknown): unknown {
     // concepts the note actually defines and the titles the tree carries.
     knowledgeTree: normalizeTreeTerms(obj.knowledgeTree, conceptTerms),
     conceptLinks: normalizeConceptLinks(obj.conceptLinks, conceptTerms, nodeTitles),
+    chapters: fixList(obj.chapters),
+    quotes: fixList(
+      Array.isArray(obj.quotes)
+        ? obj.quotes.filter((q) => q != null && typeof q === 'object' && typeof (q as { text?: unknown }).text === 'string')
+        : obj.quotes
+    ),
     timeline: fixList(obj.timeline),
     transcriptRefs: fixList(obj.transcriptRefs),
     evidence: normalizeEvidence(obj.evidence),

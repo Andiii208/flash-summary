@@ -18,7 +18,8 @@ import {
 import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidence'
 import { cleanSegments, formatTimedTranscript } from '../../shared/notes/transcript-clean'
 import type { CleanSegment } from '../../shared/notes/transcript-clean'
-import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
+import { verifyNoteRefs, transcriptRefHitRate, clampNoteTimes, verifyTranscriptRefs } from '../../shared/notes/ref-verify'
+import { modelHasVision } from '../../shared/model-vision'
 import { noteHealth } from '../../shared/notes/health'
 import type { RefVerifyStats } from '../../shared/notes/ref-verify'
 import { fuseVisualEvidence } from '../../shared/notes/visual-fusion'
@@ -44,7 +45,7 @@ export interface SummarizeImage {
 
 /** 形状规约（2026-09-04 起 8 条：JSON 结构/格式/锚定）——质量批1 未改动。 */
 const NOTE_SHAPE_PROMPT =
-  '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,example,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],quiz:[{question,answer,source,term}],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。要求：1) 所有 at 字段必须是距课时开始的整数秒（例如 750，不要 mm:ss、不要文字）。2) evidence 的 ref 必须原样选用用户消息里给出的「证据ID」（形如 ppt:0 或 kf:xxx），禁止编造其他文字引用；kind 只能是 ppt 或 keyframe；timeline 每条尽量搭配与其画面内容对应的关键帧证据。3) overview 与 methodology 的值用 Markdown 组织：先一句总起，再用 ## 小节标题与 - 列表分层（overview 建议「本讲主线」「前置知识」等小节；methodology 建议「解题思路」「通用套路」「易错点」等小节），不要输出代码围栏。4) 除 overview、methodology 与 formula 的 content 外，所有字段（detail、definition、content、explanation、examCues、questionsAndGaps、question、answer、节点 title 等）一律输出纯文本：禁止 **加粗**、*斜体*、# 标题、- 列表符号等一切 Markdown 标记，有序步骤直接写「1. 2. 3.」编号加句号。**例外：kind="formula" 的 content 必须用 LaTeX 书写**（等号、分式、上下标、求和、希腊字母等一律 LaTeX，如「$$L = -\\frac{1}{N}\\sum_{i=1}^{N} y_i \\log p_i$$」；单行短公式用 $...$ 包起来，独立成行的大公式用 $$...$$ 包起来）。渲染器会用 KaTeX 排版，写成「L = -(1/N) Σ y log p」这样的纯文本反而对不齐、看不清。5) formula/code/operation 只用于 formulasAndSteps。6) quiz 是自测题数组（5-8 题）：每题 question 是提问、answer 是完整答案；source 只能是 concept 或 examCue——锚定本讲某个概念时 source=concept 且必须带 term（原样使用该概念的 term 字段），锚定某个考点时 source=examCue（可省 term）；题目必须能在本讲内容中找到答案，禁止超纲凑数；quiz 放在 JSON 末位，先保证其他字段质量。7) knowledgeTree 是思维导图数据：根节点 title 是本讲课时主题；第一层 3-6 个主分支，对应本讲的主要板块；整体 3-4 层，细节放叶子层；节点 title 用名词短语（概念或主题名），不超过 20 字；必须覆盖全讲所有主要板块，不得遗漏；每个节点可带 terms 数组，原样引用本讲 concepts 里出现的 term（禁止编造 concepts 中不存在的词），标出该节点分支涉及的概念。8) conceptLinks 是概念关联数组（最多 5 条，没有强关联就输出空数组）：每条 {from,to,label}，from 和 to 必须原样取自本讲 concepts 的 term 或 knowledgeTree 的节点标题，禁止编造。'
+  '你是课程笔记生成器。只输出一个 JSON 对象，不要多余文字。JSON 结构：{overview, tldr, quotes:[{at,text}],chapters:[{at,title,summary}],knowledgeTree:{title,children:[{title,children}]},timeline:[{at,title,detail,refs:[{at,text}],evidence:[{kind,ref}]}],concepts:[{term,definition,example,refs}],formulasAndSteps:[{kind,content,explanation,refs}],methodology,examCues:[],questionsAndGaps:[],quiz:[{question,answer,source,term}],transcriptRefs:[{at,text}],evidence:[{kind,ref}]}。要求：1) 所有 at 字段必须是距课时开始的整数秒（例如 750，不要 mm:ss、不要文字）。2) evidence 的 ref 必须原样选用用户消息里给出的「证据ID」（形如 ppt:0 或 kf:xxx），禁止编造其他文字引用；kind 只能是 ppt 或 keyframe；timeline 每条尽量搭配与其画面内容对应的关键帧证据。3) overview 与 methodology 的值用 Markdown 组织：先一句总起，再用 ## 小节标题与 - 列表分层（overview 建议「本讲主线」「前置知识」等小节；methodology 建议「解题思路」「通用套路」「易错点」等小节），不要输出代码围栏。4) 除 overview、methodology 与 formula 的 content 外，所有字段（detail、definition、content、explanation、examCues、questionsAndGaps、question、answer、节点 title 等）一律输出纯文本：禁止 **加粗**、*斜体*、# 标题、- 列表符号等一切 Markdown 标记，有序步骤直接写「1. 2. 3.」编号加句号。**例外：kind="formula" 的 content 必须用 LaTeX 书写**（等号、分式、上下标、求和、希腊字母等一律 LaTeX，如「$$L = -\\frac{1}{N}\\sum_{i=1}^{N} y_i \\log p_i$$」；单行短公式用 $...$ 包起来，独立成行的大公式用 $$...$$ 包起来）。渲染器会用 KaTeX 排版，写成「L = -(1/N) Σ y log p」这样的纯文本反而对不齐、看不清。5) formula/code/operation 只用于 formulasAndSteps。6) quiz 是自测题数组（5-8 题）：每题 question 是提问、answer 是完整答案；source 只能是 concept 或 examCue——锚定本讲某个概念时 source=concept 且必须带 term（原样使用该概念的 term 字段），锚定某个考点时 source=examCue（可省 term）；题目必须能在本讲内容中找到答案，禁止超纲凑数；quiz 放在 JSON 末位，先保证其他字段质量。7) knowledgeTree 是思维导图数据：根节点 title 是本讲课时主题；第一层 3-6 个主分支，对应本讲的主要板块；整体 3-4 层，细节放叶子层；节点 title 用名词短语（概念或主题名），不超过 20 字；必须覆盖全讲所有主要板块，不得遗漏；每个节点可带 terms 数组，原样引用本讲 concepts 里出现的 term（禁止编造 concepts 中不存在的词），标出该节点分支涉及的概念。8) conceptLinks 是概念关联数组（最多 5 条，没有强关联就输出空数组）：每条 {from,to,label}，from 和 to 必须原样取自本讲 concepts 的 term 或 knowledgeTree 的节点标题，禁止编造。'
 
 /**
  * 内容质量规约（批1, plan 2026-09-08 note-quality-overhaul）：形状之外规定
@@ -72,7 +73,10 @@ export const NOTE_QUALITY_PROMPT =
   '9.11 去 AI 味（批6：笔记的 AI 味与文章同源——太均匀、太正确、太完整）：' +
   '① 去路标：禁止「值得注意的是」「综上所述」「本节主要介绍」「首先/其次/最后」这类模型路标——它们在语音转写里根本不存在，出现即模型加的；' +
   '② 具体优先：概念定义与时间线 detail 必须落到本讲的具体数字、参数、演示结果，抽象概括只在给出具体内容之后用一句收束；' +
-  '③ 不均匀化：不要求每条概念长度相近、每条时间线含相同要素——讲者讲得多的地方就该写得多，一笔带过的地方就写短，禁止为了整齐而填充。'
+  '③ 不均匀化：不要求每条概念长度相近、每条时间线含相同要素——讲者讲得多的地方就该写得多，一笔带过的地方就写短，禁止为了整齐而填充。' +
+  '9.12 tldr 是一句话总结（不超过 80 字）：这堂课/这支视频讲了什么、最核心的一个结论是什么——让读者在打开时间线之前就判断值不值得读；写具体结论不写路标（同 9.11）；内容太少不足以概括时**省略该字段**，禁止为填字段写废话。' +
+  '9.13 chapters 是章节数组（3-8 章）：每章 {at,title,summary}，at 为该章起点的整数秒（时间线条目自然落在章内），title 用名词短语（不超 12 字），summary 一句话说清这一部分讲了什么；本讲没有清晰的章节结构时输出空数组，禁止为凑整齐。' +
+  '9.14 quotes 是金句数组（0-5 条）：讲者的原话逐字摘引（at 为该句开始的秒数）——讲判断做结论、有名的表述才值得摘；**不得改写、不得摘转写里没有的话**；本讲没有值得摘的原话时输出空数组，禁止为填数编造。'
 
 /** 完整 system prompt = 形状规约 + 内容质量规约。 */
 export const SYSTEM_PROMPT = NOTE_SHAPE_PROMPT + NOTE_QUALITY_PROMPT
@@ -86,6 +90,8 @@ export interface SummarizeInputs {
   images: SummarizeImage[]
   /** Every real evidence ref of this lesson — the validity set (batch 1). */
   allRefs: Set<string>
+  /** A3: 本课时真实素材数（风控断供/无流时 keyframes=0，用户侧必须看得见）。 */
+  visualAssets: { keyframes: number; ppt: number }
 }
 
 export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: string): SummarizeInputs | { error: string } {
@@ -156,7 +162,13 @@ function loadSummarizeInputsInner(db: Db, lessonId: string, libraryRoot: string)
   // 视觉候选装配完毕（哈希已吃完缩略图）——缩略图的删除在外层
   // loadSummarizeInputs 的 finally 里（早退路径也要清）。
 
-  return { transcriptText: formatTimedTranscript(segments), segments, images, allRefs }
+  return {
+    transcriptText: formatTimedTranscript(segments),
+    segments,
+    images,
+    allRefs,
+    visualAssets: { keyframes: keyframeRows.length, ppt: pptRows.length }
+  }
 }
 
 /**
@@ -306,7 +318,7 @@ async function repairOnce(
   segments: CleanSegment[],
   allRefs: ReadonlySet<string>,
   signal?: AbortSignal
-): Promise<{ note: Note; stats: RefVerifyStats; warnCount: number } | null> {
+): Promise<{ note: Note; stats: RefVerifyStats; warnCount: number; clamped: number } | null> {
   let answer: string
   try {
     answer = await client.chatJson(
@@ -334,7 +346,9 @@ async function repairOnce(
   // 返修稿同样过证据过滤与摘引核验——返修不能成为编造的后门。
   const { note: evidenceChecked } = dropUnknownEvidence(repaired, allRefs)
   const verified = verifyNoteRefs(evidenceChecked, segments)
-  return { note: verified.note, stats: verified.stats, warnCount: noteHealth(verified.note).warnCount }
+  // B4: 返修稿同样钳制越界 at（模型返修时可能再次外推时间）。
+  const { note: clamped, clamped: clampedCount } = clampNoteTimes(verified.note, segments)
+  return { note: clamped, stats: verified.stats, warnCount: noteHealth(clamped).warnCount, clamped: clampedCount }
 }
 
 /**
@@ -420,6 +434,8 @@ export async function summarizeLesson(
   | {
       version: number
       images: number
+      /** A1: false = 绑定模型无视觉能力，本次未发图（画面靠时间就近对齐）。 */
+      visionCapable: boolean
       hitRate: { hits: number; total: number }
       /** Transcript-anchor hit rate (null when there was nothing to judge). */
       transcriptHitRate: { hits: number; total: number } | null
@@ -427,6 +443,12 @@ export async function summarizeLesson(
       droppedRefs: number
       /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped: NormalizationDropCounts
+      /** B4: at 超出转写范围被钳到上界的时间字段数。 */
+      clampedTimes: number
+      /** B2: 金句核验（可核验/总数；无金句时 0/0）。 */
+      quotesVerified: { total: number; verified: number }
+      /** A3: 本课时真实画面素材数（0 = 断供，toast/体检据此说明原因）。 */
+      visualAssets: { keyframes: number; ppt: number }
       /** 批3: 生成闭环结果——返修后的体检结果与是否真的返修过。 */
       health: {
         warnCount: number
@@ -444,8 +466,13 @@ export async function summarizeLesson(
   if (binding == null) return { error: '未绑定多模态模型，请在设置中配置' }
   const inputs = loadSummarizeInputs(db, lessonId, libraryRoot)
   if ('error' in inputs) return { error: inputs.error }
+  // A1: 模型无视觉能力 → 不发图。省 token、省一次 unsupported_visual 静默重发
+  // 的整段时长（2026-09-19 实测：74 分钟任务的 summarizing 阶段因此翻倍撞 10 分钟
+  // 超时）。未知模型保守发图——猜错的代价比白烧 token 更伤（丢画面）。
+  const visionCapable = modelHasVision(binding.model) !== false
+  const sentImages = visionCapable ? inputs.images : []
   try {
-    const generated = await generateNote(client, binding.model, sourceHeader(db, lessonId) + inputs.transcriptText, inputs.images, signal)
+    const generated = await generateNote(client, binding.model, sourceHeader(db, lessonId) + inputs.transcriptText, sentImages, signal)
     // 批3: 归一层静默丢弃了哪些项——「模型没写」与「写了但被拦下」是两种问题。
     const normalizationDropped = generated.dropped
     // F2 (review) + batch 1: refs are validated against EVERY real attachment,
@@ -455,15 +482,23 @@ export async function summarizeLesson(
     // Batch 1: the transcript anchors are now verifiable — quotes that cannot
     // be found in the transcript are cleared, out-of-range times dropped.
     const verified = verifyNoteRefs(evidenceChecked, inputs.segments)
+    // B4: timeline/transcriptRefs 的 at 超转写范围 → 钳到边界并计数（2026-09-19
+    // 真实库实测：5/18 条时间线 at 超出视频本体最多 62 分钟）。
+    const clampedStep = clampNoteTimes(verified.note, inputs.segments)
+    let clampedTimes = clampedStep.clamped
     // Citation quality signals (roadmap 1.3 + batch 1): the compliance reading
     // deliberately uses the images actually sent — the model never saw the rest.
-    const hitRate = evidenceHitRate(verified.note, inputs.images)
+    const hitRate = evidenceHitRate(clampedStep.note, inputs.images)
     const transcriptHitRate = transcriptRefHitRate(verified.stats)
 
     // Batch 3: 生成质量闭环——体检发现缺口时做**一次**有界返修，不发图。
     // 只有当返修真的把 warn 数压下来才采纳（否则保留原稿），所以这条路只可能
     // 改善、不可能变差；且无论结果如何都照常出笔记（反门控）。
-    let note = verified.note
+    let note = clampedStep.note
+    // B2: 金句过同一套转写核验（越界铳制 + 摘引匹配不上清空 text）。
+    const quoteCheck = verifyTranscriptRefs(note.quotes, inputs.segments)
+    const quotesVerified = { total: quoteCheck.stats.quoted, verified: quoteCheck.stats.quotedVerified }
+    note = { ...note, quotes: quoteCheck.refs }
     let stats = verified.stats
     let warnCountBefore = noteHealth(note, hitRate, transcriptHitRate).warnCount
     let repaired = false
@@ -484,6 +519,7 @@ export async function summarizeLesson(
       if (attempt != null && attempt.warnCount < warnCountBefore) {
         note = attempt.note
         stats = attempt.stats
+        clampedTimes += attempt.clamped
         warnCountBeforeRepair = warnCountBefore
         warnCountBefore = attempt.warnCount
         repaired = true
@@ -493,13 +529,18 @@ export async function summarizeLesson(
     const version = saveNoteVersion(db, lessonId, note, binding.model)
     return {
       version,
-      images: inputs.images.length,
-      hitRate: evidenceHitRate(note, inputs.images),
+      images: sentImages.length,
+      visionCapable,
+      hitRate: evidenceHitRate(note, sentImages),
+      quotesVerified,
+      visualAssets: inputs.visualAssets,
       transcriptHitRate: transcriptRefHitRate(stats),
       refStats: stats,
       droppedRefs: dropped,
       /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped,
+      /** B4: 被钳到转写范围上界的时间字段数（0 = 模型没有外推时间）。 */
+      clampedTimes,
       health: {
         warnCount: warnCountBefore,
         grade: noteHealth(note).grade,

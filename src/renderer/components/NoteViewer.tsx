@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { Note } from '../../shared/notes/schema'
 import type { NoteIndexInfo, NoteAttachmentInfo, AttachmentManifestEntry } from '../../shared/bridge'
-import { evidenceHitRate } from '../../shared/notes/evidence'
+import { evidenceHitRate, allocateTimelineImagesLazy, formatTime } from '../../shared/notes/evidence'
 import { noteHealth, HEALTH_FIELD_LABELS } from '../../shared/notes/health'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
@@ -59,6 +59,10 @@ export interface NoteViewerProps {
   nextLesson?: { id: string; title: string } | null
   /** B4: navigate to a neighbor lesson (stays on the notes tab). */
   onNavigateLesson?: (lessonId: string) => void
+  /** 批 A2 (plan 2026-09-19): 课时封面 data URL；null 时用第一张关键帧兜底。 */
+  coverDataUrl?: string | null
+  /** 批 D (plan 2026-09-19): B 站课时「跳原片」（at 秒）；SEU 源不传——按钮不渲染，不给会失败的入口。 */
+  onOpenSource?: (at: number) => void
   /** Regenerate in flight (button busy state). */
   regenBusy?: boolean
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
@@ -121,6 +125,8 @@ export function NoteViewer({
   prevLesson = null,
   nextLesson = null,
   onNavigateLesson,
+    onOpenSource,
+    coverDataUrl = null,
   regenBusy = false,
   onRegenerate,
   pdfBusy = false,
@@ -157,15 +163,76 @@ export function NoteViewer({
       setPendingAnchor(null)
     })
   }, [view, pendingAnchor])
+  // C1: 章节 chip 跳转（与概念卡跳转同渠道：scrollIntoView 存在性守卫）。
+  const jumpToChapter = (at: number): void => {
+    const target = document.querySelector(`[data-chapter-at="${at}"]`)
+    if (target != null && typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'start' })
+  }
   const jumpToConcept = (term: string): void => {
     setView('detailed')
     setPendingAnchor(term)
   }
   // Citation quality signal (roadmap 1.3): share of cited evidence refs that
   // resolve to real attachments; hidden when the note cites none.
+  // Citation quality signal (roadmap 1.3): share of cited evidence refs that
+  // resolve to real attachments; hidden when the note cites none.
   const hitRate = note != null ? evidenceHitRate(note, attachmentManifest) : null
+  // B6 (plan 2026-09-19): 时间线配图覆盖率——与时间线卡片同一分配函数＋体检面板
+  // 据此诚实呈现「多少条没有图」（无图是合法态，只报 info 不拉低评级）。
+  const imageCoverage = useMemo(() => {
+    if (note == null || note.timeline.length === 0) return null
+    const allocated = allocateTimelineImagesLazy(note.timeline, getAttachment ?? (() => null), attachmentManifest)
+    return { withImage: allocated.filter((images) => images.length > 0).length, total: note.timeline.length }
+  }, [note, getAttachment, attachmentManifest])
+  // 批 A2: 封面 data URL 优先；没有封面（SEU 源/导入失败）退回最早的关键帧。
+  // 依赖里带 attachmentVersion——首帧是懒加载的，解析到位后会重算。
+  const coverSrc = useMemo(() => {
+    if (coverDataUrl != null) return coverDataUrl
+    const frames = attachmentManifest.filter((m) => m.ref.startsWith('kf:') && m.at != null)
+    if (frames.length === 0 || getAttachment == null) return null
+    // 兜底封面帧挑选（实拍回购 2026-09-20）：0s 标题页带 pillarbox 黑边、白底，
+    // 当封面像「空图/坏图」。启发式取 60 秒后的第一帧（越过标题页），没有再退最后一张。
+    // 不为「猜内容」引入图像分析——只做时间启发式。
+    const ordered = [...frames].sort((a, b) => (a.at as number) - (b.at as number))
+    const past = ordered.find((f) => (f.at as number) >= 60)
+    const pick = past ?? ordered[ordered.length - 1]
+    return getAttachment(pick.ref)?.dataUrl ?? null
+  }, [coverDataUrl, attachmentManifest, getAttachment, attachmentVersion])
+  // C3 (plan 2026-09-19): sticky 目录的当前高亮——滚动时取“最后一个跳过视口顶部的锚点”。
+  // 环境守卫：happy-dom 不触发 scroll，初始高亮第一条即可。
+  const [tocActive, setTocActive] = useState<string>('')
+  useEffect(() => {
+    if (note == null) return
+    const anchors = [...(note.chapters ?? []).map((c) => `chapter:${c.at}`), ...note.concepts.map((c) => `concept:${c.term}`)]
+    if (anchors.length === 0) return
+    const onScroll = (): void => {
+      let active = anchors[0] ?? ''
+      for (const anchor of anchors) {
+        const el =
+          anchor.startsWith('chapter:')
+            ? document.querySelector(`[data-chapter-at="${anchor.slice(8)}"]`)
+            : document.querySelector(`[data-concept-term="${anchor.slice(8)}"]`)
+        if (el != null && (el as HTMLElement).offsetTop <= window.scrollY + 80) active = anchor
+      }
+      setTocActive(active)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [note])
+
+/** C1: 阅读时长估算（中文 约 400 字/分钟，含时间线/概念/金句正文）。 */
+function noteReadMinutes(note: Note): number {
+  const chars =
+    note.overview.length +
+    note.timeline.reduce((sum, t) => sum + t.title.length + t.detail.length, 0) +
+    note.concepts.reduce((sum, c) => sum + c.term.length + c.definition.length + (c.example?.length ?? 0), 0) +
+    (note.quotes ?? []).reduce((sum, q) => sum + q.text.length, 0) +
+    (note.chapters ?? []).reduce((sum, c) => sum + c.title.length + c.summary.length, 0)
+  return chars / 400
+}
   // 批3: 内容体检——纯函数投影（批1 质量规约的可观测面）。
-  const health = note != null ? noteHealth(note, hitRate) : null
+  const health = note != null ? noteHealth(note, hitRate, null, imageCoverage) : null
   // 批4: 投影 memo——note/view 不变时，无关 state 变更（如体检面板开合）
   // 不重新投影，NoteBlocks 也不会因拿到新 blocks 数组而整树重渲染。
   const sections = useMemo(() => (note == null ? [] : projectNoteBlocks(note, view)), [note, view])
@@ -335,10 +402,22 @@ export function NoteViewer({
           差 180px）；超长标题（B站视频名）降一档字号，全文进 title。 */}
       {note != null && lesson != null && (
         <header class="note-masthead">
+          {coverSrc != null && <img class="note-cover" src={coverSrc} alt="" loading="lazy" />}
           <h2 class={`note-title${lesson.courseName.length > 28 ? ' note-title-long' : ''}`} title={lesson.courseName}>
             {lesson.courseName}
           </h2>
           <p class="note-meta">{[lesson.teacher, lesson.lessonTitle].filter((x): x is string => x != null && x !== '').join(' · ')}</p>
+          {/* C1 (plan 2026-09-19): 章节 chips + 阅读时长——第一屏就知道“这篇多长、分几块、怎么跳”。 */}
+          {(note.chapters ?? []).length > 0 && (
+            <nav class="note-chapter-chips" aria-label="章节导航">
+              {note.chapters.map((c) => (
+                <button key={c.at} class="chapter-chip" onClick={() => jumpToChapter(c.at)} title={`${formatTime(c.at)} ${c.summary}`}>
+                  {c.title}
+                </button>
+              ))}
+            </nav>
+          )}
+          <p class="note-readtime">{`约 ${Math.max(1, Math.round(noteReadMinutes(note)))} 分钟读完`}</p>
         </header>
       )}
       {note == null ? (
@@ -394,6 +473,38 @@ export function NoteViewer({
           ) : null}
         </>
       ) : (
+        <>
+        {view === 'detailed' && note != null && ((note.chapters ?? []).length > 0 || note.concepts.length > 0) && (
+          <nav class="note-toc-sticky" aria-label="本页目录">
+            {note.chapters.map((c) => (
+              <button
+                key={`c-${c.at}`}
+                class={`toc-item${tocActive === `chapter:${c.at}` ? ' active' : ''}`}
+                onClick={() => {
+                  setTocActive(`chapter:${c.at}`)
+                  const target = document.querySelector(`[data-chapter-at="${c.at}"]`)
+                  if (target != null && typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'start' })
+                }}
+              >
+                <span class="toc-item-at">{formatTime(c.at)}</span>
+                {c.title}
+              </button>
+            ))}
+            {note.concepts.map((c) => (
+              <button
+                key={`k-${c.term}`}
+                class={`toc-item toc-concept${tocActive === `concept:${c.term}` ? ' active' : ''}`}
+                onClick={() => {
+                  setTocActive(`concept:${c.term}`)
+                  jumpToConcept(c.term)
+                }}
+                title={`概念：${c.term}（点击定位）`}
+              >
+                {c.term}
+              </button>
+            ))}
+          </nav>
+        )}
         <div class="note-body" data-view={view} id="note-body-panel" role="tabpanel" aria-labelledby={`note-tab-${view}`}>
           {view === 'mindmap' ? (
             <MindMap
@@ -411,7 +522,7 @@ export function NoteViewer({
               <ErrorBoundary key={section.heading} area="note-view">
               <section key={section.heading} class="note-section">
                 <h3>{section.heading}</h3>
-                <NoteBlocks blocks={section.blocks} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
+<NoteBlocks blocks={section.blocks} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} onOpenSource={onOpenSource} />
                 </section>
               </ErrorBoundary>
             ))
@@ -420,11 +531,12 @@ export function NoteViewer({
             <section class="note-section">
               <h3>课堂画面</h3>
               <ErrorBoundary area="note-gallery">
-                <EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} />
+<EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} onOpenSource={onOpenSource} />
               </ErrorBoundary>
             </section>
           )}
         </div>
+        </>
       )}
       {/* 批5: feedback polish — end of the note, every view except the mindmap
           (the map is a canvas, not prose to revise). */}

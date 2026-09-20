@@ -20,14 +20,14 @@ export interface AttachmentManifestInfo {
 /** Every stored attachment identity for the lesson — no bytes, tiny IPC. */
 export function listAttachmentManifest(db: Db, lessonId: string): AttachmentManifestInfo[] {
   const keyframes = db
-    .prepare('SELECT id, timestamp_seconds FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds')
-    .all(lessonId) as Array<{ id: string; timestamp_seconds: number }>
+    .prepare('SELECT id, timestamp_seconds, hash FROM keyframes WHERE lesson_id = ? ORDER BY timestamp_seconds')
+    .all(lessonId) as Array<{ id: string; timestamp_seconds: number; hash: string | null }>
   const pptPages = db
     .prepare('SELECT page_index FROM ppt_pages WHERE lesson_id = ? ORDER BY page_index')
     .all(lessonId) as Array<{ page_index: number }>
   return [
     ...pptPages.map((p) => ({ ref: `ppt:${p.page_index}`, kind: 'ppt' as const, at: null })),
-    ...keyframes.map((k) => ({ ref: `kf:${k.id}`, kind: 'keyframe' as const, at: Math.round(k.timestamp_seconds) }))
+    ...keyframes.map((k) => ({ ref: `kf:${k.id}`, kind: 'keyframe' as const, at: Math.round(k.timestamp_seconds), hash: k.hash ?? undefined }))
   ]
 }
 
@@ -63,6 +63,24 @@ function toAttachment(
     return { ref, kind, at, dataUrl: `data:image/jpeg;base64,${buffer.toString('base64')}` }
   } catch {
     // A missing or unreadable file must not break the whole list.
+    return null
+  }
+}
+
+/**
+ * 批 A2: 课时封面（B 站导入时落盘的 cover.jpg）。返回 data URL；没有封面/
+ * 文件丢失/超限都返回 null——渲染端用第一张关键帧兜底，SEU 源本来无封面。
+ */
+export function readLessonCover(db: Db, lessonId: string, libraryRoot: string): string | null {
+  const row = db.prepare('SELECT cover_path FROM lessons WHERE id = ?').get(lessonId) as
+    | { cover_path: string | null }
+    | undefined
+  if (row?.cover_path == null || row.cover_path === '') return null
+  try {
+    const buffer = readFileSync(resolveLibraryPath(libraryRoot, row.cover_path))
+    if (buffer.byteLength === 0 || buffer.byteLength > MAX_ATTACHMENT_BYTES) return null
+    return `data:image/jpeg;base64,${buffer.toString('base64')}`
+  } catch {
     return null
   }
 }

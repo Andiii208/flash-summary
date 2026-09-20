@@ -1,9 +1,12 @@
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import { ChevronDown, ChevronRight } from 'lucide-preact'
-import type { Note, TreeNode, QuizItem } from '../../shared/notes/schema'
+import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-preact'
+import type { Note, TreeNode, QuizItem, Chapter, Quote } from '../../shared/notes/schema'
 import type { TimelineImage, AttachmentManifestEntry } from '../../shared/notes/evidence'
-import { bindTimelineImagesLazy, resolveEvidenceGalleryLazy, quoteForEntry, NEAREST_SECONDS } from '../../shared/notes/evidence'
+import { allocateTimelineImagesLazy, resolveEvidenceGalleryLazy, quoteForEntry } from '../../shared/notes/evidence'
+import { groupTimelineByChapters } from '../../shared/notes/chapters'
+import { foldNearDuplicateFrames } from '../../shared/notes/evidence-groups'
+import { groupFramesByChapters } from '../../shared/notes/frame-groups'
 import { formatTime } from '../../shared/notes/format'
 import type { NoteAttachmentInfo } from '../../shared/bridge'
 import type { ViewBlock } from '../../shared/notes/views'
@@ -19,20 +22,22 @@ export interface NoteBlocksProps {
   manifest: AttachmentManifestEntry[]
   /** Bumped per resolved attachment so the tree re-renders. */
   version: number
+  /** 批 D (plan 2026-09-19): 跳原片（at 秒）；SEU 源/PDF 投影不传。 */
+  onOpenSource?: (at: number) => void
 }
 
 /** Dispatch one structured block to its visual component (2026-09-04). */
-export function NoteBlocks({ blocks, getAttachment, manifest, version }: NoteBlocksProps): JSX.Element {
+export function NoteBlocks({ blocks, getAttachment, manifest, version, onOpenSource }: NoteBlocksProps): JSX.Element {
   return (
     <>
       {blocks.map((block, i) => (
-        <BlockRenderer key={i} block={block} getAttachment={getAttachment} manifest={manifest} version={version} />
+        <BlockRenderer key={i} block={block} getAttachment={getAttachment} manifest={manifest} version={version} onOpenSource={onOpenSource} />
       ))}
     </>
   )
 }
 
-function BlockRenderer({ block, getAttachment, manifest, version }: { block: ViewBlock; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number }): JSX.Element {
+function BlockRenderer({ block, getAttachment, manifest, version, onOpenSource }: { block: ViewBlock; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void }): JSX.Element {
   switch (block.block) {
     case 'paragraph':
       return <p class="note-para">{block.text}</p>
@@ -41,7 +46,7 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
     case 'tree':
       return <TreeView node={block.node} />
     case 'timeline':
-      return <TimelineCards entries={block.entries} getAttachment={getAttachment} manifest={manifest} version={version} />
+      return <TimelineCards entries={block.entries} chapters={block.chapters} getAttachment={getAttachment} manifest={manifest} version={version} onOpenSource={onOpenSource} />
     case 'concepts':
       return (
         <div class="concept-grid">
@@ -116,6 +121,8 @@ function BlockRenderer({ block, getAttachment, manifest, version }: { block: Vie
       )
     case 'quiz':
       return <QuizCards items={block.items} />
+    case 'quotes':
+      return <QuoteList items={block.items} />
   }
 }
 
@@ -161,6 +168,21 @@ export function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
           </article>
         )
       })}
+    </div>
+  )
+}
+
+/** B2 (plan 2026-09-19): 金句 pull-quote——讲者原话，时间徽章 + 引文。
+ * 视觉纪律：复用 .timeline-quote 的黄铜引规格局，不新增装饰元素。 */
+function QuoteList({ items }: { items: Quote[] }): JSX.Element {
+  return (
+    <div class="quote-list" data-testid="quote-list">
+      {items.map((item) => (
+        <blockquote key={`${item.at}:${item.text.slice(0, 12)}`} class="quote-pull">
+          <span class="quote-pull-at">{formatTime(item.at)}</span>
+          <p class="quote-pull-text">「{item.text}」</p>
+        </blockquote>
+      ))}
     </div>
   )
 }
@@ -214,8 +236,10 @@ function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: num
 
 /** Timeline as image-annotated cards (the heart of the detailed view).
  *  Clicking the mm:ss stamp expands every transcript quote of the entry
- *  (the collapsed card shows only the closest one). */
-function TimelineCards({ entries, getAttachment, manifest, version: versionForRerender }: { entries: Note['timeline']; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number }): JSX.Element {
+ *  (the collapsed card shows only the closest one).
+ *  批 A5 (plan 2026-09-19): 配图改为整份时间线的贪心一对一分配——稀缺帧优先给
+ *  离得最近的那条，18 帧 18 条全部配上（旧 90s 筛子实测只有 28%）。 */
+function TimelineCards({ entries, chapters, getAttachment, manifest, version: versionForRerender, onOpenSource }: { entries: Note['timeline']; chapters?: Chapter[]; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void }): JSX.Element {
   void versionForRerender
   const [zoom, setZoom] = useState<{ img: TimelineImage; entryTitle: string; at: number } | null>(null)
   // 批6: expansion keys on content (at+title), not the index — regenerating
@@ -230,16 +254,44 @@ function TimelineCards({ entries, getAttachment, manifest, version: versionForRe
       return next
     })
   }
+  const allocated = allocateTimelineImagesLazy(entries, getAttachment ?? (() => null), manifest)
+  const frameAt = (ref: string): number | null => manifest.find((m) => m.ref === ref)?.at ?? null
+  // B1: 有章节时按章分组（章头 + 组内卡片）；无章节/空章节 → 平铺（旧笔记渲染逐字节不变）。
+  type Item = { kind: 'chapter'; chapter: Chapter } | { kind: 'entry'; entry: Note['timeline'][number]; index: number }
+  const items: Item[] = []
+  if (chapters != null && chapters.length > 0) {
+    for (const group of groupTimelineByChapters(entries, chapters)) {
+      if (group.chapter != null) items.push({ kind: 'chapter', chapter: group.chapter })
+      for (const e of group.entries) items.push({ kind: 'entry', entry: e, index: entries.indexOf(e) })
+    }
+  } else {
+    entries.forEach((entry, index) => items.push({ kind: 'entry', entry, index }))
+  }
   return (
     <div class="timeline-cards" data-testid="timeline-cards">
-      {entries.map((entry) => {
-        const images = bindTimelineImagesLazy(entry, getAttachment ?? (() => null), manifest)
+      {items.map((item, i) => {
+        if (item.kind === 'chapter') {
+          return (
+            <div class="timeline-chapter" key={`chapter-${item.chapter.at}-${i}`} data-chapter-at={item.chapter.at}>
+              <span class="timeline-chapter-at">{formatTime(item.chapter.at)}</span>
+              <h4 class="timeline-chapter-title">{item.chapter.title}</h4>
+              <p class="timeline-chapter-summary">{item.chapter.summary}</p>
+            </div>
+          )
+        }
+        const entry = item.entry
+        const images = allocated[item.index] ?? []
         const quote = quoteForEntry(entry)
         const key = entryKey(entry)
         const showAllRefs = expanded.has(key)
         const refs = showAllRefs ? entry.refs : quote != null ? [quote] : []
+        // C4 (plan 2026-09-19): 有图卡片改图文并排（按条目奇偶左右交替＋视觉节奏）；
+        // 无图卡片的重点摘引升级为“大引文”（视觉补位）。
+        const side = images.length > 0
+        const alt = item.index % 2 === 1
         return (
-          <article key={key} class="timeline-card" data-timeline-at={entry.at}>
+          <article key={key} class={`timeline-card${side ? ' has-images' : ''}${alt ? ' alt' : ''}`} data-timeline-at={entry.at}>
+            <div class="timeline-body">
             <header class="timeline-head">
               {/* 批6: a single-ref stamp is a label, not a button — the toggle
                   only exists when there is more than one quote to expand. */}
@@ -250,13 +302,19 @@ function TimelineCards({ entries, getAttachment, manifest, version: versionForRe
               ) : (
                 <span class="timeline-stamp">{formatTime(entry.at)}</span>
               )}
-              <h4 class="timeline-title">{entry.title}</h4>
+              {onOpenSource != null && (
+              <button class="timeline-open-src" title={`在浏览器打开原片 ${formatTime(entry.at)}`} onClick={() => onOpenSource(entry.at)}>
+              <ExternalLink size={12} strokeWidth={1.75} aria-hidden="true" />
+              <span class="timeline-open-src-label">原片</span>
+              </button>
+              )}
+<h4 class="timeline-title">{entry.title}</h4>
             </header>
             <p class="timeline-detail">
               <InlineText text={entry.detail} />
             </p>
             {refs.map((ref, j) => (
-              <blockquote key={j} class={`timeline-quote${j === 0 && !showAllRefs ? ' best' : ''}`}>
+              <blockquote key={j} class={`timeline-quote${j === 0 && !showAllRefs ? ' best' : ''}${!side && j === 0 && !showAllRefs ? ' hero' : ''}`}>
                 「{ref.text}」<span class="quote-at">{formatTime(ref.at)}</span>
               </blockquote>
             ))}
@@ -265,13 +323,14 @@ function TimelineCards({ entries, getAttachment, manifest, version: versionForRe
                 {showAllRefs ? `收起（${entry.refs.length} 条）` : `展开全部 ${entry.refs.length} 条引文`}
               </button>
             )}
-            {images.length > 0 && (
-              <div class="timeline-images">
+            </div>
+            {side && (
+              <div class="timeline-side">
                 {images.map((img) => (
                   <button
                     key={img.ref}
                     class="timeline-thumb"
-                    title={`放大查看（${img.origin === 'evidence' ? '笔记引用的画面' : '临近关键帧'}）`}
+                    title={`放大查看（${img.origin === 'evidence' ? '笔记引用的画面' : '临近关键帧'}${img.origin === 'nearest' && frameAt(img.ref) != null ? ` · 画面在 ${formatTime(frameAt(img.ref) as number)}` : ''}）`}
                     onClick={() => setZoom({ img, entryTitle: entry.title, at: entry.at })}
                   >
                     <img src={img.dataUrl} alt={`${entry.title}的课堂画面`} loading="lazy" />
@@ -289,6 +348,20 @@ function TimelineCards({ entries, getAttachment, manifest, version: versionForRe
         kind="view"
         title={zoom != null ? `${zoom.entryTitle} · ${formatTime(zoom.at)}` : ''}
         confirmLabel="关闭"
+        extraActions={
+          onOpenSource != null && zoom != null ? (
+            <button
+              class="btn small"
+              onClick={() => {
+                const at = zoom.at
+                setZoom(null)
+                onOpenSource(at)
+              }}
+            >
+              {`跳到原片 ${formatTime(zoom.at)}`}
+            </button>
+          ) : null
+        }
         onConfirm={() => setZoom(null)}
         onCancel={() => setZoom(null)}
       >
@@ -327,40 +400,129 @@ function FormulaList({ items }: { items: Note['formulasAndSteps'] }): JSX.Elemen
 }
 
 /** The evidence gallery section (cited first, then remaining keyframes). */
-export function EvidenceGallery({ note, getAttachment, manifest, version: versionForRerender }: { note: Note; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number }): JSX.Element {
+export function EvidenceGallery({ note, getAttachment, manifest, version: versionForRerender, onOpenSource }: { note: Note; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void }): JSX.Element {
   void versionForRerender
   const [zoom, setZoom] = useState<TimelineImage | null>(null)
+  // A6: 折叠组展开态（按代表帧 ref 记）。
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set())
   const gallery = resolveEvidenceGalleryLazy(note, getAttachment ?? (() => null), manifest)
-  if (gallery.length === 0) return <p class="msg">本课时尚无可用画面素材</p>
+  // A3 (plan 2026-09-19): 空态不再是一句灰字——说原因（风控/无画面变化）与出路（重试导入）。
+  if (gallery.length === 0)
+    return (
+      <p class="msg">本课时没有可用画面素材——B 站视频流可能被平台风控拦截，或整段没有画面变化；重新运行任务可能恢复。</p>
+    )
+  const toggleGroup = (ref: string): void => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(ref)) next.delete(ref)
+      else next.add(ref)
+      return next
+    })
+  }
+  // 单组渲染（A6 折叠逻辑复用）。
+  const renderGroup = (group: ReturnType<typeof foldNearDuplicateFrames>[number]): JSX.Element => {
+    const rep = group.representative
+    const folded = group.members.length > 1
+    const open = openGroups.has(rep.ref)
+    return (
+      <figure key={rep.ref} class="evidence-fig" data-testid="gallery-group">
+        <button class="evidence-zoom-btn" title={`放大查看（${rep.origin === 'evidence' ? '笔记引用的画面' : '时间线画面'}）`} onClick={() => setZoom(rep)}>
+          <img src={rep.dataUrl} alt={`课堂画面 ${rep.ref}`} loading="lazy" />
+        </button>
+        <figcaption>
+          <span class="evidence-ref" title={`画面标识：${rep.ref}`}>
+            {rep.ref}
+          </span>
+          {folded ? (
+            <button class="evidence-fold" onClick={() => toggleGroup(rep.ref)} aria-expanded={open}>
+              {open ? '收起' : `${group.members.length} 张近重复`}
+            </button>
+          ) : (
+            <span class={`thumb-origin ${rep.origin}`}>{rep.origin === 'evidence' ? '笔记引用' : '时间线画面'}</span>
+          )}
+        </figcaption>
+        {open && group.members.length > 1 && (
+          <div class="evidence-fold-strip">
+            {group.members.map((m) => (
+              <button key={m.ref} class="evidence-zoom-btn small" title={`放大查看 ${m.ref}`} onClick={() => setZoom(m)}>
+                <img src={m.dataUrl} alt={`课堂画面 ${m.ref}`} loading="lazy" />
+              </button>
+            ))}
+          </div>
+        )}
+      </figure>
+    )
+  }
+  const zoomDialog = (
+    <Dialog
+      open={zoom != null}
+      kind="view"
+      title={zoom != null ? `课堂画面 · ${zoom.ref}` : ''}
+      confirmLabel="关闭"
+        extraActions={
+          onOpenSource != null && zoom != null && manifest.find((m) => m.ref === zoom.ref)?.at != null ? (
+            <button
+              class="btn small"
+              onClick={() => {
+                const at = manifest.find((m) => m.ref === (zoom as { ref: string }).ref)?.at ?? 0
+                setZoom(null)
+                onOpenSource(at)
+              }}
+            >
+              跳到原片
+            </button>
+          ) : null
+        }
+      onConfirm={() => setZoom(null)}
+      onCancel={() => setZoom(null)}
+    >
+      {zoom != null && <img class="zoom-image" src={zoom.dataUrl} alt="课堂画面" />}
+    </Dialog>
+  )
+  const framesOf = (items: typeof gallery): ReturnType<typeof foldNearDuplicateFrames> =>
+    foldNearDuplicateFrames(
+      items.map((img) => ({ ref: img.ref, dataUrl: img.dataUrl, origin: img.origin, hash: manifest.find((m) => m.ref === img.ref)?.hash }))
+    )
+  // C5: 有章节 → 按章分组的横向胶片条；无章节 → 原折叠网格（零回归）。
+  // 容忍部分形状（markdown/obsidian/views 同源纪律）：夹具可能传未过归一层的原始 note。
+  const chapters = note.chapters ?? []
+  if (chapters.length > 0) {
+    const byRef = new Map(gallery.map((g) => [g.ref, g]))
+    const chapterGroups = groupFramesByChapters(
+      gallery.map((g) => ({ ref: g.ref, at: manifest.find((m) => m.ref === g.ref)?.at ?? null })),
+      chapters
+    )
+    return (
+      <>
+      <div class="gallery-chapters" data-testid="gallery-chapters">
+        {chapterGroups.map((cg, gi) => (
+          <section key={cg.chapter?.at ?? `loose-${gi}`} class="gallery-chapter">
+            <h4 class="gallery-chapter-title">
+              {cg.chapter != null ? (
+                <>
+                  <span class="gallery-chapter-at">{formatTime(cg.chapter.at)}</span>
+                  {cg.chapter.title}
+                  <span class="gallery-chapter-summary">{cg.chapter.summary}</span>
+                </>
+              ) : (
+                <span class="gallery-chapter-loose">其他画面</span>
+              )}
+            </h4>
+            <div class="gallery-strip">
+              {framesOf(cg.frames.map((f) => byRef.get(f.ref)!).filter(Boolean)).map(renderGroup)}
+            </div>
+          </section>
+        ))}
+      </div>
+      {zoomDialog}
+      </>
+    )
+  }
   return (
     <div class="evidence-gallery" data-testid="evidence-gallery">
-      {gallery.map((img) => (
-        <figure key={img.ref} class="evidence-fig">
-          {/* C3: gallery figures zoom like the timeline thumbs. */}
-          <button class="evidence-zoom-btn" title={`放大查看（${img.origin === 'evidence' ? '笔记引用的画面' : '时间线画面'}）`} onClick={() => setZoom(img)}>
-            <img src={img.dataUrl} alt={`课堂画面 ${img.ref}`} loading="lazy" />
-          </button>
-          <figcaption>
-            <span class="evidence-ref" title={`画面标识：${img.ref}`}>
-              {img.ref}
-            </span>
-            <span class={`thumb-origin ${img.origin}`}>{img.origin === 'evidence' ? '笔记引用' : '时间线画面'}</span>
-          </figcaption>
-        </figure>
-      ))}
-      {/* 批6: view dialog — one close action, backdrop click, scroll lock. */}
-      <Dialog
-        open={zoom != null}
-        kind="view"
-        title={zoom != null ? `课堂画面 · ${zoom.ref}` : ''}
-        confirmLabel="关闭"
-        onConfirm={() => setZoom(null)}
-        onCancel={() => setZoom(null)}
-      >
-        {zoom != null && <img class="zoom-image" src={zoom.dataUrl} alt="课堂画面" />}
-      </Dialog>
+      {framesOf(gallery).map(renderGroup)}
+      {zoomDialog}
     </div>
   )
 }
 
-export { NEAREST_SECONDS }

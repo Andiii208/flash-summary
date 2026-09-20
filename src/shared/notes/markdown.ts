@@ -69,8 +69,21 @@ function quizSection(note: Note): string[] {
 export function noteToMarkdown(note: Note, title: string): string {
   const tree: string[] = []
   treeLines(note.knowledgeTree, 0, tree)
-  const lines: string[] = [`# ${title}`, '', note.overview.trim(), '', '## 知识结构', '', ...tree]
+  // B3: tldr 做引用行——导出物里第一眼就看得到「这篇讲了什么」。
+  const tldrLine = note.tldr != null && note.tldr.trim() !== '' ? [`> ${note.tldr.trim()}`, ''] : []
+  const lines: string[] = [`# ${title}`, '', ...tldrLine, note.overview.trim(), '', '## 知识结构', '', ...tree]
+  // B1: 章节速览——导出物里先看骨架再看细节。
+  // 容忍部分形状：mock/降级路径可能传缺字段的笔记对象（health.ts 同源纪律）。
+  const chapters = note.chapters ?? []
+  if (chapters.length > 0) {
+    lines.push('', '## 章节速览', '')
+    for (const chapter of chapters) lines.push(`- [${formatTime(chapter.at)}] ${chapter.title}：${chapter.summary}`)
+  }
   lines.push('', ...timelineSection(note))
+  if ((note.quotes ?? []).length > 0) {
+    lines.push('', '## 金句', '')
+    for (const q of note.quotes ?? []) lines.push(`> [${formatTime(q.at)}] 「${q.text}」`)
+  }
   lines.push('', '## 概念', '', ...note.concepts.flatMap(conceptLines))
   const formulas = formulaSection(note)
   if (formulas.length > 0) lines.push('', '## 公式、代码与操作步骤', '', ...formulas)

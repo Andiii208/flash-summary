@@ -100,6 +100,7 @@ const api: SeuSummaryBridge = {
       ipcRenderer.invoke('notes:attachments', lessonId),
     attachmentData: (lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>> =>
       ipcRenderer.invoke('notes:attachmentData', lessonId, ref),
+    cover: (lessonId: string): Promise<ApiResult<string | null>> => ipcRenderer.invoke('notes:cover', lessonId),
     regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>> =>
       ipcRenderer.invoke('notes:regenerate', lessonId),
     polish: (lessonId: string, feedback: { tags: string[]; text: string }): Promise<ApiResult<{ version: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>> =>

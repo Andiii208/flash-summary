@@ -22,7 +22,8 @@ import { resolveResumeStage, type ResumeDecision } from './tasks/resume'
 import { PIPELINE_STAGES, stagePercent, type Stage } from './tasks/stages'
 import type { StageExecutor } from './tasks/queue'
 import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
-import { listAttachmentManifest, readAttachmentData } from './notes/attachments'
+import { listAttachmentManifest, readAttachmentData, readLessonCover } from './notes/attachments'
+import { saveLessonCover } from './notes/cover'
 import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor } from './notes/summarize'
 import { polishNote, loadValidRefs } from './notes/polish'
 import { FEEDBACK_TAGS } from '../shared/feedback-tags'
@@ -48,6 +49,7 @@ import type { Note } from '../shared/notes/schema'
 
 /** 批5: PNG 魔数——渲染层传来的位图必须真的是 PNG 才落盘。 */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
 /**
  * 批6 (D4): main 自己通过保存对话框写下、等用户点「打开所在文件夹」的备份路径。
  * 一次性：revealFile 消费后即移除——与 pendingPdfExports 同纪律，渲染层永远
@@ -426,6 +428,20 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         }
       })()
       if (lessonIds.length === 0) throw new Error('所选分P在视频中不存在')
+
+      // 批 A2 (plan 2026-09-19): 封面落库。B 站导入时封面 pic 早已解析，此前只活到
+      // 导入对话框的预览缩略图——落成 attachments/<lessonId>/cover.jpg，笔记首屏复用。
+      // best-effort：封面获取/落盘失败绝不能弄坏导入（SEU 源与失败态都是合法无封面）。
+      if (view.coverUrl !== '') {
+        const coverDataUrl = await ctx.bilibili.fetchImageAsDataUrl(view.coverUrl).catch(() => null)
+        if (coverDataUrl != null) {
+          const setCover = ctx.db.prepare('UPDATE lessons SET cover_path = ? WHERE id = ?')
+          for (const lessonId of lessonIds) {
+            const coverPath = saveLessonCover(ctx.libraryRoot, lessonId, coverDataUrl)
+            if (coverPath != null) setCover.run(coverPath, lessonId)
+          }
+        }
+      }
       ctx.logger.info(`bilibili import: ${courseId} pages=${lessonIds.length}`)
       return ok({ courseId, lessonIds })
     } catch (e) {
@@ -1609,6 +1625,18 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+
+  // 批 A2 (plan 2026-09-19): 课时封面（B 站导入落盘的 cover.jpg）。没有封面返回
+  // ok(null) 而不是错误——SEU 源与未导入封面的课时都是合法无封面态。
+  handle(ipc, 'notes:cover', (_e, lessonId: unknown) => {
+    try {
+      const id = assertSafeId(lessonId, 'lessonId')
+      return ok(readLessonCover(ctx.db, id, ctx.libraryRoot))
+    } catch (e) {
+      return err(e)
+    }
+  })
+
 
   // 2026-09-04: regenerate the note from stored transcripts/keyframes — no
   // re-download. Guarded: refuses while a task for this lesson is queued/running.

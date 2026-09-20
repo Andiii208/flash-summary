@@ -8,10 +8,12 @@
 import { describe, expect, it } from 'vitest'
 import { parseNote } from '../src/shared/notes/schema'
 import {
+  clampNoteTimes,
   REF_NEIGHBORHOOD_SECONDS,
   normalizeForMatch,
   quoteMatchesTranscript,
   transcriptRefHitRate,
+  verifyTranscriptRefs,
   verifyNoteRefs,
   type RefVerifyStats
 } from '../src/shared/notes/ref-verify'
@@ -235,5 +237,82 @@ describe('带时间锚的转写拼接（批1 素材层）', () => {
   it('近空段仍被剔除（清洗纪律不变）', () => {
     const text = formatTimedTranscript(cleanSegments([{ at: 0, text: '嗯。' }, { at: 0, text: '真正的一段有效内容' }]))
     expect(text).toBe('[00:00] 真正的一段有效内容')
+  })
+})
+
+describe('clampNoteTimes（B4, plan 2026-09-19-note-experience-overhaul）', () => {
+  const noteWith = (ats: number[]): ReturnType<typeof parseNote> =>
+    parseNote(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        timeline: ats.map((at) => ({ at, title: 't', detail: 'd', refs: [], evidence: [] })),
+        transcriptRefs: ats.map((at) => ({ at, text: '摘引' }))
+      })
+    )
+
+  it('真实案例：73.8 分钟视频的 5 条越界 at 全部钳到转写范围上界', () => {
+    // 2026-09-19 真实库实测形态：转写覆盖 0–4425s（+30s 窗 → 4455），
+    // 而模型把 5 条时间线写到了 5002–7201 秒（超出视频本体最多 62 分钟）。
+    const segments = cleanSegments([
+      { at: 0, text: '我们先介绍这门课的学习目标和安排' },
+      { at: 2400, text: '这里讲数组的定义和内存布局' },
+      { at: 4425, text: '最后回到指针的总结和下课预告' }
+    ])
+    const note = noteWith([0, 2330, 5002, 5401, 5930, 6830, 7201])
+    const { note: clamped, clamped: count } = clampNoteTimes(note, segments)
+    // 5 条越界时间线 + 同样越界的 5 条 transcriptRefs = 10 个时间字段被钳。
+    // （生产路径上 verifyNoteRefs 先丢越界 refs，这里的 transcriptRefs 钳制是二道防线。）
+    expect(count).toBe(10)
+    expect(clamped.timeline.map((t) => t.at)).toEqual([0, 2330, 4455, 4455, 4455, 4455, 4455])
+    expect(clamped.transcriptRefs.every((r) => r.at <= 4455)).toBe(true)
+  })
+
+  it('范围内的 at 原样保留（逐字节不变），计数为 0', () => {
+    const note = noteWith([0, 120, 240])
+    const result = clampNoteTimes(note, SEGMENTS)
+    expect(result.clamped).toBe(0)
+    expect(result.note).toEqual(note)
+  })
+
+  it('无转写（range 为 null）时原样返回，不钳不猜', () => {
+    const note = noteWith([9999])
+    const result = clampNoteTimes(note, [])
+    expect(result.clamped).toBe(0)
+    expect(result.note).toBe(note)
+  })
+
+  it('钳制是幂等的：对已钳过的笔记再钳一次计数为 0', () => {
+    const note = noteWith([9999])
+    const once = clampNoteTimes(note, SEGMENTS)
+    const twice = clampNoteTimes(once.note, SEGMENTS)
+    expect(twice.clamped).toBe(0)
+    expect(twice.note).toEqual(once.note)
+  })
+})
+
+describe('verifyTranscriptRefs（B2 金句核验复用, plan 2026-09-19）', () => {
+  it('越界金句被钳制前先按范围丢弃，匹配不上的清空 text 保 at', () => {
+    const { refs, stats } = verifyTranscriptRefs(
+      [
+        { at: 119, text: '学习率过大时损失会震荡' },
+        { at: 99999, text: '这句根本不存在啊啊啊啊' },
+        { at: 121, text: '完全是另一段话的内容啊啊' }
+      ],
+      SEGMENTS
+    )
+    expect(stats.droppedAt).toBe(1)
+    expect(stats.quotedVerified).toBe(1)
+    expect(refs[0]?.text).toBe('学习率过大时损失会震荡')
+    // 越界那条已整条丢弃，剩下两条；索引前移。
+    expect(refs).toHaveLength(2)
+    expect(refs[1]).toEqual({ at: 121, text: '' })
+  })
+
+  it('空数组 → 全 0（无金句是合法态）', () => {
+    const { refs, stats } = verifyTranscriptRefs([], SEGMENTS)
+    expect(refs).toEqual([])
+    expect(stats).toEqual({ total: 0, droppedAt: 0, clearedText: 0, quoted: 0, quotedVerified: 0 })
   })
 })

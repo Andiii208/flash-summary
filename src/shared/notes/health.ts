@@ -21,6 +21,8 @@ export type HealthField =
   | 'evidence'
   /** 批1 (2026-09-17): 转写摘引可核验率——与 visually-anchored 的 evidence 分列。 */
   | 'transcript'
+  /** B6 (plan 2026-09-19): 时间线配图覆盖率（分配后仍无图的条目数）。 */
+  | 'visualCoverage'
 
 export interface HealthFinding {
   field: HealthField
@@ -46,7 +48,8 @@ export const HEALTH_FIELD_LABELS: Record<HealthField, string> = {
   questionsAndGaps: '疑问与缺口',
   quiz: '自测题',
   evidence: '证据引用',
-  transcript: '转写摘引'
+  transcript: '转写摘引',
+  visualCoverage: '画面覆盖'
 }
 
 const MIN_OVERVIEW_CHARS = 150
@@ -241,11 +244,35 @@ function transcriptFindings(hitRate: { hits: number; total: number } | null | un
   ]
 }
 
+/**
+ * B6 (plan 2026-09-19): 时间线配图覆盖率。由渲染层算好带进来（附件在渲染侧，
+ * main 的生成路径只赠与不展示）——对应 Andiii「全是文字没有任何截图」的直接体感。
+ *
+ * 只报 **info**：无图可能是合法态（B 站流被风控拒、SEU 屏幕流整段静止），报 warn
+ * 会触发一次多模态返修烧钱，且返修并不能变出画面。但用户必须看见「多少条没有图」。
+ */
+function visualCoverageFindings(coverage: { withImage: number; total: number } | null | undefined): HealthFinding[] {
+  if (coverage == null || coverage.total === 0) return []
+  if (coverage.withImage >= coverage.total) return []
+  const missing = coverage.total - coverage.withImage
+  return [
+    {
+      field: 'visualCoverage',
+      level: 'info',
+      message:
+        coverage.withImage === 0
+          ? `时间线 ${coverage.total} 条均无配图——本讲可能未取得画面素材（视频流被平台拦截或屏幕流无变化）`
+          : `时间线 ${coverage.total} 条中 ${missing} 条无配图——该时段没有可对应的画面素材`
+    }
+  ]
+}
+
 /** 体检主入口：warn 0=良好 / 1-2=待改进（fair） / ≥3=薄弱（weak）。 */
 export function noteHealth(
   note: Note,
   hitRate?: { hits: number; total: number } | null,
-  transcriptHitRate?: { hits: number; total: number } | null
+  transcriptHitRate?: { hits: number; total: number } | null,
+  imageCoverage?: { withImage: number; total: number } | null
 ): HealthReport {
   const findings = [
     ...overviewFindings(note),
@@ -256,7 +283,8 @@ export function noteHealth(
     ...honestEmptyFindings(note),
     ...quizFindings(note),
     ...evidenceFindings(hitRate),
-    ...transcriptFindings(transcriptHitRate)
+    ...transcriptFindings(transcriptHitRate),
+    ...visualCoverageFindings(imageCoverage)
   ]
   const warnCount = findings.filter((f) => f.level === 'warn').length
   const grade: HealthReport['grade'] = warnCount === 0 ? 'good' : warnCount <= 2 ? 'fair' : 'weak'

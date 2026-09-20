@@ -1759,9 +1759,57 @@ span.timeline-stamp { cursor: default; }
 .timeline-stamp:hover { background: var(--accent-soft-2); }
 .refs-toggle { align-self: flex-start; background: none; border: none; color: var(--text-muted); font-size: var(--font-size-xs); cursor: pointer; padding: 0; }
 .refs-toggle:hover { color: var(--accent); }
+/* 批 D (plan 2026-09-19): 时间线卡头的「跳原片」小钮（B 站源才渲染）。
+   走既有 token：字号 --font-size-xs、色 --text-muted、hover --accent——不新增第三种装饰。 */
+.timeline-open-src {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  padding: 0 var(--space-2);
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+.timeline-open-src:hover { color: var(--accent); border-color: var(--accent); }
+.timeline-open-src-label { line-height: var(--leading-none); }
 .timeline-detail { margin: 0; font-size: var(--font-size-md); line-height: var(--leading-relaxed); color: var(--text); }
 .timeline-quote { margin: 2px 0 0; padding: 6px 10px; border-left: 2px solid var(--border); color: var(--text-muted); font-size: var(--font-size-sm); }
 .quote-at { margin-left: 8px; font-family: var(--font-mono); font-size: var(--font-size-xs); }
+/* C4 (plan 2026-09-19): 图文并排卡片。纪律：用同一批 token——图列宽
+   minmax(140px,200px)、列距 --space-3、圆角 --radius、边框 --border；
+   alt 奇偶交替只换列序，不引入第二种卡片形态。窄列下退化为单列
+   （.note-body 640px 时图列仍 ≥140px，可读性优先）。 */
+.timeline-card.has-images {
+  display: grid;
+  /* 回购修正：minmax(140,200) 证实会把图列伸到 200（thumb 168 左齐，右留 32px 空隙）。
+     改 1fr auto：列宽紧贴 thumb，图列水平贴内容列右缘。 */
+  grid-template-columns: 1fr auto;
+  gap: var(--space-3);
+  align-items: start;
+}
+.timeline-card.has-images.alt {
+  grid-template-columns: auto 1fr;
+}
+.timeline-card.has-images.alt .timeline-body { order: 2; }
+.timeline-card.has-images.alt .timeline-side { order: 1; }
+.timeline-body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.timeline-side { display: flex; flex-direction: column; gap: var(--space-2); }
+/* 无图卡片的重点摘引升级为「大引文」——视觉补位，不让空白卡片通通是字。 */
+.timeline-quote.hero {
+  border-left: 3px solid var(--brass);
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: var(--leading-normal);
+  color: var(--text);
+  padding: var(--space-2) var(--space-3);
+  background: var(--brass-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
 .timeline-images { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .timeline-thumb { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: zoom-in; background: var(--surface-2); padding: 0; width: 168px; height: 96px; flex-shrink: 0; }
 .timeline-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1997,7 +2045,72 @@ button.concept-ref:hover { color: var(--accent); }
   color: var(--text-muted); font-size: var(--font-size-sm);
 }
 
-/* ---- 证据图集 ---- */.evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); }
+/* ---- 证据图集 ---- *//* A6 (plan 2026-09-19): 图集折叠组——默认代表帧 + 「N 张近重复」展开钮。 */
+.evidence-fold {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking);
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.evidence-fold:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.evidence-fold-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.evidence-zoom-btn.small img {
+  max-height: 64px;
+}
+/* C5 (plan 2026-09-19): 章节胶片条——图集按章分组的横向缩略图带。 */
+.gallery-chapters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.gallery-chapter-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: var(--tracking);
+  color: var(--text);
+}
+.gallery-chapter-at {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--brass);
+}
+.gallery-chapter-summary {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+.gallery-chapter-loose {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.gallery-strip {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+.gallery-strip .evidence-fig {
+  flex: 0 0 auto;
+  width: 148px;
+}
+.evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); }
 .evidence-fig { position: relative; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
 .evidence-fig img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
 .evidence-fig figcaption { display: flex; justify-content: space-between; align-items: center; padding: 5px 9px; font-size: var(--font-size-xs); }
@@ -2067,6 +2180,17 @@ button.concept-ref:hover { color: var(--accent); }
 }
 /* 试卷头: 文武线 (thick-thin pair) framing the lesson identity. 批B: 靠左
    与内容列同轴（居中是旧「阅读列居中」的残留，与全局左缘冲突）。 */
+/* 批 A2 (plan 2026-09-19): 课时封面 banner。纪律：banner 是内容不是装饰——
+   限高 + object-fit:cover + 既有圆角 token，不加边条/蒙版/第二种字体；
+   无封面时整块不渲染（SEU 源与导入失败都是合法无封面态）。 */
+.note-cover {
+  display: block;
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  margin: 0 0 var(--space-3);
+}
 .note-masthead {
   /* 批3 (D3): 题头与正文列同轴——此前文武线打在 860 轴上、正文在 680 轴上，
      同屏两个右缘差 180px。2026-09-07 裁决定的是「五个视图里标题宽度恒定」，
@@ -2089,6 +2213,86 @@ button.concept-ref:hover { color: var(--accent); }
   letter-spacing: var(--tracking-wide);
   color: var(--text);
 }
+/* C1 (plan 2026-09-19): 封面区章节 chips 与阅读时长。纪律：chip 用既有
+   徽章/边框/间距 token，不新增第三种装饰形态。 */
+.note-chapter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+}
+/* C3 (plan 2026-09-19): sticky 目录条——章节 + 概念锚点，滚动高亮当前节。
+   纪律：sticky 在阅读列顶部、纸面底色、既有 token；不新增第三种导航形态。 */
+.note-toc-sticky {
+  max-width: 640px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.toc-item {
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking);
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+.toc-item:hover {
+  color: var(--accent);
+}
+.toc-item.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft, transparent);
+}
+.toc-item-at {
+  font-family: var(--font-mono);
+  color: var(--brass);
+}
+.toc-concept::before {
+  content: "·";
+  margin-right: 4px;
+  color: var(--brass);
+}
+.chapter-chip {
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking);
+  color: var(--text-muted);
+  background: var(--surface-2, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+/* C1 修正（实拍回购 2026-09-20）：暗色下 --text-muted 于 surface-2 对比度 4.15:1，小字未达 AA。
+   chips/TOC 这类可点小字用 --text-secondary（实测高一档）。 */
+  :root:not([data-theme='light']) .chapter-chip, :root:not([data-theme='light']) .toc-item {
+    color: var(--text-secondary);
+  }
+  :root[data-theme='dark'] .chapter-chip, :root[data-theme='dark'] .toc-item {
+    color: var(--text-secondary);
+  }
+.chapter-chip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.note-readtime {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: var(--tracking);
+}
 .note-meta {
   margin: 0;
   color: var(--text-muted);
@@ -2105,6 +2309,70 @@ button.concept-ref:hover { color: var(--accent); }
 .timeline-stamp { font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--brass); background: var(--brass-soft); padding: 1px 8px; border-radius: 999px; font-weight: 600; border: none; cursor: pointer; }
 .timeline-stamp.active, .timeline-stamp:hover { background: color-mix(in srgb, var(--brass) 22%, transparent); }
 .timeline-quote.best { border-left-color: var(--brass); }
+/* B1 (plan 2026-09-19): 时间线章节头。纪律：借既有字阶/色板/间距刻度，
+   不新增字体与第三种装饰——章头是「分组标签」不是卡片。 */
+.timeline-chapter {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-5) 0 var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.timeline-chapter:first-child {
+  margin-top: 0;
+}
+.timeline-chapter-at {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--brass);
+  background: var(--brass-soft);
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.timeline-chapter-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: var(--tracking);
+  color: var(--text);
+}
+.timeline-chapter-summary {
+  margin: 0;
+  flex-basis: 100%;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  letter-spacing: var(--tracking);
+  line-height: var(--leading-normal);
+}
+/* B2 (plan 2026-09-19): 金句 pull-quote。纪律：复用时间线引文的黄铜引规
+   格局与既有字阶，不新增字体/第三种装饰。 */
+.quote-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.quote-pull {
+  margin: 0;
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  border-left: 3px solid var(--brass);
+}
+.quote-pull-at {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--brass);
+}
+.quote-pull-text {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  line-height: var(--leading-normal);
+  letter-spacing: var(--tracking);
+  color: var(--text);
+}
 .timeline-title { margin: 0; font-size: 15.5px; font-weight: 400; color: var(--text); font-family: var(--font-display); letter-spacing: var(--tracking); }
 .concept-term { font-weight: 400; color: var(--accent); font-size: 15px; font-family: var(--font-display); }
 .formula-item.kind-formula .formula-tag { background: var(--brass-soft); color: var(--brass); }

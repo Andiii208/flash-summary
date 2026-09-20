@@ -17,6 +17,8 @@ import type { Note } from '../../src/shared/notes/schema'
  */
 
 const NOTE: Note = {
+  chapters: [],
+  quotes: [],
   overview: '概览',
   knowledgeTree: { title: '根', children: [] },
   timeline: [],

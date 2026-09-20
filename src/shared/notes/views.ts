@@ -7,7 +7,7 @@
  *   - projectNoteBlocks: structured ViewBlock trees consumed by the
  *     renderer's five views (four reading tabs + mindmap). Pure functions.
  */
-import type { Note, TimelineEntry, Concept, FormulaOrStep, TreeNode, QuizItem } from './schema'
+import type { Note, TimelineEntry, Concept, FormulaOrStep, TreeNode, QuizItem, Chapter, Quote } from './schema'
 import { formatTime, labelOf } from './format'
 import { hasTable } from './md-lite'
 
@@ -26,12 +26,14 @@ export type ViewBlock =
   | { block: 'paragraph'; text: string }
   | { block: 'markdown'; text: string }
   | { block: 'tree'; node: TreeNode }
-  | { block: 'timeline'; entries: TimelineEntry[] }
+  | { block: 'timeline'; entries: TimelineEntry[]; chapters?: Chapter[] }
   | { block: 'concepts'; items: Concept[] }
   | { block: 'formulas'; items: FormulaOrStep[] }
   | { block: 'callout'; tone: 'exam' | 'gap'; items: string[] }
   | { block: 'steps'; items: Array<{ content: string; explanation: string }> }
   | { block: 'quiz'; items: QuizItem[] }
+  /** B2: 金句（讲者原话，pull-quote 呈现）。 */
+  | { block: 'quotes'; items: Quote[] }
 
 export interface BlockSection {
   heading: string
@@ -137,10 +139,26 @@ export function looksLikeMarkdown(text: string): boolean {
 }
 
 function detailedBlocks(note: Note): BlockSection[] {
+  // 容忍部分形状（health/markdown/obsidian 同源纪律）：调用方可能传未过归一层的原始对象
+  // （旧笔记/测试夹具缺新字段），chapters/quotes 直取 .length 会抛 TypeError。
+  const chapters = note.chapters ?? []
+  const quotes = note.quotes ?? []
+  // B3: tldr 是“合上时间线也能独立读懂”的第一句话——排在概览之前，空时不占位。
+  const overviewBlocks: ViewBlock[] = [
+    ...(note.tldr != null && note.tldr.trim() !== '' ? [{ block: 'paragraph', text: note.tldr.trim() } as ViewBlock] : []),
+    markdownBlock(note.overview)
+  ]
   const sections: BlockSection[] = [
-    { heading: '课程概览', blocks: [markdownBlock(note.overview)] },
+    { heading: '课程概览', blocks: overviewBlocks },
     { heading: '知识结构', blocks: [{ block: 'tree', node: note.knowledgeTree }] },
-    { heading: '时间线', blocks: note.timeline.length > 0 ? [{ block: 'timeline', entries: note.timeline }] : [] },
+    {
+      heading: '时间线',
+      blocks:
+        note.timeline.length > 0
+          ? [{ block: 'timeline', entries: note.timeline, ...(chapters.length > 0 ? { chapters } : {}) }]
+          : []
+    },
+    ...(quotes.length > 0 ? [{ heading: '金句', blocks: [{ block: 'quotes' as const, items: quotes } as ViewBlock] }] : []),
     { heading: '概念与定义', blocks: conceptBlocks(note.concepts) },
     ...formulaSections(note)
   ]
@@ -150,8 +168,12 @@ function detailedBlocks(note: Note): BlockSection[] {
 }
 
 function standardBlocks(note: Note): BlockSection[] {
+  const standardOverviewBlocks: ViewBlock[] = [
+    ...(note.tldr != null && note.tldr.trim() !== '' ? [{ block: 'paragraph', text: note.tldr.trim() } as ViewBlock] : []),
+    markdownBlock(note.overview)
+  ]
   const sections: BlockSection[] = [
-    { heading: '课程概览', blocks: [markdownBlock(note.overview)] },
+    { heading: '课程概览', blocks: standardOverviewBlocks },
     { heading: '知识结构', blocks: [{ block: 'tree', node: note.knowledgeTree }] },
     { heading: '重点概念', blocks: conceptBlocks(note.concepts.slice(0, 8)) }
   ]

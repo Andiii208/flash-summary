@@ -4,6 +4,8 @@ import { projectNote, projectNoteBlocks, VIEW_IDS, looksLikeMarkdown } from '../
 import type { Note } from '../src/main/notes/schema'
 
 const sampleNote: Note = {
+  chapters: [],
+  quotes: [],
   overview: '本讲介绍极限的定义与计算方法。',
   knowledgeTree: {
     title: '极限',
@@ -70,6 +72,19 @@ describe('views from the same JSON', () => {
     ])
     expect(sections[2].lines[1]).toContain('10:00')
     expect(sections[4].lines.join('\n')).toContain('lim(x→a)')
+  })
+
+  // 2026-09-20 实锤回归：app-shell 夹具直接喂未过归一层的原始 note（缺 chapters/quotes），
+  // detailedBlocks 直取 note.chapters.length 会抛 TypeError 崩掉整个渲染。
+  // 纪律同 markdown/obsidian/health：投影层容忍部分形状，宁退化为旧行为也不抛。
+  it('detailed blocks tolerate a note missing chapters/quotes (partial shape)', () => {
+    const partial = JSON.parse(JSON.stringify(sampleNote)) as Record<string, unknown>
+    delete partial.chapters
+    delete partial.quotes
+    const blocks = projectNoteBlocks(partial as unknown as Note, 'detailed')
+    const timeline = blocks.find((s) => s.heading === '时间线')?.blocks[0]
+    expect('chapters' in (timeline ?? {})).toBe(false)
+    expect(blocks.some((s) => s.heading === '金句')).toBe(false)
   })
 
   it('standard view is a strict subset (overview + tree + top concepts)', () => {
@@ -195,5 +210,54 @@ describe('looksLikeMarkdown', () => {
 
   it('批4: 公式不改变分块判据，但带公式的列表照样触发 markdown 分支', () => {
     expect(looksLikeMarkdown('- 公式：$L = -\\sum y\\log p$')).toBe(true)
+  })
+})
+
+describe('B3 tldr（plan 2026-09-19-note-experience-overhaul）', () => {
+  it('有 tldr → 详细/标准视图的「课程概览」第一个块是它', () => {
+    const note: Note = { ...sampleNote, tldr: '极限讲的是变化率的严格化：定义、计算与常见法则。' }
+    for (const view of ['detailed', 'standard'] as const) {
+      const sections = projectNoteBlocks(note, view)
+      const overview = sections.find((s) => s.heading === '课程概览')
+      expect(overview?.blocks[0]).toEqual({ block: 'paragraph', text: '极限讲的是变化率的严格化：定义、计算与常见法则。' })
+    }
+  })
+
+  it('无 tldr → 第一个块仍是概览（旧笔记渲染逐字节不变）', () => {
+    const sections = projectNoteBlocks(sampleNote, 'detailed')
+    const overview = sections.find((s) => s.heading === '课程概览')
+    expect(overview?.blocks).toHaveLength(1)
+    // 纯散文 overview 投影为 paragraph 块；无 tldr 时全屉刚好这一块。
+    expect(overview?.blocks).toEqual([{ block: 'paragraph', text: sampleNote.overview }])
+  })
+
+  it('空串 tldr 视同没有', () => {
+    const note: Note = { ...sampleNote, tldr: '   ' }
+    const sections = projectNoteBlocks(note, 'standard')
+    expect(sections.find((s) => s.heading === '课程概览')?.blocks).toHaveLength(1)
+  })
+})
+
+describe('B1 timeline 块携带 chapters（plan 2026-09-19）', () => {
+  it('有章节 → timeline 块带 chapters；无章节 → 不带（旧笔记逐字节不变）', () => {
+    const withChapters: Note = { ...sampleNote, chapters: [{ at: 300, title: '乙章', summary: 's' }] }
+    const block = projectNoteBlocks(withChapters, 'detailed').find((s) => s.heading === '时间线')?.blocks[0]
+    expect(block?.block).toBe('timeline')
+    expect(block && 'chapters' in block ? block.chapters : undefined).toEqual([{ at: 300, title: '乙章', summary: 's' }])
+    const plain = projectNoteBlocks(sampleNote, 'detailed').find((s) => s.heading === '时间线')?.blocks[0]
+    expect(plain && 'chapters' in plain ? plain.chapters : undefined).toBeUndefined()
+  })
+})
+
+describe('B2 金句节（plan 2026-09-19）', () => {
+  it('有 quotes → 详细视图在概念前插「金句」节；无则不出现', () => {
+    const withQuotes: Note = { ...sampleNote, quotes: [{ at: 300, text: '极限是一种态度' }] }
+    const sections = projectNoteBlocks(withQuotes, 'detailed')
+    const headings = sections.map((s) => s.heading)
+    expect(headings).toContain('金句')
+    expect(headings.indexOf('金句')).toBeLessThan(headings.indexOf('概念与定义'))
+    const block = sections.find((s) => s.heading === '金句')?.blocks[0]
+    expect(block).toEqual({ block: 'quotes', items: [{ at: 300, text: '极限是一种态度' }] })
+    expect(projectNoteBlocks(sampleNote, 'detailed').map((s) => s.heading)).not.toContain('金句')
   })
 })

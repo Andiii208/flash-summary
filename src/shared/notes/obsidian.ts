@@ -130,11 +130,23 @@ function flashcardSection(note: Note, meta: ObsidianMeta): string[] {
 /** The whole lesson file; empty sections are omitted (投影纪律). */
 export function projectObsidianNote(note: Note, meta: ObsidianMeta): ObsidianExport {
   const lines = [...frontmatter(meta), '', `# ${meta.lesson}`, '']
+  if (note.tldr != null && note.tldr.trim() !== '') lines.push(`> ${note.tldr.trim()}`, '')
   if (note.overview.trim() !== '') lines.push('## 概览', '', note.overview.trim(), '')
   const tree: string[] = []
   treeSection(note.knowledgeTree, 0, tree)
   lines.push('## 知识结构', '', ...tree)
+  // B1: 章节清单（Obsidian 导航用）——在时间线之前。
+  // 容忍部分形状：mock/降级路径可能传缺字段的笔记对象（health.ts 同源纪律）。
+  const chapters = note.chapters ?? []
+  if (chapters.length > 0) {
+    lines.push('## 章节', '')
+    for (const chapter of chapters) lines.push(`- ${formatTime(chapter.at)} **${chapter.title}** — ${chapter.summary}`)
+  }
   if (note.timeline.length > 0) lines.push('', ...timelineSection(note, meta.attachments))
+  if ((note.quotes ?? []).length > 0) {
+    lines.push('## 金句', '')
+    for (const q of note.quotes ?? []) lines.push(`- ${formatTime(q.at)} 「${q.text}」`)
+  }
   lines.push(...conceptSection(note))
   const formulas = formulaSection(note)
   if (formulas.length > 0) lines.push('', ...formulas)

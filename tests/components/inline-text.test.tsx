@@ -23,6 +23,8 @@ describe('InlineText (批4: 单字段内联 markdown)', () => {
 
 describe('PrintHandout 批4 (九类字段不再印出字面 **)', () => {
   const MARKDOWN_NOTE: Note = {
+  chapters: [],
+  quotes: [],
     overview: '概览。',
     knowledgeTree: { title: '树', children: [] },
     timeline: [{ at: 60, title: '引入', detail: '**反向传播** 的链式法则', refs: [], evidence: [] }],

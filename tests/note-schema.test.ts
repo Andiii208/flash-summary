@@ -288,3 +288,40 @@ describe('parseNote string refs normalization (field case 2026-09-07, B站 MV no
     expect(note.concepts[0]?.refs).toEqual([{ at: 150, text: '两句引文' }])
   })
 })
+
+describe('B3 tldr（plan 2026-09-19）', () => {
+  it('可选：缺省时解析通过、tldr 为 undefined', () => {
+    const note = parseNote(JSON.stringify({ overview: 'o', knowledgeTree: { title: 'r', children: [] }, methodology: 'm' }))
+    expect(note.tldr).toBeUndefined()
+  })
+
+  it('有值时保留', () => {
+    const note = parseNote(JSON.stringify({ overview: 'o', knowledgeTree: { title: 'r', children: [] }, methodology: 'm', tldr: '一句话。' }))
+    expect(note.tldr).toBe('一句话。')
+  })
+
+  it('非字符串 tldr 被 zod 拒（整份解析失败而不是静默丢字段）', () => {
+    expect(() =>
+      parseNote(JSON.stringify({ overview: 'o', knowledgeTree: { title: 'r', children: [] }, methodology: 'm', tldr: 42 }))
+    ).toThrow()
+  })
+})
+
+describe('B2 quotes（plan 2026-09-19）', () => {
+  it('可选：缺省时解析通过、quotes 为 []', () => {
+    const note = parseNote(JSON.stringify({ overview: 'o', knowledgeTree: { title: 'r', children: [] }, methodology: 'm' }))
+    expect(note.quotes).toEqual([])
+  })
+
+  it('有值时保留；坏项（缺 text）被丢弃而笔记不炸', () => {
+    const note = parseNote(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        quotes: [{ at: '01:30', text: '金句一' }, { at: 60 }]
+      })
+    )
+    expect(note.quotes).toEqual([{ at: 90, text: '金句一' }])
+  })
+})

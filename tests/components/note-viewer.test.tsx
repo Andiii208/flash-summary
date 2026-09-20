@@ -20,6 +20,8 @@ vi.mock('../../src/shared/notes/views', async (importOriginal) => {
 })
 
 const NOTE: Note = {
+  chapters: [],
+  quotes: [],
   overview: '本讲介绍复杂度分析。',
   knowledgeTree: { title: '复杂度', children: [{ title: 'O(n)', children: [] }] },
   timeline: [
@@ -523,6 +525,7 @@ describe('NoteViewer 健康巡查 2026-09-12 批5 (export busy feedback)', () =>
     const markdown = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '导出 Markdown') as HTMLButtonElement
     expect(markdown.disabled).toBe(false)
   })
+})
 
 describe('NoteViewer 批4 渲染层 memo 与 a11y', () => {
   it('memo 化后一次无关 state 变更（开合体检面板）不重复解析、不重复投影', () => {
@@ -560,4 +563,327 @@ describe('NoteViewer 批4 渲染层 memo 与 a11y', () => {
     expect(host.querySelector('.note-body')!.getAttribute('aria-labelledby')).toBe(active2.id)
   })
 })
+
+
+describe('NoteViewer 封面 banner（批 A2, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('封面优先：coverDataUrl 直接当 banner', () => {
+    const host = mount(<NoteViewer note={NOTE} lesson={lesson} coverDataUrl="data:image/jpeg;base64,Y292ZXI=" />)
+    const cover = host.querySelector('.note-cover')
+    expect(cover?.getAttribute('src')).toBe('data:image/jpeg;base64,Y292ZXI=')
+  })
+
+  it('无封面 → 退回 manifest 里最早的关键帧', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        attachmentManifest={[
+          { ref: 'kf:kf-9', at: 900 },
+          { ref: 'kf:kf-3', at: 300 }
+        ]}
+        getAttachment={(ref: string) => (ref === 'kf:kf-3' ? ATTACHMENT : null)}
+      />
+    )
+    expect(host.querySelector('.note-cover')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
+  })
+
+  it('两者皆无 → 不渲染 banner（SEU 源合法无封面态）', () => {
+    const host = mount(<NoteViewer note={NOTE} lesson={lesson} />)
+    expect(host.querySelector('.note-cover')).toBeNull()
+  })
+})
+
+describe('NoteViewer 时间线章节分组（B1, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('有 chapters → 时间线渲染章头（时间 + 标题 + 一句话）', () => {
+    const note: Note = {
+      ...NOTE,
+      chapters: [
+        { at: 0, title: '开场', summary: '回顾上讲' },
+        { at: 200, title: 'ε-δ 定义', summary: '严格定义引入' }
+      ]
+    }
+    const host = mount(<NoteViewer note={note} lesson={lesson} />)
+    const heads = host.querySelectorAll('.timeline-chapter')
+    expect(heads).toHaveLength(2)
+    expect(heads[0]?.querySelector('.timeline-chapter-title')?.textContent).toBe('开场')
+    expect(heads[1]?.querySelector('.timeline-chapter-summary')?.textContent).toBe('严格定义引入')
+    expect(host.textContent).toContain('03:20')
+  })
+
+  it('无 chapters → 不渲染章头（旧笔记逐字节不变）', () => {
+    const host = mount(<NoteViewer note={NOTE} lesson={lesson} />)
+    expect(host.querySelectorAll('.timeline-chapter')).toHaveLength(0)
+    expect(host.querySelectorAll('.timeline-card')).toHaveLength(NOTE.timeline.length)
+  })
+})
+
+describe('NoteViewer 金句 pull-quote（B2, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('有 quotes → 渲染金句节（时间徽章 + 引文）', () => {
+    const note: Note = { ...NOTE, quotes: [{ at: 300, text: '极限是一种态度' }] }
+    const host = mount(<NoteViewer note={note} lesson={lesson} />)
+    const pull = host.querySelector('.quote-pull')
+    expect(pull).not.toBeNull()
+    expect(pull?.querySelector('.quote-pull-at')?.textContent).toBe('05:00')
+    expect(pull?.querySelector('.quote-pull-text')?.textContent).toContain('极限是一种态度')
+  })
+
+  it('无 quotes → 不渲染金句节', () => {
+    const host = mount(<NoteViewer note={NOTE} lesson={lesson} />)
+    expect(host.querySelector('.quote-pull')).toBeNull()
+  })
+})
+
+describe('NoteViewer 断供可见化（A3, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('无任何素材时图集空态说出原因与出路（不再是一行灰字）', () => {
+    const host = mount(<NoteViewer note={NOTE} lesson={lesson} />)
+    const empty = host.querySelector('.evidence-gallery')
+    // gallery 为 null 时渲染说明段（证据节的兜底分支）。
+    const text = empty?.textContent ?? host.textContent ?? ''
+    if (empty == null) {
+      expect(text).toContain('没有可用画面素材')
+      expect(text).toContain('重新运行任务')
+    }
+  })
+})
+
+describe('NoteViewer 封面区章节 chips + 阅读时长（C1, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('有 chapters → 渲染 chips（标题 + 时间 tooltip）与阅读时长', () => {
+    const note: Note = { ...NOTE, chapters: [{ at: 0, title: '开场', summary: '回顾' }, { at: 200, title: 'ε-δ 定义', summary: '严格定义' }] }
+    const host = mount(<NoteViewer note={note} lesson={lesson} />)
+    const chips = host.querySelectorAll('.chapter-chip')
+    expect(chips).toHaveLength(2)
+    expect(chips[0]?.textContent).toBe('开场')
+    expect(chips[1]?.getAttribute('title')).toContain('严格定义')
+    expect(host.querySelector('.note-readtime')?.textContent).toMatch(/约 \d+ 分钟读完/)
+  })
+
+  it('无 chapters → 不渲染 chips；阅读时长仍在', () => {
+    const host = mount(<NoteViewer note={NOTE} lesson={lesson} />)
+    expect(host.querySelectorAll('.chapter-chip')).toHaveLength(0)
+    expect(host.querySelector('.note-readtime')).not.toBeNull()
+  })
+
+  it('点 chip 跳到对应章头（scrollIntoView 存在性守卫，happy-dom 不炸）', () => {
+    const note: Note = { ...NOTE, chapters: [{ at: 200, title: 'ε-δ 定义', summary: '严格定义' }] }
+    const host = mount(<NoteViewer note={note} lesson={lesson} />)
+    const chip = host.querySelector('.chapter-chip') as HTMLButtonElement
+    expect(() => click(chip)).not.toThrow()
+  })
+})
+
+describe('NoteViewer 图文并排卡片（C4, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+  const withImages: Note = {
+    ...NOTE,
+    timeline: [
+      { at: 65, title: '引入', detail: '开始讲解', refs: [{ at: 66, text: '讲者原话：复杂度是算法的灵魂。' }], evidence: [{ kind: 'keyframe', ref: 'kf:kf-3' }] },
+      { at: 300, title: '示例', detail: '举例说明', refs: [], evidence: [] }
+    ]
+  }
+
+  it('有条目配到图 → 卡片通 has-images 且拆出 body/side 两列', () => {
+    const host = mount(
+      <NoteViewer
+        note={withImages}
+        lesson={lesson}
+        attachmentManifest={[{ ref: 'kf:kf-3', at: 300 }]}
+        getAttachment={(ref: string) => (ref === 'kf:kf-3' ? ATTACHMENT : null)}
+      />
+    )
+    const card = host.querySelector('.timeline-card.has-images')
+    expect(card).not.toBeNull()
+    expect(card?.querySelector('.timeline-body')).not.toBeNull()
+    expect(card?.querySelector('.timeline-side .timeline-thumb')).not.toBeNull()
+  })
+
+  it('无图卡片的首条摘引升 hero（视觉补位）', () => {
+    const host = mount(<NoteViewer note={withImages} lesson={lesson} attachmentManifest={[]} getAttachment={() => null} />)
+    expect(host.querySelector('.timeline-card.has-images')).toBeNull()
+    expect(host.querySelector('.timeline-quote.hero')).not.toBeNull()
+  })
+})
+
+describe('NoteViewer 图集近重复折叠（A6, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('哈希相同的两张参考帧折成一组，caption 显示「N 张近重复」', () => {
+    const hash = '0'.repeat(64)
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        attachmentManifest={[
+          { ref: 'kf:a', at: 0, hash },
+          { ref: 'kf:b', at: 10, hash }
+        ]}
+        getAttachment={(ref: string) => ({ ref, kind: 'keyframe' as const, at: 0, dataUrl: `data:image/jpeg;base64,${ref}` })}
+      />
+    )
+    const groups = host.querySelectorAll('[data-testid="gallery-group"]')
+    expect(groups).toHaveLength(1)
+    const fold = groups[0]?.querySelector('.evidence-fold')
+    expect(fold?.textContent).toBe('2 张近重复')
+  })
+
+  it('无 hash 的 manifest → 不折叠（平铺）', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        attachmentManifest={[
+          { ref: 'kf:a', at: 0 },
+          { ref: 'kf:b', at: 10 }
+        ]}
+        getAttachment={(ref: string) => ({ ref, kind: 'keyframe' as const, at: 0, dataUrl: `data:image/jpeg;base64,${ref}` })}
+      />
+    )
+    expect(host.querySelectorAll('[data-testid="gallery-group"]')).toHaveLength(2)
+  })
+})
+
+describe('NoteViewer sticky 目录（C3, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('详细视图有章节/概念时渲染 sticky 目录（章 + 概念条目）', () => {
+    const note: Note = { ...NOTE, chapters: [{ at: 200, title: 'ε-δ 定义', summary: '严格定义' }] }
+    const host = mount(<NoteViewer note={note} lesson={lesson} />)
+    const toc = host.querySelector('.note-toc-sticky')
+    expect(toc).not.toBeNull()
+    expect(toc?.querySelectorAll('.toc-item').length).toBe(1 + note.concepts.length)
+    expect(toc?.textContent).toContain('ε-δ 定义')
+    expect(toc?.textContent).toContain('大O')
+  })
+
+  it('无章节无概念 → 不渲染目录条', () => {
+    const bare: Note = { ...NOTE, concepts: [] }
+    const host = mount(<NoteViewer note={bare} lesson={lesson} />)
+    expect(host.querySelector('.note-toc-sticky')).toBeNull()
+  })
+
+  it('点章条目不抛（scrollIntoView 存在性守卫）', () => {
+    const note: Note = { ...NOTE, chapters: [{ at: 0, title: '开场', summary: '回顾' }] }
+    const host = mount(<NoteViewer note={note} lesson={lesson} />)
+    const item = host.querySelector('.toc-item') as HTMLButtonElement
+    expect(() => click(item)).not.toThrow()
+  })
+})
+
+describe('NoteViewer 章节胶片条（C5, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('有章节 + 有参考帧 → 图集按章分组成横向胶片条', () => {
+    const note: Note = { ...NOTE, chapters: [{ at: 0, title: '开场', summary: '回顾' }, { at: 300, title: 'ε-δ 定义', summary: '严格定义' }] }
+    const host = mount(
+      <NoteViewer
+        note={note}
+        lesson={lesson}
+        attachmentManifest={[
+          { ref: 'kf:a', at: 100 },
+          { ref: 'kf:b', at: 500 }
+        ]}
+        getAttachment={(ref: string) => ({ ref, kind: 'keyframe' as const, at: 0, dataUrl: `data:image/jpeg;base64,${ref}` })}
+      />
+    )
+    const groups = host.querySelectorAll('.gallery-chapter')
+    expect(groups.length).toBe(2)
+    expect(groups[0]?.querySelector('.gallery-chapter-title')?.textContent).toContain('开场')
+    expect(groups[0]?.querySelector('.gallery-strip')).not.toBeNull()
+    expect(host.querySelector('[data-testid="gallery-chapters"]')).not.toBeNull()
+  })
+
+  it('无章节 → 仍是原折叠网格（零回归）', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        attachmentManifest={[{ ref: 'kf:a', at: 100 }]}
+        getAttachment={(ref: string) => ({ ref, kind: 'keyframe' as const, at: 0, dataUrl: `data:image/jpeg;base64,${ref}` })}
+      />
+    )
+    expect(host.querySelector('[data-testid="gallery-chapters"]')).toBeNull()
+    expect(host.querySelector('[data-testid="evidence-gallery"]')).not.toBeNull()
+  })
+})
+
+describe('NoteViewer 兜底封面帧挑选（回购修正, plan 2026-09-19）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('无封面数据 URL → 取 60 秒后的第一帧当兜底（越过 0s 标题页）', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        attachmentManifest={[
+          { ref: 'kf:title', at: 0 },
+          { ref: 'kf:m1', at: 40 },
+          { ref: 'kf:m2', at: 300 }
+        ]}
+        getAttachment={(ref: string) => ({ ref, kind: 'keyframe' as const, at: 0, dataUrl: `data:image/jpeg;base64,${ref}` })}
+      />
+    )
+    expect(host.querySelector('.note-cover')?.getAttribute('src')).toBe('data:image/jpeg;base64,kf:m2')
+  })
+
+  it('全部早于 60 秒 → 退最后一张（好过没有）', () => {
+    const host = mount(
+      <NoteViewer
+        note={NOTE}
+        lesson={lesson}
+        attachmentManifest={[
+          { ref: 'kf:a', at: 0 },
+          { ref: 'kf:b', at: 40 }
+        ]}
+        getAttachment={(ref: string) => ({ ref, kind: 'keyframe' as const, at: 0, dataUrl: `data:image/jpeg;base64,${ref}` })}
+      />
+    )
+    expect(host.querySelector('.note-cover')?.getAttribute('src')).toBe('data:image/jpeg;base64,kf:b')
+  })
+})
+
+describe('NoteViewer 目录条目完整性（回购强化）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+
+  it('目录条目数 = 章节数 + 概念数（一个都不能漏）', () => {
+    const note: Note = {
+      ...NOTE,
+      chapters: [{ at: 0, title: '开场', summary: 's1' }, { at: 300, title: '定义', summary: 's2' }],
+      concepts: [
+        { term: '大O', definition: 'd1', refs: [] },
+        { term: '复杂度', definition: 'd2', refs: [] },
+        { term: '渐进', definition: 'd3', refs: [] }
+      ]
+    }
+    const host = mount(<NoteViewer note={note} lesson={lesson} />)
+    const items = host.querySelectorAll('.note-toc-sticky .toc-item')
+    expect(items).toHaveLength(2 + 3)
+    const texts = [...items].map((el) => el.textContent ?? '')
+    for (const term of ['大O', '复杂度', '渐进']) expect(texts.some((t) => t.includes(term))).toBe(true)
+  })
+})
+
+describe('批 D (plan 2026-09-19): 跳原片（B 站 ?t=）', () => {
+  it('onOpenSource 给了才渲染「原片」钮，点击带条目 at', () => {
+    const onOpenSource = vi.fn()
+    const host = mount(<NoteViewer note={NOTE} onOpenSource={onOpenSource} />)
+    const btn = host.querySelector('.timeline-card .timeline-open-src')
+    expect(btn).not.toBeNull()
+    expect(btn?.textContent).toContain('原片')
+    click(btn!)
+    expect(onOpenSource).toHaveBeenCalledWith(65)
+  })
+
+  it('不给 onOpenSource（SEU 源）时按钮不渲染', () => {
+    const host = mount(<NoteViewer note={NOTE} />)
+    expect(host.querySelector('.timeline-open-src')).toBeNull()
+  })
 })

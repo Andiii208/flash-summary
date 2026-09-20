@@ -305,3 +305,25 @@ describe('批3 体检补洞（2026-09-17）', () => {
     expect(none.findings.find((f) => f.field === 'quiz' && f.level === 'warn')).toBeUndefined()
   })
 })
+
+describe('visualCoverageFindings（B6, plan 2026-09-19）', () => {
+  it('部分条目无图 → info 级说明缺几条（合法态不 warn，不逼返修烧钱）', () => {
+    const report = noteHealth(noteFixture(), undefined, undefined, { withImage: 5, total: 18 })
+    const finding = report.findings.find((f) => f.field === 'visualCoverage')
+    expect(finding?.level).toBe('info')
+    expect(finding?.message).toContain('13 条无配图')
+    expect(report.warnCount).toBe(0)
+  })
+
+  it('全部无图 → info 说明本讲可能未取得画面素材', () => {
+    const report = noteHealth(noteFixture(), undefined, undefined, { withImage: 0, total: 9 })
+    const finding = report.findings.find((f) => f.field === 'visualCoverage')
+    expect(finding?.level).toBe('info')
+    expect(finding?.message).toContain('均无配图')
+  })
+
+  it('全覆盖或无时间线 → 无该项 finding', () => {
+    expect(noteHealth(noteFixture(), undefined, undefined, { withImage: 18, total: 18 }).findings.some((f) => f.field === 'visualCoverage')).toBe(false)
+    expect(noteHealth(noteFixture(), undefined, undefined, null).findings.some((f) => f.field === 'visualCoverage')).toBe(false)
+  })
+})

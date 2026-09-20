@@ -78,6 +78,8 @@ export interface NotesDomain {
     attachmentManifest: AttachmentManifestEntry[]
     getAttachment: (ref: string) => NoteAttachmentInfo | null | undefined
     attachmentVersion: number
+    /** 批 A2: 课时封面 data URL（无封面 null，NoteViewer 用首帧兜底）。 */
+    coverDataUrl: string | null
     noteRegenBusy: boolean
     regenerateNote: (lessonId: string) => void
     /** 批5: feedback polish (busy + submit → new note version). */
@@ -126,6 +128,8 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   const [attachmentManifest, setAttachmentManifest] = useState<AttachmentManifestEntry[]>([])
   /** Bumped per resolved image so lazy views re-render. */
   const [attachmentVersion, setAttachmentVersion] = useState(0)
+  /** 批 A2 (plan 2026-09-19): 课时封面 data URL（B 站导入落盘；无封面为 null）。 */
+  const [coverDataUrl, setCoverDataUrl] = useState<string | null>(null)
   const [noteRegenBusy, setNoteRegenBusy] = useState(false)
   // 质量批4 (plan 2026-09-08 note-quality-overhaul): 存量升级——对话框与逐课状态。
   const [noteUpgrade, setNoteUpgrade] = useState<{ open: boolean; courseId: string; label: string; loading: boolean; items: NoteHealthInfo[] }>({
@@ -156,8 +160,18 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   // All three lesson-scoped loaders guard on lessonRef: a slow response for
   // a previously selected lesson must not overwrite the current one's panel.
   const loadNote = useCallback(async (lessonId: string): Promise<void> => {
+    setCoverDataUrl(null)
     const res = (await bridge.notes.latest(lessonId)) as ApiResult<Note | null>
     if (res.ok && res.value != null && lessonRef.current === lessonId) setNote(res.value)
+    // 批 A2: 封面与笔记并行取（best-effort——拿不到就 null，首屏退回无图）。
+    void (async () => {
+      try {
+        const cover = (await bridge.notes.cover(lessonId)) as ApiResult<string | null>
+        if (lessonRef.current === lessonId) setCoverDataUrl(cover.ok ? (cover.value ?? null) : null)
+      } catch {
+        if (lessonRef.current === lessonId) setCoverDataUrl(null)
+      }
+    })()
   }, [bridge])
 
   // F4 (review): per-ref attachment cache. getAttachment returns undefined
@@ -450,12 +464,22 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
           // 在界面上完全不可见（用户只看到「内容有点少」）。
           const normalizedTotal = Object.values(result.normalizationDropped ?? {}).reduce((acc, n) => acc + n, 0)
           const normalSuffix = normalizedTotal > 0 ? `，${normalizedTotal} 项格式不合法已丢弃` : ''
+          // A1: 绑定模型无视觉时说清楚——否则用户看到「没图」会以为系统坏了，而那本来就是合法降级。
+  const visionSuffix = result.visionCapable === false ? '，当前模型无视觉能力，画面靠时间就近对齐' : ''
+
+  // A3: 真的零素材（风控/无流）与“模型看不见”不同囸——原因要说清楚。
+  const assetSuffix =
+    result.visualAssets != null && result.visualAssets.keyframes === 0 && result.visualAssets.ppt === 0
+      ? '，本课时未取得画面素材（视频流可能被平台拦截，重试导入可能恢复）'
+      : ''
+  // B4 (plan 2026-09-19): 越界 at 被铳制时说一声——用户该知道「刚才有几个时间点是模型外推的」。
+          const clampSuffix = (result.clampedTimes ?? 0) > 0 ? `，${result.clampedTimes} 个越界时间已校正` : ''
           // 批3: 返修真的发生时把「N 项 → M 项」说出来——否则用户不知道系统改善过什么。
           const repairSuffix =
             result.health?.repaired === true && result.health.warnCountBeforeRepair != null
               ? `，体检 ${result.health.warnCountBeforeRepair} 项 → ${result.health.warnCount} 项`
               : ''
-          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}${repairSuffix}`, 'success')
+          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}${clampSuffix}${visionSuffix}${assetSuffix}${repairSuffix}`, 'success')
           await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
@@ -671,6 +695,7 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     attachmentManifest,
     getAttachment,
     attachmentVersion,
+    coverDataUrl,
     noteRegenBusy,
     regenerateNote,
     notePolishBusy,

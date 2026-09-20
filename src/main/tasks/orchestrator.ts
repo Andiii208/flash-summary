@@ -11,6 +11,11 @@ import { extractAudio, extractKeyframes, run as runProcess, pickAudioSource } fr
 import { thumbPathFor, THUMB_SCALE_FILTER } from '../media/grid'
 import { chunkPlan, cutChunk } from '../media/audio-split'
 import { dedupeKeyframes, type Grid8x8 } from '../../shared/phash'
+
+/** A4 (plan 2026-09-19): 关键帧抽帧间隔（秒）。74 分钟课 ≈ 222 帧候选、约 7MB/课。 */
+const KEYFRAME_INTERVAL_SECONDS = 20
+/** A4: 去重后的时间覆盖桶数上限——无画面变化的口播段也至少每桶一帧。 */
+const KEYFRAME_COVERAGE_BUCKETS = 120
 import { downloadToFile } from '../media/download'
 import { sanitizeStreamUrl } from '../school/play-harvest'
 import { streamComplete, freeDiskBytes } from './resume'
@@ -653,8 +658,8 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
           recordStage(deps, ctx.taskId, ctx.stage, { keyframes: 0, ppt: 0, skipped: 'no-video-stream' })
           return { status: 'ok' }
         }
-        const candidates = await extractKeyframes(dl.videoPath, outDir, 10, deps.ffmpeg, ctx.signal)
-        const kept = dedupeKeyframes(candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })), 5)
+        const candidates = await extractKeyframes(dl.videoPath, outDir, KEYFRAME_INTERVAL_SECONDS, deps.ffmpeg, ctx.signal)
+        const kept = dedupeKeyframes(candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })), 5, { coverageBuckets: KEYFRAME_COVERAGE_BUCKETS })
         const destDir = join(attachmentsPath(deps.libraryRoot), ctx.lessonId, 'keyframes')
         // 批6: 重跑防孤儿——destDir 整体先清再写。本次保留帧变少时，上一次
         // 多出的帧（含批3 随帧的缩略图）不会作为无主文件永远留在附件库里。
@@ -682,11 +687,10 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
         return { status: 'ok' }
       }
 
-      const candidates = await extractKeyframes(dl.screenPath, outDir, 10, deps.ffmpeg, ctx.signal)
-      const kept = dedupeKeyframes(
-        candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })),
-        5
-      )
+      const candidates = await extractKeyframes(dl.screenPath, outDir, KEYFRAME_INTERVAL_SECONDS, deps.ffmpeg, ctx.signal)
+      const kept = dedupeKeyframes(candidates.map((c) => ({ ...c, grid: deps.gridDecoder(c.filePath) })), 5, {
+        coverageBuckets: KEYFRAME_COVERAGE_BUCKETS
+      })
 
       const destDir = join(attachmentsPath(deps.libraryRoot), ctx.lessonId, 'keyframes')
       // 批6: 重跑防孤儿（见 B 站支线同处注释）——先清整个 destDir 再写。

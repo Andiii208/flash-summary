@@ -10,6 +10,7 @@ import { migration008 } from './migrations/008_indexes'
 import { migration009 } from './migrations/009_bilibili_source'
 import { migration010 } from './migrations/010_obsidian_exports'
 import { migration011 } from './migrations/011_note_provenance'
+import { migration012 } from './migrations/012_lesson_cover'
 import type { Migration } from './migration-types'
 
 const MIGRATIONS: Migration[] = [
@@ -23,7 +24,8 @@ const MIGRATIONS: Migration[] = [
   { version: 8, name: 'growth_indexes', up: migration008.up },
   { version: 9, name: 'bilibili_source', up: migration009.up },
   { version: 10, name: 'obsidian_exports', up: migration010.up },
-  { version: 11, name: 'note_provenance', up: migration011.up }
+  { version: 11, name: 'note_provenance', up: migration011.up },
+  { version: 12, name: 'lesson_cover', up: migration012.up }
 ]
 
 /**

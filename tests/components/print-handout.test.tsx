@@ -5,6 +5,8 @@ import type { Note } from '../../src/shared/notes/schema'
 import type { AttachmentLike } from '../../src/shared/notes/evidence'
 
 const NOTE: Note = {
+  chapters: [],
+  quotes: [],
   overview: '本讲介绍复杂度分析。',
   knowledgeTree: { title: '复杂度', children: [{ title: 'O(n)', children: [] }] },
   timeline: [

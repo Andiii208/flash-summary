@@ -1,7 +1,9 @@
+import { Fragment } from 'preact'
 import type { JSX } from 'preact'
 import type { ConceptLink, Note, TreeNode } from '../../shared/notes/schema'
 import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
-import { bindTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime } from '../../shared/notes/evidence'
+import { allocateTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime } from '../../shared/notes/evidence'
+import { groupTimelineByChapters } from '../../shared/notes/chapters'
 import { computeMindMapLayout, sublineFirstBaseline, sublineLinesOf, titleBaseline } from '../../shared/notes/mindmap-layout'
 import { MdLite } from './MdLite'
 import { InlineText } from './InlineText'
@@ -37,6 +39,9 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
           <br />
           生成时间：{generatedAt}
         </div>
+        {note.tldr != null && note.tldr.trim() !== '' && (
+          <p class="ph-cover-tldr">{note.tldr.trim()}</p>
+        )}
         <div class="ph-cover-summary">
           <MdLite text={firstParagraph(note.overview)} />
         </div>
@@ -55,8 +60,42 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
       {note.timeline.length > 0 && (
         <section class="ph-section">
           <h2>时间线</h2>
-          {note.timeline.map((entry, i) => (
-            <PrintTimelineCard key={i} entry={entry} attachments={attachments} />
+          {/* 批 A5: 与屏幕端同一套跨条目贪心分配（allocateTimelineImages），PDF 与屏幕不漂移 */}
+          {/* B1: 按章分组——整份分配一次后按章插头（分配语义不因分组退化） */}
+          {(() => {
+            const allocated = allocateTimelineImages(note.timeline, attachments)
+            const firstEntryOfChapter = new Map<number, ReturnType<typeof groupTimelineByChapters>[number]['chapter']>()
+            for (const group of groupTimelineByChapters(note.timeline, note.chapters ?? [])) {
+              const first = group.entries[0]
+              if (group.chapter != null && first != null) firstEntryOfChapter.set(first.at, group.chapter)
+            }
+            return note.timeline.map((entry, i) => {
+              const chapter = firstEntryOfChapter.get(entry.at)
+              return (
+                <Fragment key={i}>
+                  {chapter != null && (
+                    <div class="ph-chapter">
+                      <span class="ph-chapter-at">{formatTime(chapter.at)}</span>
+                      <h3>{chapter.title}</h3>
+                      <p>{chapter.summary}</p>
+                    </div>
+                  )}
+                  <PrintTimelineCard entry={entry} images={allocated[i] ?? []} />
+                </Fragment>
+              )
+            })
+          })()}
+        </section>
+      )}
+
+      {(note.quotes ?? []).length > 0 && (
+        <section class="ph-section">
+          <h2>金句</h2>
+          {(note.quotes ?? []).map((q) => (
+            <blockquote key={`${q.at}:${q.text.slice(0, 12)}`} class="ph-quote">
+              <span class="ph-quote-at">{formatTime(q.at)}</span>
+              <p>「{q.text}」</p>
+            </blockquote>
           ))}
         </section>
       )}
@@ -187,8 +226,7 @@ function firstParagraph(text: string): string {
   return first.replace(/^#+\s*/m, '').trim()
 }
 
-function PrintTimelineCard({ entry, attachments }: { entry: Note['timeline'][number]; attachments: AttachmentLike[] }): JSX.Element {
-  const images: TimelineImage[] = bindTimelineImages(entry, attachments)
+function PrintTimelineCard({ entry, images }: { entry: Note['timeline'][number]; images: TimelineImage[] }): JSX.Element {
   const quote = quoteForEntry(entry)
   return (
     <article class="ph-timeline-card">

@@ -240,6 +240,8 @@ export interface NotesBridge {
     /** F4 (review): identity manifest — data arrives per ref via attachmentData. */
   attachments(lessonId: string): Promise<ApiResult<AttachmentManifestEntry[]>>
   attachmentData(lessonId: string, ref: string): Promise<ApiResult<NoteAttachmentInfo | null>>
+  /** 批 A2 (2026-09-19): 课时封面（B 站导入落盘）；无封面返回 ok(null)。 */
+  cover(lessonId: string): Promise<ApiResult<string | null>>
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */
   regenerate(
     lessonId: string
@@ -248,11 +250,17 @@ export interface NotesBridge {
       version: number
       images: number
       hitRate: { hits: number; total: number }
+      /** A1 (2026-09-19): false = 绑定模型无视觉能力，本次未发图（画面靠时间就近对齐）。 */
+      visionCapable?: boolean
+      /** A3 (2026-09-19): 本课时真实画面素材数（keyframes=0 = 断供）。 */
+      visualAssets?: { keyframes: number; ppt: number }
       /** 批1 (2026-09-17): 转写摘引可核验率；null/缺省 = 没有可判的摘引。 */
       transcriptHitRate?: { hits: number; total: number } | null
       droppedRefs?: number
       /** 批3 (2026-09-17): 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped?: Record<string, number>
+      /** B4 (plan 2026-09-19): at 超出转写范围被钳到上界的时间字段数（0 = 没外推）。 */
+      clampedTimes?: number
       /** 批3: 生成闭环结果（返修后体检 + 是否真返修过 + 返修前的 warn 数）。 */
       health?: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean; warnCountBeforeRepair: number | null }
     }>

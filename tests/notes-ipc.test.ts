@@ -261,7 +261,7 @@ describe('notes:regenerate (2026-09-04)', () => {
     db.prepare(
       "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
     ).run(JSON.stringify([{ at: 0, text: '转写' }]))
-    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'deepseek-chat')").run()
 
     const chatJson = vi.fn(async () => VALID_NOTE)
     const chatFor = vi.spyOn(ctx, 'chatFor')
@@ -277,6 +277,7 @@ describe('notes:regenerate (2026-09-04)', () => {
         transcriptHitRate: { hits: number; total: number } | null
         refStats: Record<string, number>
         droppedRefs: number
+        clampedTimes: number
       }
     }
     expect(res.ok).toBe(true)
@@ -290,18 +291,27 @@ describe('notes:regenerate (2026-09-04)', () => {
     // 体检结论照实报 weak。
     expect(res.value).toEqual({
       version: 1,
-      images: 1,
-      hitRate: { hits: 1, total: 1 },
+      // A1: 绑定模型 deepseek-chat 已知无视觉 → 不发图（mimo-v2.5 经用户 2026-09-20 订正为多模态，已撤下无视觉表）。
+      images: 0,
+      visionCapable: false,
+      // A1: 无视觉 → 发送集为空 → 该引用无从命中（0/1），UI 徽标隐藏。
+      hitRate: { hits: 0, total: 1 },
       transcriptHitRate: null,
       refStats: { total: 0, droppedAt: 0, clearedText: 0, quoted: 0, quotedVerified: 0, offNeighborhood: 0 },
       droppedRefs: 0,
+      // B4: ���6�p��9w�l���z��z � ���$ � 0
+      clampedTimes: 0,
+      // B2: 金句核验。这份具件没有金句 → 0/0。
+      quotesVerified: { total: 0, verified: 0 },
+      // A3: 素材数。这份具件 seedKeyframe 了 1 帧、无 PPT。
+      visualAssets: { keyframes: 1, ppt: 0 },
       // 批3: 归一层丢弃计数。这份夹具的 timeline evidence 是合法的 kf:kf-1，
       // 也没有 quiz/conceptLinks/terms，所以一项没丢。
       normalizationDropped: {},
       health: { warnCount: 5, grade: 'weak', repaired: false, warnCountBeforeRepair: null }
     })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
-    expect(row).toEqual({ version: 1, model: 'mimo-v2.5' })
+    expect(row).toEqual({ version: 1, model: 'deepseek-chat' })
   })
 
   it('批1: 转写带时间锚喂给模型，编造的摘引被清空、越界时间被丢弃', async () => {
@@ -428,7 +438,9 @@ describe('批3 生成质量闭环：有界返修（2026-09-17）', () => {
     db.prepare(
       "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
     ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
-    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'mimo-v2.5')").run()
+    // A1: gpt-4o 有视觉——保住本组「首稿发图 / 返修不发图」的对比语义。
+    // 无视觉模型的路径由下面 A1 专属用例覆盖。
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'gpt-4o')").run()
   }
 
   const THIN = JSON.stringify({
@@ -1151,5 +1163,97 @@ describe('notes:exportCourseObsidian (Obsidian 批2, plan 2026-09-08-obsidian-ex
     const res = (await invoke('notes:exportCourseObsidian', 'nope')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('课程不存在')
+  })
+})
+
+describe('notes:cover（批 A2, plan 2026-09-19-note-experience-overhaul）', () => {
+  it('missing lesson → ok(null)（合法无封面态，不是错误）', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:cover', 'smoke-none')) as { ok: boolean; value: string | null }
+    expect(res.ok).toBe(true)
+    expect(res.value).toBeNull()
+  })
+
+  it('reads lessons.cover_path as a data URL；文件丢失/列为空 → null', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const coverFile = join(dir, 'cover.jpg')
+    writeFileSync(coverFile, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 9, 9]))
+    db.prepare('UPDATE lessons SET cover_path = ? WHERE id = ?').run(coverFile, 'l1')
+    const hit = (await invoke('notes:cover', 'l1')) as { ok: boolean; value: string | null }
+    expect(hit.ok).toBe(true)
+    expect(hit.value).toBe(`data:image/jpeg;base64,${readFileSync(coverFile).toString('base64')}`)
+    rmSync(coverFile, { force: true })
+    const miss = (await invoke('notes:cover', 'l1')) as { ok: boolean; value: string | null }
+    expect(miss.value).toBeNull()
+    db.prepare('UPDATE lessons SET cover_path = NULL WHERE id = ?').run('l1')
+    const empty = (await invoke('notes:cover', 'l1')) as { ok: boolean; value: string | null }
+    expect(empty.value).toBeNull()
+  })
+})
+
+describe('A1 视觉能力匹配（plan 2026-09-19-note-experience-overhaul）', () => {
+  it('无视觉模型不发图：buildUserParts 无 image part，visionCapable=false', async () => {
+    const ctx = makeCtx()
+    seedKeyframe()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'deepseek-chat')").run()
+    const chatJson = vi.fn(async () => VALID_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { images: number; visionCapable: boolean } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.visionCapable).toBe(false)
+    expect(res.value?.images).toBe(0)
+    const messages = (chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>])[0]
+    const user = messages.find((m) => m.role === 'user')?.content
+    expect(Array.isArray(user)).toBe(true)
+    expect((user as Array<{ type: string }>).some((part) => part.type === 'image_url')).toBe(false)
+  })
+
+  it('有视觉模型照常发图', async () => {
+    {
+      const model = 'gpt-4o'
+      const ctx = makeCtx()
+      seedKeyframe()
+      db.prepare(
+        "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+      ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
+      db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', ?)").run(model)
+      const chatJson = vi.fn(async () => VALID_NOTE)
+      const chatFor = vi.spyOn(ctx, 'chatFor')
+      chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+      registerIpc(ctx, ipc as never)
+      const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { images: number; visionCapable: boolean } }
+      expect(res.value?.visionCapable).toBe(true)
+      expect(res.value?.images).toBe(1)
+      const messages = (chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>])[0]
+      const user = messages.find((m) => m.role === 'user')?.content
+      expect((user as Array<{ type: string }>).some((part) => part.type === 'image_url')).toBe(true)
+    }
+  })
+
+  it('未知模型保守发图（表外型号按现状逐字节不变）', async () => {
+    const model = 'some-unknown-vlm-9'
+    const ctx = makeCtx()
+    seedKeyframe()
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '本讲完整讲了梯度下降的收敛条件与学习率取值影响。' }]))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', ?)").run(model)
+    const chatJson = vi.fn(async () => VALID_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { images: number; visionCapable: boolean } }
+    expect(res.value?.visionCapable).toBe(true)
+    expect(res.value?.images).toBe(1)
+    const messages = (chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>])[0]
+    const user = messages.find((m) => m.role === 'user')?.content
+    expect((user as Array<{ type: string }>).some((part) => part.type === 'image_url')).toBe(true)
   })
 })

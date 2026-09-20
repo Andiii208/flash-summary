@@ -572,6 +572,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               attachmentManifest={state.attachmentManifest}
               getAttachment={state.getAttachment}
               attachmentVersion={state.attachmentVersion}
+              coverDataUrl={state.coverDataUrl}
               lesson={state.lessonContextOrIndex}
               lessonOptions={state.currentCourseLessons}
               currentLessonId={state.currentLesson}
@@ -584,7 +585,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onUpgradeCourse={state.openNoteUpgrade}
               onExportCourseObsidian={state.exportCourseObsidian}
               onGoTasks={goTasks}
-              prevLesson={state.lessonNeighbors.prev}
+prevLesson={state.lessonNeighbors.prev}
               nextLesson={state.lessonNeighbors.next}
               onNavigateLesson={state.openLessonNotes}
               regenBusy={state.noteRegenBusy}
@@ -1000,7 +1001,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     [bridge, toast]
   )
 
-  const copyReport = useCallback((): void => {
+  
+const copyReport = useCallback((): void => {
     void navigator.clipboard
       .writeText(reportText)
       .then(() => toast('诊断信息已复制，粘贴到反馈表即可', 'success'))
@@ -1474,8 +1476,8 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
       if (c.lessons.some((l) => l.id === currentLesson)) return c
     }
     return null
-  }, [tree, currentLesson])
-  const currentCourseLessons = useMemo<LessonChipLesson[]>(
+  }, [tree, currentLesson])  
+const currentCourseLessons = useMemo<LessonChipLesson[]>(
     () => (currentCourse?.lessons ?? []).map((l) => ({ id: l.id, title: l.title, hasNote: l.hasNote })),
     [currentCourse]
   )
@@ -1793,9 +1795,9 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     libraryMigrated,
     migrationProgress,
     chooseLibrary,
-    openPath,
-    acceptDisclaimer,
     libraryBackupBusy,
-    exportLibraryBackup
+    exportLibraryBackup,
+    openPath,
+    acceptDisclaimer
   }
 }

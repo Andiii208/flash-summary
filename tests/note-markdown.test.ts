@@ -87,3 +87,43 @@ describe('outline concept annotations (M2.1, 2026-09-05)', () => {
     expect(noteToMarkdown(note, '第五讲 极限')).toContain('  - 定义\n')
   })
 })
+
+describe('B3 tldr（plan 2026-09-19）', () => {
+  it('导出物标题之后、概览之前是一行引用', () => {
+    const note = { ...parseNote(json), tldr: '一句话：这讲把极限从直观推进到严格定义。' }
+    const md = noteToMarkdown(note, '第五讲 极限')
+    const lines = md.split('\n')
+    const titleIdx = lines.indexOf('# 第五讲 极限')
+    expect(titleIdx).toBeGreaterThanOrEqual(0)
+    expect(lines[titleIdx + 2]).toBe('> 一句话：这讲把极限从直观推进到严格定义。')
+  })
+
+  it('无 tldr → 不插引用行（旧笔记导出逐字节不变）', () => {
+    const md = noteToMarkdown(parseNote(json), '第五讲 极限')
+    expect(md.split('\n').filter((l) => l.startsWith('> '))).toHaveLength(0)
+  })
+})
+
+describe('B1 章节速览（plan 2026-09-19）', () => {
+  it('时间线之前有「章节速览」小节；无章节不出现', () => {
+    // 走完整 parse（spread 会绕过归一层，at 会留着字符串）。
+    const note = parseNote(JSON.stringify({ ...JSON.parse(json), chapters: [{ at: '12:34', title: '定义章', summary: '讲极限定义' }] }))
+    const md = noteToMarkdown(note, '第五讲 极限')
+    expect(md).toContain('## 章节速览')
+    expect(md).toContain('- [12:34] 定义章：讲极限定义')
+    expect(md.indexOf('## 章节速览')).toBeLessThan(md.indexOf('## 时间线'))
+    const bare = noteToMarkdown(parseNote(json), '第五讲 极限')
+    expect(bare).not.toContain('## 章节速览')
+  })
+})
+
+describe('B2 金句导出（plan 2026-09-19）', () => {
+  it('概念之前有「## 金句」引用行；无则不出现', () => {
+    const note = parseNote(JSON.stringify({ ...JSON.parse(json), quotes: [{ at: '05:00', text: '极限是一种态度' }] }))
+    const md = noteToMarkdown(note, '第五讲 极限')
+    expect(md).toContain('## 金句')
+    expect(md).toContain('> [05:00] 「极限是一种态度」')
+    expect(md.indexOf('## 金句')).toBeLessThan(md.indexOf('## 概念'))
+    expect(noteToMarkdown(parseNote(json), '第五讲 极限')).not.toContain('## 金句')
+  })
+})

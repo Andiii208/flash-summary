@@ -79,6 +79,15 @@
   color: #5a616e;
   line-height: 1.9;
 }
+/* B3: 封面的一句话总结——预览价值的数据位，先于概览摘要。
+   排版纪律：用封面已有的字阶与颜色，不新增第三种字体/装饰。 */
+.ph-cover-tldr {
+  font-family: var(--font-display, serif);
+  font-size: 13pt;
+  line-height: 1.7;
+  color: #23272f;
+  margin: 0 0 6mm;
+}
 .ph-cover-summary {
   font-size: 11pt;
   color: #3f4551;
@@ -88,6 +97,46 @@
   border-radius: 0 3mm 3mm 0;
 }
 
+
+/* B2 (plan 2026-09-19): PDF 金句 pull-quote。 */
+.ph-quote {
+  margin: 0 0 4mm;
+  padding-left: 5mm;
+  border-left: 2pt solid #b08d2e;
+  break-inside: avoid;
+}
+.ph-quote-at {
+  font-family: monospace;
+  font-size: 9pt;
+  color: #8a6d1f;
+}
+.ph-quote p {
+  margin: 1mm 0 0;
+  font-size: 11pt;
+  line-height: 1.8;
+}
+/* B1 (plan 2026-09-19): PDF 时间线章节头——纸面同样按章分组。 */
+.ph-chapter {
+  margin: 8mm 0 3mm;
+  padding-bottom: 2mm;
+  border-bottom: 1px solid #d9dde5;
+  break-inside: avoid;
+  break-after: avoid;
+}
+.ph-chapter-at {
+  font-family: monospace;
+  font-size: 9pt;
+  color: #8a6d1f;
+}
+.ph-chapter h3 {
+  margin: 1mm 0;
+  font-size: 12pt;
+}
+.ph-chapter p {
+  margin: 0;
+  font-size: 10pt;
+  color: #3f4551;
+}
 /* ---- sections ---- */
 .ph-section {
   margin-top: 10mm;

@@ -3,9 +3,12 @@
  * onto the lesson's real attachments. Pure functions, shared by the
  * renderer and the PDF handout.
  *
- * Alignment strategy — three layers, degrade gracefully:
+ * Alignment strategy — degrade gracefully (批 A5, plan 2026-09-19: the
+ * per-entry 90s sieve became a cross-entry greedy 1:1 allocation):
  *   1. exact ref match (`ppt:<page>` / `kf:<id>`) on the entry's evidence;
- *   2. timeline fallback: nearest keyframe by timestamp (≤ NEAREST_SECONDS);
+ *   2. timeline allocation: greedy one-to-one pairing of the remaining
+ *      entries with the uncited frames by |Δat| (adaptive tolerance, see
+ *      {@link allocateTimelineImages});
  *   3. no attachment at all — the card renders text-only.
  */
 import type { EvidenceRef, Note, TranscriptRef } from './schema'
@@ -21,8 +24,9 @@ export interface AttachmentLike {
   dataUrl: string
 }
 
-/** Max |timeline.at − keyframe.at| for the nearest-keyframe fallback. */
-export const NEAREST_SECONDS = 90
+/** 批 A5：跨条目分配的容差上下界（唯一事实源， nearestKeyframe 与分配器共用下界）。 */
+export const ALLOCATION_MIN_TOLERANCE_SECONDS = 120
+export const ALLOCATION_MAX_TOLERANCE_SECONDS = 600
 
 /** Images bound to one timeline entry, in display order. */
 export interface TimelineImage {
@@ -37,32 +41,19 @@ function refIndex(attachments: AttachmentLike[]): Map<string, AttachmentLike> {
   return new Map(attachments.map((a) => [a.ref, a]))
 }
 
-/** Images for a single timeline entry (evidence refs first, then nearest fallback). */
+/** Images for a single timeline entry (evidence refs first, then nearest fallback).
+ *  批 A5 起委派给跨条目分配器的单条目形态（同一套判据，不再维护两份实现）。 */
 export function bindTimelineImages(
   entry: { at: number; evidence: EvidenceRef[] },
   attachments: AttachmentLike[]
 ): TimelineImage[] {
-  const byRef = refIndex(attachments)
-  const bound: TimelineImage[] = []
-  const seen = new Set<string>()
-  for (const evidence of entry.evidence) {
-    const hit = byRef.get(evidence.ref)
-    if (hit != null && !seen.has(hit.ref)) {
-      seen.add(hit.ref)
-      bound.push({ ref: hit.ref, dataUrl: hit.dataUrl, origin: 'evidence' })
-    }
-  }
-  if (bound.length === 0) {
-    const nearest = nearestKeyframe(entry.at, attachments)
-    if (nearest != null) bound.push({ ref: nearest.ref, dataUrl: nearest.dataUrl, origin: 'nearest' })
-  }
-  return bound
+  return allocateTimelineImages([entry], attachments)[0] ?? []
 }
 
-/** Nearest keyframe within NEAREST_SECONDS of the given timestamp. */
+/** Closest keyframe by |Δ|, keyframes only, within the allocation floor. */
 export function nearestKeyframe(at: number, attachments: AttachmentLike[]): AttachmentLike | null {
   let best: AttachmentLike | null = null
-  let bestDelta = NEAREST_SECONDS + 1
+  let bestDelta = ALLOCATION_MIN_TOLERANCE_SECONDS + 1
   for (const a of attachments) {
     if (a.kind !== 'keyframe' || a.at == null) continue
     const delta = Math.abs(a.at - at)
@@ -79,46 +70,158 @@ export function nearestKeyframe(at: number, attachments: AttachmentLike[]): Atta
 export interface AttachmentManifestEntry {
   ref: string
   at: number | null
+  /** A6: 感知哈希（keyframes.hash）——图集按它折叠近重复帧。 */
+  hash?: string
 }
 
 /** A lazy lookup the renderer supplies: undefined = still loading, null = resolved missing. */
 export type AttachmentGetter = (ref: string) => AttachmentLike | null | undefined
 
-/**
- * F4 (review): lazy variants of the two binders above. Evidence-first,
- * nearest-fallback semantics are preserved, but unresolved images are
- * skipped instead of blocking — they pop in when their data arrives.
- */
-function nearestFromManifest(entryAt: number, manifest: ReadonlyArray<AttachmentManifestEntry>): string | null {
-  let best: { ref: string; delta: number } | null = null
-  for (const entry of manifest) {
-    if (entry.at == null) continue
-    const delta = Math.abs(entry.at - entryAt)
-    const limit = best?.delta ?? NEAREST_SECONDS + 1
-    if (delta < limit) best = { ref: entry.ref, delta }
-  }
-  return best?.ref ?? null
+/* ------------------------------------------------------------------ *
+ * 批 A5（plan 2026-09-19-note-experience-overhaul）：跨条目贪心一对一分配。
+ *
+ * 旧机制是「每条目各自找 90s 内最近的帧」——帧距 >180s 时大面积落空。真实库实测
+ * （2026-09-19，scripts/note-visual-audit.ts）：73.8 分钟视频 18 帧 18 条时间线，
+ * 配图率只有 5/18=28%，因为 90s 是**筛子**而不是**分配器**。本模块把决策单位从
+ * 「条目」换成「整份时间线」：
+ *   1. evidence 精确引用照旧逐条绑定（显式主张优先级最高；被任一条目引用过的帧
+ *      退出分配池，但多个条目引用同一帧仍各自显示——引用语义与旧行为一致）；
+ *   2. 其余条目与剩余帧按 |Δat| **全局升序贪心配对**：每帧至多配一条、每条至多
+ *      配一帧（18↔18 全部配上，稀缺帧优先给离得最近的那条）；
+ *   3. 容差自适应 = clamp(2×帧距中位数, 120s, 600s)——帧稀时容差放宽，但承认
+ *      配不上时（>600s）宁可文字卡，不把远处的帧说成「临近画面」。
+ *
+ * 分配是纯函数（只吃 ref/at），渲染层与 PDF 共用同一套判据：两个包装器分别服务
+ * 懒加载（renderer）与已解析附件（PDF），判定不分化就不会漂移。
+ * ------------------------------------------------------------------ */
+
+interface FrameCandidate {
+  ref: string
+  at: number
 }
 
-export function bindTimelineImagesLazy(
-  entry: { at: number; evidence: EvidenceRef[] },
+/** 帧距中位数（排序后取中位；单帧无距 → 0）。 */
+function medianFrameGap(frames: ReadonlyArray<FrameCandidate>): number {
+  const times = frames.map((f) => f.at).sort((a, b) => a - b)
+  if (times.length < 2) return 0
+  const gaps: number[] = []
+  for (let i = 1; i < times.length; i++) gaps.push(times[i] - times[i - 1])
+  gaps.sort((a, b) => a - b)
+  const mid = gaps.length >> 1
+  return gaps.length % 2 === 1 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2
+}
+
+function allocationTolerance(frames: ReadonlyArray<FrameCandidate>): number {
+  return Math.min(
+    ALLOCATION_MAX_TOLERANCE_SECONDS,
+    Math.max(ALLOCATION_MIN_TOLERANCE_SECONDS, 2 * medianFrameGap(frames))
+  )
+}
+
+interface PlannedBinding {
+  entryIndex: number
+  ref: string
+  origin: 'evidence' | 'nearest'
+}
+
+/**
+ * 分配计划（纯函数）：evidence 绑定 + 贪心一对一配对。`usable` 谓词区分两个包装器
+ * 的「能否渲染」判定（附件已解析 / 懒加载是否到位），分配逻辑只有一份。
+ */
+function planAllocation(
+  entries: ReadonlyArray<{ at: number; evidence: EvidenceRef[] }>,
+  frames: ReadonlyArray<FrameCandidate>,
+  usable: (ref: string) => boolean
+): PlannedBinding[] {
+  const frameRefs = new Set(frames.map((f) => f.ref))
+  const plan: PlannedBinding[] = []
+  const citedRefs = new Set<string>()
+
+  // Pass 1: evidence 精确引用——逐条、按 note 序、条目内去重；不解析的引用不算绑定。
+  entries.forEach((entry, entryIndex) => {
+    const seen = new Set<string>()
+    for (const evidence of entry.evidence) {
+      if (!frameRefs.has(evidence.ref) || !usable(evidence.ref) || seen.has(evidence.ref)) continue
+      seen.add(evidence.ref)
+      citedRefs.add(evidence.ref)
+      plan.push({ entryIndex, ref: evidence.ref, origin: 'evidence' })
+    }
+  })
+
+  // Pass 2: 无 evidence 图像的条目 × 未被引用且可渲染的帧，按 |Δat| 全局升序贪心。
+  const satisfies = new Set<number>()
+  for (const binding of plan) satisfies.add(binding.entryIndex)
+  const citedRefsUsed = new Set<string>(citedRefs)
+  const tolerance = allocationTolerance(frames)
+  const pairs: Array<{ delta: number; entryIndex: number; ref: string }> = []
+  entries.forEach((entry, entryIndex) => {
+    if (satisfies.has(entryIndex)) return
+    for (const frame of frames) {
+      if (citedRefsUsed.has(frame.ref) || !usable(frame.ref)) continue
+      const delta = Math.abs(entry.at - frame.at)
+      if (delta <= tolerance) pairs.push({ delta, entryIndex, ref: frame.ref })
+    }
+  })
+  pairs.sort((a, b) => a.delta - b.delta || a.entryIndex - b.entryIndex || (a.ref < b.ref ? -1 : 1))
+  for (const pair of pairs) {
+    // 帧一旦被更近的条目拿走就不再可用；条目已满足也跳过——一对一的两边守卫。
+    if (satisfies.has(pair.entryIndex) || citedRefsUsed.has(pair.ref)) continue
+    citedRefsUsed.add(pair.ref)
+    satisfies.add(pair.entryIndex)
+    plan.push({ entryIndex: pair.entryIndex, ref: pair.ref, origin: 'nearest' })
+  }
+  return plan
+}
+
+/** 把分配计划归集成「每条目一组图」（顺序即输入顺序）。 */
+function collectPlan(
+  plan: ReadonlyArray<PlannedBinding>,
+  count: number,
+  materialize: (ref: string) => { ref: string; dataUrl: string } | null
+): TimelineImage[][] {
+  const out: TimelineImage[][] = Array.from({ length: count }, () => [])
+  for (const binding of plan) {
+    const image = materialize(binding.ref)
+    if (image == null) continue
+    out[binding.entryIndex].push({ ...image, origin: binding.origin })
+  }
+  return out
+}
+
+/** 跨条目分配（已解析附件）——PDF 讲义与单条目兼容入口共用。 */
+export function allocateTimelineImages(
+  entries: ReadonlyArray<{ at: number; evidence: EvidenceRef[] }>,
+  attachments: AttachmentLike[]
+): TimelineImage[][] {
+  const byRef = refIndex(attachments)
+  const frames: FrameCandidate[] = attachments
+    .filter((a): a is AttachmentLike & { at: number } => a.at != null)
+    .map((a) => ({ ref: a.ref, at: a.at }))
+  const plan = planAllocation(entries, frames, (ref) => byRef.has(ref))
+  return collectPlan(plan, entries.length, (ref) => {
+    const hit = byRef.get(ref)
+    return hit == null ? null : { ref: hit.ref, dataUrl: hit.dataUrl }
+  })
+}
+
+/**
+ * 跨条目分配（懒加载）——renderer 的时间线卡片用。`get(ref)` 返回 undefined（还在
+ * 加载）时该帧本轮不参与分配；附件解析完成后 version bump 会重算，最终态与
+ * 「附件已解析」形态一致。判定与 {@link allocateTimelineImages} 同一份 planAllocation。
+ */
+export function allocateTimelineImagesLazy(
+  entries: ReadonlyArray<{ at: number; evidence: EvidenceRef[] }>,
   get: AttachmentGetter,
   manifest: ReadonlyArray<AttachmentManifestEntry>
-): TimelineImage[] {
-  const bound: TimelineImage[] = []
-  const seen = new Set<string>()
-  for (const evidence of entry.evidence) {
-    const hit = get(evidence.ref)
-    if (hit == null || seen.has(hit.ref)) continue
-    seen.add(hit.ref)
-    bound.push({ ref: hit.ref, dataUrl: hit.dataUrl, origin: 'evidence' })
-  }
-  if (bound.length === 0) {
-    const nearestRef = nearestFromManifest(entry.at, manifest)
-    const nearest = nearestRef != null ? get(nearestRef) : null
-    if (nearest != null) bound.push({ ref: nearest.ref, dataUrl: nearest.dataUrl, origin: 'nearest' })
-  }
-  return bound
+): TimelineImage[][] {
+  const frames: FrameCandidate[] = manifest
+    .filter((m): m is AttachmentManifestEntry & { at: number } => m.at != null)
+    .map((m) => ({ ref: m.ref, at: m.at }))
+  const plan = planAllocation(entries, frames, (ref) => get(ref) != null)
+  return collectPlan(plan, entries.length, (ref) => {
+    const hit = get(ref)
+    return hit == null ? null : { ref: hit.ref, dataUrl: hit.dataUrl }
+  })
 }
 
 export function resolveEvidenceGalleryLazy(

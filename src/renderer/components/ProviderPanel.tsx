@@ -1,7 +1,9 @@
+import { Fragment } from 'preact'
 import { useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { ProvidersListResult } from '../../shared/bridge'
 import { EmptyState } from './EmptyState'
+import { modelHasVision } from '../../shared/model-vision'
 import { Dialog } from '../ui/Dialog'
 
 const CAPABILITY_LABELS: Record<string, string> = { asr: 'ASR 转写', multimodal: '多模态总结', text: '文本问答' }
@@ -15,7 +17,8 @@ const CAPABILITY_NOTES: ReadonlyArray<{ id: string; role: string }> = [
   { id: 'text', role: '在「追问」页回答提问' }
 ]
 
-/** M3 批 D: 常见 Provider 预设——选一个自动填三件套，仍可手改。 */
+/** M3 批 D: 常见 Provider 预设——选一个自动填三件套，仍可手改。
+ * A1 (plan 2026-09-19): 预设里 2/4 是已知纯文本模型（deepseek-chat / Qwen2.5-7B），绑给「多模态」会白烧图片（甚至静默重发翻倍耗时）。在「用户正在做选择的位置」放事实。 * 2026-09-20 订正：小米 MiMo（mimo-v2.5）经用户核实是多模态，撤下无视觉标注。 */
 const PROVIDER_PRESETS: Array<{ label: string; name: string; baseUrl: string; model: string }> = [
   { label: 'OpenAI', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
   { label: 'DeepSeek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
@@ -87,9 +90,15 @@ function ProviderRowView({ provider, bindings, onEdit, onDelete }: ProviderRowPr
           {bound.length === 0
             ? '未绑定能力'
             : bound.map((b) => (
-                <span key={b.capability} class="badge" title={`${CAPABILITY_LABELS[b.capability] ?? b.capability} 绑定的模型`}>
+                <Fragment key={b.capability}>
+                <span class="badge" title={`${CAPABILITY_LABELS[b.capability] ?? b.capability} 绑定的模型`}>
                   {CAPABILITY_LABELS[b.capability] ?? b.capability}: {b.model}
                 </span>
+                {/* A1: 多模态绑定的是纯文本模型时说清楚——否则生成时图片被静默丢弃或造成整段重发。 */}
+                {b.capability === 'multimodal' && modelHasVision(b.model) === false && (
+                  <span class="badge warn" title="该模型无视觉能力：笔记生成不会收到屏幕截图，画面靠时间就近对齐">无视觉</span>
+                )}
+                </Fragment>
               ))}
         </span>
       </div>
@@ -135,6 +144,7 @@ function ProviderForm(p: ProviderFormProps): JSX.Element {
         {PROVIDER_PRESETS.map((preset) => (
           <option key={preset.label} value={preset.label}>
             {preset.label}
+            {modelHasVision(preset.model) === false ? '（无视觉）' : ''}
           </option>
         ))}
       </select>

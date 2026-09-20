@@ -20,14 +20,14 @@ afterEach(() => {
 
 describe('migrations', () => {
   it('applies all migrations on a fresh database', () => {
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
   })
 
   it('is idempotent when reopened', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
   })
 
   it('applies only pending migrations on an upgraded database', () => {
@@ -35,7 +35,7 @@ describe('migrations', () => {
     const file = join(dir, 'app.db')
     db.close()
     db = openDatabase(file)
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
   })
 
   it('adds play-page reference columns (006)', () => {
@@ -181,6 +181,14 @@ describe('artifacts and history', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM transcripts').get()).toEqual({ n: 1 })
     expect(db.prepare('SELECT COUNT(*) AS n FROM ppt_pages').get()).toEqual({ n: 1 })
     expect(db.prepare('SELECT COUNT(*) AS n FROM keyframes').get()).toEqual({ n: 1 })
+  })
+
+  it('migration 012: lessons.cover_path exists, nullable, no default', () => {
+    const cols = db.prepare("PRAGMA table_info(lessons)").all() as Array<{ name: string; notnull: number; dflt_value: string | null }>
+    const cover = cols.find((c) => c.name === 'cover_path')
+    expect(cover).toBeDefined()
+    expect(cover?.notnull).toBe(0)
+    expect(cover?.dflt_value).toBeNull()
   })
 
   it('keeps note versions unique per lesson', () => {

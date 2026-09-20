@@ -122,3 +122,21 @@ describe('POLISH_SYSTEM_PROMPT 质量同步 (批1 2026-09-08)', () => {
     expect(POLISH_SYSTEM_PROMPT).toContain('保持原样')
   })
 })
+
+describe('B3 9.12 tldr（plan 2026-09-19）', () => {
+  it('一句话总结：≤80 字、具体结论、宁空勿编', () => {
+    expect(NOTE_QUALITY_PROMPT).toContain('9.12')
+    expect(NOTE_QUALITY_PROMPT).toContain('80')
+    expect(NOTE_QUALITY_PROMPT).toContain('省略该字段')
+    // NOTE_SHAPE_PROMPT 是模块私有；SYSTEM_PROMPT = 形状 + 质量，已含形状串。
+    expect(SYSTEM_PROMPT).toContain('{overview, tldr,')
+  })
+})
+
+describe('B3/B1/B2/B4 prompt 条款汇总（plan 2026-09-19）', () => {
+  it('形状串含 tldr/quotes/chapters；9.12/9.13/9.14 在位', () => {
+    expect(SYSTEM_PROMPT).toContain('{overview, tldr, quotes:[{at,text}],chapters:[{at,title,summary}],')
+    for (const clause of ['9.12', '9.13', '9.14']) expect(NOTE_QUALITY_PROMPT).toContain(clause)
+    expect(NOTE_QUALITY_PROMPT).toContain('不得改写')
+  })
+})

@@ -97,14 +97,56 @@ function bestWindowSimilarity(quote: string, joined: string): number {
   return best
 }
 
-/** 真实转写的时间范围：`at` 的上下界，上界放宽一个时间窗（末段覆盖的时长）。 */
-function transcriptRange(segments: ReadonlyArray<CleanSegment>): { max: number } | null {
+/**
+ * 真实转写的时间范围：`at` 的上下界，上界放宽一个时间窗（末段覆盖的时长）。
+ * 导出供 B4 的时间钳制复用——「refs 的 at 越界」与「timeline 自身的 at 越界」
+ * 必须是同一个范围判据，复制一份就会漂移。
+ */
+export function transcriptRange(segments: ReadonlyArray<CleanSegment>): { max: number } | null {
   let max = Number.NEGATIVE_INFINITY
   for (const segment of segments) {
     if (segment.at != null && segment.at > max) max = segment.at
   }
   if (max === Number.NEGATIVE_INFINITY) return null
   return { max: max + TIME_WINDOW_SECONDS }
+}
+
+export interface TimeClampResult {
+  note: Note
+  /** 被钳到范围上界的时间字段数量（timeline.at / transcriptRefs.at）。 */
+  clamped: number
+}
+
+/**
+ * B4（plan 2026-09-19-note-experience-overhaul）：把超出转写范围的 `at` 钳到上界。
+ *
+ * 起因（2026-09-19 真实库实测）：B 站 73.8 分钟视频的笔记里 5/18 条时间线的 at
+ * 达到 5002–7201 秒——超出视频本体最多 62 分钟。模型拿 [mm:ss] 锚点却仍然外推，
+ * 而 `verifyNoteRefs` 只核 refs 的 at，从不核 timeline 自身的 at。
+ *
+ * 取**钳制而非丢弃**：条目的文字内容仍可能对应真实讲解（字幕没覆盖全视频时模型
+ * 只能外推时间），删条目是信息损失；钳到「最后一个有时锚的时刻」保留内容、修正
+ * 位置，并把数量如实报出（体检/toast 的输入）。宁缺勿编的纪律由 `clamped` 计数
+ * 兑现——系统不假装这些时间是准的。
+ */
+export function clampNoteTimes(note: Note, segments: ReadonlyArray<CleanSegment>): TimeClampResult {
+  const range = transcriptRange(segments)
+  if (range == null) return { note, clamped: 0 }
+  let clamped = 0
+  const fix = <T extends { at: number }>(entry: T): T => {
+    if (entry.at <= range.max) return entry
+    clamped += 1
+    return { ...entry, at: range.max }
+  }
+  return {
+    note: {
+      ...note,
+      timeline: note.timeline.map(fix),
+      transcriptRefs: note.transcriptRefs.map(fix),
+      quotes: (note.quotes ?? []).map(fix)
+    },
+    clamped
+  }
 }
 
 function verifyRefs(
@@ -149,6 +191,25 @@ function verifyRefs(
  * `segments` 必须是**清洗后**的分片（上游真正喂给模型的那一份），否则模型摘引的
  * 是我们没给过它的原文。
  */
+/**
+ * B2: 允许对任意 ref 数组（quotes）复用同一套核验判定——范围/摘引匹配不能有第二套。
+ */
+export function verifyTranscriptRefs(
+  refs: TranscriptRef[],
+  segments: ReadonlyArray<CleanSegment>,
+  options: RefVerifyOptions = {}
+): { refs: TranscriptRef[]; stats: Pick<RefVerifyStats, 'total' | 'droppedAt' | 'clearedText' | 'quoted' | 'quotedVerified'> } {
+  const resolved: Required<RefVerifyOptions> = {
+    neighborhoodSeconds: options.neighborhoodSeconds ?? REF_NEIGHBORHOOD_SECONDS,
+    minQuoteSimilarity: options.minQuoteSimilarity ?? MIN_QUOTE_SIMILARITY
+  }
+  const stats: RefVerifyStats = { total: 0, droppedAt: 0, clearedText: 0, quoted: 0, quotedVerified: 0, offNeighborhood: 0 }
+  const range = transcriptRange(segments)
+  const kept = verifyRefs(refs, segments, range, null, stats, resolved)
+  const { total, droppedAt, clearedText, quoted, quotedVerified } = stats
+  return { refs: kept, stats: { total, droppedAt, clearedText, quoted, quotedVerified } }
+}
+
 export function verifyNoteRefs(
   note: Note,
   segments: ReadonlyArray<CleanSegment>,

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { projectObsidianNote, projectConceptIndex, projectVaultIndex, tagSafe, type ObsidianMeta } from '../src/shared/notes/obsidian'
-import { parseNote } from '../src/shared/notes/schema'
+import { parseNote, type Note } from '../src/shared/notes/schema'
 
 const meta: ObsidianMeta = {
   course: '信号与系统',
@@ -170,5 +170,39 @@ describe('projectConceptIndex / projectVaultIndex (批2)', () => {
     expect(md).toContain('- [[信号与系统]]（3 课时）')
     expect(md).toContain('- [[Python语言设计]]（1 课时）')
     expect(projectVaultIndex([])).not.toContain('## 课程')
+  })
+})
+
+describe('B3 tldr（plan 2026-09-19）', () => {
+  it('概览小节之前是一行引用', () => {
+    const withTldr = { ...RICH, tldr: '一句话：傅里叶级数把周期信号拆成正弦波的叠加。' }
+    const md = projectObsidianNote(withTldr, { ...meta, version: 4 }).markdown
+    const lines = md.split('\n')
+    const overviewIdx = lines.indexOf('## 概览')
+    expect(overviewIdx).toBeGreaterThan(0)
+    expect(lines[overviewIdx - 2]).toBe('> 一句话：傅里叶级数把周期信号拆成正弦波的叠加。')
+  })
+})
+
+describe('B1 章节清单（plan 2026-09-19）', () => {
+  it('时间线之前有「章节」小节；无章节不出现', () => {
+    const withChapters: Note = { ...RICH, chapters: [{ at: 120, title: '级数展开', summary: '从傅里叶级数出发' }] }
+    const md = projectObsidianNote(withChapters, { ...meta, version: 5 }).markdown
+    expect(md).toContain('## 章节')
+    expect(md).toContain('- 02:00 **级数展开** — 从傅里叶级数出发')
+    expect(md.indexOf('## 章节')).toBeLessThan(md.indexOf('## 时间线'))
+    const bare = projectObsidianNote(RICH, { ...meta, version: 5 }).markdown
+    expect(bare).not.toContain('## 章节')
+  })
+})
+
+describe('B2 金句投影（plan 2026-09-19）', () => {
+  it('概念之前有「## 金句」清单；无则不出现', () => {
+    const withQuotes: Note = { ...RICH, quotes: [{ at: 300, text: '级数是离散的礼物' }] }
+    const md = projectObsidianNote(withQuotes, { ...meta, version: 6 }).markdown
+    expect(md).toContain('## 金句')
+    expect(md).toContain('- 05:00 「级数是离散的礼物」')
+    expect(md.indexOf('## 金句')).toBeLessThan(md.indexOf('## 概念'))
+    expect(projectObsidianNote(RICH, { ...meta, version: 6 }).markdown).not.toContain('## 金句')
   })
 })
