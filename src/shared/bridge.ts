@@ -5,7 +5,7 @@
  */
 import type { ApiResult } from './api-result'
 import type { SessionStateValue } from './types'
-import type { TreeNode } from './notes/schema'
+import type { Note, TreeNode } from './notes/schema'
 
 export interface CourseSummaryInfo {
   id: string
@@ -216,8 +216,24 @@ export interface QaRecentInfo {
   lessonTitle: string | null
 }
 
+/**
+ * 批2 (plan 2026-09-20, P7): `notes:latest` 取到笔记时的返回。
+ * 两支形态只有「null（还没笔记）」与「{note, transcriptHitRate}」，没有第三形态。
+ */
+export interface LatestNoteResult {
+  note: Note
+  /** 转写摘引命中率；null = 没有可判的摘引（徽标隐藏，不是除零）。 */
+  transcriptHitRate: { hits: number; total: number } | null
+}
+
 export interface NotesBridge {
-  latest(lessonId: string): Promise<ApiResult<unknown>>
+  /**
+   * 批2 (plan 2026-09-20, P7): 取到笔记时**带上转写摘引命中率**——这条指标只有
+   * main 侧算得出来（渲染层没有转写），带出来之后查看器徽标与升级列表
+   * （`courseHealth`）用的是同一个 `noteHealth` 口径，不再出现「查看器说良好、
+   * 升级列表说待改进」。无笔记时仍是 `ok(null)`（早退不动）。
+   */
+  latest(lessonId: string): Promise<ApiResult<LatestNoteResult | null>>
   /** 批B: every generated note across lessons (library list, newest first).
    *  批C: 分页 + 关键词（只匹配列表可见字段，见 main 侧注释）。 */
   list(query?: ListPageQuery & { keyword?: string }): Promise<ApiResult<ListPage<NoteIndexInfo>>>

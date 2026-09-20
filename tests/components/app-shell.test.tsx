@@ -278,19 +278,24 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   it('brand home click drops the stale note: notes tab shows the empty state, not the old lesson (2026-09-05)', async () => {
     const bridge = makeBridge()
+    // 批2 (plan 2026-09-20, P7): notes:latest 取到笔记时是 { note, transcriptHitRate }
+    // 两支形态——裸 Note 会让 loadNote 解包出 undefined，本用例的笔记页永不出现。
     ;(bridge.notes.latest as ReturnType<typeof vi.fn>).mockResolvedValue(
       ok({
-        overview: '旧笔记概览',
-        knowledgeTree: { title: '旧课', children: [] },
-        timeline: [{ at: 10, title: '旧时间线', detail: 'x', refs: [], evidence: [] }],
-        concepts: [],
-        formulasAndSteps: [],
-        methodology: '',
-        examCues: [],
-        questionsAndGaps: [],
-        quiz: [],
-        transcriptRefs: [],
-        evidence: []
+        note: {
+          overview: '旧笔记概览',
+          knowledgeTree: { title: '旧课', children: [] },
+          timeline: [{ at: 10, title: '旧时间线', detail: 'x', refs: [], evidence: [] }],
+          concepts: [],
+          formulasAndSteps: [],
+          methodology: '',
+          examCues: [],
+          questionsAndGaps: [],
+          quiz: [],
+          transcriptRefs: [],
+          evidence: []
+        },
+        transcriptHitRate: null
       })
     )
     fakeState.courses = [

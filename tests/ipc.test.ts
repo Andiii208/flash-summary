@@ -631,8 +631,15 @@ describe('ipc handlers over a real context', () => {
     db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-08-30T00:00:00Z')").run(
       JSON.stringify(note)
     )
-    const latest = (await ipc.invoke('notes:latest', 'l1')) as { ok: boolean; value?: { overview: string } }
-    expect(latest.value?.overview).toBe('概览')
+    // 批2 (plan 2026-09-20, P7): 取到笔记时返回 { note, transcriptHitRate }——
+    // 无笔记仍是 ok(null)（上面的早退不变），有笔记时多带一条 main 侧算的命中率。
+    const latest = (await ipc.invoke('notes:latest', 'l1')) as {
+      ok: boolean
+      value?: { note: { overview: string }; transcriptHitRate: { hits: number; total: number } | null }
+    }
+    expect(latest.value?.note?.overview).toBe('概览')
+    // 本用例没有转写 → 无从判断，命中率为 null（不是 0/0 的假指标）。
+    expect(latest.value?.transcriptHitRate).toBeNull()
   })
 
   it('qa:ask fails gracefully without a bound capability', async () => {

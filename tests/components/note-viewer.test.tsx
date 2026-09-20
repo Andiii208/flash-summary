@@ -922,3 +922,68 @@ describe('批2 (plan 2026-09-20, P2): 体检面板的「按体检结果补全」
     expect(regenerate.disabled).toBe(true)
   })
 })
+
+describe('批2 (plan 2026-09-20, P7): 体检徽标与升级列表同源（转写命中率由 main 带进来）', () => {
+  /** 形状完全达标的稿——唯一可能的 warn 来自外部带进来的命中率。 */
+  const COMPLIANT: Note = {
+    chapters: [],
+    quotes: [],
+    overview: `## 本讲主线\n${'很长的主线叙述，覆盖本讲完整的知识推进与演示结果。'.repeat(6)}`,
+    knowledgeTree: {
+      title: '机器学习工程实践',
+      children: [
+        { title: '数据处理', children: [{ title: '加载与划分', children: [{ title: '张量批处理', children: [] }] }] },
+        { title: '模型构建', children: [{ title: '线性分类器', children: [{ title: '前向传播', children: [] }] }] },
+        { title: '训练调优', children: [{ title: '超参数搜索', children: [{ title: '容量控制', children: [] }] }] }
+      ]
+    },
+    timeline: [
+      {
+        at: 0,
+        title: '超参数调整演示',
+        detail:
+          '把模型宽度从 32 改到 64 之后，测试集精度由 0.97 回落到 0.87，训练集精度却继续上升，说明在这个数据量下容量过大已经明显过拟合。',
+        refs: [],
+        evidence: []
+      }
+    ],
+    concepts: [
+      {
+        term: '学习率',
+        definition:
+          '优化算法中的步长参数，控制每次参数更新的幅度；过大会导致损失震荡难以收敛，过小则收敛速度极慢，通常需要配合学习率调度器在训练过程中动态调整。',
+        refs: []
+      }
+    ],
+    formulasAndSteps: [],
+    methodology: 'm',
+    examCues: ['手推交叉熵损失的梯度公式'],
+    questionsAndGaps: ['讲者留下的作业：完成模块化重构'],
+    quiz: [
+      { question: '学习率过大有什么后果?', answer: '损失震荡难以收敛。', source: 'concept', term: '学习率' },
+      { question: '容量过大在本数据集上的表现是什么?', answer: '训练精度上升而测试精度回落。', source: 'concept', term: '学习率' },
+      { question: '讲者建议的宽度取值是多少?', answer: '先压回 32。', source: 'concept', term: '学习率' },
+      { question: '过拟合在本讲的判据是什么?', answer: '训练与测试精度走势背离。', source: 'concept', term: '学习率' },
+      { question: '讲者给出的容量控制手段是什么?', answer: '减小模型宽度。', source: 'concept', term: '学习率' }
+    ],
+    conceptLinks: [],
+    transcriptRefs: [],
+    evidence: []
+  }
+
+  it('没有命中率（或命中率达标）时徽标是「体检：良好」', () => {
+    const host = mount(<NoteViewer note={COMPLIANT} />)
+    expect(host.querySelector('.note-health-toggle')?.textContent).toBe('体检：良好')
+    const withGoodRate = mount(<NoteViewer note={COMPLIANT} noteTranscriptHitRate={{ hits: 3, total: 3 }} />)
+    expect(withGoodRate.querySelector('.note-health-toggle')?.textContent).toBe('体检：良好')
+  })
+
+  it('只有转写命中率不达标时也报「待改进」，并在体检面板里点名「转写摘引」', () => {
+    const host = mount(<NoteViewer note={COMPLIANT} noteTranscriptHitRate={{ hits: 0, total: 1 }} />)
+    expect(host.querySelector('.note-health-toggle')?.textContent).toBe('体检：1 项待改进')
+    click(host.querySelector('.note-health-toggle'))
+    const panel = host.querySelector('.note-health-panel')
+    expect(panel?.textContent).toContain('转写摘引')
+    expect(panel?.textContent).toContain('0/1')
+  })
+})

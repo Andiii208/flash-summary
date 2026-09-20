@@ -61,6 +61,9 @@ export interface NoteViewerProps {
   onNavigateLesson?: (lessonId: string) => void
   /** 批 A2 (plan 2026-09-19): 课时封面 data URL；null 时用第一张关键帧兜底。 */
   coverDataUrl?: string | null
+  /** 批2 (plan 2026-09-20, P7): main 侧算好的转写摘引命中率（渲染层没有转写）。
+   *  喂给下面那个 noteHealth —— 徽标与升级列表因此同一口径。 */
+  noteTranscriptHitRate?: { hits: number; total: number } | null
   /** 批 D (plan 2026-09-19): B 站课时「跳原片」（at 秒）；SEU 源不传——按钮不渲染，不给会失败的入口。 */
   onOpenSource?: (at: number) => void
   /** Regenerate in flight (button busy state). */
@@ -131,6 +134,7 @@ export function NoteViewer({
   onNavigateLesson,
     onOpenSource,
     coverDataUrl = null,
+  noteTranscriptHitRate = null,
   regenBusy = false,
   onRegenerate,
   repairBusy = false,
@@ -238,7 +242,7 @@ function noteReadMinutes(note: Note): number {
   return chars / 400
 }
   // 批3: 内容体检——纯函数投影（批1 质量规约的可观测面）。
-  const health = note != null ? noteHealth(note, hitRate, null, imageCoverage) : null
+  const health = note != null ? noteHealth(note, hitRate, noteTranscriptHitRate, imageCoverage) : null
   // 批4: 投影 memo——note/view 不变时，无关 state 变更（如体检面板开合）
   // 不重新投影，NoteBlocks 也不会因拿到新 blocks 数组而整树重渲染。
   const sections = useMemo(() => (note == null ? [] : projectNoteBlocks(note, view)), [note, view])

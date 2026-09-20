@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { render } from 'preact'
-import type { AttachmentManifestEntry, CourseTreeInfo, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, SeuSummaryBridge } from '../../shared/bridge'
+import type { AttachmentManifestEntry, CourseTreeInfo, LatestNoteResult, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, SeuSummaryBridge } from '../../shared/bridge'
 import type { Note } from '../../shared/notes/schema'
 import type { ApiResult } from '../../shared/api-result'
 import { noteToMarkdown } from '../../shared/notes/markdown'
@@ -39,6 +39,9 @@ const NOTE_PAGE = 100
 
 export interface NotesDomain {
     note: Note | null
+    /** 批2 (plan 2026-09-20, P7): 转写摘引命中率（main 侧算，随 loadNote 设置/清空）。
+     *  喂给 NoteViewer 的**同一个** noteHealth，徽标与升级列表从此同源。 */
+    noteTranscriptHitRate: { hits: number; total: number } | null
     /** 课时笔记/附件/库索引加载——挂载、换课、任务完成、regen 后都经这里刷。 */
     loadNote: (lessonId: string) => Promise<void>
     loadAttachments: (lessonId: string) => Promise<void>
@@ -115,6 +118,8 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   const { lessonRef, guardExport, tree, currentLesson } = deps
 
   const [note, setNote] = useState<Note | null>(null)
+  /** 批2 (P7): 与笔记一起到达的转写命中率（渲染层自己算不出来——没有转写）。 */
+  const [noteTranscriptHitRate, setNoteTranscriptHitRate] = useState<{ hits: number; total: number } | null>(null)
   /** 批B: cross-lesson note library + recent Q&A (tab empty states). */
   const [noteIndex, setNoteIndex] = useState<NoteIndexInfo[]>([])
   /** 批C: 列表的**总数**（不受 LIMIT 影响）——界面据此如实说明是否被截断。 */
@@ -167,8 +172,13 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   // a previously selected lesson must not overwrite the current one's panel.
   const loadNote = useCallback(async (lessonId: string): Promise<void> => {
     setCoverDataUrl(null)
-    const res = (await bridge.notes.latest(lessonId)) as ApiResult<Note | null>
-    if (res.ok && res.value != null && lessonRef.current === lessonId) setNote(res.value)
+    // 批2 (P7): 换课时先清掉上一课的转写命中率——否则徽标会拿旧课的指标算。
+    setNoteTranscriptHitRate(null)
+    const res = (await bridge.notes.latest(lessonId)) as ApiResult<LatestNoteResult | null>
+    if (res.ok && res.value != null && lessonRef.current === lessonId) {
+      setNote(res.value.note)
+      setNoteTranscriptHitRate(res.value.transcriptHitRate ?? null)
+    }
     // 批 A2: 封面与笔记并行取（best-effort——拿不到就 null，首屏退回无图）。
     void (async () => {
       try {
@@ -727,12 +737,14 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   /** 批A: 换课/退出登录时清掉本域残留（note + manifest + 解析缓存）。 */
   const clearLessonData = useCallback((): void => {
     setNote(null)
+    setNoteTranscriptHitRate(null)
     setAttachmentManifest([])
     attachmentCache.current.clear()
   }, [])
 
   return {
     note,
+    noteTranscriptHitRate,
     loadNote,
     loadAttachments,
     loadNoteIndex,

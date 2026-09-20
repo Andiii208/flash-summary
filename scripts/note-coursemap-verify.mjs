@@ -261,7 +261,10 @@ async function main() {
                 30000
               )
               const parsed = JSON.parse(raw)
-              const note = parsed?.value
+              // 批2 (plan 2026-09-20, P7): notes:latest 取到笔记时返回
+              // { note, transcriptHitRate }——不拆这一层的话 note 恒 undefined，
+              // 这个 waitFor 会一直等到超时。
+              const note = parsed?.value?.note
               return { ok: note != null && typeof note === 'object' && note.knowledgeTree != null, value: parsed?.ok === true ? 'note present' : raw.slice(0, 120) }
             } catch {
               return { ok: false }

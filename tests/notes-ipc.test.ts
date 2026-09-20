@@ -1378,3 +1378,84 @@ describe('A1 视觉能力匹配（plan 2026-09-19-note-experience-overhaul）', 
     expect((user as Array<{ type: string }>).some((part) => part.type === 'image_url')).toBe(true)
   })
 })
+
+describe('批2 (plan 2026-09-20, P7): notes:latest 带出转写命中率（徽标与升级列表同源）', () => {
+  function seedNote(noteJson: string): void {
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-20T00:00:00Z')"
+    ).run(noteJson)
+  }
+  function seedTranscript(): void {
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-20T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '我们这节课讲梯度下降的收敛条件。' }]))
+  }
+
+  it('没有笔记时仍是 ok(null)（早退不动——smoke 探针依赖这条）', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:latest', 'l1')) as { ok: boolean; value: unknown }
+    expect(res.ok).toBe(true)
+    expect(res.value).toBeNull()
+  })
+
+  /** RICH 的形状（0 形状 warn）+ 一条核验不上的摘引 → 唯一 warn 就是转写命中率。 */
+  const RICH_BAD_QUOTE = JSON.stringify({
+    ...JSON.parse(RICH_NOTE),
+    timeline: [
+      {
+        at: 0,
+        title: '超参数调整演示',
+        detail:
+          '把模型宽度从 32 改到 64 之后，测试集精度由 0.97 回落到 0.87，训练集精度却继续上升，说明在这个数据量下容量过大已经明显过拟合。',
+        refs: [{ at: 0, text: '这句话在转写里根本找不到啊啊啊' }],
+        evidence: []
+      }
+    ]
+  })
+
+  it('有笔记时返回 { note, transcriptHitRate }，结论与 courseHealth 完全一致', async () => {
+    const ctx = makeCtx()
+    seedTranscript()
+    // 摘引在转写里找不到 → 0/1（这条指标渲染层算不出来，必须由 main 带出来）。
+    seedNote(RICH_BAD_QUOTE)
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:latest', 'l1')) as {
+      ok: boolean
+      value?: { note: { overview: string }; transcriptHitRate: { hits: number; total: number } | null }
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value?.note.overview).toContain('本讲主线')
+    expect(res.value?.transcriptHitRate).toEqual({ hits: 0, total: 1 })
+
+    // 同源（P7 的核心）：同一份笔记，升级列表（courseHealth）报的也是「1 项待改进」——
+    // 形状零 warn，那 1 项正是转写命中率。查看器徽标此前传 null，会显示「体检：良好」。
+    const health = (await invoke('notes:courseHealth', 'c1')) as {
+      value?: Array<{ lessonId: string; warnCount: number; grade: string }>
+    }
+    expect(health.value?.find((r) => r.lessonId === 'l1')).toMatchObject({ warnCount: 1, grade: 'fair' })
+  })
+
+  it('摘引能核验上时是 1/1；没有可判摘引时是 null（不是 0/0 的假指标）', async () => {
+    const ctx = makeCtx()
+    seedTranscript()
+    seedNote(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        timeline: [{ at: 0, title: 't', detail: 'd', refs: [{ at: 0, text: '我们这节课讲梯度下降的收敛条件' }], evidence: [] }],
+        methodology: 'm',
+        examCues: [],
+        questionsAndGaps: []
+      })
+    )
+    registerIpc(ctx, ipc as never)
+    const hit = (await invoke('notes:latest', 'l1')) as { value?: { transcriptHitRate: unknown } }
+    expect(hit.value?.transcriptHitRate).toEqual({ hits: 1, total: 1 })
+
+    // 无转写 → 判不了 → null。
+    db.prepare("DELETE FROM transcripts WHERE lesson_id = 'l1'").run()
+    const none = (await invoke('notes:latest', 'l1')) as { value?: { transcriptHitRate: unknown } }
+    expect(none.value?.transcriptHitRate).toBeNull()
+  })
+})

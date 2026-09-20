@@ -1283,7 +1283,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
       if (row == null) return ok(null)
-      return ok(parseNote(row.note_json) as Note)
+      const note = parseNote(row.note_json) as Note
+      // 批2 (plan 2026-09-20, P7): 转写摘引命中率只能在 main 侧算（渲染层没有
+      // 转写）——带出去之后查看器徽标与 courseHealth（升级列表）走**同一个**
+      // noteHealth 口径。无笔记时上面的 ok(null) 早退不动（smoke 探针依赖它）。
+      return ok({ note, transcriptHitRate: transcriptHitRateFor(ctx.db, id, note) })
     } catch (e) {
       return err(e)
     }

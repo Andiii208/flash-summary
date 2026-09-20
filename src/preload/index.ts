@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiResult } from '../shared/api-result'
-import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, LatestNoteResult, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { TreeNode } from '../shared/notes/schema'
 import type { SessionStateValue } from '../shared/types'
 
@@ -78,7 +78,9 @@ const api: SeuSummaryBridge = {
     }
   },
   notes: {
-    latest: (lessonId: string): Promise<ApiResult<unknown>> => ipcRenderer.invoke('notes:latest', lessonId),
+    // 批2 (plan 2026-09-20, P7): 声明必须与 bridge.ts 一致——ApiResult<T> 的 value
+    // 是可变可选属性，unknown 不可赋给收窄后的联合（只改 bridge 不改这里就是 TS2322）。
+    latest: (lessonId: string): Promise<ApiResult<LatestNoteResult | null>> => ipcRenderer.invoke('notes:latest', lessonId),
     list: (query?: ListPageQuery & { keyword?: string }): Promise<ApiResult<ListPage<NoteIndexInfo>>> =>
       ipcRenderer.invoke('notes:list', query),
     courseHealth: (courseId: string): Promise<ApiResult<NoteHealthInfo[]>> => ipcRenderer.invoke('notes:courseHealth', courseId),

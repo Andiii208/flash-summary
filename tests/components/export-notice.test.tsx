@@ -81,7 +81,9 @@ describe('导出前的版权提醒', () => {
     // A processed lesson (so the shell lands on the笔记 tab) and a real note
     // (so the export toolbar exists at all).
     fakeState.courses = [{ id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] }]
-    ;(bridge.notes as unknown as { latest: unknown }).latest = vi.fn(async () => ok(NOTE))
+    // 批2 (plan 2026-09-20, P7): notes:latest 取到笔记时是 { note, transcriptHitRate }——
+    // 裸 Note 会让 loadNote 解包出 undefined，导出工具行永不出现。
+    ;(bridge.notes as unknown as { latest: unknown }).latest = vi.fn(async () => ok({ note: NOTE, transcriptHitRate: null }))
     // The note library must be non-empty at MOUNT: NoteViewer only renders it
     // in the «no note on screen» branch, and the index is not refetched later.
     ;(bridge.notes as unknown as { list: unknown }).list = vi.fn(async () =>
