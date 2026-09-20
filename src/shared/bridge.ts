@@ -321,9 +321,10 @@ export interface NotesBridge {
     }>
   >
   /** 2026-09-04: PDF handout step 1 — system save dialog for the target file. */
-  exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>>  /** 2026-09-04: PDF handout step 2 — print the main window (handout already
-   *  rendered into #print-root) and write the file; returns the path + size. */
-  /** E3 (review): the one-shot token from exportPdfDialog — never a raw path. */
+  exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>>
+  /** 2026-09-04: PDF handout step 2 — print the main window (handout already
+   *  rendered into #print-root) and write the file; returns the path + size.
+   *  E3 (review): the one-shot token from exportPdfDialog — never a raw path. */
   exportPdfWrite(token: string): Promise<ApiResult<{ path: string; bytes: number }>>
   /** 2026-09-04: reveal an exported file in Explorer. */
   revealFile(path: string): Promise<ApiResult<boolean>>
