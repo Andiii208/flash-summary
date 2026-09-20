@@ -13,6 +13,20 @@ describe('humanizeTaskError (M1-2: errors speak human)', () => {
     expect(humanizeTaskError('school session expired (HTTP 401)', 'session_expired')).toContain('重新登录')
   })
 
+  it('批3 (P22/D11): 两类超时同一句，且各自给出下一步（换模型/缩短视频/少发图）', () => {
+    // 生成侧超时：provider 算得慢（openai-client 的 10 分钟 AbortSignal.timeout 原文）。
+    const generateTimeout = humanizeTaskError('The operation was aborted due to timeout', null)
+    expect(generateTimeout).toContain('连接或生成超时')
+    expect(generateTimeout).toContain('10 分钟上限')
+    expect(generateTimeout).toContain('模型')
+    expect(generateTimeout).toContain('缩短视频')
+    expect(generateTimeout).toContain('少发图片')
+    // 网络侧超时（Chromium 的 ERR_TIMED_OUT）落同一句——用户自己判断卡在哪一步。
+    expect(humanizeTaskError('ERR_TIMED_OUT', null)).toBe(generateTimeout)
+    // 旧文案把用户引向「校园网可能较慢或服务暂不可用」，已不再是唯一解释。
+    expect(generateTimeout).not.toContain('服务暂不可用')
+  })
+
   it('passes already-readable provider messages through untouched', () => {
     expect(humanizeTaskError('未绑定 ASR 模型，请在设置中配置 ASR Provider', null)).toContain('未绑定')
     expect(humanizeTaskError('该课时音频中没有可识别的语音（音量过低或静音），无法转写', null)).toContain('静音')
