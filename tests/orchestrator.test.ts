@@ -173,6 +173,51 @@ describe('orchestrator stage executors', () => {
     expect(siblings.map((s) => s.id)).toEqual(['c1-L0', 'c1-L1', 'l1'])
   })
 
+  // 2026-09-21（批1 评审补口）：catalog refresh 是同一份课时目录的第二个
+  // writer。原来它无条件 upsert，会把整门课的行名与 play_ref 按平台当前索引
+  // 重写——play_ref 正是下一次任务用来点「第N节课」的 ref，被漂移覆盖就会去抓
+  // 另一节课的流。有产物的行现在与收割侧共用同一份冻结判定。
+  it('批1 补口: catalog refresh 不覆盖有产物的行（title/play_ref 冻结），无产物行照常更新', async () => {
+    db.prepare("UPDATE courses SET tecl_id = '154717', tecl_code = '202620271B080329101' WHERE id = 'c1'").run()
+    // 有笔记的兄弟课时（受保护）+ 一个空行。
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L3', 'c1', '第4节课', '3', '2026-08-30T00:00:00Z')").run()
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n3', 'c1-L3', 1, '{}', 'p', 'm', '2026-08-30T00:00:00Z')"
+    ).run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L4', 'c1', '第5节课', '4', '2026-08-30T00:00:00Z')").run()
+
+    const drifted: Array<{ courseId: string; ids: string[] }> = []
+    const deps = makeDeps({
+      onCatalogDrift: (courseId, rows) => drifted.push({ courseId, ids: rows.map((row) => row.lessonId) }),
+      harvestLesson: async () => ({
+        teacherStreamUrl: 'https://vod/t.mp4?auth_key=x',
+        screenStreamUrl: 'https://vod/s.mp4?auth_key=y',
+        lessons: [
+          { index: 3, title: '第5节课', ref: '4' },
+          { index: 4, title: '第6节课', ref: '5' }
+        ]
+      })
+    })
+    const repo = new TaskRepository(db)
+    repo.create('t-drift', 'l1')
+    const executors = createExecutors(deps)
+
+    const result = await executors.fetching_course({ taskId: 't-drift', lessonId: 'l1', stage: 'fetching_course' })
+    expect(result).toEqual({ status: 'ok' })
+
+    const rows = db.prepare("SELECT id, title, play_ref FROM lessons WHERE course_id = 'c1' AND id LIKE 'c1-L%' ORDER BY id").all() as Array<{
+      id: string
+      title: string
+      play_ref: string | null
+    }>
+    expect(rows).toEqual([
+      { id: 'c1-L3', title: '第4节课', play_ref: '3' },
+      { id: 'c1-L4', title: '第6节课', play_ref: '5' }
+    ])
+    // 冻结不是静默的：漂移条目交回 main 落日志。
+    expect(drifted).toEqual([{ courseId: 'c1', ids: ['c1-L3'] }])
+  })
+
   it('fetching_course passes the lesson play_ref so the harvest selects the entry', async () => {
     db.prepare("UPDATE courses SET tecl_id = '154717', tecl_code = '202620271B080329101' WHERE id = 'c1'").run()
     db.prepare("UPDATE lessons SET play_ref = '3' WHERE id = 'l1'").run()

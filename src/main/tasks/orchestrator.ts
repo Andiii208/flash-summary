@@ -27,6 +27,7 @@ import type { SchoolClient } from '../school/client'
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
 import type { BilibiliFetchResult } from '../bilibili/pipeline'
 import { summarizeLesson } from '../notes/summarize'
+import { upsertLessonCatalog, type CatalogDrift } from '../lessons/catalog'
 
 /** B6: refuse to start a multi-GB download below this free-space floor. */
 export const MIN_FREE_DISK_BYTES = 5 * 1024 * 1024 * 1024
@@ -67,6 +68,11 @@ export interface OrchestratorDeps {
    * the lessons table keeps only bili_* identifiers (red line).
    */
   fetchBilibili?: (input: { bvid: string; page: number; signal?: AbortSignal }) => Promise<BilibiliFetchResult>
+  /**
+   * 2026-09-21（批1 评审补口）：catalog refresh 遇到「有产物的行被平台列表
+   * 改写」时被冻结的漂移条目——main 侧接日志（orchestrator 自己没有 logger）。
+   */
+  onCatalogDrift?: (courseId: string, drifted: ReadonlyArray<CatalogDrift>) => void
   /** Per-chunk ASR progress (U4): index and total let the UI show chunk-level progress. */
   onChunkProgress?: (ctx: StageContext, index: number, total: number) => void
   /** M1-3: download byte/speed polling so the UI shows «已下载 x · y/s». */
@@ -246,13 +252,14 @@ export function makeFetchCourse(deps: OrchestratorDeps): StageExecutor {
             ctx.lessonId
           )
         // Catalog refresh: converge the tree with the platform's own list.
-        const upsertEntry = deps.db.prepare(
-          `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET title = excluded.title, play_ref = excluded.play_ref, fetched_at = excluded.fetched_at`
-        )
-        for (const entry of harvest.lessons ?? []) {
-          upsertEntry.run(`${courseRow.id}-L${entry.index}`, courseRow.id, entry.title, entry.ref, nowIso(deps))
-        }
+        // 2026-09-21（UX 整改批1 评审补口）：与 school:harvestLessons 共用
+        // lessons/catalog.ts 的同一份「有产物则冻结」判定——这里原来无条件
+        // upsert，会把整门课的行名与 play_ref 按平台当前索引重写；play_ref 正是
+        // 下一次任务用来点「第N节课」的 ref，被漂移覆盖就会去抓另一节课的流。
+        const catalog = deps.db.transaction(() =>
+          upsertLessonCatalog(deps.db, courseRow.id, harvest.lessons ?? [], nowIso(deps))
+        )()
+        if (catalog.drifted.length > 0) deps.onCatalogDrift?.(courseRow.id, catalog.drifted)
         // Transient handoff: full signed URLs for the download stage only.
         recordStage(deps, ctx.taskId, ctx.stage, {
           lessonId: ctx.lessonId,

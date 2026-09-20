@@ -46,6 +46,7 @@ import { FEEDBACK_FORM_URL } from '../shared/feedback'
 import { buildDiagnostics, type DiagnosticsTask } from './feedback/diagnostics'
 import { redact } from './logger'
 import { claimNoteInflight, releaseNoteInflight } from './notes/inflight'
+import { upsertLessonCatalog, describeCatalogDrift } from './lessons/catalog'
 import type { Note } from '../shared/notes/schema'
 
 /** 批5: PNG 魔数——渲染层传来的位图必须真的是 PNG 才落盘。 */
@@ -265,6 +266,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
           input.selectLessonRef,
           input.signal
         ),
+      // 2026-09-21（批1 评审补口）：任务侧 catalog refresh 冻结下来的漂移条目
+      // 与收割侧同一形态落日志——「不覆盖」不等于「不吭声」。
+      onCatalogDrift: (courseId, drifted) => {
+        for (const drift of drifted) ctx.logger.info(`task catalog drift (kept): course=${courseId} ${describeCatalogDrift(drift)}`)
+      },
       onChunkProgress: (taskCtx, index, total) => {
         const base = stagePercent('transcribing')
         const span = stagePercent('extracting_visuals') - base
@@ -531,56 +537,26 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       // overwritten. The platform list shifts as lessons are added, so a
       // shorter harvest is NOT evidence the lesson is gone; the same rule
       // removeCourse already follows («该课程已有笔记，为保护数据不允许删除»).
+      // 判定与写法在 lessons/catalog.ts —— 任务侧的 catalog refresh 共用同一份
+      // （评审补口 2026-09-21：两条 writer 语义必须一致，否则这边刚冻结、
+      // 下一次任务运行就把它重新踩回去）。
       const driftLog: string[] = []
       const harvestCounts = ctx.db.transaction(() => {
-        const protectedRows = ctx.db
-          .prepare(
-            `SELECT l.id AS id, l.title AS title, l.play_ref AS play_ref FROM lessons l
-             WHERE l.course_id = ?
-               AND (EXISTS(SELECT 1 FROM notes n WHERE n.lesson_id = l.id)
-                 OR EXISTS(SELECT 1 FROM transcripts t WHERE t.lesson_id = l.id)
-                 OR EXISTS(SELECT 1 FROM keyframes k WHERE k.lesson_id = l.id)
-                 OR EXISTS(SELECT 1 FROM ppt_pages p WHERE p.lesson_id = l.id)
-                 OR EXISTS(SELECT 1 FROM tasks tk WHERE tk.lesson_id = l.id)
-                 OR EXISTS(SELECT 1 FROM qa q WHERE q.lesson_id = l.id))`
-          )
-          .all(cid) as Array<{ id: string; title: string; play_ref: string | null }>
-        const protectedById = new Map(protectedRows.map((row) => [row.id, row]))
-        const upsert = ctx.db.prepare(
-          `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET title = excluded.title, play_ref = excluded.play_ref, fetched_at = excluded.fetched_at`
-        )
-        // 漂移冻结：受保护行的名字不被平台的新列表改写，否则笔记还挂在
-        // 行上、行名已经变成另一节课（用户对着旧标题找不到自己的笔记）。
-        const insertFrozen = ctx.db.prepare(
-          `INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO NOTHING`
-        )
-        for (const entry of harvest.lessons) {
-          const id = `${cid}-L${entry.index}`
-          const existing = protectedById.get(id)
-          if (existing == null) {
-            upsert.run(id, cid, entry.title, entry.ref, now)
-            continue
-          }
-          if (existing.title !== entry.title || existing.play_ref !== entry.ref) {
-            driftLog.push(`${id} «${existing.title}»(${existing.play_ref ?? '-'}) → «${entry.title}»(${entry.ref})`)
-          }
-          insertFrozen.run(id, cid, entry.title, entry.ref, now)
-        }
+        const catalog = upsertLessonCatalog(ctx.db, cid, harvest.lessons, now)
+        for (const drift of catalog.drifted) driftLog.push(describeCatalogDrift(drift))
         // The platform list shifts as lessons are added: drop previously
         // harvested rows that this harvest no longer covers (an empty
         // harvest keeps everything — likely a page-change anomaly). Rows with
         // produced artifacts are excluded from the delete on top of that.
-        if (keepIds.length === 0) return { dropped: 0, keptProtected: protectedRows.length }
+        if (keepIds.length === 0) return { dropped: 0, keptProtected: catalog.protectedRows.length }
         const protectedClause =
-          protectedRows.length > 0 ? ` AND id NOT IN (${protectedRows.map(() => '?').join(',')})` : ''
+          catalog.protectedRows.length > 0 ? ` AND id NOT IN (${catalog.protectedRows.map(() => '?').join(',')})` : ''
         const deleted = ctx.db
           .prepare(
             `DELETE FROM lessons WHERE course_id = ? AND id LIKE ? AND id NOT IN (${keepIds.map(() => '?').join(',')})${protectedClause}`
           )
-          .run(cid, `${cid}-L%`, ...keepIds, ...protectedRows.map((row) => row.id))
-        return { dropped: deleted.changes, keptProtected: protectedRows.length }
+          .run(cid, `${cid}-L%`, ...keepIds, ...catalog.protectedRows.map((row) => row.id))
+        return { dropped: deleted.changes, keptProtected: catalog.protectedRows.length }
       })()
       for (const drift of driftLog) ctx.logger.info(`harvestLessons drift (kept): ${drift}`)
       ctx.logger.info(
