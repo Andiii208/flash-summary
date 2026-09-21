@@ -34,7 +34,7 @@ export interface ConfigDomain {
   refreshSettings: () => Promise<void>
   /** 2026-09-05 批4: one model PER capability — the UI no longer binds every
    *  checked capability to a single shared model string. */
-  saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => void
+  saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => Promise<boolean>
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   setCacheDir: (dir: string) => void
@@ -95,58 +95,60 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     }
   }, [bridge])
 
+  // P33 (plan 2026-09-21): 返回保存是否成功——ProviderPanel 据此决定要不要清空
+  // 表单（保存失败时保留全部输入；Key 是用户最贵的重打部分）。
   const saveProvider = useCallback(
-    (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }): void => {
-      void (async () => {
-        setProviderBusy(true)
-        try {
-          // B3: one key entry, N capability bindings in a loop — each with its
-          // own model (2026-09-05 批4). The id keeps an edit in place instead
-          // of forking a second provider row on rename.
-          const saved = await bridge.providers.save({ id: input.id, name: input.name, baseUrl: input.baseUrl, apiKey: input.apiKey })
-          if (!saved.ok) {
-            toast(saved.error ?? '保存失败', 'error')
-            return
-          }
-          const providerId = (saved.value as { id: string }).id
-          // 批4 (P14): 该 provider 原有、本次未勾选的能力随保存解绑——此前只有
-          // bind 没有 unbind，用户取消勾选后列表徽标与任务管线照旧用它（「关了
-          // 却还开着」）。原有绑定取自已加载的列表，按 providerId 过滤。
-          const toUnbind = (providers?.bindings ?? []).filter(
-            (b) => b.providerId === providerId && !input.capabilities.includes(b.capability)
-          )
-          // 批6: a failed binding used to abandon the refresh — the list then
-          // showed a stale state while the provider row WAS saved.
-          for (const capability of input.capabilities) {
-            const bound = await bridge.providers.bind(capability, providerId, (input.models[capability] ?? '').trim())
-            if (!bound.ok) {
-              toast(`Provider 已保存，但能力 ${capability} 绑定失败：${bound.error ?? '未知错误'}`, 'error')
-              await refreshProviders()
-              return
-            }
-          }
-          for (const binding of toUnbind) {
-            const released = await bridge.providers.unbind(binding.capability)
-            if (!released.ok) {
-              toast(`Provider 已保存，但能力 ${binding.capability} 解绑失败：${released.error ?? '未知错误'}`, 'error')
-              await refreshProviders()
-              return
-            }
-          }
-          const after = await refreshProviders()
-          // 批4 (P8/D4): 保存成功不等于管线可用——缺多模态绑定时当场指路，不等
-          // 用户建任务才以 toast 发现（那时已经白等一轮）。判据取刷新后的真实绑定，
-          // 不是「这次勾了什么」——多模态可能绑在另一个 provider 上。
-          if (after != null && !after.bindings.some((b) => b.capability === 'multimodal')) {
-            toast('已保存。生成笔记还需要多模态总结模型——在上面勾选并绑定', 'info')
-            return
-          }
-          const boundPart = `已绑定 ${input.capabilities.length} 项能力`
-          toast(toUnbind.length > 0 ? `${boundPart}，解绑 ${toUnbind.length} 项能力 → ${input.name}` : `${boundPart} → ${input.name}`, 'success')
-        } finally {
-          setProviderBusy(false)
+    async (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }): Promise<boolean> => {
+      setProviderBusy(true)
+      try {
+        // B3: one key entry, N capability bindings in a loop — each with its
+        // own model (2026-09-05 批4). The id keeps an edit in place instead
+        // of forking a second provider row on rename.
+        const saved = await bridge.providers.save({ id: input.id, name: input.name, baseUrl: input.baseUrl, apiKey: input.apiKey })
+        if (!saved.ok) {
+          toast(saved.error ?? '保存失败', 'error')
+          return false
         }
-      })()
+        const providerId = (saved.value as { id: string }).id
+        // 批4 (P14): 该 provider 原有、本次未勾选的能力随保存解绑——此前只有
+        // bind 没有 unbind，用户取消勾选后列表徽标与任务管线照旧用它（「关了
+        // 却还开着」）。原有绑定取自已加载的列表，按 providerId 过滤。
+        const toUnbind = (providers?.bindings ?? []).filter(
+          (b) => b.providerId === providerId && !input.capabilities.includes(b.capability)
+        )
+        // 批6: a failed binding used to abandon the refresh — the list then
+        // showed a stale state while the provider row WAS saved.
+        for (const capability of input.capabilities) {
+          const bound = await bridge.providers.bind(capability, providerId, (input.models[capability] ?? '').trim())
+          if (!bound.ok) {
+            toast(`Provider 已保存，但能力 ${capability} 绑定失败：${bound.error ?? '未知错误'}`, 'error')
+            await refreshProviders()
+            return false
+          }
+        }
+        for (const binding of toUnbind) {
+          const released = await bridge.providers.unbind(binding.capability)
+          if (!released.ok) {
+            toast(`Provider 已保存，但能力 ${binding.capability} 解绑失败：${released.error ?? '未知错误'}`, 'error')
+            await refreshProviders()
+            return false
+          }
+        }
+        const after = await refreshProviders()
+        // 批4 (P8/D4): 保存成功不等于管线可用——缺多模态绑定时当场指路，不等
+        // 用户建任务才以 toast 发现（那时已经白等一轮）。判据取刷新后的真实绑定，
+        // 不是「这次勾了什么」——多模态可能绑在另一个 provider 上。
+        // 注意：这一支仍是**保存成功**（返回 true、表单照常清空），只是多给一句指路。
+        if (after != null && !after.bindings.some((b) => b.capability === 'multimodal')) {
+          toast('已保存。生成笔记还需要多模态总结模型——在上面勾选并绑定', 'info')
+          return true
+        }
+        const boundPart = `已绑定 ${input.capabilities.length} 项能力`
+        toast(toUnbind.length > 0 ? `${boundPart}，解绑 ${toUnbind.length} 项能力 → ${input.name}` : `${boundPart} → ${input.name}`, 'success')
+        return true
+      } finally {
+        setProviderBusy(false)
+      }
     },
     [bridge, toast, refreshProviders, providers]
   )

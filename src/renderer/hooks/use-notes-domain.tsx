@@ -549,12 +549,15 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
       : ''
   // B4 (plan 2026-09-19): 越界 at 被铳制时说一声——用户该知道「刚才有几个时间点是模型外推的」。
           const clampSuffix = (result.clampedTimes ?? 0) > 0 ? `，${result.clampedTimes} 个越界时间已校正` : ''
+          // P35 (plan 2026-09-21): 转写超预算被抽稀——「截断可见」纪律：全域抽样
+          // 覆盖首/中/尾，但用户该知道送进模型的不是全文。
+          const sampledSuffix = result.transcriptSampled === true ? '，转写超长已按预算抽样（首中尾覆盖）' : ''
           // 批3: 返修真的发生时把「N 项 → M 项」说出来——否则用户不知道系统改善过什么。
           const repairSuffix =
             result.health?.repaired === true && result.health.warnCountBeforeRepair != null
               ? `，体检 ${result.health.warnCountBeforeRepair} 项 → ${result.health.warnCount} 项`
               : ''
-          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}${clampSuffix}${visionSuffix}${assetSuffix}${repairSuffix}`, 'success')
+          toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}${clampSuffix}${sampledSuffix}${visionSuffix}${assetSuffix}${repairSuffix}`, 'success')
           await loadNote(lessonId)
           await loadNoteIndex()
         } finally {

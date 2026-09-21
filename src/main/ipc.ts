@@ -25,7 +25,7 @@ import { assembleContext, buildQaMessages, recordQa } from './notes/qa'
 import { listAttachmentManifest, readAttachmentData, readLessonCover } from './notes/attachments'
 import { saveLessonCover } from './notes/cover'
 import { buildBilibiliSourceUrl, isValidBilibiliBvid } from './bilibili/source-url'
-import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor, loadValidRefs, loadCleanSegments, repairStoredNote } from './notes/summarize'
+import { summarizeLesson, loadSummarizeInputs, transcriptHitRateFor, transcriptRangeFor, loadValidRefs, loadCleanSegments, repairStoredNote } from './notes/summarize'
 import { polishNote } from './notes/polish'
 import { FEEDBACK_TAGS } from '../shared/feedback-tags'
 import { printToPdfFile } from './notes/pdf-export'
@@ -1427,7 +1427,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
           const hitRate = evidenceHitRate(note, loadValidRefs(ctx.db, row.lessonId))
           // 批1: 转写摘引可核验率——渲染层没有转写，只能在这里算。
           const transcriptHitRate = transcriptHitRateFor(ctx.db, row.lessonId, note)
-          const health = noteHealth(note, hitRate, transcriptHitRate)
+          // P31: 转写时间范围——体检「时间范围」指标（越界的存量旧笔记可见化）。
+          const transcriptRange = transcriptRangeFor(ctx.db, row.lessonId)
+          const health = noteHealth(note, hitRate, transcriptHitRate, null, transcriptRange)
           return {
             lessonId: row.lessonId,
             lessonTitle: row.lessonTitle,

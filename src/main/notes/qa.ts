@@ -13,6 +13,7 @@
 import type { Db } from '../db/open'
 import type { Note } from './schema'
 import { cleanTranscriptTimed, sampleTranscriptLines } from '../../shared/notes/transcript-clean'
+import { MAX_TRANSCRIPT_CHARS as SHARED_MAX_TRANSCRIPT_CHARS } from '../../shared/notes/limits'
 
 export interface QaContext {
   lessonId: string
@@ -22,7 +23,8 @@ export interface QaContext {
   priorQa: Array<{ question: string; answer: string }>
 }
 
-const MAX_TRANSCRIPT_CHARS = 24_000
+// P35 (plan 2026-09-21): 预算刻度收敛到 shared/notes/limits.ts（生成/润色/追问三处共用）。
+const MAX_TRANSCRIPT_CHARS = SHARED_MAX_TRANSCRIPT_CHARS
 const MAX_PRIOR_QA = 10
 
 /** Assemble the current-lesson context from the library database. */

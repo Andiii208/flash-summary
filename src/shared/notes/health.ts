@@ -23,6 +23,11 @@ export type HealthField =
   | 'transcript'
   /** B6 (plan 2026-09-19): 时间线配图覆盖率（分配后仍无图的条目数）。 */
   | 'visualCoverage'
+  /** P31 (plan 2026-09-21): 章节对时间线的覆盖率（B6 三指标的第二项）。 */
+  | 'chapterCoverage'
+  /** P31 (plan 2026-09-21): 时间线/章节时间是否越出转写范围（B6 三指标的第三项，
+      旧工艺外推时间的可见化——生成路径自 2026-09-19 起钳制，这里兜住存量笔记）。 */
+  | 'timeRange'
 
 export interface HealthFinding {
   field: HealthField
@@ -49,7 +54,9 @@ export const HEALTH_FIELD_LABELS: Record<HealthField, string> = {
   quiz: '自测题',
   evidence: '证据引用',
   transcript: '转写摘引',
-  visualCoverage: '画面覆盖'
+  visualCoverage: '画面覆盖',
+  chapterCoverage: '章节覆盖',
+  timeRange: '时间范围'
 }
 
 const MIN_OVERVIEW_CHARS = 150
@@ -267,12 +274,61 @@ function visualCoverageFindings(coverage: { withImage: number; total: number } |
   ]
 }
 
-/** 体检主入口：warn 0=良好 / 1-2=待改进（fair） / ≥3=薄弱（weak）。 */
+/**
+ * P31 (plan 2026-09-21): B6 三指标的第二项——章节覆盖率。chapters 按 at 顺序把
+ * 时间线切成连续区间（第一个章节开始 → Infinity）；早于第一个章节的时间线条目
+ * 算「未被章节覆盖」（章节从半程才开始 = 漏掉了开头段）。只报 **info**：chapters
+ * 是可选字段，漏覆盖不等于笔记不合格（warn 会放大「升级旧笔记」的白烧钱面，见 D7）。
+ */
+function chapterCoverageFindings(note: Note): HealthFinding[] {
+  const chapters = note.chapters ?? []
+  if (chapters.length === 0 || note.timeline.length === 0) return []
+  const firstAt = Math.min(...chapters.map((c) => c.at))
+  const uncovered = note.timeline.filter((e) => e.at < firstAt).length
+  if (uncovered === 0) return []
+  return [
+    {
+      field: 'chapterCoverage',
+      level: 'info',
+      message: `时间线 ${note.timeline.length} 条中 ${uncovered} 条早于第一个章节（章节覆盖从 ${firstAt} 秒才开始，开头段没有归属）`
+    }
+  ]
+}
+
+/**
+ * P31 (plan 2026-09-21): B6 三指标的第三项——时间越界可见化。转写范围由 main 侧
+ * 传入（渲染层没有转写，传 null 即不评）。2026-09-19 起生成路径会钳制外推时间
+ * （clampNoteTimes），这条兜住**存量旧笔记**：还被旧工艺写着越界时间的条目在
+ * 体检里看得见，重新生成即钳正。只报 info（不是 warn——旧数据不该把整份笔记
+ * 打成「待改进」，且钳正在重新生成时自动发生）。
+ */
+function timeRangeFindings(note: Note, range: { maxAt: number } | null | undefined): HealthFinding[] {
+  if (range == null || !Number.isFinite(range.maxAt)) return []
+  const epsilon = 1
+  const beyond = note.timeline.filter((e) => e.at > range.maxAt + epsilon).length
+  const chapterBeyond = (note.chapters ?? []).filter((c) => c.at > range.maxAt + epsilon).length
+  if (beyond === 0 && chapterBeyond === 0) return []
+  const parts: string[] = []
+  if (beyond > 0) parts.push(`${beyond} 条时间线`)
+  if (chapterBeyond > 0) parts.push(`${chapterBeyond} 个章节`)
+  return [
+    {
+      field: 'timeRange',
+      level: 'info',
+      message: `${parts.join('与')}的时间超出转写范围（旧工艺外推；重新生成会钳正到转写上界）`
+    }
+  ]
+}
+
+/** 体检主入口：warn 0=良好 / 1-2=待改进（fair） / ≥3=薄弱（weak）。
+ *  P31: 第五个参数 transcriptRange（{maxAt}，秒）由 main 侧从转写算好传入——
+ *  渲染层没有转写，省略即不评「时间范围」这一项。 */
 export function noteHealth(
   note: Note,
   hitRate?: { hits: number; total: number } | null,
   transcriptHitRate?: { hits: number; total: number } | null,
-  imageCoverage?: { withImage: number; total: number } | null
+  imageCoverage?: { withImage: number; total: number } | null,
+  transcriptRange?: { maxAt: number } | null
 ): HealthReport {
   const findings = [
     ...overviewFindings(note),
@@ -284,7 +340,9 @@ export function noteHealth(
     ...quizFindings(note),
     ...evidenceFindings(hitRate),
     ...transcriptFindings(transcriptHitRate),
-    ...visualCoverageFindings(imageCoverage)
+    ...visualCoverageFindings(imageCoverage),
+    ...chapterCoverageFindings(note),
+    ...timeRangeFindings(note, transcriptRange)
   ]
   const warnCount = findings.filter((f) => f.level === 'warn').length
   const grade: HealthReport['grade'] = warnCount === 0 ? 'good' : warnCount <= 2 ? 'fair' : 'weak'

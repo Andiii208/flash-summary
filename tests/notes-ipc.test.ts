@@ -315,6 +315,9 @@ describe('notes:regenerate (2026-09-04)', () => {
       quotesVerified: { total: 0, verified: 0 },
       // A3: 素材数。这份具件 seedKeyframe 了 1 帧、无 PPT。
       visualAssets: { keyframes: 1, ppt: 0 },
+      // P35 (plan 2026-09-21): 转写预算守卫——这份夹具的转写远小于 24k 预算，
+      // 没有被抽稀。
+      transcriptSampled: false,
       // 批3: 归一层丢弃计数。这份夹具的 timeline evidence 是合法的 kf:kf-1，
       // 也没有 quiz/conceptLinks/terms，所以一项没丢。
       normalizationDropped: {},
@@ -375,6 +378,47 @@ describe('notes:regenerate (2026-09-04)', () => {
     const userText = JSON.stringify(firstCall[0].at(-1)?.content)
     expect(userText).toContain('[00:00]')
     expect(userText).toContain('[02:00]')
+  })
+
+  // P35 (plan 2026-09-21): 生成路径的转写预算守卫——3 小时课 ≈32k tokens 此前
+  // 无抽稀直入 prompt（撞 600s 超时白烧钱）。现在全域抽稀到 24k，且「抽过稀」
+  // 必须写进返回（toast/阶段产物据此告知，不静默截断）。
+  it('P35: 超长转写按预算抽稀后送模型，transcriptSampled=true 且首中尾仍在', async () => {
+    const ctx = makeCtx()
+    seedKeyframe()
+    // 造一份 >24k 字符的转写（100 段 × ~400 字）。两点注意：① 每段必须是**彼此
+    // 不相似**的独立文本——cleanSegments 会把相邻高相似段当「复读」剔掉（真实
+    // 转写清洗的正常行为，bigramDice≥0.85），模板铺量洗完只会剩一段；② 用确定性
+    // 伪随机（同种子同输出）而不是 Math.random，保证用例可回归。
+    const seededText = (seed: number, chars: number): string => {
+      let out = ''
+      let x = (seed * 9301 + 49297) % 233280
+      while (out.length < chars) {
+        x = (x * 9301 + 49297) % 233280
+        out += String.fromCharCode(0x4e00 + (x % 2000))
+      }
+      return out
+    }
+    const segments = Array.from({ length: 100 }, (_, i) => ({ at: i * 30, text: `第${i}段授课内容：` + seededText(i + 1, 400) }))
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(JSON.stringify(segments))
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'deepseek-chat')").run()
+
+    const chatJson = vi.fn(async () => VALID_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { transcriptSampled: boolean } }
+    expect(res.ok).toBe(true)
+    expect(res.value?.transcriptSampled).toBe(true)
+    // 模型收到的是抽稀后的文本：转写本体 ≤24k，且首（[00:00]）与尾（最后一个被
+    // 保留的窗口）都还在——全域抽稀不是只留开头。
+    const userText = JSON.stringify((chatJson.mock.calls[0] as unknown as [Array<{ role: string; content: unknown }>])[0].at(-1)?.content ?? '')
+    expect(userText.length).toBeLessThanOrEqual(24_000 + 6_000) // 用户消息里还有 prompt 其余部分
+    expect(userText).toContain('[00:00]')
+    expect(userText).toContain('第99段') // 抽稀器的「头尾保底」：末行必留
   })
 
   it('批1: 摘引匹配不上转写时清空 text、保留 at（降级而非报错）', async () => {

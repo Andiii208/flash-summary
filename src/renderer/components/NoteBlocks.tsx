@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-preact'
 import type { Note, TreeNode, QuizItem, Chapter, Quote } from '../../shared/notes/schema'
@@ -272,7 +272,12 @@ function TimelineCards({ entries, chapters, getAttachment, manifest, version: ve
       return next
     })
   }
-  const allocated = allocateTimelineImagesLazy(entries, getAttachment ?? (() => null), manifest)
+  // P32 (plan 2026-09-21): 贪心分配 memo 化——本地态（展开组/放大图）变化不再重跑
+  // 整份时间线的分配；entries/getAttachment/manifest 三者不变就是同一份结果。
+  const allocated = useMemo(
+    () => allocateTimelineImagesLazy(entries, getAttachment ?? (() => null), manifest),
+    [entries, getAttachment, manifest]
+  )
   const frameAt = (ref: string): number | null => manifest.find((m) => m.ref === ref)?.at ?? null
   // B1: 有章节时按章分组（章头 + 组内卡片）；无章节/空章节 → 平铺（旧笔记渲染逐字节不变）。
   type Item = { kind: 'chapter'; chapter: Chapter } | { kind: 'entry'; entry: Note['timeline'][number]; index: number }
@@ -418,16 +423,25 @@ function FormulaList({ items }: { items: Note['formulasAndSteps'] }): JSX.Elemen
 }
 
 /** The evidence gallery section (cited first, then remaining keyframes). */
-export function EvidenceGallery({ note, getAttachment, manifest, version: versionForRerender, onOpenSource }: { note: Note; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void }): JSX.Element {
+export function EvidenceGallery({ note, getAttachment, manifest, version: versionForRerender, onOpenSource, onRefetchFrames }: { note: Note; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void; onRefetchFrames?: () => void }): JSX.Element {
   void versionForRerender
   const [zoom, setZoom] = useState<TimelineImage | null>(null)
   // A6: 折叠组展开态（按代表帧 ref 记）。
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set())
   const gallery = resolveEvidenceGalleryLazy(note, getAttachment ?? (() => null), manifest)
   // A3 (plan 2026-09-19): 空态不再是一句灰字——说原因（风控/无画面变化）与出路（重试导入）。
+  // P30 (plan 2026-09-21): 出路从「一句话」升级为**可点的自救入口**——重新运行任务
+  // （createAndRun 的能力/队列/在途守卫与任务页同款；完成后画面会出现在这里）。
   if (gallery.length === 0)
     return (
-      <p class="msg">本课时没有可用画面素材——B 站视频流可能被平台风控拦截，或整段没有画面变化；重新运行任务可能恢复。</p>
+      <div class="msg evidence-gallery-empty">
+        <p>本课时没有可用画面素材——B 站视频流可能被平台风控拦截，或整段没有画面变化；重新运行任务可能恢复。</p>
+        {onRefetchFrames != null && (
+          <button class="btn small" onClick={onRefetchFrames} title="重新运行本课时的任务（下载/抽帧会重来一遍，已有笔记不动）">
+            重新获取画面
+          </button>
+        )}
+      </div>
     )
   const toggleGroup = (ref: string): void => {
     setOpenGroups((prev) => {

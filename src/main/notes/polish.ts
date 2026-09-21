@@ -14,11 +14,13 @@ import { dropUnknownEvidence, evidenceHitRate } from '../../shared/notes/evidenc
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
 import { saveNoteVersion, stripFences, loadCleanSegments, loadSummarizeInputs, buildUserParts, loadValidRefs } from './summarize'
 import { feedbackTagInstructions } from '../../shared/feedback-tags'
+import { MAX_TRANSCRIPT_CHARS as SHARED_MAX_TRANSCRIPT_CHARS } from '../../shared/notes/limits'
 import { cleanTranscriptTimed, sampleTranscriptLines } from '../../shared/notes/transcript-clean'
 import { verifyNoteRefs, transcriptRefHitRate } from '../../shared/notes/ref-verify'
 
 /** Same reading-measure cap as qa (24k chars) — polish never needs more. */
-const MAX_TRANSCRIPT_CHARS = 24_000
+// P35 (plan 2026-09-21): 预算刻度收敛到 shared/notes/limits.ts（生成/润色/追问三处共用）。
+const MAX_TRANSCRIPT_CHARS = SHARED_MAX_TRANSCRIPT_CHARS
 /** Hard cap on the user's free-text feedback (guards the prompt size). */
 const MAX_FEEDBACK_TEXT_CHARS = 2_000
 

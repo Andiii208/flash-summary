@@ -2240,6 +2240,8 @@ button.concept-ref:hover { color: var(--accent); }
 /* P26 (plan 2026-09-21): contain——PPT 页是 4:3，cover 会裁掉约四分之一；
    关键帧 16:9 正好填满。卡片自带 surface-2 底，Letterbox 不突兀。 */
 .evidence-fig img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: contain; }
+/* P30 (plan 2026-09-21): 图集空态——原因一句话 + 自救按钮（按钮在 .msg 卡里左对齐竖排）。 */
+.evidence-gallery-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .evidence-fig figcaption { display: flex; justify-content: space-between; align-items: center; padding: 5px 9px; font-size: var(--font-size-xs); }
 .evidence-ref { font-family: var(--font-mono); color: var(--text-muted); }
 

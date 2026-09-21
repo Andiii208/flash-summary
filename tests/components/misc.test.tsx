@@ -196,7 +196,7 @@ describe('TopBar (批1 双源并列: two parallel session badges)', () => {
 
 describe('ProviderPanel (capability model inputs)', () => {
   it('ProviderPanel saves one model PER capability from per-field inputs (2026-09-05 批4)', () => {
-    const onSave = vi.fn()
+    const onSave = vi.fn(async () => true)
     const host = mount(<ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />)
     // 两个能力都勾上（P25 收敛后只有 asr / multimodal）；per-capability 模型输入框随勾选态出现。
     const boxes = host.querySelectorAll('.capability-check input[type="checkbox"]')
@@ -223,7 +223,7 @@ describe('ProviderPanel (capability model inputs)', () => {
   })
 
   it('ProviderPanel blocks save until every bound capability has a model (2026-09-05 批4)', () => {
-    const onSave = vi.fn()
+    const onSave = vi.fn(async () => true)
     const host = mount(<ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />)
     // Default state: ASR checked with an EMPTY model on purpose — the trap
     // this redesign removes; save must stay disabled until it is filled.
@@ -239,7 +239,7 @@ describe('ProviderPanel (capability model inputs)', () => {
 
   it('ProviderPanel disables «测试连接» until the API key is filled (P7)', () => {
     const onTest = vi.fn()
-    const host = mount(<ProviderPanel providers={null} busy={false} onSave={() => undefined} onRemove={() => undefined} onTest={onTest} />)
+    const host = mount(<ProviderPanel providers={null} busy={false} onSave={async () => true} onRemove={() => undefined} onTest={onTest} />)
     const test = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '测试连接') as HTMLButtonElement
     expect(test.disabled).toBe(true)
     input(host.querySelector('input[type="password"]') as HTMLInputElement, 'sk-test')
@@ -250,7 +250,7 @@ describe('ProviderPanel (capability model inputs)', () => {
   })
 
   it('ProviderPanel edit refills identity + per-capability bindings in place (2026-09-05 批4)', () => {
-    const onSave = vi.fn()
+    const onSave = vi.fn(async () => true)
     const providers = {
       providers: [{ id: 'p1', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', hasKey: true }],
       bindings: [{ capability: 'asr', providerId: 'p1', model: 'mimo-v2.5-asr' }]
@@ -364,7 +364,7 @@ describe('SettingsPanel cache-dir draft (P6, 2026-09-05)', () => {
     onLogout: () => undefined,
     providers: null,
     providerBusy: false,
-    onSaveProvider: () => undefined,
+    onSaveProvider: async () => true,
     onRemoveProvider: () => undefined,
     onSetCacheDir: () => undefined,
     onSetTheme: () => undefined,
@@ -686,7 +686,7 @@ describe('SettingsPanel 批5 细节', () => {
     onLogout: () => undefined,
     providers: null,
     providerBusy: false,
-    onSaveProvider: () => undefined,
+    onSaveProvider: async () => true,
     onRemoveProvider: () => undefined,
     onSetCacheDir: () => undefined,
     onSetTheme: () => undefined,

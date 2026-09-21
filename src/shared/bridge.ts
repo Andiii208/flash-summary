@@ -290,6 +290,9 @@ export interface NotesBridge {
       normalizationDropped?: Record<string, number>
       /** B4 (plan 2026-09-19): at 超出转写范围被钳到上界的时间字段数（0 = 没外推）。 */
       clampedTimes?: number
+      /** P35 (plan 2026-09-21): 转写超出预算被全域抽稀（首中尾覆盖，不是只留开头）——
+       *  「截断可见」纪律：抽过稀必须让用户知道，不静默。 */
+      transcriptSampled?: boolean
       /** 批3: 生成闭环结果（返修后体检 + 是否真返修过 + 返修前的 warn 数）。 */
       health?: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean; warnCountBeforeRepair: number | null }
     }>

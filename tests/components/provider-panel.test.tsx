@@ -10,7 +10,7 @@ import { mount, click, input } from '../helpers/preact'
  * 本文件钉住新的默认值与「为什么不能保存」的可见原因。
  */
 
-function mountPanel(onSave = vi.fn()) {
+function mountPanel(onSave = vi.fn(async () => true)) {
   const host = mount(<ProviderPanel providers={null} busy={false} onSave={onSave} onRemove={() => undefined} />)
   return { host, onSave }
 }
@@ -119,6 +119,36 @@ describe('ProviderPanel 首启默认值（批4 P8/D4）', () => {
     // 模型字段跟着勾选态渲染——没勾就没有输入框，勾回来时值仍是 MiMo 那次留下的。
     click(capabilityBoxes(host)[0])
     expect(modelInput(host, 'ASR 转写模型')!.value).toBe('mimo-v2.5-asr')
+  })
+
+  // P33 (plan 2026-09-21): 保存失败不再清空表单——Key 是用户最贵的重打部分
+  // （此前无论成败都抹掉，失败后要从头再输一遍）。与 ManualAdd 的
+  // success-only clearing 同一模式：onSave 返回 false 时输入原样保留。
+  it('P33: 保存失败保留全部输入（Key 不清空）；成功才清空', async () => {
+    const onSave = vi.fn(async () => false)
+    const { host } = mountPanel(onSave)
+    selectPreset(host, '小米 MiMo')
+    const key = host.querySelector('input[placeholder^="API Key"]') as HTMLInputElement
+    input(key, 'sk-要重打的钥匙')
+    expect(saveButton(host).disabled).toBe(false)
+    click(saveButton(host))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(key.value).toBe('sk-要重打的钥匙')
+
+    // 同一次填写，保存成功 → Key 清空（安全：不在表单里留密钥）。
+    const onSaveOk = vi.fn(async () => true)
+    const ok = mountPanel(onSaveOk)
+    selectPreset(ok.host, '小米 MiMo')
+    const key2 = ok.host.querySelector('input[placeholder^="API Key"]') as HTMLInputElement
+    input(key2, 'sk-ok')
+    click(saveButton(ok.host))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(key2.value).toBe('')
   })
 
   // 补批验收项前半的渲染半边（二次评审点名）：migration 013 删掉 text 行之后，

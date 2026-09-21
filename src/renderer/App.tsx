@@ -639,6 +639,7 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               courseSource={state.currentCourseSource}
               coverBackfillBusy={state.coverBackfillBusy}
               onBackfillCover={state.currentLesson !== '' ? () => state.backfillNoteCover(state.currentLesson) : undefined}
+              onRefetchFrames={state.currentLesson !== '' && state.currentCourseSource === 'bilibili' ? () => state.createAndRun() : undefined}
               noteTranscriptHitRate={state.noteTranscriptHitRate}
               lesson={state.lessonContextOrIndex}
               lessonOptions={state.currentCourseLessons}
@@ -886,7 +887,7 @@ interface AppState extends NotesDomain, TasksDomain {
   /** A2: one click from a finished task to its note. */
   openLessonNotes: (lessonId: string) => void
   ask: (question: string) => void
-  saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => void
+  saveProvider: (input: { id?: string; name: string; baseUrl: string; apiKey: string; capabilities: string[]; models: Record<string, string> }) => Promise<boolean>
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   providerTest: { ok: boolean; text: string } | null

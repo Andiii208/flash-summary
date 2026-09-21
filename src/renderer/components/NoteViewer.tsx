@@ -75,6 +75,9 @@ export interface NoteViewerProps {
   noteTranscriptHitRate?: { hits: number; total: number } | null
   /** 批 D (plan 2026-09-19): B 站课时「跳原片」（at 秒）；SEU 源不传——按钮不渲染，不给会失败的入口。 */
   onOpenSource?: (at: number) => void
+  /** P30 (plan 2026-09-21): 图集空态的自救入口——重新运行任务再抽一次帧。仅 B 站源
+      由 App 传入（SEU 源重跑要重新下载整片，贵且大概率无效，不给这个按钮）。 */
+  onRefetchFrames?: () => void
   /** Regenerate in flight (button busy state). */
   regenBusy?: boolean
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes. */
@@ -143,6 +146,7 @@ export function NoteViewer({
   nextLesson = null,
   onNavigateLesson,
     onOpenSource,
+    onRefetchFrames,
     coverDataUrl = null,
   courseSource = 'seu',
   coverBackfillBusy = false,
@@ -576,7 +580,7 @@ function noteReadMinutes(note: Note): number {
             <section class="note-section">
               <h3>课堂画面</h3>
               <ErrorBoundary area="note-gallery">
-<EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} onOpenSource={onOpenSource} />
+<EvidenceGallery note={note} getAttachment={getAttachment} manifest={attachmentManifest} version={attachmentVersion} onOpenSource={onOpenSource} onRefetchFrames={courseSource === 'bilibili' ? onRefetchFrames : undefined} />
               </ErrorBoundary>
             </section>
           )}

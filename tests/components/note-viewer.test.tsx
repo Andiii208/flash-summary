@@ -280,6 +280,23 @@ describe('NoteViewer', () => {
     expect(host.querySelector('.evidence-fig img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
   })
 
+  // P30 (plan 2026-09-21): 图集空态从「一句话」升级为可点的自救入口——按钮存在
+  // 且接通回调；不给回调（SEU 源/未接线）时不渲染，不做点不动的按钮。
+  it('P30: 图集空态渲染「重新获取画面」自救按钮（不给回调则不渲染）', () => {
+    const onRefetch = vi.fn()
+    const bareNote: Note = { ...NOTE, evidence: [] }
+    // courseSource 默认 seu——入口只给 B 站源（SEU 重跑要重新下载整片，不给会失败的按钮）。
+    const withEntry = mount(<NoteViewer note={bareNote} attachmentManifest={[]} courseSource="bilibili" onRefetchFrames={onRefetch} />)
+    const button = Array.from(withEntry.querySelectorAll('button')).find((b) => b.textContent === '重新获取画面')
+    expect(button).not.toBeUndefined()
+    click(button ?? null)
+    expect(onRefetch).toHaveBeenCalledTimes(1)
+    const without = mount(<NoteViewer note={bareNote} attachmentManifest={[]} courseSource="bilibili" />)
+    expect(Array.from(without.querySelectorAll('button')).some((b) => b.textContent === '重新获取画面')).toBe(false)
+    // 空态仍说清原因（风控/无画面变化），不是光秃秃一个按钮。
+    expect(withEntry.textContent).toContain('没有可用画面素材')
+  })
+
   it('flips a quiz card from question to answer on click (roadmap 2.1)', () => {
     const quizNote: Note = {
       ...NOTE,

@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { sampleTranscriptLines } from '../src/shared/notes/transcript-clean'
+import { MAX_TRANSCRIPT_CHARS } from '../src/shared/notes/limits'
 
 /** 造一份「每行都带时间锚、行数可控」的长转写。 */
 function longLesson(lines: number, bodyChars: number): string {
@@ -58,5 +59,18 @@ describe('sampleTranscriptLines 全域抽稀（批3 item 5）', () => {
     const sampled = sampleTranscriptLines(crlf, 600)
     expect(sampled.split('\n').length).toBeGreaterThan(1)
     expect(sampled).not.toContain('\r')
+  })
+})
+
+// P35 (plan 2026-09-21): 预算刻度单一事实源——生成/润色/追问三处共用同一个数值。
+describe('MAX_TRANSCRIPT_CHARS（P35, shared/notes/limits）', () => {
+  it('是 24k 且 sampleTranscriptLines 按它收敛（全域覆盖首中尾）', () => {
+    expect(MAX_TRANSCRIPT_CHARS).toBe(24_000)
+    const sampled = sampleTranscriptLines(longLesson(4000, 60), MAX_TRANSCRIPT_CHARS)
+    expect(sampled.length).toBeLessThanOrEqual(MAX_TRANSCRIPT_CHARS)
+    const lines = sampled.split('\n')
+    expect(lines.length).toBeGreaterThan(10)
+    expect(lines[0]).toMatch(/^\[\d+:\d{2}\]/)
+    expect(lines[lines.length - 1]).toMatch(/\[\d+:\d{2}\]/)
   })
 })

@@ -21,7 +21,7 @@ const settingsBaseProps = {
   onLogout: () => undefined,
   providers: null,
   providerBusy: false,
-  onSaveProvider: () => undefined,
+  onSaveProvider: async () => true,
   onRemoveProvider: () => undefined,
   onSetCacheDir: () => undefined,
   onSetTheme: () => undefined,
@@ -45,7 +45,7 @@ const topBarProps = {
 
 describe('声明批5 — 说在用户做决定的位置', () => {
   it('Provider 配置区常驻数据流向说明，且不含法律术语', () => {
-    mount(<ProviderPanel providers={null} busy={false} onSave={() => undefined} onRemove={() => undefined} />)
+    mount(<ProviderPanel providers={null} busy={false} onSave={async () => true} onRemove={() => undefined} />)
     const note = document.querySelector('[data-testid="provider-disclosure"]')
     expect(note).not.toBeNull()
     const text = note?.textContent ?? ''

@@ -327,3 +327,45 @@ describe('visualCoverageFindings（B6, plan 2026-09-19）', () => {
     expect(noteHealth(noteFixture(), undefined, undefined, null).findings.some((f) => f.field === 'visualCoverage')).toBe(false)
   })
 })
+
+// P31 (plan 2026-09-21): B6 三指标的另两项——章节覆盖率与时间越界。两项都只报
+// info（D7：warn 会放大「升级旧笔记」的白烧钱面），warnCount 因此不变。
+describe('P31 章节覆盖率与时间越界（B6 三指标补齐）', () => {
+  it('条目早于第一个章节 → info 说明几条没有归属', () => {
+    const note = noteFixture({ chapters: [{ at: 600, title: '后半场', summary: '调参' }] })
+    const finding = noteHealth(note).findings.find((f) => f.field === 'chapterCoverage')
+    expect(finding?.level).toBe('info')
+    expect(finding?.message).toContain('2 条早于第一个章节')
+    expect(noteHealth(note).warnCount).toBe(0)
+  })
+
+  it('章节从开头覆盖或无章节 → 无该项 finding', () => {
+    expect(noteHealth(noteFixture({ chapters: [{ at: 0, title: '开场', summary: '引入' }] })).findings.some((f) => f.field === 'chapterCoverage')).toBe(false)
+    expect(noteHealth(noteFixture()).findings.some((f) => f.field === 'chapterCoverage')).toBe(false)
+  })
+
+  it('时间线/章节时间越出转写范围 → info 点名几条（旧工艺外推的可见化）', () => {
+    const note = noteFixture({
+      timeline: [
+        { at: 0, title: 'a', detail: 'x'.repeat(60), refs: [], evidence: [] },
+        { at: 9999, title: 'b', detail: 'y'.repeat(60), refs: [], evidence: [] }
+      ],
+      chapters: [{ at: 8888, title: '越界章节', summary: 's' }]
+    })
+    const finding = noteHealth(note, undefined, undefined, undefined, { maxAt: 5000 }).findings.find((f) => f.field === 'timeRange')
+    expect(finding?.level).toBe('info')
+    expect(finding?.message).toContain('1 条时间线')
+    expect(finding?.message).toContain('1 个章节')
+    expect(noteHealth(note, undefined, undefined, undefined, { maxAt: 5000 }).warnCount).toBe(0)
+  })
+
+  it('全部在范围内或渲染层不传范围 → 无该项 finding', () => {
+    expect(noteHealth(noteFixture(), undefined, undefined, undefined, { maxAt: 5000 }).findings.some((f) => f.field === 'timeRange')).toBe(false)
+    expect(noteHealth(noteFixture()).findings.some((f) => f.field === 'timeRange')).toBe(false)
+  })
+
+  it('两个新字段都有面向用户的标签（HEALTH_FIELD_LABELS 单一事实源）', () => {
+    expect(HEALTH_FIELD_LABELS.chapterCoverage).toBe('章节覆盖')
+    expect(HEALTH_FIELD_LABELS.timeRange).toBe('时间范围')
+  })
+})

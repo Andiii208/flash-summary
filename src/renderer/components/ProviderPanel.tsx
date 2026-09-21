@@ -48,7 +48,9 @@ export interface ProviderSaveInput {
 export interface ProviderPanelProps {
   providers: ProvidersListResult | null
   busy: boolean
-  onSave: (input: ProviderSaveInput) => void
+  /** P33 (plan 2026-09-21): 返回保存是否成功——失败时**不清空表单**（Key 是
+      最贵的重打部分；此前保存失败也会把输入抹掉，用户得从头再输一遍）。 */
+  onSave: (input: ProviderSaveInput) => Promise<boolean>
   onRemove: (id: string) => void
   /** M3 批 D: probe the form values against the real endpoint. */
   onTest?: (input: { baseUrl: string; apiKey: string; model: string }) => void
@@ -278,16 +280,21 @@ export function ProviderPanel({ providers, busy, onSave, onRemove, onTest, testR
     if (trimmedBase === '' || chosen.length === 0) return
     if (chosen.some((id) => (models[id] ?? '').trim() === '')) return
     if (!hasConfigured && editingId == null && trimmedKey === '') return
-    onSave({
-      id: editingId ?? undefined,
-      name: name.trim(),
-      baseUrl: trimmedBase,
-      apiKey: trimmedKey,
-      capabilities: [...chosen],
-      models: Object.fromEntries(chosen.map((id) => [id, (models[id] ?? '').trim()]))
-    })
-    setApiKey('')
-    setEditingId(null)
+    // P33 (plan 2026-09-21): 只在保存成功时清空——失败保留全部输入（Key 是
+    // 最贵的重打部分）。与 ManualAdd 的 success-only clearing 同一模式。
+    void (async () => {
+      const saved = await onSave({
+        id: editingId ?? undefined,
+        name: name.trim(),
+        baseUrl: trimmedBase,
+        apiKey: trimmedKey,
+        capabilities: [...chosen],
+        models: Object.fromEntries(chosen.map((id) => [id, (models[id] ?? '').trim()]))
+      })
+      if (saved !== true) return
+      setApiKey('')
+      setEditingId(null)
+    })()
   }
 
   // The probe exercises the first bound capability's model (ASR endpoints

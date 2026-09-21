@@ -16,7 +16,8 @@ import {
   type ParsedNote
 } from './schema'
 import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidence'
-import { cleanSegments, formatTimedTranscript } from '../../shared/notes/transcript-clean'
+import { cleanSegments, formatTimedTranscript, sampleTranscriptLines } from '../../shared/notes/transcript-clean'
+import { MAX_TRANSCRIPT_CHARS } from '../../shared/notes/limits'
 import type { CleanSegment } from '../../shared/notes/transcript-clean'
 import { verifyNoteRefs, transcriptRefHitRate, clampNoteTimes, verifyTranscriptRefs } from '../../shared/notes/ref-verify'
 import { modelHasVision } from '../../shared/model-vision'
@@ -93,6 +94,8 @@ export interface SummarizeInputs {
   allRefs: Set<string>
   /** A3: 本课时真实素材数（风控断供/无流时 keyframes=0，用户侧必须看得见）。 */
   visualAssets: { keyframes: number; ppt: number }
+  /** P35 (plan 2026-09-21): 转写超出预算被抽过稀——截断必须可见（toast/阶段产物），      不静默（「不静默截断」纪律）。 */
+  transcriptSampled: boolean
 }
 
 export function loadSummarizeInputs(db: Db, lessonId: string, libraryRoot: string): SummarizeInputs | { error: string } {
@@ -163,8 +166,14 @@ function loadSummarizeInputsInner(db: Db, lessonId: string, libraryRoot: string)
   // 视觉候选装配完毕（哈希已吃完缩略图）——缩略图的删除在外层
   // loadSummarizeInputs 的 finally 里（早退路径也要清）。
 
+  // P35 (plan 2026-09-21): 生成路径的转写预算守卫——与 polish/qa 同一份刻度
+  // (shared/notes/limits.ts)。超预算时全域抽稀（逐行按步长，预算内覆盖首/中/尾），
+  // 而不是把 32k tokens 直塞 prompt 撞 600s 超时白烧钱。
+  const timedTranscript = formatTimedTranscript(segments)
+  const transcriptText = sampleTranscriptLines(timedTranscript, MAX_TRANSCRIPT_CHARS)
   return {
-    transcriptText: formatTimedTranscript(segments),
+    transcriptText,
+    transcriptSampled: transcriptText.length < timedTranscript.length,
     segments,
     images,
     allRefs,
@@ -395,6 +404,17 @@ export function transcriptHitRateFor(db: Db, lessonId: string, note: Note): { hi
   return transcriptRefHitRate(verifyNoteRefs(note, segments).stats)
 }
 
+/**
+ * P31 (plan 2026-09-21): 转写的时间范围（最后一段的 at）——体检「时间范围」指标
+ * 的输入（旧工艺外推时间的可见化：生成路径 2026-09-19 起钳制，这条兜住存量笔记）。
+ * 没有转写时返回 null（该指标不评）。
+ */
+export function transcriptRangeFor(db: Db, lessonId: string): { maxAt: number } | null {
+  const segments = loadCleanSegments(db, lessonId)
+  if (segments == null || segments.length === 0) return null
+  return { maxAt: Math.max(...segments.map((s) => s.at ?? 0)) }
+}
+
 /** Every evidence id this lesson actually has — 润色与补全只允许引用这些。
  *  批4 起 `notes:courseHealth` 复用（命中率口径同源）。
  *  批2 (plan 2026-09-20, P2)：从 polish.ts 搬到本模块——定向补全（repairStoredNote）
@@ -476,6 +496,8 @@ export async function summarizeLesson(
       normalizationDropped: NormalizationDropCounts
       /** B4: at 超出转写范围被钳到上界的时间字段数。 */
       clampedTimes: number
+      /** P35 (plan 2026-09-21): 转写超预算被全域抽稀（首中尾覆盖）——截断可见。 */
+      transcriptSampled: boolean
       /** B2: 金句核验（可核验/总数；无金句时 0/0）。 */
       quotesVerified: { total: number; verified: number }
       /** A3: 本课时真实画面素材数（0 = 断供，toast/体检据此说明原因）。 */
@@ -573,6 +595,7 @@ export async function summarizeLesson(
       hitRate: evidenceHitRate(note, sentImages),
       quotesVerified,
       visualAssets: inputs.visualAssets,
+      transcriptSampled: inputs.transcriptSampled,
       transcriptHitRate: transcriptRefHitRate(stats),
       refStats: stats,
       droppedRefs: dropped,
