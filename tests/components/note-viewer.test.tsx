@@ -243,6 +243,17 @@ describe('NoteViewer', () => {
     expect(host.querySelector('.md-lite strong')?.textContent).toBe('大O')
   })
 
+  // P29 (plan 2026-09-21): ==荧光笔== → <mark>（不是字面双等号）。
+  it('renders ==荧光笔== as a mark element, not literal equals signs', () => {
+    const markNote: Note = { ...NOTE, overview: '重点是 ==样本空间== 与事件。' }
+    const host = mount(<NoteViewer note={markNote} />)
+    const mark = host.querySelector('.md-lite mark')
+    expect(mark).not.toBeNull()
+    expect(mark?.textContent).toBe('样本空间')
+    // 页面上不出现字面 ==（判据认了高亮才会走 markdown 块，而非 paragraph 插值）。
+    expect(host.querySelector('.md-lite')?.textContent).not.toContain('==')
+  })
+
   it('shows the regenerate button only with a note and wires busy state', () => {
     const onRegenerate = vi.fn()
     const idle = mount(<NoteViewer note={NOTE} onRegenerate={onRegenerate} regenBusy={false} />)

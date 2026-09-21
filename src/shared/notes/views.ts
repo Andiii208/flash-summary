@@ -131,7 +131,7 @@ function flattenTree(node: { title: string; children: unknown[] }, depth = 0): s
 
 // ---------------- structured block projections ----------------
 
-/** Shared: does this string look like markdown (## / list / bold / code / table)?
+/** Shared: does this string look like markdown (## / list / bold / code / ==mark== / table)?
  *  批5 (P18): 这是**唯一**的 markdown 判据——概览与 tldr 都走它（`markdownBlock`），
  *  渲染层的 paragraph 分支因此可以安心保持纯文本。 */
 export function looksLikeMarkdown(text: string): boolean {
@@ -139,10 +139,13 @@ export function looksLikeMarkdown(text: string): boolean {
   // overview 会落到纯 `<p>` 分支，把 `|` 原样印出来。
   // 批5: 补行内代码判据。`md-lite` 的 parseInline 认 `code`（单反引号），但
   // 判据不认——只含 `xxx` 的一句话会走纯 `<p>`，把字面反引号印在读者眼前。
+  // P29 (plan 2026-09-21): 补荧光笔判据——同理，只含 ==高亮== 的句子不能走
+  // 纯文本插值（会印出字面双等号）。
   return (
     /(^|\n)\s{0,3}(#{1,4}\s|[-*]\s|\d+\.\s)/.test(text) ||
     /\*\*[^*]+\*\*/.test(text) ||
     /`[^`\n]+`/.test(text) ||
+    /==[^=\n]+==/.test(text) ||
     hasTable(text)
   )
 }

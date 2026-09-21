@@ -115,7 +115,7 @@ export interface TreeNode {
  * 常量住在 shared 是因为渲染层也要读它（main 不能被渲染层 import）。
  * 0 表示「该列启用之前生成的」，所以存量笔记天然算旧版本。
  */
-export const CURRENT_PROMPT_VERSION = 6
+export const CURRENT_PROMPT_VERSION = 7
 export const CURRENT_SCHEMA_VERSION = 2
 
 /**

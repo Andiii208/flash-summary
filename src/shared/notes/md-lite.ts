@@ -21,6 +21,8 @@ export type MdInline =
   | { t: 'code'; v: string }
   /** 批4: 行内公式 `$...$`。tex 是原始 LaTeX，渲染由渲染层交给 KaTeX。 */
   | { t: 'math'; v: string }
+  /** P29 (plan 2026-09-21): 荧光笔 `==...==`，渲染为 `<mark>`。 */
+  | { t: 'mark'; v: string }
 
 export type MdBlock =
   | { t: 'heading'; level: number; inline: MdInline[] }
@@ -32,22 +34,27 @@ export type MdBlock =
   | { t: 'math'; tex: string }
 
 /**
- * Parse inline **bold** / `code` / $math$ spans (no nesting between them).
+ * Parse inline **bold** / `code` / $math$ / ==mark== spans (no nesting between them).
  *
  * 批4: 行内公式的定界符是 `$...$`——**要求两侧不贴空格**（`$x$` 是公式，
  * 「花了 $5 和 $10」不是），这是通用 markdown 数学插件的既有约定，避免把
  * 货币符号误当公式。反斜杠转义的 `\$` 不算定界符。
+ *
+ * P29 (plan 2026-09-21): 荧光笔 `==...==`——正则按位置从左到右匹配，`$`
+ * 分支先于 `==`，所以公式里的等号（`$a == b$`）不会被误当高亮；未闭合的
+ * 单个 `==`（如「a == b」）不匹配、原样留文本（与 `$$` 的未闭合降级同纪律）。
  */
 export function parseInline(text: string): MdInline[] {
   const spans: MdInline[] = []
-  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\$([^\s$][^$]*[^\s$]|[^\s$])\$/g
+  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\$([^\s$][^$]*[^\s$]|[^\s$])\$|==([^=]+)==/g
   let last = 0
   let match: RegExpExecArray | null
   while ((match = pattern.exec(text)) != null) {
     if (match.index > last) spans.push({ t: 'text', v: text.slice(last, match.index) })
     if (match[1] != null) spans.push({ t: 'bold', v: match[1] })
     else if (match[2] != null) spans.push({ t: 'code', v: match[2] })
-    else spans.push({ t: 'math', v: match[3] ?? '' })
+    else if (match[3] != null) spans.push({ t: 'math', v: match[3] })
+    else spans.push({ t: 'mark', v: match[4] ?? '' })
     last = pattern.lastIndex
   }
   if (last < text.length) spans.push({ t: 'text', v: text.slice(last) })

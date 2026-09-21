@@ -217,6 +217,13 @@ describe('looksLikeMarkdown', () => {
     // 单个反引号不成对 → 不是代码跨度，仍是普通文本。
     expect(looksLikeMarkdown('价格大约 5` 上下')).toBe(false)
   })
+
+  // P29 (plan 2026-09-21): 只含 ==高亮== 的句子必须走 markdown 分支——否则
+  // paragraph 的纯文本插值会把字面双等号印在读者眼前（与 P18 反引号同型病）。
+  it('P29: 认出只含 ==荧光笔== 的一句话；未闭合的 == 不算', () => {
+    expect(looksLikeMarkdown('重点是 ==样本空间== 与事件。')).toBe(true)
+    expect(looksLikeMarkdown('a == b 这样的比较写法')).toBe(false)
+  })
 })
 
 describe('B3 tldr（plan 2026-09-19-note-experience-overhaul）', () => {

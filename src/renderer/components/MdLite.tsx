@@ -38,8 +38,10 @@ function MathSpan({ tex, displayMode }: { tex: string; displayMode: boolean }): 
   return displayMode ? <span ref={ref} class="md-math-block" /> : <span ref={ref} class="md-math" />
 }
 
-/** Render one inline span list (**bold** / `code` / $math$) as Preact children.
- *  批4: exported — InlineText reuses it for single-line note fields. */
+/** Render one inline span list (**bold** / `code` / $math$ / ==mark==) as Preact children.
+ *  批4: exported — InlineText reuses it for single-line note fields.
+ *  P29 (plan 2026-09-21): ==高亮== → <mark>（语义元素，底色由 style.css/print.css
+ *  同一份 token 给出；解析器只产 token 的铁律不破）。 */
 export function Inline({ spans }: { spans: MdInline[] }): JSX.Element {
   return (
     <>
@@ -47,6 +49,7 @@ export function Inline({ spans }: { spans: MdInline[] }): JSX.Element {
         if (span.t === 'bold') return <strong key={i}>{span.v}</strong>
         if (span.t === 'code') return <code key={i}>{span.v}</code>
         if (span.t === 'math') return <MathSpan key={i} tex={span.v} displayMode={false} />
+        if (span.t === 'mark') return <mark key={i}>{span.v}</mark>
         return <span key={i}>{span.v}</span>
       })}
     </>

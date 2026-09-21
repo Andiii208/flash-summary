@@ -34,6 +34,9 @@
   --success-soft: rgba(47, 107, 63, 0.12);
   --warning: #a8551e;
   --warning-soft: rgba(168, 85, 30, 0.12);
+  /* P29 (plan 2026-09-21): 荧光笔底色——==高亮== 专用。暖黄但不与 brass 系
+     强调色抢戏；暗色下提亮度保对比。屏幕与 PDF（print.css）各一份同值定义。 */
+  --mark-bg: rgba(233, 196, 106, 0.45);
   --border: #e3dccc;
   --border-strong: #cfc8b4;
   /* 批8 (T7/暗色): 六个「学科墨水」色升为**主题 token**——此前是渲染层内联注入的
@@ -126,6 +129,8 @@
     --success-soft: rgba(143, 214, 160, 0.13);
     --warning: #e0a36a;
     --warning-soft: rgba(224, 163, 106, 0.13);
+    /* P29: 荧光笔底色（暗色提亮度保对比，与浅色同族暖黄）。 */
+    --mark-bg: rgba(233, 196, 106, 0.32);
     --border: #2c332f;
     --border-strong: #3d453f;
     --scrim: rgba(0, 0, 0, 0.62);
@@ -1824,6 +1829,10 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
 .md-lite .md-list li::marker { color: var(--accent); }
 .md-lite .md-quote { margin: 4px 0; padding: 6px 12px; border-left: 2px solid var(--accent-soft-2); color: var(--text-muted); font-size: var(--font-size-sm); background: var(--surface-2); border-radius: 0 var(--radius) var(--radius) 0; }
 .md-lite code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
+/* P29 (plan 2026-09-21): 荧光笔——==高亮== 渲染为 <mark>。底色走 --mark-bg
+   token（浅/暗各一份），字色沿用正文（高亮是「划重点」不是「换色」）；
+   不加圆角与内边距——贴着文字走才像荧光笔。 */
+.md-lite mark { background: var(--mark-bg); color: inherit; }
 /* 批4: InlineText 的裸 code 出现在 md-lite 之外的字段（定义/步骤解释/考点/自测/时间线）
    ——共享同一份行内码样式；md-lite 与 pre 代码块有自己的样式。 */
 .concept-def code, .formula-explain code, .callout-item code,

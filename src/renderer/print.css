@@ -105,6 +105,14 @@
   border-left: 2pt solid #b08d2e;
   break-inside: avoid;
 }
+/* P29 (plan 2026-09-21): PDF 荧光笔——与屏幕端同底色（print.css 是纸面白底的
+   独立体系，不走 :root token，这里给同值暖黄）。printBackground:true 已保证
+   底色印得出来。 */
+.ph-doc mark {
+  background: rgba(233, 196, 106, 0.45);
+  color: inherit;
+  padding: 0 1px;
+}
 .ph-quote-at {
   font-family: monospace;
   font-size: 9pt;

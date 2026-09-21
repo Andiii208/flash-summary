@@ -18,6 +18,48 @@ describe('parseInline', () => {
   })
 })
 
+// P29 (plan 2026-09-21): 荧光笔 ==高亮==。
+describe('parseInline ==mark== (P29)', () => {
+  it('parses a closed ==span== as a mark token', () => {
+    expect(parseInline('重点是 ==随机试验== 的定义')).toEqual([
+      { t: 'text', v: '重点是 ' },
+      { t: 'mark', v: '随机试验' },
+      { t: 'text', v: ' 的定义' }
+    ])
+  })
+
+  it('an unclosed == stays literal text（与 $$ 同纪律：不吞内容）', () => {
+    expect(parseInline('a == b')).toEqual([{ t: 'text', v: 'a == b' }])
+    // 只有开头没有第二个 == 时不匹配，原样留文本
+    expect(parseInline('== 只有开头')).toEqual([{ t: 'text', v: '== 只有开头' }])
+  })
+
+  it('two == in one line span greedily to the closer（与 ** 同行为）', () => {
+    expect(parseInline('a == b 与 c == d')).toEqual([
+      { t: 'text', v: 'a ' },
+      { t: 'mark', v: ' b 与 c ' },
+      { t: 'text', v: ' d' }
+    ])
+  })
+
+  it('== inside inline math is not a mark（$ 分支先于 == 匹配）', () => {
+    const spans = parseInline('$a == b$ 是公式')
+    expect(spans.some((s) => s.t === 'math')).toBe(true)
+    expect(spans.some((s) => s.t === 'mark')).toBe(false)
+  })
+
+  it('== inside code spans is not a mark（code 分支先于 == 匹配）', () => {
+    const spans = parseInline('`a == b` 是代码')
+    expect(spans.some((s) => s.t === 'code')).toBe(true)
+    expect(spans.some((s) => s.t === 'mark')).toBe(false)
+  })
+
+  it('multiple marks in one line all parse', () => {
+    const spans = parseInline('==甲== 和 ==乙==')
+    expect(spans.filter((s) => s.t === 'mark').map((s) => (s as { v: string }).v)).toEqual(['甲', '乙'])
+  })
+})
+
 describe('parseMdLite', () => {
   it('parses headings, bullet lists, ordered lists, quotes, paragraphs', () => {
     const blocks = parseMdLite(

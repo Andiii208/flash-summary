@@ -290,6 +290,17 @@ describe('正文列铁律（批6，P10/D6）', () => {
   })
 })
 
+// P29 (plan 2026-09-21): 荧光笔底色走 token（浅/暗各一份定义在 :root），
+// 屏幕与 PDF 两份规则体同值——「同一角色只允许一处定义」的纪律。
+describe('荧光笔底色（P29）', () => {
+  it('.md-lite mark 用 --mark-bg token，且浅/暗两套主题都定义了它', () => {
+    expect(bodyOf('.md-lite mark')).toContain('background: var(--mark-bg)')
+    const defs = [...stripped.matchAll(/--mark-bg:\s*([^;]+);/g)].map((m) => m[1].trim())
+    expect(defs.length, '浅色 + 暗色各一份定义').toBe(2)
+    for (const value of defs) expect(value).toMatch(/^rgba\(/)
+  })
+})
+
 /**
  * 批8 (plan 2026-09-19): padding 刻度基线。SKILL §1 纪律要求 padding 也走
  * --space-* 刻度，但存量攒了一批逐处手写的野值（gap/line-height/letter-spacing

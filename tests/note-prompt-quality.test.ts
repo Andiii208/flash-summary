@@ -83,6 +83,15 @@ describe('SYSTEM_PROMPT 内容质量规约 (批1 2026-09-08)', () => {
     expect(SYSTEM_PROMPT).toContain('$...$')
   })
 
+  // P29 (plan 2026-09-21): 荧光笔 ==== 的 prompt 契约——只在 overview/methodology
+  // 放开、带条数上限；其余字段的禁止清单显式列入 ==高亮==。
+  it('P29: ==荧光笔== 只对 overview/methodology 放开且有上限；其余字段禁止', () => {
+    expect(SYSTEM_PROMPT).toContain('==双等号==')
+    expect(SYSTEM_PROMPT).toContain('两字段合计不超过 6 处')
+    expect(SYSTEM_PROMPT).toContain('禁止整段涂抹')
+    expect(SYSTEM_PROMPT).toContain('==高亮== 等一切 Markdown 标记')
+  })
+
   it('批6 9.11 去 AI 味：去路标 / 具体优先 / 不均匀化', () => {
     expect(NOTE_QUALITY_PROMPT).toContain('9.11')
     expect(NOTE_QUALITY_PROMPT).toContain('去路标')
