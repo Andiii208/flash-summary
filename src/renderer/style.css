@@ -611,7 +611,7 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
    批3 (plan 2026-09-07 v07): .note-viewer previously had NO width rule —
    its page head ran full-window while empty state/library sat in the 680
    reading column, three right edges on one tab. */
-.task-panel, .qa-panel, .note-viewer { max-width: var(--content-max); }
+.task-panel, .note-viewer { max-width: var(--content-max); }
 
 /* ---- 批A: unified page head + lesson identity chip ---- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 2px 0 14px; }
@@ -1515,6 +1515,67 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .qa-time { display: block; margin-top: 6px; text-align: right; font-size: var(--font-size-xs); color: var(--text-muted); font-family: var(--font-ui); }
 .qa-input-row { display: flex; gap: var(--space-2); max-width: var(--content-max); align-items: flex-end; }
 .qa-input-row .qa-input { flex: 1; }
+
+/* ---- P36 (plan 2026-09-21): 追问右坞 ---- *
+   默认（<1400 CSS）：固定位置悬浮窗——右贴底、盖在内容右侧空白上；z-index 30
+   低于四个自绘 overlay 的 40、高于内容。不是弹层：不挂 .fullscreen-overlay、
+   不加遮罩、不锁滚动（SKILL §5）。间距/圆角/字号全走既有 token。 */
+.qa-dock {
+  position: fixed;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 30;
+  width: min(400px, calc(100vw - 48px));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-3);
+}
+.qa-dock-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.qa-dock-title { font-size: var(--font-size-sm); font-weight: 600; color: var(--text); flex-shrink: 0; }
+.qa-dock-no-lesson { font-size: var(--font-size-xs); color: var(--text-muted); }
+.qa-dock-collapse { margin-left: auto; flex-shrink: 0; }
+.qa-dock .qa-log { flex: 1; min-height: 0; overflow-y: auto; max-width: none; margin-bottom: 0; }
+.qa-dock .qa-input-row { max-width: none; }
+/* 折叠态：右缘一颗入口钮（宽窄屏同一形制）。 */
+.qa-dock-launcher {
+  position: fixed;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 30;
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--accent-contrast);
+  background: var(--accent-fill);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+}
+/* 坞档（SKILL §3 唯一的 min-width 断点）：≥1400 CSS 时坞进布局，成为 .app-main
+   第三列——把宽屏右侧空白全部吸收（与窗口缩放 z=clamp(W/1600,1,2.5) 联合定档：
+   CSS 视口钉 1600 时本档恒可命中）。1400 = 304 侧栏 + 24 + 640 正文列 + 16
+   间距 + 340 坞 + 24 的取整。内容面板在该档下改流式（860 帽只在坞折叠/悬浮时
+   生效）；坞宽 clamp 语义——基准 420、上限 520、下限 340。 */
+@media (min-width: 1400px) {
+  .qa-dock {
+    position: static;
+    width: auto;
+    flex: 0 1 520px;
+    min-width: 340px;
+    max-height: calc(100vh - var(--space-4) * 2);
+    align-self: stretch;
+  }
+  .app-main:has(.qa-dock) .task-panel,
+  .app-main:has(.qa-dock) .note-viewer,
+  .app-main:has(.qa-dock) .settings-panel { max-width: none; flex: 1; min-width: 0; }
+}
 textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leading-snug); font-family: inherit; }
 /* B4: lesson-to-lesson navigation in the note toolbar. */
 .lesson-nav { display: inline-flex; gap: var(--space-2); }

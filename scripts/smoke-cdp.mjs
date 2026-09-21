@@ -347,16 +347,20 @@ async function main() {
     }
     record('L4 同意后闸门消失、主界面接管', gateLifted, gateLifted ? '' : 'shell 未出现或闸门未收起')
 
-    // L4: first render — four tabs and an honest logged_out badge.
+    // L4: first render — three tabs (P36: the qa tab is gone; the dock is always
+    // mounted) and an honest logged_out badge.
     const dom = await cdp.eval(
       `JSON.stringify({
         tabs: document.querySelectorAll('.tabs button').length,
-        badge: document.querySelector('[data-testid="session-badge"]')?.className ?? ''
+        badge: document.querySelector('[data-testid="session-badge"]')?.className ?? '',
+        qaDock: document.querySelector('[data-testid="qa-dock"]') != null
       })`
     )
     const domState = JSON.parse(dom)
-    record('L4 four tabs rendered', domState.tabs === 4, `tabs ${domState.tabs}`)
+    record('L4 three tabs rendered', domState.tabs === 3, `tabs ${domState.tabs}`)
     record('L4 badge starts logged_out', domState.badge.includes('logged_out'), `badge class "${domState.badge}"`)
+    // P36: 追问坞全 tab 常驻——首屏也挂载（空态 + 近期追问）。
+    record('L4 qa dock always mounted', domState.qaDock === true, `dock ${domState.qaDock}`)
 
     // L4（批4 P8/D4 验收项的实跑半边，批4 二次评审点名）：验收项写的是「**全新
     // userData 首启** → Provider 表单默认含 multimodal、asr 有预填或明确原因」，

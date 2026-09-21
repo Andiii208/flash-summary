@@ -13,7 +13,7 @@ import { MyStudyPanel } from './components/MyStudyPanel'
 import { MyStudyDialog } from './components/MyStudyDialog'
 import { TaskPanel } from './components/TaskPanel'
 import { NoteViewer, type LessonContext } from './components/NoteViewer'
-import { QaPanel, type QaEntry } from './components/QaPanel'
+import { QaDock, type QaEntry } from './components/QaDock'
 import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
 import type { LessonChipLesson } from './components/LessonChip'
@@ -33,7 +33,7 @@ import { useNotesDomain, type NotesDomain } from './hooks/use-notes-domain'
 import { useTasksDomain, isActiveState, type TasksDomain } from './hooks/use-tasks-domain'
 import { SettingsPanel } from './components/SettingsPanel'
 
-type MainTab = 'tasks' | 'notes' | 'qa' | 'settings'
+type MainTab = 'tasks' | 'notes' | 'settings'
 
 /** school:listCourses envelope value (paged refresh, B1). */
 type CourseListResult = { loaded: number; platformTotal: number; platformPages: number }
@@ -42,11 +42,12 @@ type CourseListResult = { loaded: number; platformTotal: number; platformPages: 
 const TAB_LABELS: Array<{ id: MainTab; label: string }> = [
   { id: 'tasks', label: '任务' },
   { id: 'notes', label: '笔记' },
-  { id: 'qa', label: '追问' },
   { id: 'settings', label: '设置' }
 ]
 
-/** 批F: Ctrl+1..4 → tab id (null when the chord doesn't map to a tab). */
+/** 批F: Ctrl+1..3 → tab id (null when the chord doesn't map to a tab).
+ *  P36 (plan 2026-09-21): 追问 tab 已移除（右坞常驻）——原 Ctrl+3（追问）
+ *  顺移为设置，Ctrl+4 起无映射。 */
 export function tabForHotkey(key: string, modifiers: { ctrl: boolean; alt: boolean; meta: boolean; shift: boolean }): MainTab | null {
   if (!modifiers.ctrl || modifiers.alt || modifiers.meta || modifiers.shift) return null
   const entry = TAB_LABELS[Number(key) - 1]
@@ -188,6 +189,11 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   // （状态 / 快捷键 / 挂载点），快捷键 Ctrl+M（应用菜单未占用该组合）。
   const [myStudyOpen, setMyStudyOpen] = useState(false)
   const closeMyStudy = useCallback((): void => setMyStudyOpen(false), [])
+  // P36 (plan 2026-09-21): 追问右坞的折叠态。坞本身是全 tab 常驻的第三列
+  // （≥1400 CSS）/ 固定悬浮窗（<1400），折叠后只剩右缘一颗入口钮。不持久化：
+  // 与 courseBrowserOpen 同类，刷新回到展开态（用户要的是「提问在这」）。
+  const [qaDockOpen, setQaDockOpen] = useState(true)
+  const toggleQaDock = useCallback((): void => setQaDockOpen((prev) => !prev), [])
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   // 声明批2 (plan 2026-09-11): nothing renders before the 使用须知 gate is
@@ -673,22 +679,6 @@ prevLesson={state.lessonNeighbors.prev}
             />
             </div>
           )}
-          {tab === 'qa' && (
-            <div role="tabpanel" id="panel-qa" aria-labelledby="tab-qa">
-            <QaPanel
-              entries={state.qaEntries}
-              busy={state.qaBusy}
-              hasLesson={state.currentLesson !== ''}
-              lessonContext={state.lessonContextOrIndex != null ? { ...state.lessonContextOrIndex, lessonId: state.currentLesson } : null}
-              lessonOptions={state.currentCourseLessons}
-              onSelectLesson={state.switchLesson}
-              hasNote={state.note != null}
-              onAsk={state.ask}
-              recent={state.qaRecent}
-              onOpenLesson={state.selectLesson}
-            />
-            </div>
-          )}
           {tab === 'settings' && (
             <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings">
             <SettingsPanel
@@ -726,6 +716,29 @@ prevLesson={state.lessonNeighbors.prev}
             </div>
           )}
         </main>
+        {/* P36 (plan 2026-09-21): 追问右坞——tab 之外、全 tab 常驻。≥1400 CSS
+            时是 .app-main 的第三列（吸收宽屏右侧空白，与窗口缩放联合定档），
+            <1400 由 CSS 切成固定位置悬浮窗；折叠态只剩右缘一颗入口钮。挂在
+            .app-shell 内：@media print 整体隐藏 .app-shell，PDF 自动不含坞。 */}
+        {qaDockOpen ? (
+          <QaDock
+            entries={state.qaEntries}
+            busy={state.qaBusy}
+            hasLesson={state.currentLesson !== ''}
+            lessonContext={state.lessonContextOrIndex != null ? { ...state.lessonContextOrIndex, lessonId: state.currentLesson } : null}
+            lessonOptions={state.currentCourseLessons}
+            onSelectLesson={state.switchLesson}
+            hasNote={state.note != null}
+            onAsk={state.ask}
+            recent={state.qaRecent}
+            onOpenLesson={state.selectLesson}
+            onCollapse={toggleQaDock}
+          />
+        ) : (
+          <button class="qa-dock-launcher" onClick={toggleQaDock} title="打开追问" aria-label="打开追问">
+            追问
+          </button>
+        )}
       </div>
       </div>
     </>
@@ -927,7 +940,7 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced
 }
 
-function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () => void, goSettings: () => void, goTab: (tab: 'tasks' | 'notes' | 'qa' | 'settings') => void): AppState {
+function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () => void, goSettings: () => void, goTab: (tab: MainTab) => void): AppState {
   const [session, setSession] = useState<SessionState>('logged_out')
   const [sessionInfo, setSessionInfo] = useState<{ savedAt: string | null; expiresAt: number | null }>({
     savedAt: null,
@@ -1727,9 +1740,9 @@ const currentCourseLessons = useMemo<LessonChipLesson[]>(
     (question: string): void => {
       const lid = lessonRef.current
       if (lid === '' || qaBusy) return
-      // 批C: no-note soft guard — asking stays allowed (anti-gatekeeping),
-      // but the answer's basis is stated up front instead of silently swapped.
-      if (notes.note == null) toast('该课时尚无笔记，回答不基于笔记内容', 'info')
+      // P37 (plan 2026-09-21): 无笔记软守卫已删——追问以「该课时已有笔记」为
+      // 硬门禁（坞输入 disabled + 主侧 qa:ask 拒绝），不再「照问但说明回答
+      // 不基于笔记」。此处保留 lid 空守卫即可。
       // 批C: optimistic bubble — the user sees their question immediately.
       const stamp = new Date().toISOString()
       setQaEntries((es) => [...es, { question, answer: '', createdAt: stamp, pending: true }])
@@ -1757,7 +1770,7 @@ const currentCourseLessons = useMemo<LessonChipLesson[]>(
         }
       })()
     },
-    [bridge, qaBusy, notes.note, toast, loadQaRecent]
+    [bridge, qaBusy, loadQaRecent]
   )
 
 

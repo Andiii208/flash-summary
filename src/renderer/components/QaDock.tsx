@@ -3,7 +3,6 @@ import type { JSX } from 'preact'
 import type { QaRecentInfo } from '../../shared/bridge'
 import { formatRelativeStamp } from '../../shared/format'
 import { MdLite } from './MdLite'
-import { PageHeader } from './PageHeader'
 import { LessonChip, type LessonChipLesson } from './LessonChip'
 import { EmptyState } from './EmptyState'
 
@@ -19,7 +18,7 @@ export interface QaEntry {
   error?: string
 }
 
-export interface QaPanelProps {
+export interface QaDockProps {
   entries: QaEntry[]
   busy: boolean
   /** False when no lesson is selected — the input then reads as unavailable instead of silently no-op'ing. */
@@ -28,16 +27,19 @@ export interface QaPanelProps {
   lessonContext?: { courseName: string; lessonTitle: string; lessonId?: string } | null
   /** 批A: sibling lessons for the chip's quick-switch dropdown. */
   lessonOptions?: LessonChipLesson[]
-  /** 批A: chip dropdown selection — switches lesson, keeps the qa tab. */
+  /** 批A: chip dropdown selection — switches lesson, keeps the dock. */
   onSelectLesson?: (lessonId: string) => void
-  /** 批C: false once the lesson is known to have no note — the input then
-   *  says answers won't be note-based (asking still allowed, not gated). */
+  /** P37 (plan 2026-09-21): false 时输入不可用——追问只针对已有笔记的课时
+      （主侧 qa:ask 同款硬门禁；此前无笔记也放行，回答退化成「基于转写」甚至
+      「不依赖课时材料的一般性问题」，用户明示没必要）。 */
   hasNote?: boolean
   onAsk: (question: string) => void
   /** 批B: recent exchanges across lessons, shown as the empty state. */
   recent?: QaRecentInfo[]
   /** 批B: opening a recent exchange selects that lesson globally. */
   onOpenLesson?: (lessonId: string) => void
+  /** P36: 收起成右缘悬浮入口钮（App 据 qaDockOpen 切换渲染坞与入口钮）。 */
+  onCollapse?: () => void
 }
 
 /**
@@ -49,10 +51,17 @@ export function qaTimeLabel(iso: string, now = new Date()): string {
   return formatRelativeStamp(iso, now)
 }
 
-/** Follow-up Q&A chat flow (no streaming in MVP — optimistic pending bubble). */
-export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lessonOptions, onSelectLesson, hasNote = true, onAsk, recent = [], onOpenLesson }: QaPanelProps): JSX.Element {
+/**
+ * P36 (plan 2026-09-21): 追问右坞——从 QaPanel（顶部 tab 的整页形态）搬迁而来，
+ * 断言随迁（见 tests/components/qa-dock.test.tsx）。差异只有三处：
+ * ① 紧凑头（标题 + LessonChip + 收起键，不再用 PageHeader 的整页题头）；
+ * ② hasNote 从「软提示」改为硬门禁（输入 disabled + 说明请先生成笔记）；
+ * ③ 根元素 .qa-panel → .qa-dock（两种形态同一组件：≥1400 CSS 常驻列、
+ *    <1400 固定悬浮窗，样式在 style.css）。
+ */
+export function QaDock({ entries, busy, hasLesson, lessonContext = null, lessonOptions, onSelectLesson, hasNote = true, onAsk, recent = [], onOpenLesson, onCollapse }: QaDockProps): JSX.Element {
   const [draft, setDraft] = useState('')
-  const askable = hasLesson && !busy
+  const askable = hasLesson && hasNote && !busy
   const submit = (): void => {
     const q = draft.trim()
     if (q === '' || !askable) return
@@ -70,11 +79,19 @@ export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lesson
       />
     ) : undefined
   return (
-    <section class="qa-panel">
-      <PageHeader title="追问" chip={chip} />
+    <section class="qa-dock" data-testid="qa-dock" aria-label="追问">
+      <header class="qa-dock-head">
+        <span class="qa-dock-title">追问</span>
+        {chip ?? (hasLesson ? null : <span class="qa-dock-no-lesson">未选择课时</span>)}
+        {onCollapse != null && (
+          <button class="btn small ghost qa-dock-collapse" onClick={onCollapse} title="收起追问（需要时点右缘「追问」钮再打开）">
+            收起
+          </button>
+        )}
+      </header>
       <div class="qa-log">
         {entries.length === 0 && hasLesson && (
-          <p class="msg">{hasNote ? '针对当前课时的笔记提问。' : '此课时尚无笔记——先生成笔记会让追问更有的放矢；也可以直接提问。'}</p>
+          <p class="msg">{hasNote ? '针对当前课时的笔记提问。' : '此课时尚无笔记——请先为此课时生成笔记，再回来提问。'}</p>
         )}
         {/* A3 (plan 2026-09-13): the hero card only for the truly-empty case —
             with recent Q&A below it, «从一条追问开始» contradicted the rows
@@ -156,10 +173,10 @@ export function QaPanel({ entries, busy, hasLesson, lessonContext = null, lesson
             hasLesson
               ? hasNote
                 ? '针对当前课时提问…（Enter 提问，Shift+Enter 换行）'
-                : '此课时尚无笔记——仍可提问，但回答不基于笔记（Enter 发送）'
+                : '此课时尚无笔记——请先为此课时生成笔记'
               : '先选择一条笔记或课时'
           }
-          disabled={!hasLesson}
+          disabled={!askable}
           onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
           onKeyDown={(e) => {
             // A5: an IME composition Enter (pinyin confirm) must not submit.

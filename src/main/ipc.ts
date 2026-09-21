@@ -2005,7 +2005,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       const noteRow = ctx.db
         .prepare('SELECT note_json FROM notes WHERE lesson_id = ? ORDER BY version DESC LIMIT 1')
         .get(id) as { note_json: string } | undefined
-      const note = noteRow != null ? parseNote(noteRow.note_json) : null
+      // P37 (plan 2026-09-21): 追问以「该课时已有笔记」为硬门禁——放在绑定检查
+      // 之前（没有笔记时不该先问模型绑定；与 notes:repair 的先例同序）。原实现
+      // 无笔记也放行：基于转写回答，连转写都没有时甚至允许「不依赖课时材料的一般性
+      // 问题」；用户明确「这没有必要，不如直接去问网页 AI」，只保留针对笔记的追问。
+      if (noteRow == null) throw new Error('该课时尚无笔记，请先为此课时生成笔记后再追问')
+      const note = parseNote(noteRow.note_json)
       const qaCtx = assembleContext(ctx.db, id, note)
       const messages = buildQaMessages(qaCtx, q)
       const capability = ctx.qaCapability()

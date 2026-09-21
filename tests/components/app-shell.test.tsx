@@ -75,12 +75,6 @@ async function selectFirstLesson(bridge: SeuSummaryBridge): Promise<void> {
   await new Promise((r) => setTimeout(r, 20))
 }
 
-/** The QaPanel lives on the third tab; switch there before asserting on it. */
-function openQaTab(host: HTMLElement): void {
-  const tabs = Array.from(host.querySelectorAll('.tabs button'))
-  click(tabs.find((b) => b.textContent === '追问') ?? null)
-}
-
 /**
  * 批5: 窄窗自动收侧栏按 matchMedia('(max-width: 1024px)') 判定。happy-dom 的默认
  * 视口落在窄侧，所以测试必须显式声明窗口宽度，否则每个用例都会撞上自动收起。
@@ -112,18 +106,38 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     window.sessionStorage.clear()
   })
 
-  it('starts with an honest logged_out badge, four tabs, and the loaded tree', async () => {
+  it('starts with an honest logged_out badge, three tabs, and the loaded tree', async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
     await waitForSelector('.course-head')
     expect(host.querySelector('[data-testid="session-badge"]')?.className).toContain('logged_out')
-    expect(host.querySelectorAll('.tabs button')).toHaveLength(4)
+    // P36: 追问 tab 已移除（右坞常驻）——任务/笔记/设置三个。
+    expect(host.querySelectorAll('.tabs button')).toHaveLength(3)
     expect(bridge.school.session).toHaveBeenCalled()
     expect(bridge.school.courseTree).toHaveBeenCalled()
     // M2 批 A: 全部课程默认折叠，我的学习聚合区常驻。
     expect(host.querySelector('[data-testid="all-courses-toggle"]')?.getAttribute('aria-expanded')).toBe('true')
     expect(host.textContent).toContain('我的学习')
+  })
+
+  // P36 (plan 2026-09-21): 右坞全 tab 常驻——不切 tab 也看得到提问入口；折叠后
+  // 只剩右缘入口钮，点它恢复。
+  it('P36: 追问坞常驻在任务页上，可折叠成入口钮再恢复', async () => {
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await expandAllCourses()
+    await waitForSelector('.course-head')
+    expect(host.querySelector('[data-testid="qa-dock"]')).not.toBeNull()
+    click(host.querySelector('.qa-dock-collapse'))
+    await vi.waitFor(() => {
+      expect(host.querySelector('[data-testid="qa-dock"]')).toBeNull()
+      expect(host.querySelector('.qa-dock-launcher')).not.toBeNull()
+    })
+    click(host.querySelector('.qa-dock-launcher'))
+    await vi.waitFor(() => {
+      expect(host.querySelector('[data-testid="qa-dock"]')).not.toBeNull()
+    })
   })
 
   it('cold start with an empty snapshot lands on the clean home (tasks tab, no lesson)', async () => {
@@ -210,10 +224,9 @@ describe('App shell (useAppState over a mocked bridge)', () => {
       { question: '第二问', answer: '答二' },
       { question: '第一问', answer: '答一' }
     ]
-    const host = mount(<App bridge={bridge} />)
+    mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
-    openQaTab(host)
-
+    // P36: 追问右坞全 tab 常驻——不再需要切到「追问」tab（tab 已移除）。
     await waitForSelector('.qa-q')
     const questions = Array.from(document.querySelectorAll('.qa-q')).map((q) => q.textContent)
     expect(questions).toEqual(['第一问', '第二问'])
@@ -222,9 +235,8 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   it('does not leak the previous lesson qa panel when the new one has no history', async () => {
     const bridge = makeBridge()
     fakeState.qaHistory = [{ question: '旧课时的问题', answer: '答' }]
-    const host = mount(<App bridge={bridge} />)
+    mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
-    openQaTab(host)
     await waitForSelector('.qa-q')
 
     // Re-select the same lesson with an emptied history: panel must clear.

@@ -55,9 +55,10 @@ describe('context assembly (current lesson only)', () => {
     expect(ctx.evidenceIds).toEqual([])
   })
 
-  it('handles a lesson with no artifacts at all', () => {
-    const ctx = assembleContext(db, 'l1', null)
-    expect(ctx.note).toBeNull()
+  it('handles a lesson with no artifacts at all (note only)', () => {
+    // P37 (plan 2026-09-21): note 不可空——qa:ask 在查不到笔记行时直接拒绝，
+    // 「无笔记也放行」的形态已不可达；本用例保住「没有任何素材」的覆盖。
+    const ctx = assembleContext(db, 'l1', note)
     expect(ctx.transcriptText).toBe('')
     expect(ctx.evidenceIds).toEqual([])
     expect(ctx.priorQa).toEqual([])
@@ -89,16 +90,20 @@ describe('qa message building', () => {
     expect(ctx.transcriptText.length).toBeLessThanOrEqual(24_000)
   })
 
-  it('says the lesson has no material when neither note nor transcript exists (批C honest guard)', () => {
-    const ctx = assembleContext(db, 'l1', null)
+  // P37 (plan 2026-09-21): 批C 的「无笔记无转写 → 仅可回答一般性问题」分支已删
+  // （用户明示「不如直接去问网页 AI」，只保留针对笔记的追问）。改写自原两条
+  // null-note 用例——「材料缺失话术不再出现」这条性质按新契约钉住。
+  it('P37: 有笔记无转写时，上下文只有笔记与课时范围（不再出现材料缺失/一般性问题话术）', () => {
+    const ctx = assembleContext(db, 'l1', note)
     const user = buildQaMessages(ctx, '这节课讲了什么?').find((m) => m.role === 'user')!.content
-    expect(user).toContain('尚无笔记与转写材料')
-    expect(user).toContain('不要编造课程内容')
+    expect(user).toContain('极限入门')
+    expect(user).not.toContain('尚无笔记与转写材料')
+    expect(user).not.toContain('一般性问题')
   })
 
-  it('stays silent about missing material when a transcript exists without a note', () => {
+  it('P37: 有转写时转写照常进上下文，同样不出现材料缺失话术', () => {
     db.prepare("INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', '[{\"at\":0,\"text\":\"开场部分我们讲极限思想\"}]', 'openai', 'whisper-1', '2026-08-30T00:00:00Z')").run()
-    const ctx = assembleContext(db, 'l1', null)
+    const ctx = assembleContext(db, 'l1', note)
     const user = buildQaMessages(ctx, '这节课讲了什么?').find((m) => m.role === 'user')!.content
     expect(user).not.toContain('尚无笔记与转写材料')
     expect(user).toContain('开场')

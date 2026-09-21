@@ -135,6 +135,10 @@ const MEASURE = `(() => {
     /* P26 (plan 2026-09-21): 封面盒几何——验收「按 16:9 完整显示、不再被裁」。
        B 站课时才有封面（SEU 源合法无封面，R 返回 null）。 */
     noteCover: R('.note-cover'),
+    /* P36 (plan 2026-09-21): 追问右坞——position 区分两形态（static=≥1400 CSS
+       常驻列 / fixed=<1400 悬浮窗），blankDock 只在常驻态有意义（坞右缘→内容盒
+       右缘；常驻态下它应当≈0——坞把宽屏右侧空白吸收掉了）。 */
+    qaDock: (() => { const e = document.querySelector('.qa-dock'); if (e == null) return null; const r = e.getBoundingClientRect(); const c = document.querySelector('.content'); const s = getComputedStyle(e); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right), position: s.position, blankDock: Math.round(innerWidth - r.right) } })(),
     noteToolbar: R('.note-toolbar'),
     noteActions: R('.note-actions'),
     firstSection: R('.note-section'),
@@ -233,13 +237,48 @@ async function connect(port) {
  * 验收不变量：CSS 视口 = min(窗宽, 1600)（zoom 已应用的最直接证据——Emulation
  * 只覆盖 CSS 视口，量不到缩放效果，所以必须真改窗口）。结束还原到 1280×800。
  */
+/**
+ * P28 (plan 2026-09-21): 用 user32 真实改主窗尺寸（Electron 44 无
+ * Browser.setWindowBounds，CDP -32601 实测后改走 PowerShell）。EnumWindows
+ * 枚举**所有**顶层窗口、命中标题即改——① 崩溃残留的僵尸实例会占着同名标题，
+ * 只改一个可能改到僵尸；② 从 Z 序第一个窗口走 GW_HWNDNEXT 链**不可靠**：应用
+ * 窗口若在起点之前，整条链走不到它（实测：同一脚本两次运行一次命中一次空手）。
+ * Add-Type -PassThru 对多类型定义返回数组（`$t::Method` 调用失败），故用嵌套
+ * 委托 + 按类型名过滤取出单一类型。最小化态先 SW_RESTORE(9)——SetWindowPos
+ * 对最小化窗口返回 True 但不改尺寸；恢复带动画，歇 500ms 再改。
+ */
 function osWindowScript(body) {
   return `
-$sig = '[DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr c, string cls, string title); [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int hh, uint f);'
-$t = Add-Type -MemberDefinition $sig -Name W${Date.now()}${Math.floor(Math.random() * 1e6)} -PassThru
-$hwnd = $t::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'Chrome_WidgetWin_1', '${APP_TITLE}')
-if ($hwnd -eq [IntPtr]::Zero) { exit 2 }
-${body}
+$src = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class WE {
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc p, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int hh, uint f);
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+}
+'@
+$t = @(Add-Type -TypeDefinition $src -PassThru | Where-Object { $_.Name -eq 'WE' })[0]
+$script:found = 0
+$cb = {
+  param($h, $l)
+  $sb = New-Object System.Text.StringBuilder 256
+  [void]$t::GetWindowText($h, $sb, 256)
+  if ($sb.ToString() -eq '${APP_TITLE}') {
+    $script:found++
+    # 无条件 SW_RESTORE(9)——对正常窗口是 no-op，对最小化窗口是恢复。窗口偶发
+    # 以最小化态起来时页面 hidden、Chromium 冻结视口（zoom 档位全部漂移的根因，
+    # 2026-09-21 实测：主进程日志显示缩放正确应用，渲染层 innerWidth 纹丝不动）。
+    [void]$t::ShowWindow($h, 9)
+    ${body}
+  }
+  return $true
+}
+[void]$t::EnumWindows($cb, [IntPtr]::Zero)
+if ($script:found -eq 0) { exit 2 }
 `
 }
 
@@ -250,7 +289,7 @@ function screenWidth() {
 }
 
 function setOsWindowSize(width, height) {
-  execFileSync('powershell', ['-NoProfile', '-Command', osWindowScript(`$t::SetWindowPos($hwnd, [IntPtr]::Zero, 60, 60, ${width}, ${height}, 0) | Out-Null`)], { stdio: 'pipe' })
+  execFileSync('powershell', ['-NoProfile', '-Command', osWindowScript(`$t::SetWindowPos($h, [IntPtr]::Zero, 60, 60, ${width}, ${height}, 0) | Out-Null`)], { stdio: 'pipe' })
 }
 
 async function probeZoomTiers(cdp, out) {
@@ -259,7 +298,7 @@ async function probeZoomTiers(cdp, out) {
   // innerWidth = 客户区宽 → 边框 inset = 1280 − innerWidth。之后各档的期望
   // CSS 视口 = min(窗宽 − inset, 1600)（zoom = 客户区/1600）。
   setOsWindowSize(1280, 800)
-  await sleep(1200)
+  await sleep(1500)
   const base = await cdp.json(`(() => ({ cssVW: innerWidth, overX: document.documentElement.scrollWidth - innerWidth }))()`)
   const inset = 1280 - (base?.cssVW ?? 1280)
   const widths = [...new Set([1440, Math.min(1920, screen - 40), Math.min(2560, screen - 40)])].filter((w) => w >= 1300)
@@ -269,15 +308,25 @@ async function probeZoomTiers(cdp, out) {
     const content = document.querySelector('.content')
     if (panel == null || content == null) return null
     const pr = panel.getBoundingClientRect(), cr = content.getBoundingClientRect()
-    return { cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth }
+    const dock = document.querySelector('.qa-dock')
+    const dr = dock == null ? null : dock.getBoundingClientRect()
+    return { outerW: window.outerWidth, cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth, dockW: dr == null ? null : Math.round(dr.width), dockRight: dr == null ? null : Math.round(dr.right), blankDock: dr == null ? null : Math.round(innerWidth - dr.right), dockPosition: dock == null ? null : getComputedStyle(dock).position }
   })()`
   for (const width of widths) {
-    setOsWindowSize(width, 1040)
-    await sleep(1800) // 等 resize 落到主进程、zoom 应用、渲染层重排
-    const m = await cdp.json(measure)
-    if (m == null) continue
-    // CSS 视口 = min(窗宽 − inset, 1600)：宽于基准时证明 zoom = 客户区/1600 已应用。
+    // CSS 视口 = min(窗宽 − inset, 1600)。窗口可能以最小化态起来、SetWindowPos
+    // 对其无效（PowerShell 侧已 SW_RESTORE + 500ms 兜底）；这里施加后轮询验证，
+    // 不达标就重试——探针的结论必须来自「视口真的变了」，不是「我发过命令」。
     const expected = Math.min(width - inset, 1600)
+    let m = null
+    for (let attempt = 1; attempt <= 4 && (m == null || Math.abs(m.cssVW - expected) > 2); attempt++) {
+      setOsWindowSize(width, 1040)
+      for (let poll = 0; poll < 6; poll++) {
+        await sleep(500)
+        m = await cdp.json(measure)
+        if (m != null && Math.abs(m.cssVW - expected) <= 2) break
+      }
+    }
+    if (m == null) continue
     const zoom = +((width - inset) / m.cssVW).toFixed(3)
     out.zoomTiers.push({ width, inset, expectedCssVW: expected, zoom, ...m })
   }
@@ -299,6 +348,8 @@ async function probeZoomTiers(cdp, out) {
     await cdp.eval(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true })()`)
     await sleep(500)
   }
+  // 最宽档的坞常驻实拍（必须在还原窗口尺寸之前拍）。
+  await cdp.shot(join(ROOT, '.ui-shots', 'zoom', 'dock-inline.png'))
   setOsWindowSize(1280, 800)
   await sleep(800)
 }
@@ -648,6 +699,8 @@ function summarize(out) {
     if (page.noteTitleInfo != null) lines.push(`题头标题 ${page.noteTitleInfo.fs}（${page.noteTitleInfo.len} 字 · ${page.noteTitleInfo.cls}）`)
     /* P26 (plan 2026-09-21): 封面盒宽高比——16:9 盒下 B 站封面零裁切（旧 3.2:1 横幅盒裁 44% 图高）。 */
     if (page.noteCover != null) lines.push(`封面盒 ${page.noteCover.w}×${page.noteCover.h} · 宽高比 ${(page.noteCover.w / page.noteCover.h).toFixed(2)}`)
+    /* P36 (plan 2026-09-21): 追问右坞两形态——默认窗（1266 CSS）应为 fixed 悬浮窗。 */
+    if (page.qaDock != null) lines.push(`追问坞 ${page.qaDock.position} · ${page.qaDock.w}×${page.qaDock.h}${page.qaDock.position === 'static' ? ` · 右缘空白 ${page.qaDock.blankDock} CSS px` : ''}`)
     if (page.noteBtnCount > 0) lines.push(`工具行 ${page.noteBtnCount} 键 · ${page.actionsRows} 行 · 单键高 ${page.noteBtnBoxes[0]?.h} · 横向溢出 ${one(page.contentOverflowX)}`)
     if (page.countHeights?.length > 0) lines.push(`计数药丸高度 ${[...new Set(page.countHeights)].join('/')}`)
     if (page.subheadings?.length > 0) lines.push(`小标题 ${page.subheadings.join(' | ')}`)
@@ -694,7 +747,7 @@ function summarize(out) {
   if (out.zoomTiers != null) {
     for (const t of out.zoomTiers) {
       const ok = Math.abs(t.cssVW - t.expectedCssVW) <= 2
-      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX}`)
+      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}px 宽（右缘空白 ${t.blankDock}）`)
     }
   }
   if (out.zoomOverlay != null) {
@@ -715,12 +768,14 @@ async function main() {
     process.exit(1)
   }
   const port = await findFreePort(9700 + Math.floor(Math.random() * 200))
+  // stdio 全 ignore：stdout 若是没人读的管道，应用写满 64KB 缓冲区后**主进程
+  // 会阻塞在 write 上**——表现就是窗口对 SetWindowPos 不再响应（zoom 档位全部
+  // 漂移的根因，2026-09-21 实测）。 Electron 的日志对我们没用，直接丢弃。
   const electron = spawn(require('electron'), ['.', `--remote-debugging-port=${port}`], {
     cwd: ROOT,
     env: { ...process.env, SEU_SUMMARY_DOCS_OVERRIDE: tmpDocs, ELECTRON_RENDERER_URL: '' },
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: 'ignore'
   })
-  electron.stderr.on('data', () => {})
   try {
     const cdp = await connect(port)
     await passConsentGate(cdp)

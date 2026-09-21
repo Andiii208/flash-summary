@@ -356,10 +356,27 @@ describe('ipc handlers over a real context', () => {
     ctx.db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('text', ?, 'qwen2.5')").run(saved.value!.id)
     ctx.db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-20T00:00:00Z')").run()
     ctx.db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-09-20T00:00:00Z')").run()
+    // P37: 追问以「该课时已有笔记」为硬门禁（放在绑定检查之前）——这条用例要验的
+    // 是绑定话术，所以先给 l1 补一条笔记，让流程越过门禁。
+    ctx.db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-20T00:00:00Z')").run(JSON.stringify({ overview: '极限入门', knowledgeTree: { title: '极限', children: [] }, methodology: '直观→严格', concepts: [], quiz: [] }))
 
     const res = (await ipc.invoke('qa:ask', 'l1', '这节课讲了什么？')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toBe('未绑定问答模型，请在设置中配置多模态总结模型')
+  })
+
+  // P37 (plan 2026-09-21): 无笔记的课时不接受追问——门禁在绑定检查**之前**
+  // （没有笔记时不该先问模型绑定），且这条断言就是顺序的判据：本夹具一个 provider
+  // 都没绑，若门禁排在绑定检查之后，用户看到的会是「未绑定问答模型」而不是这句。
+  it('P37: 没有笔记的课时，追问被门禁挡下并提示先生成笔记', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    ctx.db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-09-21T00:00:00Z')").run()
+    ctx.db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-09-21T00:00:00Z')").run()
+
+    const res = (await ipc.invoke('qa:ask', 'l1', '这节课讲了什么？')) as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toBe('该课时尚无笔记，请先为此课时生成笔记后再追问')
   })
 
   it('refuses IPC from a non-app sender frame (review E1)', async () => {
@@ -776,6 +793,8 @@ describe('ipc handlers over a real context', () => {
     registerIpc(ctx, ipc as never)
     db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
     db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
+    // P37: 先补笔记越过门禁（本用例验的是绑定话术，不是门禁本身）。
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-08-30T00:00:00Z')").run(JSON.stringify({ overview: '极限入门', knowledgeTree: { title: '极限', children: [] }, methodology: '直观→严格', concepts: [], quiz: [] }))
 
     const res = (await ipc.invoke('qa:ask', 'l1', '什么是极限?')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
@@ -794,6 +813,8 @@ describe('ipc handlers over a real context', () => {
     registerIpc(ctx, ipc as never)
     db.prepare("INSERT INTO courses (id, name, fetched_at) VALUES ('c1', '课程', '2026-08-30T00:00:00Z')").run()
     db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-08-30T00:00:00Z')").run()
+    // P37: 追问硬门禁要求该课时已有笔记（见 notes-qa.test.ts 与门禁用例）。
+    db.prepare("INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-08-30T00:00:00Z')").run(JSON.stringify({ overview: '极限入门', knowledgeTree: { title: '极限', children: [] }, methodology: '直观→严格', concepts: [], quiz: [] }))
     const asrProvider = (await ipc.invoke('providers:save', { name: 'ASR 商', baseUrl: 'https://asr.example.com/v1', apiKey: 'sk-asr' })) as { value?: { id: string } }
     const mmProvider = (await ipc.invoke('providers:save', { name: '多模态商', baseUrl: 'https://mm.example.com/v1', apiKey: 'sk-mm' })) as { value?: { id: string } }
     expect((await ipc.invoke('providers:bind', 'asr', asrProvider.value!.id, 'asr-model')) as { ok: boolean }).toMatchObject({ ok: true })
