@@ -7,7 +7,7 @@
  * 6.5s 自动消失曾让长报错读不完即丢）；全部类型可手动关闭；同屏上限 3 条，
  * 超出时最旧的先让位（FIFO）——防止批量失败堆叠遮挡 TopBar。
  */
-import { useCallback, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { ToastItem, ToastKind } from '../components/ToastArea'
 
 export interface Toasts {
@@ -70,5 +70,15 @@ export function useToasts(): Toasts {
     },
     [dismiss, dismissByIdentity]
   )
+  // 2026-09-21（审计补齐）：卸载时清掉在飞的自动消失定时器——它们活在 ref 里、
+  // 不受 React/Preact 生命周期管，宿主一旦卸载，回调里的 setToasts 就是「卸载后
+  // setState」（在测试环境里表现为 teardown 之后 requestAnimationFrame 未定义）。
+  useEffect(() => {
+    const timers = autoDismissTimers.current
+    return () => {
+      for (const timer of timers.values()) window.clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
   return { toasts, toast, dismiss }
 }
