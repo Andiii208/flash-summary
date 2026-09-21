@@ -2026,6 +2026,9 @@ button.concept-ref:hover { color: var(--accent); }
 .mindmap-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: 8px; }
 .mindmap-toolbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 .mindmap-toolbar-spacer { flex: 1; }
+/* P27 (plan 2026-09-21): 缩放倍率常驻显示。等宽数字（tabular-nums）避免百分比
+   跳动时文本宽度抖动；字号/颜色走既有 token，不新增第三种字阶。 */
+.mindmap-zoom-label { font-size: var(--font-size-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .mindmap-search {
   font: inherit; font-size: var(--font-size-sm); color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);

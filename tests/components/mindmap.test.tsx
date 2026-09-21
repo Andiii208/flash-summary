@@ -109,7 +109,7 @@ describe('MindMap M1.2 工具栏', () => {
     const toolbar = host.querySelector('[data-testid="mindmap-toolbar"]')
     expect(toolbar).not.toBeNull()
     const labels = Array.from(toolbar!.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '适应窗口', '回忆模式'])
+    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '适应窗口', '放大', '缩小', '回忆模式'])
     expect(toolbar!.querySelector('.mindmap-search')).not.toBeNull()
   })
 
@@ -314,6 +314,31 @@ describe('MindMap M1.3 缩放与平移', () => {
     fit()
     const fitted = Number(svg.getAttribute('width')) / viewBoxOf(host)[2]!
     expect(fitted).toBeCloseTo(Math.min(1, Math.max(0.4, Math.min(400 / contentW, 300 / contentH))), 4)
+  })
+
+  it('P27: 工具栏放大/缩小按钮与倍率显示——倍率与键盘 + 一致（期望值独立算）', () => {
+    const host = mountMindMap(TREE)
+    const [, , w0] = viewBoxOf(host)
+    const label = host.querySelector('[data-testid="mindmap-zoom-label"]')!
+    // 首屏 1:1，倍率读 100%。
+    expect(label.textContent).toBe('100%')
+    const clickButton = (testId: string): void => {
+      const button = host.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)!
+      act(() => {
+        button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+    }
+    // 放大一次：倍率 1.2（与 canvasKeyDown 的 + 同一系数），窗口 = 内容/1.2。
+    clickButton('mindmap-zoom-in')
+    expect(viewBoxOf(host)[2]).toBeCloseTo(w0! / 1.2, 4)
+    expect(label.textContent).toBe('120%')
+    // 缩小一次回到 1:1，倍率读回 100%。
+    clickButton('mindmap-zoom-out')
+    expect(viewBoxOf(host)[2]).toBeCloseTo(w0!, 4)
+    expect(label.textContent).toBe('100%')
+    // 连点放大到上限 3x 后倍率显示封顶（zoomAt 内部 clamp，按钮无需自己判）。
+    for (let i = 0; i < 20; i++) clickButton('mindmap-zoom-in')
+    expect(label.textContent).toBe('300%')
   })
 
   it('keyboard +/-/0 zooms and fits while the canvas holds focus', () => {

@@ -507,6 +507,12 @@ async function probeMindmap(cdp, out) {
   await clickByText(cdp, '.note-tabs button', '思维导图')
   await sleep(1500)
   out.mindmap = await cdp.json(MINDMAP_GEOMETRY)
+  // P27 (plan 2026-09-21): 可见的「放大」按钮——点它之后倍率必须真的上去（此前
+  // 缩放只有 Ctrl+滚轮/键盘两条不可见路径，这条把「按钮能放大」变成可执行验收）。
+  await clickByText(cdp, '.mindmap-toolbar button', '放大')
+  await sleep(400)
+  out.mindmapBtnZoom = await cdp.json(MINDMAP_GEOMETRY)
+  out.mindmapZoomLabel = await cdp.json(`(() => document.querySelector('[data-testid="mindmap-zoom-label"]')?.textContent ?? null)()`)
   await cdp.eval(`(() => { const c = document.querySelector('.mindmap-scroll'); c.focus(); for (let i = 0; i < 3; i++) c.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true })); return true })()`)
   await sleep(400)
   out.mindmapZoomed = await cdp.json(MINDMAP_GEOMETRY)

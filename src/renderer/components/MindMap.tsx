@@ -377,6 +377,14 @@ export function MindMap({
     setPanning(false)
   }
 
+  /** P27 (plan 2026-09-21): 工具栏可见的放大/缩小——倍率与键盘 +/- 同一（1.2），
+   *  锚点取画布中心（按钮点击没有指针位置可言）。此前缩放只有 Ctrl+滚轮与「选中
+   *  画布后按 +/-」两条不可见路径，界面上没有任何放大入口，而默认窗首屏还把图
+   *  压到 0.4 倍——用户实报「太小了影响观看」。 */
+  const zoomBy = useCallback((factor: number): void => {
+    setView((prev) => zoomAt(prev, prev.scale * factor, 0.5, 0.5, frame.width, frame.height))
+  }, [frame.width, frame.height])
+
   /** M1.3 keyboard: +/-/=/0 zoom and reset while the canvas holds focus. */
   const canvasKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
     if (e.key === '+' || e.key === '=') {
@@ -462,6 +470,17 @@ export function MindMap({
         <button class="btn small" onClick={fitToViewport} title="把整张图缩到刚好装进窗口（快捷键 0）">
           适应窗口
         </button>
+        {/* P27 (plan 2026-09-21): 放大/缩小入口 + 倍率常驻——缩放能力本就存在
+            （Ctrl+滚轮、画布聚焦后 +/-），缺的只是看得见点得到。 */}
+        <button class="btn small" onClick={() => zoomBy(1.2)} title="放大（快捷键 +，或 Ctrl+滚轮）" data-testid="mindmap-zoom-in">
+          放大
+        </button>
+        <button class="btn small" onClick={() => zoomBy(1 / 1.2)} title="缩小（快捷键 -，或 Ctrl+滚轮）" data-testid="mindmap-zoom-out">
+          缩小
+        </button>
+        <span class="mindmap-zoom-label" data-testid="mindmap-zoom-label" title="当前缩放倍率（Ctrl+滚轮 / +/- 也可调）">
+          {Math.round(view.scale * 100)}%
+        </span>
         <span class="mindmap-toolbar-divider" aria-hidden="true" />
         {/* M2.3: recall mode — masks tier-2+ titles for retrieval practice
             (Karpicke & Blunt 2011); mutually exclusive with search. */}
