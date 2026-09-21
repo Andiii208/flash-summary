@@ -1,4 +1,4 @@
-# 发布清单（SEU Summary）
+# 发布清单（Flash Summary）
 
 > 每次发布必须逐条执行并勾选。教训见 CHANGELOG 0.1.1：**发布资产必须在打 tag 的同一提交上构建，发布前用 asar 抽验包内产物**。
 

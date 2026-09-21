@@ -1,8 +1,8 @@
-# SEU Summary Desktop MVP Design
+# Flash Summary Desktop MVP Design
 
 ## 1. Product Position
 
-SEU Summary is a Windows desktop application that turns Southeast University Kedacom course recordings into structured study notes. The application is local-first, distributable to other students, and requires no developer-owned server. Each user logs in with their own SEU CAS account and provides their own model provider credentials.
+Flash Summary is a Windows desktop application that turns Southeast University Kedacom course recordings into structured study notes. The application is local-first, distributable to other students, and requires no developer-owned server. Each user logs in with their own SEU CAS account and provides their own model provider credentials.
 
 The MVP focuses exclusively on `cvs.seu.edu.cn` recordings. Cloud sync, multi-user accounts, local ASR, and macOS support are outside MVP scope.
 

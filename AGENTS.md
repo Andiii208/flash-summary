@@ -1,4 +1,4 @@
-# AGENTS.md — SEU Summary 工程约定
+# AGENTS.md — Flash Summary 工程约定
 
 面向在本仓库工作的 AI agent 与人类协作者。
 

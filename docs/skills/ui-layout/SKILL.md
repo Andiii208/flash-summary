@@ -50,7 +50,7 @@ version: 1.0.0
 |---|---|---|
 | `.seg-tabs` | 14px / `8px 16px`，容器 `gap 4px + padding 4px`，允许换行 | `.tabs`（主导航）、`.note-tabs`（笔记视图切换） |
 | `.card` / `.card-lg` | padding 12px / 16px，圆角 `--radius` | 概念卡、公式卡、自测卡、时间线卡、体检面板、课程卡（大卡：任务状态条、设置块） |
-| `.row` / `.row-sm` | padding `8px 12px` / `8px 10px`，圆角 `--radius` | 历史行、笔记库行、考点卡 / provider 行、课程行、升级行 |
+| `.row` / `.row-sm` | padding `8px 12px` / `8px 8px`，圆角 `--radius` | 历史行、笔记库行、考点卡 / provider 行、课程行、升级行（`.row-sm` 的横向内缩是 `--space-2`=8px——2026-09-21 批7 订正：规格表此前沿用了 8057786 收敛前的旧值 10px） |
 | `.group-head` | 12.5px / 620 / `--text-secondary` | 笔记库分组标题、`MyStudyPanel` 组头（侧栏一级 `.sidebar-head h2` 是 14px/650，内容区小节标题见 `.subheading` 14px/620） |
 | `.count-pill` | 高 16px 药丸、等宽数字、`flex-shrink: 0` | 树节点数、笔记库计数、侧栏课程数、全部课程数 |
 | `.tag` | 高 18px 药丸（去掉半像素 padding） | `.chip`、`.badge`、`.formula-tag`、`.callout-tag`、`.quiz-tag`、`.bili-chip` |

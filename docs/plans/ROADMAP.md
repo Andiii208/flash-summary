@@ -1,4 +1,4 @@
-# SEU Summary — ROADMAP
+# Flash Summary — ROADMAP
 
 依据规格 `docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md`（唯一设计规格）。
 方法：leader（阶段任务书式拆解，每阶段含目标/任务/验收命令/完成判据）；每阶段结束用 neat-freak 做知识收尾。
