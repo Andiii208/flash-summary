@@ -2,9 +2,9 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.10] — 2026-09-21 · UX 优化第二轮（宽屏缩放 / 追问右坞 / 荧光笔等六批）
 
-> 方案：`docs/plans/2026-09-21-ux-optimization-round2.md`（Andiii 试用 0.7.9 本地包后反馈六项 + 全站普查，六个批次 + D1–D10 按推荐）。台账逐批取证见 [PROGRESS.md](PROGRESS.md)。
+> 方案：`docs/plans/2026-09-21-ux-optimization-round2.md`（Andiii 试用 0.7.9 本地包后反馈六项 + 全站普查，六个批次 + D1–D10 按推荐）。台账逐批取证见 [PROGRESS.md](PROGRESS.md)。**本节同时收编未单独发布的 0.7.9**（0.7.5 收编 0.7.4 的先例：0.7.9 只构建了本地安装包、未 tag 未发布）。
 
 ### 新增
 
