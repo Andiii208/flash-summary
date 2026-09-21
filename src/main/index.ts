@@ -9,6 +9,7 @@ import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './n
 import { Logger } from './logger'
 import { binaryFingerprint } from './media/binaries'
 import { installProcessGuards } from './process-guards'
+import { zoomFactorForWidth, ZOOM_EPSILON } from './window-zoom'
 
 let mainWindow: BrowserWindow | null = null
 // D4 (review): the close dialog promises «后台继续运行» — hide to tray and
@@ -144,6 +145,22 @@ export function createMainWindow(onLoadError?: (message: string) => void): Brows
   // into the logger. 终审修复波 B1: packaged 门收在 loadMainRenderer 内。
   const onLoadFailure = (err: unknown): void => onLoadError?.(`renderer load failed: ${(err as Error).message ?? String(err)}`)
   void loadMainRenderer(win).catch(onLoadFailure)
+
+  // P28 (plan 2026-09-21): 窗口级等比例缩放。did-finish-load 应用初值（加载前设
+  // 可能被导航重置）；resize 时按档位变化更新——只在不同档位才调
+  // setZoomFactor，拖拽期约每 32px 重排一次（ZOOM_EPSILON）。CSS 视口随之钉在
+  // 1600：宽屏下布局与 1600 窗口逐像素同一、只是物理放大。getContentBounds 取
+  // 客户区宽（Windows 隐形边框约 14px 不计入——用 getBounds 会让视口钉在
+  // 1600−14）。登录窗是另一个 BrowserWindow，不挂这套（cas-login.ts）。
+  const applyWindowZoom = (): void => {
+    if (win.webContents.getURL() === '') return
+    const target = zoomFactorForWidth(win.getContentBounds().width)
+    if (Math.abs(target - win.webContents.getZoomFactor()) > ZOOM_EPSILON) {
+      win.webContents.setZoomFactor(target)
+    }
+  }
+  win.webContents.on('did-finish-load', applyWindowZoom)
+  win.on('resize', applyWindowZoom)
 
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null

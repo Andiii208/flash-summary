@@ -9,7 +9,9 @@ import type { Cryptor } from '../src/main/auth/session-crypto'
 
 // printToPDF is stubbed at the BrowserWindow.webContents level — the handler
 // must pass printBackground + A4 and write the returned bytes verbatim.
+// P28 (plan 2026-09-21): 窗口缩放档也在这层 stub——导出前必须钉回 1.0、结束后恢复。
 const printToPdf = vi.hoisted(() => vi.fn(async () => Buffer.from('%PDF-1.7 fake-handout')))
+const setZoomFactor = vi.hoisted(() => vi.fn())
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
 const showItemInFolder = vi.hoisted(() => vi.fn())
 
@@ -21,7 +23,9 @@ vi.mock('electron', () => ({
   },
   shell: { openPath: vi.fn(async () => ''), showItemInFolder },
   BrowserWindow: {
-    getFocusedWindow: () => ({ webContents: { printToPDF: printToPdf } })
+    // 当前窗口缩放 1.6（2560 宽窗的档）——printToPdfFile 应当先 setZoomFactor(1)
+    // 再打印、finally 里 setZoomFactor(1.6) 恢复。
+    getFocusedWindow: () => ({ webContents: { printToPDF: printToPdf, getZoomFactor: () => 1.6, setZoomFactor } })
   },
   WebContents: undefined
 }))
@@ -65,6 +69,7 @@ beforeEach(() => {
   saveDialog.canceled = false
   saveDialog.filePath = ''
   printToPdf.mockClear()
+  setZoomFactor.mockClear()
 })
 
 afterEach(() => {
@@ -153,6 +158,22 @@ describe('notes:exportPdfWrite (2026-09-04)', () => {
     expect(options.pageSize).toBe('A4')
     expect(options.displayHeaderFooter).toBe(true)
     expect(readFileSync(target, 'latin1')).toBe('%PDF-1.7 fake-handout')
+  })
+
+  it('P28: 窗口缩放≠1 时导出前钉回 1.0、结束后恢复原档（否则 A4 版式被整体缩放）', async () => {
+    const ctx = makeCtx()
+    registerIpc(ctx, ipc as never)
+    const target = join(ctx.exportsDir(), 'handout.pdf')
+    saveDialog.filePath = target
+    const dialog = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as { ok: boolean; value?: { token?: string } }
+    const res = (await ipc.invoke('notes:exportPdfWrite', dialog.value?.token)) as { ok: boolean }
+    expect(res.ok).toBe(true)
+    // 打印发生在 zoom=1.0：setZoomFactor(1) 必须在 printToPDF 之前调用。
+    expect(setZoomFactor).toHaveBeenCalledWith(1)
+    const zoomCallOrder = setZoomFactor.mock.invocationCallOrder[0]!
+    expect(zoomCallOrder).toBeLessThan(printToPdf.mock.invocationCallOrder[0]!)
+    // 结束后恢复用户当前的窗口缩放档（1.6，本夹具的 stub 值）。
+    expect(setZoomFactor).toHaveBeenLastCalledWith(1.6)
   })
 
   it('refuses an unknown token instead of writing an attacker-chosen path (E3)', async () => {

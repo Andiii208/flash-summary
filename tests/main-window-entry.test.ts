@@ -11,6 +11,15 @@ const fakeWindows = vi.hoisted(() => ({ instances: [] as Array<{ options: unknow
 vi.mock('electron', () => {
   class FakeBrowserWindow {
     readonly options: unknown
+    // P28 (plan 2026-09-21): createMainWindow 订阅 did-finish-load/resize 做窗口
+    // 缩放——fake 补齐 webContents 面（getURL 返回 '' 表示尚未导航，缩放应用会
+    // 自行早退，本测试只钉加载入口）。
+    readonly webContents = {
+      on: vi.fn(),
+      getURL: () => '',
+      getZoomFactor: () => 1,
+      setZoomFactor: vi.fn()
+    }
     constructor(options: unknown) {
       this.options = options
       fakeWindows.instances.push(this)

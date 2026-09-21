@@ -15,6 +15,9 @@
  *   --dialog       第三方许可弹层在 960×600 下的钳制与滚动（T36 取证）。
  *   --provider     绑定能力复选框组的布局（T30 取证）。
  *   --mindmap      导图：首屏适应窗口、放大后适应、窄窗适应三态（T15 取证）。
+ *   --zoom         P28：真实改 OS 窗口（user32 SetWindowPos）到 1440/1920/2560，
+ *                  逐档验「CSS 视口 = min(窗宽, 1600)」并量「面板右缘→内容盒右缘」
+ *                  空白——Emulation 只覆盖 CSS 视口，量不到缩放效果。
  *   --note-search=词  笔记库搜索（主进程过滤）：量标题、命中行数与分组。
  *   --seed-notes=N  往**副本库**注入 N 个合成课时（各带一条笔记），用来验分页：
  *                   「显示更多」在真实代码路径上是否按页加长。真实库只有个位数笔记，
@@ -222,6 +225,82 @@ async function connect(port) {
   const cdp = new Cdp(ws)
   await cdp.send('Page.enable')
   return cdp
+}
+
+/**
+ * P28 (plan 2026-09-21): 真实改 OS 窗口（Electron 44 无 Browser.setWindowBounds，
+ * 改用 user32 SetWindowPos），逐档量 CSS 视口与「面板右缘→内容盒右缘」空白。
+ * 验收不变量：CSS 视口 = min(窗宽, 1600)（zoom 已应用的最直接证据——Emulation
+ * 只覆盖 CSS 视口，量不到缩放效果，所以必须真改窗口）。结束还原到 1280×800。
+ */
+function osWindowScript(body) {
+  return `
+$sig = '[DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr c, string cls, string title); [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int hh, uint f);'
+$t = Add-Type -MemberDefinition $sig -Name W${Date.now()}${Math.floor(Math.random() * 1e6)} -PassThru
+$hwnd = $t::FindWindowEx([IntPtr]::Zero, [IntPtr]::Zero, 'Chrome_WidgetWin_1', '${APP_TITLE}')
+if ($hwnd -eq [IntPtr]::Zero) { exit 2 }
+${body}
+`
+}
+
+/** 主屏宽度（挑得下手的档位用）。 */
+function screenWidth() {
+  const out = execFileSync('powershell', ['-NoProfile', '-Command', "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width"], { encoding: 'latin1' })
+  return Number(String(out).trim()) || 1920
+}
+
+function setOsWindowSize(width, height) {
+  execFileSync('powershell', ['-NoProfile', '-Command', osWindowScript(`$t::SetWindowPos($hwnd, [IntPtr]::Zero, 60, 60, ${width}, ${height}, 0) | Out-Null`)], { stdio: 'pipe' })
+}
+
+async function probeZoomTiers(cdp, out) {
+  const screen = screenWidth()
+  // 自校准 Windows 隐形边框：默认窗 1280×800、zoom=1（1280<1600），此时
+  // innerWidth = 客户区宽 → 边框 inset = 1280 − innerWidth。之后各档的期望
+  // CSS 视口 = min(窗宽 − inset, 1600)（zoom = 客户区/1600）。
+  setOsWindowSize(1280, 800)
+  await sleep(1200)
+  const base = await cdp.json(`(() => ({ cssVW: innerWidth, overX: document.documentElement.scrollWidth - innerWidth }))()`)
+  const inset = 1280 - (base?.cssVW ?? 1280)
+  const widths = [...new Set([1440, Math.min(1920, screen - 40), Math.min(2560, screen - 40)])].filter((w) => w >= 1300)
+  out.zoomTiers = []
+  const measure = `(() => {
+    const panel = document.querySelector('.note-viewer') ?? document.querySelector('.content')
+    const content = document.querySelector('.content')
+    if (panel == null || content == null) return null
+    const pr = panel.getBoundingClientRect(), cr = content.getBoundingClientRect()
+    return { cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth }
+  })()`
+  for (const width of widths) {
+    setOsWindowSize(width, 1040)
+    await sleep(1800) // 等 resize 落到主进程、zoom 应用、渲染层重排
+    const m = await cdp.json(measure)
+    if (m == null) continue
+    // CSS 视口 = min(窗宽 − inset, 1600)：宽于基准时证明 zoom = 客户区/1600 已应用。
+    const expected = Math.min(width - inset, 1600)
+    const zoom = +((width - inset) / m.cssVW).toFixed(3)
+    out.zoomTiers.push({ width, inset, expectedCssVW: expected, zoom, ...m })
+  }
+  // zoom≠1 下的弹层稳定性：最宽档打开全屏课程浏览器（fixed overlay + 96vw 卡片），
+  // 量卡片是否完整落在视口内、文档有无横向溢出，然后 Esc 关掉。
+  if (widths.length > 0) {
+    const before = await cdp.json(`(() => ({ btn: document.querySelector('[data-testid="course-browser-open"]') != null, overlay: document.querySelector('.course-browser-overlay') != null, card: document.querySelector('.course-browser-card') != null }))()`)
+    // 侧栏「全部课程」那枚（带 data-testid）——MyStudyPanel 头部也有一枚同名 class
+    // 的入口，点它会打开「我的学习」全屏弹层而不是课程浏览器。
+    await cdp.eval(`(() => { document.querySelector('[data-testid="course-browser-open"]')?.click(); return true })()`)
+    await sleep(900)
+    out.zoomOverlay = await cdp.json(`(() => {
+      const card = document.querySelector('.course-browser-card')
+      if (card == null) return { opened: false }
+      const r = card.getBoundingClientRect()
+      return { opened: true, cardW: Math.round(r.width), cardH: Math.round(r.height), top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, fits: r.top >= -1 && r.bottom <= innerHeight + 1 && r.left >= -1 && r.right <= innerWidth + 1 }
+    })()`)
+    if (out.zoomOverlay?.opened !== true) out.zoomOverlay = { ...before, ...out.zoomOverlay }
+    await cdp.eval(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true })()`)
+    await sleep(500)
+  }
+  setOsWindowSize(1280, 800)
+  await sleep(800)
 }
 
 /** A library without recorded consent stops at the 使用须知 gate — walk it. */
@@ -612,6 +691,16 @@ function summarize(out) {
     const m = out[key]
     if (m?.found === true) lines.push(`${label} scale ${m.scale.toFixed(3)} · 画布 ${m.scrollW}×${m.scrollH} · 宿主高 ${m.wrapH} · 内容 ${m.svgW}×${m.svgH} → 元素盒 ${m.drawnW}×${m.drawnH} · 溢出 ${m.overX}/${m.overY} · 工具栏顶 ${m.toolbarTop} vs 页滚 ${m.pageOverflow} · 装得下 ${m.fits}`)
   }
+  if (out.zoomTiers != null) {
+    for (const t of out.zoomTiers) {
+      const ok = Math.abs(t.cssVW - t.expectedCssVW) <= 2
+      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX}`)
+    }
+  }
+  if (out.zoomOverlay != null) {
+    const o = out.zoomOverlay
+    lines.push(o.opened === true ? `zoom 下课程浏览器卡片 ${o.cardW}×${o.cardH} · 视口内 ${o.fits}` : 'zoom 下课程浏览器未能打开')
+  }
   return lines
 }
 
@@ -645,6 +734,7 @@ async function main() {
       if (has('--dialog')) await probeLongDialog(cdp, out)
       if (has('--provider')) await probeProvider(cdp, out)
       if (has('--mindmap')) await probeMindmap(cdp, out)
+      if (has('--zoom')) await probeZoomTiers(cdp, out)
       if (argOf('--note-search=') != null) await probeNoteSearch(cdp, out, argOf('--note-search='))
       if (has('--paging')) await probePaging(cdp, out)
       if (NARROW != null) await probeNarrow(cdp, out)
