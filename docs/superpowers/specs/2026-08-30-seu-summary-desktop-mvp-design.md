@@ -127,6 +127,10 @@ MVP supports questions about the current lesson only. The context is:
 
 The data model reserves course-level relationships so course-wide Q&A can be added later without redesigning storage.
 
+> **Revision (2026-09-21, plan 2026-09-21-ux-optimization-round2 P36/P37)：**
+> **① 追问从顶部 tab 改为右侧常驻对话坞（`.qa-dock`）**——读笔记时提问不再需要切换 tab；CSS 视口 ≥1400 时常驻并列在内容区右侧（吸收宽屏右侧空白，与窗口缩放 `z=clamp(W/1600,1,2.5)` 联合定档），<1400（含默认窗）退化为固定位置悬浮窗，可一键折叠成入口钮；顶部 tab 相应移除（Ctrl+3 顺移为设置）。
+> **② 追问以「该课时已有笔记」为硬门禁**——没有笔记的课时不接受提问（输入不可用 + 主侧 `qa:ask` 直接返回「该课时尚无笔记，请先为此课时生成笔记后再追问」）。原实现允许无笔记时基于转写回答、甚至在不依赖课时材料的一般性问题上作答；用户明确「这没有必要，不如直接去问网页 AI」，只保留针对笔记内部的追问。门禁放在绑定检查之前（无笔记时不该先问模型绑定）。
+
 ## 7. Task Lifecycle and Resume
 
 Tasks use this state machine:

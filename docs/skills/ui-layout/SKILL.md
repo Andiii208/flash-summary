@@ -71,8 +71,10 @@ version: 1.0.0
 宽屏逐像素复用 1600 窗口的形态，只是物理等比例放大；右侧空白由追问右坞
 （`.qa-dock`，见 §5）与缩放本身吸收。**不要再加 `min-width` 断点去「适配宽
 屏」**——宽屏档在缩放方案下永不可命中（批6 的 1600 宽屏档已因此删除，见
-`style.css` 该处注释）；唯一的例外是坞档 `min-width: 1400px`（追问右坞进布局
-所需的最小宽度，批4 新增，与缩放同批协调）。
+`style.css` 该处注释）；唯一的例外是**坞档 `min-width: 1400px`**（追问右坞进
+布局所需的最小宽度：304 侧栏 + 24 + 640 正文列 + 16 间距 + 340 坞 + 24 =
+1368，取整 1400；与缩放同批协调——缩放把 CSS 视口钉在 1600，坞档在宽屏恒可
+命中）。
 
 新增断点前先问：能不能用现有断点或窗口缩放解决？`tests/style-scale.test.ts`
 钉住了「窄窗只有 1180 与 1024、宽屏（min-width）只有坞档 1400」——加档要同时
@@ -105,6 +107,13 @@ version: 1.0.0
 - **时间口径**：时间戳用 `formatTime`（mm:ss）/ `formatStamp`（绝对）/ `formatRelativeStamp`
   （一周内相对）；时长用 `formatDuration`（中文单位）。实现只有 `shared/format.ts` 与
   `shared/notes/format.ts` 两处，不许再抄。
+- **追问右坞 `.qa-dock`（2026-09-21 P36）**：右侧常驻对话列，不是弹层——不挂
+  `.fullscreen-overlay`、不加遮罩、不锁滚动。两种形态同一组件同一套类：≥1400 CSS
+  时常驻（`.app-main` 第三列，宽 `clamp` 语义：`flex: 0 1 520px; min-width: 340px`，
+  内容面板该档下 `flex:1; min-width:0`，860 帽只在坞折叠/悬浮时生效）；<1400 为
+  `position: fixed` 悬浮窗（右贴底 24px、`width: min(400px, 100vw - 48px)`、
+  z-index 30——低于四个自绘 overlay 的 40、高于内容）。折叠态收成右缘一颗入口钮
+  `.qa-dock-launcher`。打印不受影响：`@media print` 整体隐藏 `.app-shell`，坞挂在其内。
 
 ## 6. 阅读排版（笔记正文）
 
