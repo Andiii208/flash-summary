@@ -357,6 +357,9 @@ export interface SettingsBridge {
    * 靠源库兜底」的口径分开的独立入口）。只含数据库文件；取消/失败不留半成品。 */
   exportLibraryBackup(): Promise<ApiResult<{ canceled: boolean; path?: string }>>
   openPath(kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>>
+  /** 2026-09-21: 作者的 GitHub 主页。**不接参数**——地址只存在于 main 侧，渲染层
+   *  无法让 main 打开任意 URL（与 feedback:openForm 同一条红线）。 */
+  openAuthor(): Promise<ApiResult<boolean>>
   /** 声明批2: record first-run consent for the current text version.
    *  Takes no argument on purpose — the version is main's own constant, so the
    *  renderer cannot vouch for text it never showed. */

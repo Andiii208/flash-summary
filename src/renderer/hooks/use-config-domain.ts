@@ -51,6 +51,8 @@ export interface ConfigDomain {
   optOutCopyrightNotice: () => void
   /** 声明批6: 打开测试期反馈表（地址在 main 侧，无参 IPC，渲染层传不了 URL）。 */
   openFeedbackForm: () => void
+  /** 2026-09-21: 打开作者的 GitHub 主页（地址在 main 侧，无参 IPC）。 */
+  openAuthorGithub: () => void
   /** 批6 (D4): 资料库备份导出（busy 三件套同其它慢操作按钮）。 */
   libraryBackupBusy: boolean
   exportLibraryBackup: () => void
@@ -328,6 +330,14 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     })()
   }, [bridge, toast])
 
+  /** 2026-09-21: 同上——地址在 main 侧，失败必须说出来而不是当死按钮。 */
+  const openAuthorGithub = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.settings.openAuthor()
+      if (!res.ok) toast(res.error ?? '打开 GitHub 主页失败', 'error')
+    })()
+  }, [bridge, toast])
+
   return {
     providers,
     providerBusy,
@@ -353,6 +363,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     openPath,
     acceptDisclaimer,
     optOutCopyrightNotice,
-    openFeedbackForm
+    openFeedbackForm,
+    openAuthorGithub
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount, click } from '../helpers/preact'
 import { AboutPanel } from '../../src/renderer/components/AboutPanel'
 import { DISCLAIMER_TEXT_VERSION } from '../../src/shared/disclaimer'
@@ -94,5 +94,23 @@ describe('设置页「关于与声明」面板', () => {
     click(buttonByText('第三方许可'))
     expect(document.querySelector('[data-testid="legal-disclaimer"]')).toBeNull()
     expect(document.querySelector('[data-testid="legal-licenses"]')).not.toBeNull()
+  })
+
+  // 2026-09-21: 作者 GitHub 主页入口。红线与反馈表同款——地址只在 main 侧，
+  // 渲染层只拿到一个**无参回调**，DOM 里不该出现任何 URL。
+  it('作者入口：给了回调才渲染，点击走无参回调，且 DOM 里没有地址', () => {
+    const opened = vi.fn()
+    mount(<AboutPanel version="1.0.0" onOpenAuthor={opened} />)
+    const button = document.querySelector('[data-testid="open-author-github"]') as HTMLButtonElement | null
+    expect(button).not.toBeNull()
+    expect(button?.textContent ?? '').toContain('GitHub')
+    expect(document.body.textContent ?? '').not.toContain('github.com')
+    click(button)
+    expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  it('作者入口：没给回调就不渲染（与反馈按钮同款条件渲染）', () => {
+    mount(<AboutPanel version="1.0.0" />)
+    expect(document.querySelector('[data-testid="open-author-github"]')).toBeNull()
   })
 })

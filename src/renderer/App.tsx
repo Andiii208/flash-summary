@@ -721,6 +721,7 @@ prevLesson={state.lessonNeighbors.prev}
               migrationProgress={state.migrationProgress}
               onOpenPath={state.openPath}
               onOpenFeedback={state.openFeedbackForm}
+              onOpenAuthor={state.openAuthorGithub}
             />
             </div>
           )}
@@ -838,6 +839,8 @@ interface AppState extends NotesDomain, TasksDomain {
   closeReport: () => void
   /** 声明批6: 打开测试期反馈表（地址在 main 侧）。 */
   openFeedbackForm: () => void
+  /** 2026-09-21: 打开作者的 GitHub 主页（地址在 main 侧）。 */
+  openAuthorGithub: () => void
   toasts: ToastItem[]
   dismissToast: (id: number) => void
   /** Toast emitter (BiliImport and other sidebar components push here). */
@@ -993,7 +996,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, libraryBackupBusy, exportLibraryBackup, openPath, acceptDisclaimer, optOutCopyrightNotice, openFeedbackForm } = config
+  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, libraryBackupBusy, exportLibraryBackup, openPath, acceptDisclaimer, optOutCopyrightNotice, openFeedbackForm, openAuthorGithub } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -1844,6 +1847,7 @@ const currentCourseLessons = useMemo<LessonChipLesson[]>(
     copyReport,
     closeReport,
     openFeedbackForm,
+    openAuthorGithub,
     toasts,
     dismissToast,
     toast,

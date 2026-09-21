@@ -176,6 +176,7 @@ export function makeBridge(): SeuSummaryBridge {
       setTheme: vi.fn(async () => ok({ theme: 'dark' })),
       chooseLibrary: vi.fn(async () => ok({ canceled: true })),
       openPath: vi.fn(async () => ok(true)),
+      openAuthor: vi.fn(async () => ok(true)),
       // Models the real handler: recording consent flips the stored state, so
       // the re-read that follows is what lifts the gate.
       acceptDisclaimer: vi.fn(async () => {

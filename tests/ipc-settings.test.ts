@@ -11,6 +11,7 @@ import { readLibraryPointer } from '../src/main/library/pointer'
 import { getSetting, SETTINGS_KEYS } from '../src/main/settings/store'
 import { DISCLAIMER_TEXT_VERSION } from '../src/shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../src/shared/copyright-notice'
+import { AUTHOR_GITHUB_URL } from '../src/shared/author'
 
 // Electron dialogs are user-facing; tests stub them and assert the wiring.
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
@@ -22,7 +23,7 @@ vi.mock('electron', () => ({
     showSaveDialog: vi.fn(async () => saveDialog),
     showOpenDialog: vi.fn(async () => openDialog)
   },
-  shell: { openPath: vi.fn(async () => '') },
+  shell: { openPath: vi.fn(async () => ''), openExternal: vi.fn(async () => undefined) },
   BrowserWindow: { getFocusedWindow: () => null },
   app: { getVersion: () => '0.0.0-test' },
   WebContents: undefined
@@ -226,6 +227,18 @@ describe('settings IPC (U3)', () => {
     expect(res.ok).toBe(false)
     expect(res.error).toContain('资料库')
     expect(res.error).toContain('EPERM')
+  })
+
+  // 2026-09-21: 作者 GitHub 主页。与 feedback:openForm 同一条红线——地址只在
+  // main 侧，渲染层传什么参数都不算（否则就是 openExternal 注入洞）。
+  it('settings:openAuthor 用的是 main 自己的常量，渲染层传的地址一律不算', async () => {
+    const { shell } = await import('electron')
+    const ctx = makeCtx()
+    ;(shell.openExternal as ReturnType<typeof vi.fn>).mockClear()
+    await invoke(ctx, 'settings:openAuthor', 'https://evil.example.com/steal')
+    expect(shell.openExternal).toHaveBeenCalledTimes(1)
+    expect(shell.openExternal).toHaveBeenCalledWith(AUTHOR_GITHUB_URL)
+    expect(String((shell.openExternal as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] ?? '')).not.toContain('evil')
   })
 })
 

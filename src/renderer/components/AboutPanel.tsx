@@ -5,6 +5,7 @@ import { MdLite } from './MdLite'
 import { DISCLAIMER_FULL_TEXT, THIRD_PARTY_NOTICES_TEXT, toReaderMarkdown } from '../legal-text'
 import { DISCLAIMER_TITLE, DISCLAIMER_TEXT_VERSION } from '../../shared/disclaimer'
 import { FEEDBACK_HINT, FEEDBACK_OPEN_LABEL, FEEDBACK_TITLE } from '../../shared/feedback'
+import { AUTHOR_GITHUB_LABEL } from '../../shared/author'
 /** 声明批6: 反馈二维码成品图（732×960）。见下方尺寸注释。 */
 import feedbackQr from '../assets/feedback-form-qr.png'
 
@@ -19,7 +20,7 @@ import feedbackQr from '../assets/feedback-form-qr.png'
  *    一堆竖线；而「许可声明」本来就该让人看到与随包文件逐字一致的原文。
  *  两者都只输出 JSX，不碰 innerHTML。
  */
-export function AboutPanel({ version, onOpenFeedback }: { version?: string; onOpenFeedback?: () => void }): JSX.Element {
+export function AboutPanel({ version, onOpenFeedback, onOpenAuthor }: { version?: string; onOpenFeedback?: () => void; onOpenAuthor?: () => void }): JSX.Element {
   const [open, setOpen] = useState<'none' | 'disclaimer' | 'licenses'>('none')
   const close = (): void => setOpen('none')
 
@@ -33,6 +34,15 @@ export function AboutPanel({ version, onOpenFeedback }: { version?: string; onOp
           <span class="about-text-version"> · 使用须知第 {DISCLAIMER_TEXT_VERSION} 版</span>
         </span>
       </div>
+      {/* 2026-09-21: 作者入口。地址只存在于 main 侧，IPC 不接参数（与反馈表同一条红线）。 */}
+      {onOpenAuthor != null && (
+        <div class="settings-row">
+          <span class="settings-label">作者</span>
+          <button class="btn small" onClick={onOpenAuthor} data-testid="open-author-github">
+            {AUTHOR_GITHUB_LABEL}
+          </button>
+        </div>
+      )}
       <p class="about-note">
         本软件由个人开发，与<strong>东南大学</strong>及其信息化部门、与<strong>哔哩哔哩</strong>均无隶属、合作或授权关系。
       </p>

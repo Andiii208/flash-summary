@@ -126,7 +126,7 @@ const EXPECTED_BRIDGE = {
   qa: ['ask', 'history', 'recent'],
   // 批 D (plan 2026-09-19): 原片跳转（B 站 ?t=；SEU 源拒绝）。
   lessons: ['openSource'],
-  settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'acceptDisclaimer', 'optOutCopyrightNotice', 'exportLibraryBackup', 'onMigrateProgress'],
+  settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'openAuthor', 'acceptDisclaimer', 'optOutCopyrightNotice', 'exportLibraryBackup', 'onMigrateProgress'],
   log: ['rendererError'],
   feedback: ['openForm', 'diagnostics']
 }

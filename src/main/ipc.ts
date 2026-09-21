@@ -43,6 +43,7 @@ import { formatBytes, formatSpeed } from '../shared/format'
 import { DISCLAIMER_TEXT_VERSION } from '../shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../shared/copyright-notice'
 import { FEEDBACK_FORM_URL } from '../shared/feedback'
+import { AUTHOR_GITHUB_URL } from '../shared/author'
 import { buildDiagnostics, type DiagnosticsTask } from './feedback/diagnostics'
 import { redactCredentials } from './logger'
 import { claimNoteInflight, releaseNoteInflight } from './notes/inflight'
@@ -1039,6 +1040,17 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         ctx.logger.warn(`openPath failed for ${k}: ${openError}`)
         return err(new Error(`无法打开${k === 'cache' ? '缓存' : k === 'exports' ? '导出' : k === 'logs' ? '日志' : '资料库'}目录：${openError}`))
       }
+      return ok(true)
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 2026-09-21: 作者的 GitHub 主页。与 feedback:openForm 同款——**不接参数**，
+  // 地址只存在于 main 侧（渲染层无法让 main 打开任意 URL，AGENTS.md 安全红线）。
+  handle(ipc, 'settings:openAuthor', async () => {
+    try {
+      await shell.openExternal(AUTHOR_GITHUB_URL)
       return ok(true)
     } catch (e) {
       return err(e)

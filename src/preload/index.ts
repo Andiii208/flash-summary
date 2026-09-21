@@ -141,6 +141,7 @@ const api: SeuSummaryBridge = {
     chooseLibrary: (): Promise<ApiResult<{ canceled: boolean; libraryRoot?: string; restartRequired?: boolean }>> =>
       ipcRenderer.invoke('settings:chooseLibrary'),
     openPath: (kind: 'library' | 'cache' | 'exports' | 'logs'): Promise<ApiResult<boolean>> => ipcRenderer.invoke('settings:openPath', kind),
+    openAuthor: (): Promise<ApiResult<boolean>> => ipcRenderer.invoke('settings:openAuthor'),
     acceptDisclaimer: (): Promise<ApiResult<{ version: number }>> => ipcRenderer.invoke('settings:acceptDisclaimer'),
     optOutCopyrightNotice: (): Promise<ApiResult<{ version: number }>> => ipcRenderer.invoke('settings:optOutCopyrightNotice'),
     exportLibraryBackup: (): Promise<ApiResult<{ canceled: boolean; path?: string }>> =>
