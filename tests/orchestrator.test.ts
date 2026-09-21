@@ -174,10 +174,10 @@ describe('orchestrator stage executors', () => {
   })
 
   // 2026-09-21（批1 评审补口）：catalog refresh 是同一份课时目录的第二个
-  // writer。原来它无条件 upsert，会把整门课的行名与 play_ref 按平台当前索引
-  // 重写——play_ref 正是下一次任务用来点「第N节课」的 ref，被漂移覆盖就会去抓
-  // 另一节课的流。有产物的行现在与收割侧共用同一份冻结判定。
-  it('批1 补口: catalog refresh 不覆盖有产物的行（title/play_ref 冻结），无产物行照常更新', async () => {
+  // writer。原来它无条件 upsert，会把整门课的行名按平台当前索引重写——有产物的
+  // 行现在与收割侧共用同一份冻结判定，真实效果落在 title 上（play_ref 恒等于
+  // String(index)，冻结它是空操作，见方案 §1.7 的 v9 订正）。
+  it('批1 补口: catalog refresh 不覆盖有产物的行（title 冻结），无产物行照常更新', async () => {
     db.prepare("UPDATE courses SET tecl_id = '154717', tecl_code = '202620271B080329101' WHERE id = 'c1'").run()
     // 有笔记的兄弟课时（受保护）+ 一个空行。
     db.prepare("INSERT INTO lessons (id, course_id, title, play_ref, fetched_at) VALUES ('c1-L3', 'c1', '第4节课', '3', '2026-08-30T00:00:00Z')").run()

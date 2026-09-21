@@ -593,7 +593,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForGone('[data-testid="course-browser"]')
     expect(bridge.notes.courseTree).toHaveBeenCalledWith('c1')
     // 「只剩一层」是可量的前提——否则下面的 Esc 断言分不清「关一层」与「关两层」。
-    expect(host.querySelectorAll('.course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .my-study-overlay')).toHaveLength(1)
+    expect(host.querySelectorAll('.course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .fullscreen-overlay')).toHaveLength(1)
 
     // Esc 只关地图这一层——浏览器不会「跟着一起被关」（它已经关了，也不会回来）。
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
@@ -623,7 +623,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await waitForGone('[data-testid="course-map-dialog"]')
     expect(host.querySelector('[data-testid="course-browser"]')).not.toBeNull()
-    expect(host.querySelectorAll('.course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .my-study-overlay')).toHaveLength(1)
+    expect(host.querySelectorAll('.course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .fullscreen-overlay')).toHaveLength(1)
 
     // 第二层要再按一次才关；收尾理由同旧注释——helpers/preact 的 afterEach 只清
     // DOM，挂着不关会把 window 键监听与 body 滚动锁留给下一个用例。
