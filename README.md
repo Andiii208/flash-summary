@@ -62,7 +62,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 ┌──────────────────────────┴──────────────────────────────┐
 │  Main (src/main)                                        │
 │  app-context —— 一次组装资料库/会话/Provider/ffmpeg/日志  │
-│  ipc —— 62 通道：school/providers/tasks/notes/qa/        │
+│  ipc —— 65 通道：school/providers/tasks/notes/qa/        │
 │         lessons/settings/log；任务经串行队列执行，可取消   │
 │  tasks/orchestrator —— 6 阶段流水线编排（ASR 分片/多模态）  │
 │  media —— ffmpeg 音频/关键帧/超时守卫 · phash 去重 ·       │
