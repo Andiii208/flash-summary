@@ -1850,7 +1850,9 @@ span.timeline-stamp { cursor: default; }
 }
 .timeline-images { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .timeline-thumb { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: zoom-in; background: var(--surface-2); padding: 0; width: 168px; height: 96px; flex-shrink: 0; }
-.timeline-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* P26 (plan 2026-09-21): contain——PPT 页是 4:3，cover 会裁掉约四分之一；
+   关键帧 16:9 在 1.75:1 盒里两侧微裁也随之消除（卡片自带 surface-2 底， Letterbox 不突兀）。 */
+.timeline-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .thumb-origin { position: absolute; left: 6px; bottom: 6px; font-size: 10px; padding: 0 6px; border-radius: 999px; backdrop-filter: blur(4px); color: #fff; background: rgba(0, 0, 0, 0.45); }
 .thumb-origin.evidence { background: var(--accent-fill); color: var(--accent-contrast); }
 .zoom-image { display: block; max-width: min(760px, 78vw); max-height: 64vh; object-fit: contain; border-radius: var(--radius-lg); margin: 4px 0 10px; }
@@ -2174,7 +2176,9 @@ button.concept-ref:hover { color: var(--accent); }
 }
 .evidence-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); }
 .evidence-fig { position: relative; margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface-2); }
-.evidence-fig img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+/* P26 (plan 2026-09-21): contain——PPT 页是 4:3，cover 会裁掉约四分之一；
+   关键帧 16:9 正好填满。卡片自带 surface-2 底，Letterbox 不突兀。 */
+.evidence-fig img { display: block; width: 100%; aspect-ratio: 16/9; object-fit: contain; }
 .evidence-fig figcaption { display: flex; justify-content: space-between; align-items: center; padding: 5px 9px; font-size: var(--font-size-xs); }
 .evidence-ref { font-family: var(--font-mono); color: var(--text-muted); }
 
@@ -2246,12 +2250,15 @@ button.concept-ref:hover { color: var(--accent); }
 /* 试卷头: 文武线 (thick-thin pair) framing the lesson identity. 批B: 靠左
    与内容列同轴（居中是旧「阅读列居中」的残留，与全局左缘冲突）。 */
 /* 批 A2 (plan 2026-09-19): 课时封面 banner。纪律：banner 是内容不是装饰——
-   限高 + object-fit:cover + 既有圆角 token，不加边条/蒙版/第二种字体；
+   按来源比例完整显示（16:9 盒 + object-fit:cover，B 站封面实测 16:9 → 零裁切；
+   旧版 max-height:200px 的 3.2:1 横幅盒会把 16:9 封面上下裁掉约 44% 图高，
+   2026-09-21 P26 用户实报「被裁切过，不完整」）+ 既有圆角 token，不加边条/
+   蒙版/第二种字体；高度随列宽由 aspect-ratio 导出（640 列 → 640×360），
    无封面时整块不渲染（SEU 源与导入失败都是合法无封面态）。 */
 .note-cover {
   display: block;
   width: 100%;
-  max-height: 200px;
+  aspect-ratio: 16/9;
   object-fit: cover;
   border-radius: var(--radius);
   margin: 0 0 var(--space-3);
@@ -2501,7 +2508,8 @@ button.concept-ref:hover { color: var(--accent); }
   flex-shrink: 0;
   width: 72px;
   height: 45px;
-  object-fit: cover;
+  /* P26 (plan 2026-09-21): contain——72×45 是 1.6:1，cover 会裁掉 16:9 封面约 10% 宽。 */
+  object-fit: contain;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);

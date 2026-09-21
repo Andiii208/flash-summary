@@ -129,6 +129,9 @@ const MEASURE = `(() => {
     noteViewer: R('.note-viewer'),
     noteBody: R('.note-body'),
     masthead: R('.note-masthead'),
+    /* P26 (plan 2026-09-21): 封面盒几何——验收「按 16:9 完整显示、不再被裁」。
+       B 站课时才有封面（SEU 源合法无封面，R 返回 null）。 */
+    noteCover: R('.note-cover'),
     noteToolbar: R('.note-toolbar'),
     noteActions: R('.note-actions'),
     firstSection: R('.note-section'),
@@ -268,8 +271,11 @@ const scrollToSel = (cdp, selector, offset) =>
     return true
   })()`)
 
-/** Expand courses until a lesson that already has a note (badge.ok) is selected. */
-async function selectNotedLesson(cdp) {
+/** Expand courses until a lesson that already has a note (badge.ok) is selected.
+ *  P26 (plan 2026-09-21): preferCover=true 时，若选中的课时没有封面（.note-cover
+ *  不存在——SEU 源合法无封面），沿「有笔记的课时」列表继续点，直到落到一个带封面
+ *  的 B 站课时；找不到就停在第一个（原行为）。封面几何只在带封面的课时量得到。 */
+async function selectNotedLesson(cdp, { preferCover = false } = {}) {
   let clicked = false
   for (let i = 0; i < 30 && !clicked; i++) {
     const step = await cdp.eval(`(() => {
@@ -290,6 +296,26 @@ async function selectNotedLesson(cdp) {
     }
   }
   await sleep(1200)
+  if (clicked && preferCover) {
+    // 侧栏按课程折叠，跨课程的带封面课时点不到；笔记库列表跨课程列全部有笔记的
+    // 课时，从那里逐行点，直到落到一个带封面的 B 站课时（找不到就停在原选择）。
+    let rowCount = -1
+    for (let i = 0; i < 20; i++) {
+      if ((await cdp.eval(`(() => document.querySelector('.note-cover') != null)()`)) === true) break
+      if (rowCount >= 0 && i >= rowCount) break
+      await goHome(cdp)
+      await sleep(400)
+      if ((await clickTab(cdp, '笔记')) !== true) break
+      await sleep(800)
+      if (rowCount < 0) {
+        rowCount = (await cdp.eval(`(() => document.querySelectorAll('[data-testid="note-library-row"]').length)()`)) || 0
+      }
+      if (rowCount === 0) break
+      const idx = i % rowCount
+      await cdp.eval(`(() => { const rows = [...document.querySelectorAll('[data-testid="note-library-row"]')]; rows[${idx}].click(); return true })()`)
+      await sleep(1000)
+    }
+  }
   return clicked
 }
 
@@ -313,7 +339,7 @@ async function probeFirstRun(cdp, out) {
 
 /** 三个页面各量一次（笔记 / 追问 / 任务）。 */
 async function probeMainPages(cdp, out) {
-  await selectNotedLesson(cdp)
+  await selectNotedLesson(cdp, { preferCover: true })
   out.notePage = await cdp.json(MEASURE)
   await clickTab(cdp, '追问')
   await sleep(700)
@@ -535,6 +561,8 @@ function summarize(out) {
     lines.push(`视口 ${vp.w}×${vp.h} · 内容盒 ${one(page.content?.w)} · 正文列 ${one(page.noteBody?.w)} · 题头 ${one(page.masthead?.w)}`)
     if (page.firstPara != null) lines.push(`正文 ${page.firstPara.fs}px / 行高 ${page.firstPara.lh} → ${page.firstPara.cjkPerLine} 全角字/行`)
     if (page.noteTitleInfo != null) lines.push(`题头标题 ${page.noteTitleInfo.fs}（${page.noteTitleInfo.len} 字 · ${page.noteTitleInfo.cls}）`)
+    /* P26 (plan 2026-09-21): 封面盒宽高比——16:9 盒下 B 站封面零裁切（旧 3.2:1 横幅盒裁 44% 图高）。 */
+    if (page.noteCover != null) lines.push(`封面盒 ${page.noteCover.w}×${page.noteCover.h} · 宽高比 ${(page.noteCover.w / page.noteCover.h).toFixed(2)}`)
     if (page.noteBtnCount > 0) lines.push(`工具行 ${page.noteBtnCount} 键 · ${page.actionsRows} 行 · 单键高 ${page.noteBtnBoxes[0]?.h} · 横向溢出 ${one(page.contentOverflowX)}`)
     if (page.countHeights?.length > 0) lines.push(`计数药丸高度 ${[...new Set(page.countHeights)].join('/')}`)
     if (page.subheadings?.length > 0) lines.push(`小标题 ${page.subheadings.join(' | ')}`)
