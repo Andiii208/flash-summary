@@ -121,7 +121,7 @@ function findFreePort(start) {
 
 /** One page's worth of geometry, all in CSS px. */
 const MEASURE = `(() => {
-  const R = (sel) => { const e = document.querySelector(sel); if (e == null) return null; const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), w: Math.round(r.width), h: Math.round(r.height) } }
+  const R = (sel) => { const e = document.querySelector(sel); if (e == null) return null; const r = e.getBoundingClientRect(); return { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) } }
   const CS = (sel, ...props) => { const e = document.querySelector(sel); if (e == null) return null; const s = getComputedStyle(e); const o = {}; for (const p of props) o[p] = s[p]; return o }
   const OV = (sel) => { const e = document.querySelector(sel); if (e == null) return null; return { sw: e.scrollWidth, cw: e.clientWidth, over: e.scrollWidth - e.clientWidth } }
   const T = (sel) => { const e = document.querySelector(sel); if (e == null) return null; const s = getComputedStyle(e); const r = e.getBoundingClientRect(); const fs = parseFloat(s.fontSize); const lh = parseFloat(s.lineHeight); return { fs, lh, w: Math.round(r.width), lines: lh > 0 ? +(r.height / lh).toFixed(2) : null, cjkPerLine: +(r.width / fs).toFixed(1) } }
