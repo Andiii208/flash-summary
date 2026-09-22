@@ -605,6 +605,24 @@ describe('首启与空库的排版合同（批2）', () => {
   })
 })
 
+describe('宽屏吃空白补批（D7 提示 / 批1 密度收尾）', () => {
+  it('D7 小窗提示条：slim strip 不拦路（无遮罩不锁滚动），样式走 token', () => {
+    const hint = bodyOf('.window-hint')
+    expect(hint).toContain('display: flex')
+    // 负向红线：不得挂 fullscreen-overlay / fixed 浮层 / overflow hidden（它不是弹层）。
+    expect(stripped).not.toMatch(/\.window-hint[^{]*\{[^}]*position:\s*fixed/)
+    expect(hint).not.toContain('position: fixed')
+    expect(hint).toContain('var(--space-2)')
+  })
+
+  it('批1 卡内密度：history-label 弹性 + 比例帽（窄轴仍 300，宽卡吃到 42%）', () => {
+    const label = bodyOf('.history-label')
+    expect(label).toContain('flex: 1 1 auto')
+    expect(label).toContain('max-width: min(300px, 42%)')
+    expect(label).toContain('min-width: 0')
+  })
+})
+
 describe('宽屏吃空白批3（plan 2026-09-22-wide-screen-blank-space）', () => {
   it('设置页两栏 grid：面板轴宽档 + 块间距归 grid gap（margin 清零）', () => {
     const panel = bodyOf('.settings-panel')

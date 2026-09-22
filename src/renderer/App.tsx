@@ -135,7 +135,7 @@ function writeHarvestSeq(seq: number): void {
   }
 }
 
-/** B2: «don't tell me again» for the platform-jump confirmation. */
+/** B2: «don't show again» for the platform-jump confirmation. */
 const JUMP_SKIP_KEY = 'seu-summary.jump-confirm.skip'
 
 function readJumpSkip(): boolean {
@@ -149,6 +149,36 @@ function readJumpSkip(): boolean {
 function writeJumpSkip(): void {
   try {
     window.localStorage.setItem(JUMP_SKIP_KEY, '1')
+  } catch {
+    // See savePersistedUi.
+  }
+}
+
+/**
+ * D7 (plan 2026-09-22-wide-screen-blank-space)：首启小窗一次性轻提示——
+ * 「最大化看笔记更舒展」。不拦路、不是弹层（slim strip，一眼可关）。
+ *
+ * 判据用 **innerWidth < 1300 CSS** 而不是物理宽：window-zoom 的 z=clamp(W/1600,1,2.5)
+ * 使「物理窗 <1600 ⟺ zoom=1 ⟺ CSS 视口 = 物理宽 − 14」，此区间内 innerWidth 就是物理宽
+ * 的等价代理；≥1600 物理（最大化/宽屏）时视口恒 1600 永不回触。系统显示缩放改变的是
+ * 物理↔DIP 换算，而布局挤不挤由视口决定——视口判据恰是「排版舒不舒服」的正确代理。
+ * 一次性语义：点「知道了」写 skip；**拖大到阈值以上也写 skip**（用户已见识过宽屏效果，
+ * 提示使命完成，不再二次打扰）。
+ */
+const WINDOW_HINT_MAX_WIDTH = 1300
+const WINDOW_HINT_SKIP_KEY = 'seu-summary.window-hint.skip'
+
+function readWindowHintSkip(): boolean {
+  try {
+    return window.localStorage.getItem(WINDOW_HINT_SKIP_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeWindowHintSkip(): void {
+  try {
+    window.localStorage.setItem(WINDOW_HINT_SKIP_KEY, '1')
   } catch {
     // See savePersistedUi.
   }
@@ -202,6 +232,21 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   const qaDockAtHero = useQaDockAtHero(tab === 'notes', state.note == null ? '' : state.currentLesson)
   const qaDockVisible = tab === 'notes' && (qaDockMode === 'open' || (qaDockMode === 'auto' && !qaDockAtHero))
   const showWelcome = state.treeLoaded && state.tree.length === 0
+  // D7 (plan 2026-09-22-wide-screen-blank-space)：首启小窗一次性轻提示。初始显隐看
+  // 视口（<1300 CSS 才显示）；拖大到阈值即写 skip 并收起——用户见识过宽屏效果后
+  // 提示使命完成，不再二次打扰（localStorage，同 jump-confirm 的「不再提示」模式）。
+  const [windowHintOpen, setWindowHintOpen] = useState(() => !readWindowHintSkip() && window.innerWidth < WINDOW_HINT_MAX_WIDTH)
+  useEffect(() => {
+    if (!windowHintOpen) return
+    const onResize = (): void => {
+      if (window.innerWidth >= WINDOW_HINT_MAX_WIDTH) {
+        writeWindowHintSkip()
+        setWindowHintOpen(false)
+      }
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [windowHintOpen])
 
   // 声明批2 (plan 2026-09-11): nothing renders before the 使用须知 gate is
   // satisfied. The decision comes from main (settings:get compares the stored
@@ -313,6 +358,17 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
         breadcrumb={state.lessonContextOrIndex != null ? { courseName: state.lessonContextOrIndex.courseName, lessonTitle: state.lessonContextOrIndex.lessonTitle } : null}
         onClearLesson={state.clearLesson}
       />
+      {/* D7 (plan 2026-09-22-wide-screen-blank-space)：小窗一次性轻提示——顶栏下方
+          一条 slim strip（不是弹层、不锁滚动、点「知道了」或拖大窗口即永久消失）。
+          事实口径：宽屏下窗口缩放生效、排版按宽屏档铺开（window-zoom.ts）。 */}
+      {windowHintOpen && (
+        <div class="window-hint" role="status" data-testid="window-hint">
+          <span class="window-hint-text">窗口偏小——最大化后看笔记更舒展（宽屏下排版会自动放大铺开）。</span>
+          <button class="btn small ghost" onClick={() => { writeWindowHintSkip(); setWindowHintOpen(false) }}>
+            知道了
+          </button>
+        </div>
+      )}
       <ToastArea toasts={state.toasts} onDismiss={state.dismissToast} />
       <NoteUpgradeDialog
         open={state.noteUpgrade.open}

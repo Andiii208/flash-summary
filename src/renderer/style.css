@@ -488,6 +488,23 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
    卡片 position: absolute 挂在这里，top: 50% 即「内容区」垂直居中（不必算 topbar
    高度，也不会伸进顶栏）；.app-main 宽 = 窗口宽，卡的 right/100vw 公式语义不变。 */
 .app-main { display: flex; flex: 1; min-height: 0; position: relative; }
+/* D7 (plan 2026-09-22-wide-screen-blank-space)：小窗一次性轻提示——顶栏下方 slim strip。
+   不是弹层：无遮罩、不锁滚动、不居中浮层；surface 底 + accent 左杠读作「提示」而非
+   「警告」。打印走 @media print 隐藏 .app-shell，自动不含。 */
+.window-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.window-hint .btn.small.ghost { flex: none; }
+
 
 .sidebar {
   width: 304px;
@@ -1431,8 +1448,14 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   display: flex;
   flex-direction: column;
   gap: var(--space-hair);
-  flex-shrink: 0;
-  max-width: 300px;
+  /* 批1 (plan 2026-09-22-wide-screen-blank-space)：双列网格下单卡约 600px 宽——label
+     从「max 300 硬帽」改为「弹性 + 比例帽」：flex:1 吃掉印章与失败原因之间的余量，
+     min(300px, 42%) 在原 860 窄轴上仍是 300 帽（行为不变），宽卡里则长到 ~250-300
+     让课程·课时名有地方显示。方案里「卡内信息密度」的另一半（provider/模型 tag）未做：
+     TaskRowInfo 契约里没有这两个字段，补字段=动 IPC 桥面（smoke 门禁），超批1 范围，
+     已记入 PROGRESS 台账。 */
+  flex: 1 1 auto;
+  max-width: min(300px, 42%);
   min-width: 0;
 }
 .history-lesson {

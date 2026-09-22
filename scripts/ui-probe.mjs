@@ -789,6 +789,17 @@ async function probeNarrow(cdp, out) {
   await clickTab(cdp, '笔记')
   await sleep(800)
   out.narrowNote = await cdp.json(MEASURE)
+  // 批2 兜底验收（plan 2026-09-22-wide-screen-blank-space）：居中槽位公式
+  // margin-left: max(0px, calc((100% − 640 − 12 − 460)/2)) 的负值分支——视口
+  // <1160 CSS（槽位 1112 + .content 左右内边距 48）时应坍缩为左对齐（marginLeft
+  // = 0px、正文左缘贴内容盒左缘），不许出现负 margin 把正文列推出内容盒。
+  out.narrowCentering = await cdp.json(`(() => {
+    const nv = document.querySelector('.note-viewer')
+    const content = document.querySelector('.content')
+    if (nv == null || content == null) return null
+    const nvr = nv.getBoundingClientRect(), cr = content.getBoundingClientRect()
+    return { viewportW: innerWidth, marginLeft: getComputedStyle(nv).marginLeft, left: Math.round(nvr.left), right: Math.round(nvr.right), contentLeft: Math.round(cr.left), overX: document.documentElement.scrollWidth - innerWidth }
+  })()`)
   await goHome(cdp)
   await sleep(500)
   await clickTab(cdp, '任务')
@@ -863,6 +874,15 @@ function summarize(out) {
   if (out.narrowLibrary != null) {
     const l = out.narrowLibrary
     lines.push(`笔记库盒 ${l.w} · 内容盒右缘 ${l.contentRight} · 右侧空白 ${l.blank} · 行 ${l.rows}（视口 ${l.viewportW}）`)
+  }
+  // 批2 兜底摘要（plan 2026-09-22-wide-screen-blank-space）：窄窗下居中槽位公式的
+  // 负值分支——marginLeft=0px 且正文左缘贴内容盒左缘（含 .content 内边距：宽窗 24、
+  // ≤1180 断点降到 16）= 坍缩为左对齐（兜底成立）；负 margin 或正文探出内容盒 = 失效。
+  if (out.narrowCentering != null) {
+    const c = out.narrowCentering
+    const padOk = c.left >= c.contentLeft && c.left - c.contentLeft <= 24
+    const collapsed = c.marginLeft === '0px' && padOk && c.overX <= 0
+    lines.push(`居中兜底（视口 ${c.viewportW}）：margin-left ${c.marginLeft} · 正文左缘 ${c.left} vs 内容盒左缘 ${c.contentLeft} · 右缘 ${c.right} · 横溢 ${c.overX} → ${collapsed ? '坍缩左对齐 ✓' : '异常 ✗'}`)
   }
   if (out.tasksPage != null) {
     const cols = (page) => page.history.map((r) => `${one(r.errW)}${r.timeHidden ? '(时间收起)' : ''}`).join('/')

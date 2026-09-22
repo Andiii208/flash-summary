@@ -92,6 +92,11 @@ function setNarrowViewport(narrow: boolean): void {
   })) as unknown as typeof window.matchMedia
 }
 
+/** D7：覆盖 innerWidth（happy-dom 可写）。视口 <1300 CSS 才显示小窗提示。 */
+function setWindowHintViewport(width: number): void {
+  Object.defineProperty(window, 'innerWidth', { value: width, writable: true, configurable: true })
+}
+
 describe('App shell (useAppState over a mocked bridge)', () => {
   beforeEach(() => {
     setNarrowViewport(false)
@@ -104,6 +109,11 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // moved from localStorage so a cold start lands on the clean home) —
     // tests must not inherit each other's selections/expanded state.
     window.sessionStorage.clear()
+    // D7 (plan 2026-09-22-wide-screen-blank-space)：小窗一次性轻提示按 innerWidth 判定，
+    // 而 happy-dom 默认视口 1024 会误触——与 setNarrowViewport 同纪律，测试必须显式
+    // 声明窗口宽度。默认宽视口（不显示提示），D7 用例自行改窄。
+    setWindowHintViewport(1600)
+    window.localStorage.clear()
   })
 
   it('starts with an honest logged_out badge, three tabs, and the loaded tree', async () => {
@@ -212,6 +222,35 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // 负向红线：左侧一门课都没有时，主区不许再给「点左侧课程树」这种不成立的指引。
     expect(host.textContent).not.toContain('先选择课时')
     expect(host.textContent).not.toContain('从左侧课程树点击一个课时')
+  })
+
+  // D7 (plan 2026-09-22-wide-screen-blank-space)：首启小窗一次性轻提示——不是弹层、
+  // 不锁滚动；「知道了」与拖大窗口都永久写 skip（localStorage，jump-confirm 同模式）。
+  it('D7: 小窗（视口 <1300 CSS）首启显示轻提示，点「知道了」后消失且落 skip', async () => {
+    setWindowHintViewport(1266)
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('[data-testid="window-hint"]')
+    expect(host.textContent).toContain('最大化后看笔记更舒展')
+    // 一次性：点「知道了」→ 消失 + localStorage 落盘（刷新不再现）。
+    const dismiss = [...host.querySelectorAll('[data-testid="window-hint"] button')].find((b) => b.textContent === '知道了') ?? null
+    click(dismiss)
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="window-hint"]')).toBeNull())
+    expect(window.localStorage.getItem('seu-summary.window-hint.skip')).toBe('1')
+  })
+
+  it('D7: 宽视口不显示提示；skip 后小窗也不再显示', async () => {
+    setWindowHintViewport(1600)
+    const bridge = makeBridge()
+    const host = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    expect(host.querySelector('[data-testid="window-hint"]')).toBeNull()
+    // skip 已写（上一用例的落盘被 beforeEach 清掉，这里显式写入模拟「见识过宽屏」）。
+    window.localStorage.setItem('seu-summary.window-hint.skip', '1')
+    setWindowHintViewport(1266)
+    const host2 = mount(<App bridge={bridge} />)
+    await waitForSelector('.app-shell')
+    expect(host2.querySelector('[data-testid="window-hint"]')).toBeNull()
   })
 
   it('批C 批3: 点「显示更多」按页加长列表（不改主进程上限）', async () => {
