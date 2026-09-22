@@ -385,11 +385,10 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           top instead of behind. z-index untouched (the three overlays stay
           peers; the shared confirm layer is a different tier). */}
       {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
-      {/* P44 (plan 2026-09-22-qa-dock-float-window): 坞展开时给 .app-main 打标记——
-          笔记盒随之收到阅读轴 640（与题头/正文同轴，右缘止于 968），追问小卡片只落在
-          968 以右的空白里，任何窗宽都不压笔记内容（旧 860 面板轴的右带正是工具行/
-          导出按钮所在，卡片盖上去就等于盖住功能）。坞折叠/非笔记页时恢复 860 面板轴。 */}
-      <div class={`app-main${tab === 'notes' && qaDockOpen ? ' qa-dock-open' : ''}`}>
+      {/* P47 (plan 2026-09-22-qa-dock-float-window): 不再按展开态给 .app-main 打类——
+          笔记盒常驻 640 阅读轴（追问卡槽位常驻），展开/折叠时笔记侧一个像素都不动
+          （Andiii：「我不想让它发生任何的布局变化……其他任何都不要改变」）。 */}
+      <div class="app-main">
         <aside class={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`} ref={sidebarRef}>
           {/* A1 (plan 2026-09-13): the toggle lives at the END of the header
               row. It used to be the aside's first flex child, which gave a
@@ -725,9 +724,9 @@ prevLesson={state.lessonNeighbors.prev}
             笔记之外的其他界面展示」）；不再全 tab 常驻，折叠态入口钮同样只在笔记页
             出现。结构不动：仍挂 .app-main 内、</main> 之后，与 <main> 平级、不在任何
             tab 面板内；形态由方案批2 在 style.css 落地为单一 fixed 悬浮小卡片（右缘
-            对齐内容盒右缘、垂直居中、宽取笔记右侧空白封顶 260、高随内容至 84vh，
-            无断点；坞展开时笔记盒经 .app-main 的 qa-dock-open 类收到 640 阅读轴）
-            ——本批只收窄挂载范围。挂在 .app-shell 内：@media print 整体隐藏 .app-shell，PDF 自动
+            对齐内容盒右缘、在内容区内垂直居中、宽取笔记右侧空白封顶 260、高随内容
+            至内容区高−32px，无断点；笔记盒常驻 640 阅读轴给追问卡让位，槽位不随展开
+            状态收放）——本批只收窄挂载范围。挂在 .app-shell 内：@media print 整体隐藏 .app-shell，PDF 自动
             不含坞（SKILL §5）。 */}
         {/* P46 (plan 2026-09-22): 折叠态 = 右缘一颗悬浮小球（图标钮，非文字药丸）——用户
             「我认为这个小窗口应该是可以折叠的，比如折叠成一个悬浮小球你看看你当前有没有

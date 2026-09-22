@@ -477,7 +477,10 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 .session-badge.expired .badge-dot { background: var(--warning); }
 
 /* ---- layout ---- */
-.app-main { display: flex; flex: 1; min-height: 0; }
+/* P47 (plan 2026-09-22-qa-dock-float-window): .app-main 是追问卡/小球的定位锚——
+   卡片 position: absolute 挂在这里，top: 50% 即「内容区」垂直居中（不必算 topbar
+   高度，也不会伸进顶栏）；.app-main 宽 = 窗口宽，卡的 right/100vw 公式语义不变。 */
+.app-main { display: flex; flex: 1; min-height: 0; position: relative; }
 
 .sidebar {
   width: 304px;
@@ -616,7 +619,13 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
    批3 (plan 2026-09-07 v07): .note-viewer previously had NO width rule —
    its page head ran full-window while empty state/library sat in the 680
    reading column, three right edges on one tab. */
-.task-panel, .note-viewer { max-width: var(--content-max); }
+/* P47: 任务/设置面板走 860 面板轴（--content-max）；**笔记盒常驻 640 阅读轴**——追问
+   小卡片的槽位常驻（不随展开/折叠收放），这样点小球展开卡片时笔记侧一个像素都不动
+   （Andiii 2026-09-22：「我不想让它发生任何的布局变化……其他任何都不要改变」）。
+   旧实现用 `.app-main.qa-dock-open .note-viewer` 按展开态收窄，展开瞬间题头 chip 行/
+   工具行重排、「导出 PDF 讲义」移位——正是他不要的布局跳变。 */
+.task-panel { max-width: var(--content-max); }
+.note-viewer { max-width: 640px; }
 
 /* ---- 批A: unified page head + lesson identity chip ---- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 2px 0 14px; }
@@ -1534,17 +1543,8 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    .fullscreen-overlay、不加遮罩、不锁滚动（SKILL §5）。单一 fixed 形态、无断点：
    宽屏由 main 侧窗口缩放（window-zoom.ts）把 CSS 视口钉在 1600 消化，卡片逐像素
    复用同一尺寸，只被物理等比例放大。 */
-/* P44 (plan 2026-09-22-qa-dock-float-window): 坞展开时笔记盒收到阅读轴 640——与题头
-   （.note-masthead 本就 640）、正文列同轴（SKILL §6「题头与正文列同轴」），右缘止于
-   328+640=968；追问小卡片只落在 968 以右的空白里（宽公式见 .qa-dock），任何窗宽都不压
-   笔记内容。旧 860 面板轴的右带（968→1188）正是工具行与导出按钮所在——卡片盖上去就
-   是盖住功能（2026-09-22 实拍：默认窗下卡片压住「导出 PDF 讲义」右端）。坞折叠/非笔记
-   页恢复 860 面板轴（基则不变，本规则只在 .qa-dock-open 下生效）。
-   代价（如实记）：工具行在 640 轴上换行更多（9 键从 2 行到约 3 行）、笔记库行窄 220px；
-   两者都是「给追问卡让位」的自觉取舍，折叠坞即回 860。 */
-.app-main.qa-dock-open .note-viewer { max-width: 640px; }
 .qa-dock {
-  position: fixed;
+  position: absolute;
   right: var(--space-5);
   top: 50%;
   transform: translateY(-50%);
@@ -1556,13 +1556,19 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
      全部让出，任何窗宽零重叠。≥1332 CSS 时长到 320 封顶（用户要「窄一点」，
      380→320→260）。200px 下限：窗窄于「侧栏 304 + 阅读列 640 + 间距」之和时空白
      算出来是负数，min() 会跟着变负（width 非法），max() 把下限兜住——那种窗下（≤1100
-     CSS）要么侧栏已自动收起（≤1024，空白反而够），要么用户手动收起，重叠不可避免、
-     如实记在探针 coversNote 里，可一键折叠。
-     订正：内容左距是 .content 的 padding --space-5（24px）而非 --space-4——用 16
-     算出的卡片左缘会比笔记右缘近 8px（与笔记的间距只剩 4px）。 */
+     CSS）要么侧栏已自动收起（≤1024，空白反而够），重叠不可避免、如实记在探针
+     coversNote 里，可一键折叠。订正：内容左距是 .content 的 padding --space-5（24px）
+     而非 --space-4——用 16 算出的卡片左缘会比笔记右缘近 8px。
+     P47（2026-09-22「上下不够长 + 展开不许有任何布局变化」）：position: fixed →
+     **absolute（挂 .app-main）**——top:50% 即内容区垂直居中，卡片的最高点不会伸进
+     顶栏；max-height 从 vh 封顶改为 **calc(100% - 上下各 16px)**（= 内容区高 − 32），
+     默认窗 694−32 = **662px**（比旧的 620 又长 42px），仍随对话内容收放（不是满高列）。 */
   width: max(200px, min(260px, calc(100vw - var(--space-5) - 304px - var(--space-5) - 640px - var(--space-3))));
-  /* 「变长一点」两连：70vh/620 → 78vh/680 → 84vh/720（默认窗 738 下 517→620px 高）。 */
-  max-height: min(84vh, 720px);
+  /* P47「再长一点」不只是放上限：空对话时卡片是内容驱动的（默认窗实测只有 165px），
+     喝口水就没了——给最小高度让它始终是一「扇」窗：最小 380、最大内容区−32（默认窗
+     662），随对话内容在两者之间生长。min() 防矮窗下最小高越过上限。 */
+  min-height: min(380px, calc(100% - var(--space-4) * 2));
+  max-height: calc(100% - var(--space-4) * 2);
   display: flex;
   flex-direction: column;
   /* 批4 (P41): 兄弟间距——含「对话流 ↔ 输入行」——只在此处单点定义：
@@ -1601,7 +1607,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    （右缘 --space-5、垂直居中），z-index 同 30。accent 填充 + 对比色图标——小球是「入
    口」，要比卡片更醒目；hover 轻微放大给触感。 */
 .qa-dock-launcher {
-  position: fixed;
+  position: absolute;
   right: var(--space-5);
   top: 50%;
   transform: translateY(-50%);

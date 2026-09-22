@@ -207,15 +207,11 @@ describe('窄窗断点与弹窗高度（批5）', () => {
   })
 
   it('坞不依赖任何断点——也不再用 :has() 把内容面板拉宽', () => {
-    // 2026-09-22 P39（SKILL §5）：单一 fixed 悬浮小卡片、无断点；与上一条等价地
-    // 复述「宽屏零 min-width」。另钉住 :has(.qa-dock) 拉伸规则已删、正文列 640
-    // 回归 --content-max。
+    // 2026-09-22 P39（SKILL §5）：单一悬浮小卡片、无断点；与上一条等价地复述「宽屏
+    // 零 min-width」。另钉住 :has(.qa-dock) 拉伸规则已删。P47 起 .note-viewer 常驻
+    // 640 阅读轴（追问卡槽位常驻，展开/折叠零布局变化），钉子见下面 P44 段。
     expect(/@media\s*\(min-width:/.test(stripped), '坞不得依赖任何 min-width 断点').toBe(false)
     expect(stripped.includes(':has(.qa-dock)'), '不得再用 :has(.qa-dock) 拉伸面板').toBe(false)
-    expect(
-      /\.note-viewer\s*\{[^}]*max-width:\s*var\(--content-max\)/.test(stripped),
-      '.note-viewer 的阅读列 640 回归 --content-max'
-    ).toBe(true)
   })
 })
 
@@ -475,12 +471,26 @@ describe('追问坞卡片窗口感（批4，P41）', () => {
  * ④ 溢出防护（气泡长 token 可断行、基则不被破坏）。
  */
 describe('追问坞窄长化与零重叠（P44）', () => {
-  it('坞展开时笔记盒收到阅读轴 640——右缘止于 968，卡片只落在 968 以右', () => {
-    expect(bodyOf('.app-main.qa-dock-open .note-viewer')).toContain('max-width: 640px')
-    // 基则不动：折叠坞/非笔记页仍是 860 面板轴。
-    expect(/\.note-viewer\s*\{[^}]*max-width:\s*var\(--content-max\)/.test(stripped)).toBe(true)
-    // 不得回流成 :has()——契约是 App.tsx 上的 .qa-dock-open 类。
+  it('P47 零布局变化：笔记盒常驻 640 阅读轴（追问卡槽位常驻，不随展开/折叠收放）', () => {
+    // 常驻槽位是「点小球展开时笔记侧一个像素都不动」的机制——旧实现按展开态用
+    // .qa-dock-open 收窄笔记盒，展开瞬间题头 chip 行/工具行重排（Andiii 明令禁止）。
+    expect(bodyOf('.note-viewer')).toContain('max-width: 640px')
+    expect(stripped).not.toContain('qa-dock-open')
     expect(stripped.includes(':has(.qa-dock)')).toBe(false)
+    // 任务/设置面板仍是 860 面板轴（基则未被误伤）。
+    expect(bodyOf('.task-panel')).toContain('max-width: var(--content-max)')
+  })
+
+  it('P47 卡片/小球 absolute 挂 .app-main——top:50% 即内容区垂直居中，不伸进顶栏', () => {
+    expect(bodyOf('.app-main')).toContain('position: relative')
+    expect(bodyOf('.qa-dock')).toContain('position: absolute')
+    expect(bodyOf('.qa-dock-launcher')).toContain('position: absolute')
+  })
+
+  it('P47「再长一点」：限高从 vh 封顶改为内容区 inset，并给最小高度（空对话不缩成 165px）', () => {
+    const dock = bodyOf('.qa-dock')
+    expect(dock).toContain('max-height: calc(100% - var(--space-4) * 2)')
+    expect(dock).toContain('min-height: min(380px, calc(100% - var(--space-4) * 2))')
   })
 
   it('卡片宽 = 笔记右侧空白本身：封顶 260，且公式从阅读列 640 右缘算起（间距 --space-3）', () => {
@@ -491,8 +501,9 @@ describe('追问坞窄长化与零重叠（P44）', () => {
     expect(dock).toContain('var(--space-3)')
   })
 
-  it('「变长一点」两连：max-height 70vh/620 → 78vh/680 → 84vh/720', () => {
-    expect(bodyOf('.qa-dock')).toContain('max-height: min(84vh, 720px)')
+  it('「变长一点」：P47 起限高改为内容区 inset（旧 84vh/720 封顶被取代）', () => {
+    expect(bodyOf('.qa-dock')).toContain('max-height: calc(100% - var(--space-4) * 2)')
+    expect(bodyOf('.qa-dock')).not.toContain('84vh')
   })
 
   it('坞内不得再有课时切换 chip——用户明示「在笔记内部问当前笔记，不需要这个」', () => {
