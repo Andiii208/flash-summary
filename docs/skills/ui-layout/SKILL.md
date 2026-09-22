@@ -110,7 +110,7 @@ version: 1.0.0
   **单一 `position: fixed` 形态，不依赖任何断点**：右缘对齐内容盒右缘（`var(--space-5)`）、
   垂直居中（`top: 50% + translateY(-50%)`，不在右上角也不在右下角）、宽 = 笔记右侧空白本身
   （`max(200px, min(260px, calc(100vw - 24 - 304 - 24 - 640 - 12)))`，默认窗 260px）、
-  高随对话内容（`min-height: min(380px, …)`、`max-height: calc(100% - 上下各16px)`——卡片 absolute 挂 `.app-main`（后者 `position: relative`），`top: 50%` 即**内容区**垂直居中，不伸进顶栏；日志区自滚）、`z-index: 30`——低于四个自绘 overlay 的 40、高于内容。
+  高随对话内容（`min-height: min(300px, …)`、`max-height: min(56vh, 560px)`——卡片 absolute 挂 `.app-main`（后者 `position: relative`），`top: 50%` 即**内容区**垂直居中，不伸进顶栏；日志区自滚）、宽 = 笔记右侧空白本身（`max(200px, min(400px, calc(100vw - 24 - 304 - 24 - 640 - 12)))`——任何窗宽左缘贴笔记右缘、右缘贴窗缘，不留悬空 gap）、`z-index: 30`——低于四个自绘 overlay 的 40、高于内容。**跟正文一起出现（P50-2）**：滚到题头 hero 带自动收成小球、滚进正文自动展开（`use-qa-dock-at-hero`：滚动位置 < 题头带内容坐标底缘 − 80）；用户手动收起/展开置 closed/open 后手动意志优先。
   折叠态为**同位置**的**悬浮小球** `.qa-dock-launcher`（P46，2026-09-22 用户「我认为这个小窗口应该是可以折叠的，比如折叠成一个悬浮小球」）：44px 圆形图标钮（`border-radius: 50%`、`MessageCircleQuestionMark`、accent 填充 + 对比色图标），与展开态卡片同一组定位值（右缘、内容区垂直居中、z-index 30）——折叠功能本来就有，旧形态是文字药丸，本批升级为球。
   **展开/折叠零布局变化（P47）**：`.note-viewer` **常驻 640 阅读轴**（追问卡槽位常驻，不随展开状态收放），点小球展开时笔记侧一个像素都不动；旧实现按展开态收窄笔记盒，展开瞬间题头 chip 行/工具行重排、「导出 PDF 讲义」移位（Andiii 明令禁止）。**正文列 640 不变**（§6）；坞展开时
   `.app-main.qa-dock-open` 把笔记盒收到阅读轴 640（右缘 968），卡片只落在 968 以右的空白里，
@@ -127,6 +127,7 @@ version: 1.0.0
 - 题头（`.note-masthead`）与正文列**同轴**（640px）；超长标题（>28 字，B站视频名常见）
   降一档到 17px/1.3，全文进 `title`。
 - markdown 标题三档：`md-h1` 16px / `md-h2` 15px / `md-h3-4` 14px 弱色。
+- **列表容器 `.md-lite .md-list` 必须 block 布局**（P49-1，2026-09-22 Playwright A/B 实证）：Chromium 里 flex 容器中的 `<ol>` 编号会全部退化成「1.」；行间距走 `li + li { margin-top: var(--space-1) }`，**不要改回 flex + gap**（钉子见 tests/style-scale.test.ts）。
 
 ## 7. 怎么验收排版改动
 
