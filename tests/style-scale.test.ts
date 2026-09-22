@@ -605,6 +605,27 @@ describe('首启与空库的排版合同（批2）', () => {
   })
 })
 
+describe('宽屏吃空白批3（plan 2026-09-22-wide-screen-blank-space）', () => {
+  it('设置页两栏 grid：面板轴宽档 + 块间距归 grid gap（margin 清零）', () => {
+    const panel = bodyOf('.settings-panel')
+    expect(panel).toContain('max-width: min(var(--content-max-wide), 100%)')
+    expect(panel).toContain('grid-template-columns: repeat(auto-fill, minmax(600px, 1fr))')
+    // 题头/错误行/页脚跨整行；块的 margin-bottom 清零（gap 接管，不双倍）。
+    expect(stripped).toContain('.settings-panel > .page-head')
+    expect(stripped).toContain('.settings-panel > .settings-load-error')
+    expect(stripped).toContain('.settings-panel > .settings-footer')
+    expect(stripped).toContain('grid-column: 1 / -1')
+    expect(bodyOf('.settings-panel .settings-block')).toContain('margin-bottom: 0')
+  })
+
+  it('两个全屏弹层解除 px 封顶改 clamp（1516px 黑边空白消零）', () => {
+    expect(bodyOf('.my-study-card')).toContain('width: clamp(720px, 96vw, 1600px)')
+    expect(bodyOf('.course-browser-card')).toContain('width: clamp(960px, 98vw, 1680px)')
+    // 「我的学习」内部三组两栏（解除封顶后单列会拖右侧空白）。
+    expect(bodyOf('.my-study-card .study-panel')).toContain('grid-template-columns: repeat(auto-fill, minmax(560px, 1fr))')
+  })
+})
+
 describe('宽屏吃空白批1（plan 2026-09-22-wide-screen-blank-space）', () => {
   it('任务卡双列网格：auto-fill + minmax 连续增减列数，不用断点', () => {
     const list = bodyOf('.history-list')

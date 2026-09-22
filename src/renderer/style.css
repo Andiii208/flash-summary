@@ -571,13 +571,20 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
    覆盖层走 .fullscreen-overlay 基元（选择器在顶部基元块），卡片与「全部课程」
    同款近全屏；面板本体在弹层里不再自套一层边框/内边距——弹层卡已经是那一层。 */
 .my-study-card {
-  width: min(1100px, 96vw); height: 92vh;
+  /* 批3 (plan 2026-09-22-wide-screen-blank-space)：解除 1100px 封顶——clamp 随视口
+     走，宽视口（1600）下两侧 250 CSS px 黑边空白消零；窄窗口仍 96vw 兜底。 */
+  width: clamp(720px, 96vw, 1600px); height: 92vh;
   display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px;
 }
 .my-study-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 2px; }
-.my-study-card .study-panel { border: none; background: transparent; padding: 0; }
+.my-study-card .study-panel { border: none; background: transparent; padding: 0;
+  /* 批3 (plan 2026-09-22-wide-screen-blank-space)：弹层内部两栏——解除卡片封顶后单列
+     会在右侧拖出空白，三组（已提取/收藏/同课）按 auto-fill minmax(560px,1fr) 连续
+     分栏；组头跨整行（它是面板标题不是组）。 */
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: var(--space-3); align-items: start; }
+.my-study-card .study-panel-head { grid-column: 1 / -1; }
 /* 弹层里的标题是那枚 h3（弹层不重复一个 h2），所以把它提到模态标题的档位
    （16px/650，与 .course-browser-head h2 同档）。 */
 .my-study-card .study-panel-head h3 { font-size: var(--font-size-lg); font-weight: 650; color: var(--text); }
@@ -964,7 +971,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    批4 (plan 2026-09-20): 覆盖层语法走 .fullscreen-overlay 基元（选择器在顶部
    基元块），这里只留卡片自身的尺寸/头部/列表规则。 ---- */
 .course-browser-card {
-  width: min(1440px, 98vw); height: 92vh;
+  /* 批3 (plan 2026-09-22-wide-screen-blank-space)：1440 封顶 → clamp 随视口——
+     内部 .course-browser-grid 本就是 auto-fill 网格，解除封顶即自动多列受益。 */
+  width: clamp(960px, 98vw, 1680px); height: 92vh;
   display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px;
@@ -1823,7 +1832,21 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
 .provider-panel .empty-state { margin-top: 12px; margin-bottom: 12px; }
 
 /* ---- settings ---- */
-.settings-panel { max-width: var(--content-max); }
+/* 批3 (plan 2026-09-22-wide-screen-blank-space)：设置页两栏——auto-fill +
+   minmax(600px, 1fr) 让块数随内容盒连续增减（宽内容盒双栏、窄内容盒单栏），
+   不吃断点；题头/错误行/页脚跨整行。网格 gap 接管块间距，块自身 margin-bottom
+   清零（否则 gap + margin 双倍间距）。 */
+.settings-panel {
+  max-width: min(var(--content-max-wide), 100%);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+.settings-panel > .page-head,
+.settings-panel > .settings-load-error,
+.settings-panel > .settings-footer { grid-column: 1 / -1; }
+.settings-panel .settings-block { margin-bottom: 0; }
 .settings-block {
   border: 1px solid var(--border);
   margin-bottom: 14px;

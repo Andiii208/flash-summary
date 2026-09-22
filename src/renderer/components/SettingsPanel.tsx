@@ -111,6 +111,13 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
         </div>
       )}
 
+      {/* 批3 (plan 2026-09-22-wide-screen-blank-space)：Provider 块前置为两栏第一格——
+         没有绑定的 Provider 整个应用不可用，它是设置页最常被访问的块；DOM 顺序即
+         阅读顺序（宽屏两栏的 Z 序从它开始），窄屏回落单列顺序不变。 */}
+      <section class="settings-block">
+        <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} testBusy={props.providerTestBusy} />
+      </section>
+
       <section class="settings-block">
         <h3>账号</h3>
         <div class="settings-row">
@@ -263,10 +270,6 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
 
       {/* 声明批3: 常驻的「关于与声明」——首启闸门是一次性的，这里是随时可查的那一半。 */}
       <AboutPanel version={props.settings?.version} onOpenFeedback={props.onOpenFeedback} onOpenAuthor={props.onOpenAuthor} />
-
-      <section class="settings-block">
-        <ProviderPanel providers={props.providers} busy={props.providerBusy} onSave={props.onSaveProvider} onRemove={props.onRemoveProvider} onTest={props.onTestProvider} testResult={props.providerTestResult} testBusy={props.providerTestBusy} />
-      </section>
 
       <footer class="settings-footer">
         <Colonnade size={18} />
