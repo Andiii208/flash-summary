@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { QaDock } from '../../src/renderer/components/QaDock'
 import { mount, click, input } from '../helpers/preact'
 
+/** 批2 (plan 2026-09-22-wide-screen-blank-space)：坞头多了「追问|目录」tab 段，
+    文档序第一个 button 是 tab 而不是「提问」——按文本锁定主行动钮。 */
+const askButton = (host: Element): Element | null =>
+  [...host.querySelectorAll('button')].find((b) => b.textContent === '提问') ?? null
+
 describe('QaDock', () => {
   it('renders the conversation entries', () => {
     const entries = [{ question: '什么是复杂度？', answer: '复杂度衡量算法效率。' }]
@@ -17,14 +22,14 @@ describe('QaDock', () => {
     const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={onAsk} />)
     const field = host.querySelector<HTMLTextAreaElement>('textarea.qa-input')
     input(field, '再讲一遍')
-    click(host.querySelector('button'))
+    click(askButton(host))
     expect(onAsk).toHaveBeenCalledWith('再讲一遍')
     expect(field?.value).toBe('')
   })
 
   it('disables submission while busy and shows a pending hint', () => {
     const host = mount(<QaDock entries={[]} busy hasLesson onAsk={() => undefined} />)
-    expect((host.querySelector('button') as HTMLButtonElement).disabled).toBe(true)
+    expect((askButton(host) as HTMLButtonElement).disabled).toBe(true)
     expect(host.textContent).toContain('思考中')
   })
 
@@ -33,10 +38,10 @@ describe('QaDock', () => {
     const host = mount(<QaDock entries={[]} busy={false} hasLesson={false} onAsk={onAsk} />)
     const field = host.querySelector<HTMLTextAreaElement>('textarea.qa-input')
     expect(field?.disabled).toBe(true)
-    expect((host.querySelector('button') as HTMLButtonElement).disabled).toBe(true)
+    expect((askButton(host) as HTMLButtonElement).disabled).toBe(true)
     expect(host.textContent).toContain('选择课时后')
     input(field, '这个问题不会被发送')
-    click(host.querySelector('button'))
+    click(askButton(host))
     expect(onAsk).not.toHaveBeenCalled()
   })
 
@@ -119,7 +124,7 @@ describe('QaDock', () => {
     expect(field?.placeholder).toContain('生成笔记')
     expect(host.textContent).toContain('请先为此课时生成笔记')
     input(field, '这个问题不会被发送')
-    click(host.querySelector('button'))
+    click(askButton(host))
     expect(onAsk).not.toHaveBeenCalled()
   })
 
@@ -149,11 +154,77 @@ describe('QaDock', () => {
   // P45 (plan 2026-09-22-qa-dock-float-window): 用户明示「我本身就在笔记内部针对当前
   // 笔记进行提问，不需要这个课程栏」——坞头只剩「追问 + 收起」，LessonChip 及其在窄卡
   // 里的溢出源一并删除；切课时在侧栏课程树/笔记题头 chip/顶栏面包屑三处都可做。
+  // 批2 (plan 2026-09-22-wide-screen-blank-space)：标题被 tab 段（追问|目录）取代，
+  // 「追问」作为 tab 首项仍在原地。
   it('P45: 坞头不再渲染课时切换 chip', () => {
     const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={() => undefined} onCollapse={() => undefined} />)
     expect(host.querySelector('.qa-dock-head .lesson-chip')).toBeNull()
-    expect(host.querySelector('.qa-dock-title')?.textContent).toBe('追问')
+    expect(host.querySelector('.qa-dock-tabs')?.textContent).toContain('追问')
     expect(host.querySelector('.qa-dock-collapse')).not.toBeNull()
+  })
+})
+
+describe('QaDock 批2：R1+ 升格（plan 2026-09-22-wide-screen-blank-space）', () => {
+  const chapters = [
+    { at: 0, title: '绪论', summary: '课程引入' },
+    { at: 120, title: '复杂度分析', summary: '渐近记号的推导' },
+    { at: 300, title: '摊还分析', summary: '均摊与聚合' }
+  ]
+
+  it('坞头是 tab 段（追问/目录），aria 形态完整', () => {
+    const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={() => undefined} chapters={chapters} />)
+    const tablist = host.querySelector('.qa-dock-tabs')
+    expect(tablist?.getAttribute('role')).toBe('tablist')
+    const tabs = [...host.querySelectorAll('[role="tab"]')]
+    expect(tabs.map((t) => t.textContent)).toEqual(['追问', '目录'])
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true')
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('false')
+  })
+
+  it('无章节的笔记：目录 tab 禁用并说明原因（不给死按钮）', () => {
+    const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={() => undefined} />)
+    const tocTab = [...host.querySelectorAll('[role="tab"]')].find((t) => t.textContent === '目录')
+    expect((tocTab as HTMLButtonElement).disabled).toBe(true)
+    expect(tocTab?.getAttribute('title')).toContain('没有章节')
+  })
+
+  it('切到目录 tab 渲染章节项（时间戳 + 标题），坞内不再显示输入行', () => {
+    const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={() => undefined} chapters={chapters} />)
+    const tocTab = [...host.querySelectorAll('[role="tab"]')].find((t) => t.textContent === '目录') as HTMLButtonElement
+    click(tocTab)
+    const items = host.querySelectorAll('[data-testid="qa-toc-item"]')
+    expect(items).toHaveLength(3)
+    expect(items[1]?.textContent).toContain('复杂度分析')
+    expect(items[1]?.textContent).toContain('02:00')
+    // 目录态下追问输入区不渲染（互斥视图，不是叠加）。
+    expect(host.querySelector('textarea.qa-input')).toBeNull()
+  })
+
+  it('空对话 + 有笔记：建议问题由章节标题生成，点击即问', () => {
+    const onAsk = vi.fn()
+    const host = mount(<QaDock entries={[]} busy={false} hasLesson hasNote onAsk={onAsk} chapters={chapters} />)
+    const chips = [...host.querySelectorAll('[data-testid="qa-suggest"] .chip')]
+    expect(chips).toHaveLength(3)
+    expect(chips[0]?.textContent).toContain('绪论')
+    click(chips[0])
+    expect(onAsk).toHaveBeenCalledWith('「绪论」讲了什么？')
+  })
+
+  it('有对话后不再显示建议问题（不重复入口）', () => {
+    const host = mount(<QaDock entries={[{ question: 'q', answer: 'a' }]} busy={false} hasLesson hasNote onAsk={() => undefined} chapters={chapters} />)
+    expect(host.querySelector('[data-testid="qa-suggest"]')).toBeNull()
+  })
+
+  it('长答案可全宽查看：挂 .fullscreen-overlay 基元 + 可关闭', () => {
+    const host = mount(<QaDock entries={[{ question: '长问题', answer: '很长的回答', createdAt: new Date().toISOString() }]} busy={false} hasLesson hasNote onAsk={() => undefined} />)
+    expect(host.querySelector('[data-testid="qa-wide"]')).toBeNull()
+    click(host.querySelector('[data-testid="qa-wide-open"]'))
+    const overlay = host.querySelector('.qa-wide')
+    expect(overlay?.className).toContain('fullscreen-overlay')
+    expect(overlay?.getAttribute('aria-modal')).toBe('true')
+    expect(host.querySelector('[data-testid="qa-wide"]')?.textContent).toContain('很长的回答')
+    click(host.querySelector('.qa-wide-head button'))
+    expect(host.querySelector('[data-testid="qa-wide"]')).toBeNull()
   })
 })
 

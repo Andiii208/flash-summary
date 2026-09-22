@@ -1,9 +1,14 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
+import { Maximize2, X } from 'lucide-preact'
 import type { QaRecentInfo } from '../../shared/bridge'
 import { formatRelativeStamp } from '../../shared/format'
+import { formatTime } from '../../shared/notes/evidence'
 import { MdLite } from './MdLite'
 import { EmptyState } from './EmptyState'
+import { useModalScrollLock } from '../ui/use-modal-scroll-lock'
+import { useFocusTrap } from '../ui/use-focus-trap'
+import { isTopmostModalLayer } from '../ui/modal-layer'
 
 export interface QaEntry {
   question: string
@@ -15,6 +20,15 @@ export interface QaEntry {
   /** 批4: set on failure — the bubble stays in the transcript with a retry,
       instead of the exchange vanishing with a 6.5s toast. */
   error?: string
+}
+
+/** 批2 (plan 2026-09-22-wide-screen-blank-space)：坞内「目录」tab 的章节投影——
+    只读结构（与 NoteViewer 的 note.chapters 同形），锚点跳转复用其
+    data-chapter-at DOM 契约，不引入第二个数据源。 */
+export interface QaChapter {
+  at: number
+  title: string
+  summary: string
 }
 
 export interface QaDockProps {
@@ -31,7 +45,9 @@ export interface QaDockProps {
   recent?: QaRecentInfo[]
   /** 批B: opening a recent exchange selects that lesson globally. */
   onOpenLesson?: (lessonId: string) => void
-  /** P36: 收起成右缘悬浮入口钮（App 据 qaDockOpen 切换渲染坞与入口钮）。 */
+  /** 批2: 本篇笔记的章节——「目录」tab 与空态建议问题的数据源（只读）。 */
+  chapters?: QaChapter[]
+  /** P36: 收起成右缘悬浮入口钮（App 据 qaDockMode 切换渲染坞与入口钮）。 */
   onCollapse?: () => void
 }
 
@@ -44,6 +60,12 @@ export function qaTimeLabel(iso: string, now = new Date()): string {
   return formatRelativeStamp(iso, now)
 }
 
+/** P50-2 与 sticky 目录同渠道：章节锚点 scrollIntoView（存在性守卫，happy-dom 下 no-op）。 */
+function jumpToChapter(at: number): void {
+  const target = document.querySelector(`[data-chapter-at="${at}"]`)
+  if (target != null && typeof (target as HTMLElement).scrollIntoView === 'function') target.scrollIntoView({ block: 'start' })
+}
+
 /**
  * P36 (plan 2026-09-21): 追问右坞——从 QaPanel（顶部 tab 的整页形态）搬迁而来，
  * 断言随迁（见 tests/components/qa-dock.test.tsx）。与 QaPanel 的差异：
@@ -54,9 +76,19 @@ export function qaTimeLabel(iso: string, now = new Date()): string {
  * ② hasNote 从「软提示」改为硬门禁（输入 disabled + 说明请先生成笔记）；
  * ③ 根元素 .qa-panel → .qa-dock（单一 fixed 形态：2026-09-22 批2 起重写为
  *    右侧悬浮小卡片，右缘垂直居中、无断点，样式在 style.css）。
+ * 批2 (plan 2026-09-22-wide-screen-blank-space)：R1+ 升格——
+ * ① 头部从「追问 + 收起」改为**分段 tab（追问 / 目录）**——坞从「一个聊天框」
+ *    升格为「笔记副驾驶面板」，目录吃掉笔记页右侧空白的一大块；tab 基态复用
+ *    .seg-tabs 基元（选择器列表在 style.css 顶部基元块），不新增第三套 tab 样式；
+ * ② 空对话态给**建议问题**（章节标题现成数据，点一下即问）；
+ * ③ 长答案可**全宽查看**——挂 .fullscreen-overlay 基元 + scroll lock + focus trap +
+ *    Esc 只关本层（与 CourseBrowser 同款挂法），窄卡里挤着的长回答有了出口。
  */
-export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent = [], onOpenLesson, onCollapse }: QaDockProps): JSX.Element {
+export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent = [], onOpenLesson, chapters = [], onCollapse }: QaDockProps): JSX.Element {
   const [draft, setDraft] = useState('')
+  const [dockTab, setDockTab] = useState<'qa' | 'toc'>('qa')
+  const [wideIndex, setWideIndex] = useState<number | null>(null)
+  const wideRef = useRef<HTMLDivElement>(null)
   const askable = hasLesson && hasNote && !busy
   const submit = (): void => {
     const q = draft.trim()
@@ -64,10 +96,42 @@ export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent
     setDraft('')
     onAsk(q)
   }
+  const suggestions = useMemo(
+    () => chapters.slice(0, 3).map((c) => `「${c.title.length > 16 ? `${c.title.slice(0, 16)}…` : c.title}」讲了什么？`),
+    [chapters]
+  )
+  // 全宽查看：与四个自绘弹层同款挂法（scroll lock + focus trap + Esc 只关最上层）。
+  const wideOpen = wideIndex != null && entries[wideIndex] != null
+  useModalScrollLock(wideOpen)
+  useFocusTrap(wideOpen, wideRef)
+  useEffect(() => {
+    if (!wideOpen) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && isTopmostModalLayer(wideRef.current)) setWideIndex(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [wideOpen])
   return (
     <section class="qa-dock" data-testid="qa-dock" aria-label="追问">
       <header class="qa-dock-head">
-        <span class="qa-dock-title">追问</span>
+        {/* 批2: tab 段取代「追问」二字标题——「追问 | 目录」本身就是标题；无章节时
+            目录 tab 禁用并说清原因。 */}
+        <div class="qa-dock-tabs" role="tablist" aria-label="坞内视图">
+          <button role="tab" class={dockTab === 'qa' ? 'active' : ''} aria-selected={dockTab === 'qa'} onClick={() => setDockTab('qa')}>
+            追问
+          </button>
+          <button
+            role="tab"
+            class={dockTab === 'toc' ? 'active' : ''}
+            aria-selected={dockTab === 'toc'}
+            disabled={chapters.length === 0}
+            title={chapters.length === 0 ? '这篇笔记没有章节' : '跳到本篇某一章'}
+            onClick={() => setDockTab('toc')}
+          >
+            目录
+          </button>
+        </div>
         {hasLesson ? null : <span class="qa-dock-no-lesson">未选择课时</span>}
         {onCollapse != null && (
           <button class="btn small ghost qa-dock-collapse" onClick={onCollapse} title="收起追问（需要时点右缘「追问」钮再打开）">
@@ -75,9 +139,31 @@ export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent
           </button>
         )}
       </header>
+      {dockTab === 'toc' ? (
+        <nav class="qa-toc" aria-label="本页目录" data-testid="qa-toc">
+          {chapters.map((c) => (
+            <button key={c.at} class="qa-toc-item" data-testid="qa-toc-item" title={c.summary} onClick={() => jumpToChapter(c.at)}>
+              <span class="qa-toc-time">{formatTime(c.at)}</span>
+              <span class="qa-toc-title">{c.title}</span>
+            </button>
+          ))}
+        </nav>
+      ) : (
+        <>
       <div class="qa-log">
         {entries.length === 0 && hasLesson && (
           <p class="msg">{hasNote ? '针对当前课时的笔记提问。' : '此课时尚无笔记——请先为此课时生成笔记，再回来提问。'}</p>
+        )}
+        {/* 批2: 空对话 + 有笔记 = 建议问题入场（章节标题现成数据；没有章节的笔记不渲染）。 */}
+        {entries.length === 0 && hasLesson && hasNote && suggestions.length > 0 && (
+          <div class="qa-suggest" data-testid="qa-suggest">
+            <p class="msg">从一章问起：</p>
+            {suggestions.map((q) => (
+              <button key={q} class="chip" disabled={busy} onClick={() => onAsk(q)}>
+                {q}
+              </button>
+            ))}
+          </div>
         )}
         {/* A3 (plan 2026-09-13): the hero card only for the truly-empty case —
             with recent Q&A below it, «从一条追问开始» contradicted the rows
@@ -136,6 +222,16 @@ export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent
                     promoted to paragraph breaks (answers are not md documents). */}
                 <MdLite text={e.answer.replace(/\r?\n/g, '\n\n')} />
                 {e.createdAt != null && <span class="qa-time">{qaTimeLabel(e.createdAt)}</span>}
+                {/* 批2: 长答案出口——窄卡里挤着的回答进全宽查看层。 */}
+                <button
+                  class="qa-wide-open"
+                  aria-label="全宽查看这条回答"
+                  title="全宽查看"
+                  data-testid="qa-wide-open"
+                  onClick={() => setWideIndex(i)}
+                >
+                  <Maximize2 size={12} strokeWidth={1.75} aria-hidden="true" />
+                </button>
               </div>
             )}
           </div>
@@ -181,6 +277,26 @@ export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent
           提问
         </button>
       </div>
+        </>
+      )}
+      {/* 批2: 全宽查看层——挂 .fullscreen-overlay 基元（成员不再自写 position/inset/
+          z-index/遮罩/padding），卡片自身只管尺寸与内容；右上关闭键 + aria-label
+          （SKILL §5 视图类弹层形制）。 */}
+      {wideOpen && wideIndex != null && (
+        <div class="fullscreen-overlay qa-wide" role="dialog" aria-modal="true" aria-label="回答全宽查看" ref={wideRef}>
+          <div class="qa-wide-card" data-testid="qa-wide">
+            <header class="qa-wide-head">
+              <h3>{entries[wideIndex].question}</h3>
+              <button class="btn small ghost" aria-label="关闭全宽查看" title="关闭（Esc）" onClick={() => setWideIndex(null)}>
+                <X size={14} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </header>
+            <div class="qa-wide-body">
+              <MdLite text={entries[wideIndex].answer.replace(/\r?\n/g, '\n\n')} />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

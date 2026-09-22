@@ -368,15 +368,21 @@ async function probeZoomTiers(cdp, out) {
     m = await cdp.json(measure)
     if (m == null) continue
     const zoom = +((width - inset) / m.cssVW).toFixed(3)
-    // 批1 (plan 2026-09-22-wide-screen-blank-space)：任务页口径——切到「任务」tab
-    // 再量一次（弹性轴 + 双列网格），量完切回「笔记」（下一档的滚动状态由
-    // scrollIntoBody 重建，与既有口径一致）。
+    // 批2 (plan 2026-09-22-wide-screen-blank-space)：宽屏不收球验收——停在 hero 带
+    // （scrollTop=0）时，视口 ≥1500 CSS 的档位卡片应仍在（auto 恒展开）；窄档仍是球。
+    await cdp.eval(`(() => { document.querySelector('.content')?.scrollTo({ top: 0 }) })()`)
+    await sleep(250)
+    const heroM = await cdp.json(measure)
+    const heroDockW = heroM == null ? null : heroM.dockW
+    // 任务页口径——切到「任务」tab 再量一次（弹性轴 + 双列网格），量完切回「笔记」
+    // （下一档的滚动状态由 scrollIntoBody 重建，与既有口径一致）。
+    await scrollIntoBody(cdp)
     await clickTab(cdp, '任务')
     await sleep(400)
     const tm = await cdp.json(measure)
     await clickTab(cdp, '笔记')
     await sleep(200)
-    out.zoomTiers.push({ width, inset, expectedCssVW: expected, zoom, ...m, taskBlankCss: tm?.taskBlankCss ?? null, taskPanelRight: tm?.taskPanelRight ?? null, taskCols: tm?.taskCols ?? null })
+    out.zoomTiers.push({ width, inset, expectedCssVW: expected, zoom, ...m, heroDockW, taskBlankCss: tm?.taskBlankCss ?? null, taskPanelRight: tm?.taskPanelRight ?? null, taskCols: tm?.taskCols ?? null })
   }
   // zoom≠1 下的弹层稳定性：最宽档打开全屏课程浏览器（fixed overlay + 96vw 卡片），
   // 量卡片是否完整落在视口内、文档有无横向溢出，然后 Esc 关掉。
@@ -814,12 +820,14 @@ const tick = (v) => (v == null ? '—' : v ? '✓' : '✗')
 const qaDockLine = (d) =>
   `追问坞 ${d.position} · ${d.w}×${d.h} · 右缘空白 ${d.blankRight} CSS px · 压正文列 ${yesno(d.coversNote)} · 垂直居中偏差 ${d.centerOffset} CSS px（视口高 ${d.viewportH}）`
 
-/** P42→P45 (plan 2026-09-22): 「不占一小半」的可执行版——规格随用户两次「瘦长」
-    订正到 **坞宽 ≤ 260 CSS px（.qa-dock 的 width 封顶）且坞高 ≤ 84vh（max-height）**。
+/** P42→P45 (plan 2026-09-22): 「不占一小半」的可执行版。批2 (plan 2026-09-22-
+    wide-screen-blank-space)：R1+ 升格把规格放宽为 **坞宽 ≤ 460 CSS px（.qa-dock 的
+    width 封顶）且坞高 ≤ 680 CSS px（max-height min(70vh, 680)）**——化解「P47 嫌
+    上下不够长 / P50 嫌输出后太大」的折中；窄窗仍按公式连续回落（200 下限）。
     zoom 档里 getBoundingClientRect 与 innerHeight 同在缩放后的 CSS px 坐标系
     （1600 锚），判据不随物理档位漂移；坞缺失（未渲染）返回 null 记「—」。 */
 const dockFitsSmall = (t) =>
-  t.dockW == null || t.dockH == null || t.viewportH == null ? null : t.dockW <= 400 && t.dockH <= 560
+  t.dockW == null || t.dockH == null || t.viewportH == null ? null : t.dockW <= 460 && t.dockH <= 680
 
 /** 终端摘要：只打关键数字，完整 JSON 在 OUT_FILE。 */
 function summarize(out) {
@@ -900,11 +908,15 @@ function summarize(out) {
     for (const t of out.zoomTiers) {
       const ok = Math.abs(t.cssVW - t.expectedCssVW) <= 2
       const small = dockFitsSmall(t)
+      // 批2 (plan 2026-09-22-wide-screen-blank-space)：宽屏 hero 带不收球（auto 恒展开）。
+      const heroPart = t.heroDockW == null
+        ? ` · hero 带卡片 width ${t.heroDockW}`
+        : (t.cssVW >= 1500 ? ` · hero 带卡片在 ${tick(t.heroDockW > 0)}` : ` · hero 带收球 ${tick(t.heroDockW == null)}`)
       // 批1 (plan 2026-09-22-wide-screen-blank-space)：任务页弹性轴空白与双列实况。
       const taskPart = t.taskBlankCss == null
         ? ''
         : ` · 任务面板空白 ${t.taskBlankCss} CSS px · 历史网格 ${t.taskCols} 列`
-      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤400 封顶且高 ≤560 封顶，P49-2/P50-1 规格）${taskPart}`)
+      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤460 封顶且高 ≤680 封顶，R1+ 规格）${heroPart}${taskPart}`)
     }
   }
   if (out.zoomOverlay != null) {

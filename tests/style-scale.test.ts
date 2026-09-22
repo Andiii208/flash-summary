@@ -515,25 +515,29 @@ describe('追问坞窄长化与零重叠（P44）', () => {
   // P50-1 (2026-09-22 用户「高度也设定一个限制……输出之后对话框有点太大了，上下最好再
   // 小一点」)：min 380→300、上限从内容区−32 改为 min(56vh, 560)——默认窗最高 413、
   // 最大化最高约 500，对话长短不再撑大卡片（日志区照旧自滚）。
-  it('P50-1 高度上限：min-height: min(300px, …)、max-height: min(56vh, 560px)', () => {
+  // 批2 (plan 2026-09-22-wide-screen-blank-space)：上限放宽到 min(70vh, 680)——
+  // 「P47 嫌上下不够长 / P50 嫌输出后太大」的折中：宽屏更高、上限仍封顶。
+  it('P50-1 高度上限：min-height: min(300px, …)、max-height: min(70vh, 680px)', () => {
     const dock = bodyOf('.qa-dock')
     expect(dock).toContain('min-height: min(300px, calc(100% - var(--space-4) * 2))')
-    expect(dock).toContain('max-height: min(56vh, 560px)')
+    expect(dock).toContain('max-height: min(70vh, 680px)')
   })
 
   // P49-2 (2026-09-22 用户「放大的时候对话窗大小好像被锁死了，导致还是有空白」)：封顶
   // 260 → 400——卡片吃满笔记右侧空白，任何窗宽左缘贴笔记右缘、右缘贴窗缘，不留悬空 gap。
-  it('卡片宽 = 笔记右侧空白本身：封顶 400，且公式从阅读列 640 右缘算起（间距 --space-3）', () => {
+  // 批2 (plan 2026-09-22-wide-screen-blank-space)：封顶 400 → 460——坞 tab 化后承载
+  // 「追问/目录」两个视图，宽视口下右缘空白再吃一格；公式本身不变（窄窗仍连续回落）。
+  it('卡片宽 = 笔记右侧空白本身：封顶 460，且公式从阅读列 640 右缘算起（间距 --space-3）', () => {
     const dock = bodyOf('.qa-dock')
-    expect(dock).toContain('width: max(200px, min(400px')
+    expect(dock).toContain('width: max(200px, min(460px')
     expect(dock).toContain('calc(100vw')
     expect(dock).toContain('640px')
     expect(dock).toContain('var(--space-3)')
   })
 
-  it('高度上限是 min(56vh, 560)——不回到 vh 无帽/内容区无帽两种旧形态', () => {
+  it('高度上限是 min(70vh, 680)——不回到 vh 无帽/内容区无帽两种旧形态', () => {
     const dock = bodyOf('.qa-dock')
-    expect(dock).toContain('max-height: min(56vh, 560px)')
+    expect(dock).toContain('max-height: min(70vh, 680px)')
     expect(dock).not.toContain('84vh')
     expect(dock).not.toContain('max-height: calc(100%')
   })

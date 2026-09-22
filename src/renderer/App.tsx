@@ -751,6 +751,10 @@ prevLesson={state.lessonNeighbors.prev}
               onAsk={state.ask}
               recent={state.qaRecent}
               onOpenLesson={state.selectLesson}
+              /* 批2 (plan 2026-09-22-wide-screen-blank-space)：坞内「目录」tab 与
+                 空态建议问题的数据源——只读投影（note.chapters 同形），锚点跳转复用
+                 NoteViewer 的 data-chapter-at DOM 契约。 */
+              chapters={state.note?.chapters ?? []}
               onCollapse={() => setQaDockMode('closed')}
             />
           ) : (

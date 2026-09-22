@@ -206,9 +206,11 @@
    取值全部来自 :root 的 --space-* / --leading-* / --tracking* 刻度。
    ========================================================================== */
 
-/* ---- 分段标签：主导航与笔记视图切换是同一个角色（D4 = 14px / 6px 16px）。
-        两者都允许换行——此前 .tabs 不换行而 .note-tabs 换行，缩窗时行为不一致。 ---- */
-.seg-tabs, .tabs, .note-tabs {
+/* ---- 分段标签：主导航、笔记视图切换、追问坞头是同一个角色（D4 = 14px / 6px 16px）。
+        三者都允许换行——此前 .tabs 不换行而 .note-tabs 换行，缩窗时行为不一致。
+        批2 (plan 2026-09-22-wide-screen-blank-space)：.qa-dock-tabs 入列（坞头
+        「追问 | 目录」）——不再给坞单写第三套 tab 形制。 ---- */
+.seg-tabs, .tabs, .note-tabs, .qa-dock-tabs {
   display: inline-flex;
   flex-wrap: wrap;
   gap: var(--space-1);
@@ -217,7 +219,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-.seg-tabs button, .tabs button, .note-tabs button {
+.seg-tabs button, .tabs button, .note-tabs button, .qa-dock-tabs button {
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -630,7 +632,12 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
    旧实现用 `.app-main.qa-dock-open .note-viewer` 按展开态收窄，展开瞬间题头 chip 行/
    工具行重排、「导出 PDF 讲义」移位——正是他不要的布局跳变。 */
 .task-panel { max-width: min(var(--content-max-wide), 100%); }
-.note-viewer { max-width: 640px; }
+/* 批2 (plan 2026-09-22-wide-screen-blank-space)：正文列在「侧栏右缘 → 坞左缘」的
+   常驻槽位内**水平居中**（装订线）。槽位按坞展开态预留 640 + 间距 12 + 坞 460 =
+   1112；内容盒装不下时括号内为负，max(0px, …) 坍缩为左对齐（装订线为左对齐的自然
+   兜底）——与 P47「展开/折叠零布局变化」兼容：槽位不随坞展开状态收放，点小球展开时
+   正文一个像素都不动。 */
+.note-viewer { max-width: 640px; margin-left: max(0px, calc((100% - 640px - var(--space-3) - 460px) / 2)); }
 
 /* ---- 批A: unified page head + lesson identity chip ---- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 2px 0 14px; }
@@ -1562,7 +1569,13 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-upgrade-status { flex: none; min-width: 64px; text-align: right; color: var(--text-muted); font-size: var(--font-size-xs); }
 /* ---- note-tabs（度量见基元 .seg-tabs） ---- */
 .note-tabs button:hover { color: var(--text); }
+.qa-dock-tabs button:hover { color: var(--text); }
 .note-tabs button.active { background: var(--surface); color: var(--text); font-weight: 620; box-shadow: var(--shadow-sm); }
+/* 批2: 坞头 tab 的 active 态与 note-tabs 同一款（基元只管容器与基态，active 覆盖
+   背景/字重/阴影不算接管属性重复定义——与 .note-tabs button.active 同模式）。
+   禁用态：无章节的笔记给不出目录，说清原因而不是给个死按钮。 */
+.qa-dock-tabs button.active { background: var(--surface); color: var(--text); font-weight: 620; box-shadow: var(--shadow-sm); }
+.qa-dock-tabs button:disabled { color: var(--text-muted); opacity: 0.55; cursor: default; }
 
 .note-section {
   border: none;
@@ -1589,10 +1602,66 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    里单点定义（该规则只被坞渲染，margin 只会与 gap 叠加）。 */
 .qa-log { display: flex; flex-direction: column; gap: var(--space-3); max-width: var(--content-max); }
 .qa-pair { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
-/* 批C: per-exchange timestamp, bottom-right of the answer bubble. */
-.qa-time { display: block; margin-top: var(--space-icon); text-align: right; font-size: var(--font-size-xs); color: var(--text-muted); font-family: var(--font-ui); }
+/* 批C: per-exchange timestamp, bottom-right of the answer bubble.
+   批2 (plan 2026-09-22-wide-screen-blank-space)：inline 化——「全宽查看」钮与它
+   串在同一行右端（绝对定位会压在时间戳上）。 */
+.qa-time { display: inline; margin-top: var(--space-icon); text-align: right; font-size: var(--font-size-xs); color: var(--text-muted); font-family: var(--font-ui); }
+/* 批2: 长答案出口钮——答案气泡右下角、与时间戳同行；默认隐形，hover/聚焦才显形，
+   不抢正文注意力。 */
+.qa-wide-open {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-2);
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  vertical-align: middle;
+  opacity: 0.55;
+  transition: opacity var(--speed), color var(--speed), border-color var(--speed);
+}
+.qa-wide-open:hover, .qa-wide-open:focus-visible { opacity: 1; color: var(--accent); border-color: color-mix(in srgb, var(--border-strong) 55%, var(--border)); }
 .qa-input-row { display: flex; gap: var(--space-2); max-width: var(--content-max); align-items: flex-end; }
 .qa-input-row .qa-input { flex: 1; }
+
+/* ---- 批2 (plan 2026-09-22-wide-screen-blank-space)：R1+ 升格三件套 ---- *
+   坞从「一个会折叠的聊天框」升格为「笔记副驾驶面板」：目录 tab / 建议问题 /
+   答案全宽查看。三个都只吃坞内既有空间，不动 640 阅读轴与 P47 槽位。 */
+/* 目录 tab：与 .qa-log 同款伸缩区（坞是 flex column，日志区/目录区二选一铺满）。 */
+.qa-toc { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-height: 0; overflow-y: auto; }
+.qa-toc-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--speed);
+}
+.qa-toc-item:hover { background: var(--surface-2); }
+.qa-toc-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 章节时间戳：等宽数字、弱色——与任务历史时间列同一形制。 */
+.qa-toc-time { flex: none; font-size: var(--font-size-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.qa-toc-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 建议问题：空对话态的入口——chip 是 .tag 基元成员（高 18 药丸），不另起形制。 */
+.qa-suggest { display: flex; flex-direction: column; gap: var(--space-1); align-items: flex-start; margin-bottom: var(--space-2); }
+.qa-suggest .chip { cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qa-suggest .chip:disabled { opacity: 0.55; cursor: default; }
+/* 全宽查看层：覆盖层走 .fullscreen-overlay 基元（position/inset/z-index/遮罩/padding
+   都在基元），这里只管卡片自身尺寸——与 course-browser-card 同款「92vh 卡 + 唯一
+   滚动区」形制（SKILL §5：不要再给子元素加 max-height/overflow）。 */
+.qa-wide-card { width: min(720px, 92vw); height: 92vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: var(--space-4); }
+.qa-wide-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+.qa-wide-head h3 { margin: 0; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: var(--tracking); min-width: 0; }
+.qa-wide-body { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--space-3); }
 
 /* ---- 批2 (plan 2026-09-22 qa-dock-float-window, P39): 右侧悬浮小卡片 ---- *
    用户两轮否定旧双形态（贴右下角小窗 / ≥1400 拉伸满高第三列）后定案的唯一形态：
@@ -1622,14 +1691,17 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
      **absolute（挂 .app-main）**——top:50% 即内容区垂直居中，卡片的最高点不会伸进
      顶栏；max-height 从 vh 封顶改为 **calc(100% - 上下各 16px)**（= 内容区高 − 32），
      默认窗 694−32 = **662px**（比旧的 620 又长 42px），仍随对话内容收放（不是满高列）。 */
-  width: max(200px, min(400px, calc(100vw - var(--space-5) - 304px - var(--space-5) - 640px - var(--space-3))));
+  width: max(200px, min(460px, calc(100vw - var(--space-5) - 304px - var(--space-5) - 640px - var(--space-3))));
   /* P50-1 (plan 2026-09-22)「高度也设定一个限制…输出之后对话框有点太大了，上下最好再
      小一点」：min 380→300、上限从「内容区−32」（最大化时 600+）改为 min(56vh, 560)——
      默认窗最高 413、最大化最高约 500，对话长短不再撑大卡片（日志区照旧自滚）。min()
      兜住矮窗：最小高也不越过内容区。P47 的「最小高」保留（空对话不缩成一条），只是
      数值下调 + 上限真正封顶。 */
   min-height: min(300px, calc(100% - var(--space-4) * 2));
-  max-height: min(56vh, 560px);
+  /* 批2 (plan 2026-09-22-wide-screen-blank-space)：上限从 min(56vh, 560) 放宽到
+     min(70vh, 680)——化解「P47 嫌上下不够长 / P50 嫌输出后太大」的两头拉扯：
+     宽屏桌面大可更高，上限仍封顶（输出后不再变大），min() 兜矮窗。 */
+  max-height: min(70vh, 680px);
   display: flex;
   flex-direction: column;
   /* 批4 (P41): 兄弟间距——含「对话流 ↔ 输入行」——只在此处单点定义：
