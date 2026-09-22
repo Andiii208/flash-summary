@@ -731,11 +731,12 @@ const tick = (v) => (v == null ? '—' : v ? '✓' : '✗')
 const qaDockLine = (d) =>
   `追问坞 ${d.position} · ${d.w}×${d.h} · 右缘空白 ${d.blankRight} CSS px · 压正文列 ${yesno(d.coversNote)} · 垂直居中偏差 ${d.centerOffset} CSS px（视口高 ${d.viewportH}）`
 
-/** P42 (plan 2026-09-22): 「不占一小半」的可执行版——坞宽 ≤ 380 CSS px 且坞高
-    ≤ 70vh。zoom 档里 getBoundingClientRect 与 innerHeight 同在缩放后的 CSS px
-    坐标系（1600 锚），判据不随物理档位漂移；坞缺失（未渲染）返回 null 记「—」。 */
+/** P42→P45 (plan 2026-09-22): 「不占一小半」的可执行版——规格随用户两次「瘦长」
+    订正到 **坞宽 ≤ 260 CSS px（.qa-dock 的 width 封顶）且坞高 ≤ 84vh（max-height）**。
+    zoom 档里 getBoundingClientRect 与 innerHeight 同在缩放后的 CSS px 坐标系
+    （1600 锚），判据不随物理档位漂移；坞缺失（未渲染）返回 null 记「—」。 */
 const dockFitsSmall = (t) =>
-  t.dockW == null || t.dockH == null || t.viewportH == null ? null : t.dockW <= 380 && t.dockH <= t.viewportH * 0.7
+  t.dockW == null || t.dockH == null || t.viewportH == null ? null : t.dockW <= 260 && t.dockH <= t.viewportH * 0.84
 
 /** 终端摘要：只打关键数字，完整 JSON 在 OUT_FILE。 */
 function summarize(out) {
@@ -800,7 +801,7 @@ function summarize(out) {
     for (const t of out.zoomTiers) {
       const ok = Math.abs(t.cssVW - t.expectedCssVW) <= 2
       const small = dockFitsSmall(t)
-      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤380 且高 ≤70vh=${one(t.viewportH == null ? null : Math.round(t.viewportH * 0.7))}）`)
+      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤260 且高 ≤84vh=${one(t.viewportH == null ? null : Math.round(t.viewportH * 0.84))}）`)
     }
   }
   if (out.zoomOverlay != null) {
