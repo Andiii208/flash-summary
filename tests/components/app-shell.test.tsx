@@ -121,14 +121,25 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host.textContent).toContain('我的学习')
   })
 
-  // P36 (plan 2026-09-21): 右坞全 tab 常驻——不切 tab 也看得到提问入口；折叠后
-  // 只剩右缘入口钮，点它恢复。
-  it('P36: 追问坞常驻在任务页上，可折叠成入口钮再恢复', async () => {
+  // P38 (plan 2026-09-22): 坞只在笔记页渲染——任务页/设置页既没有坞也没有折叠
+  // 入口钮（用户明示「只需要在笔记这个地方去展示」）；点「笔记」tab 后坞出现，
+  // 折叠→入口钮→恢复的循环同样在笔记页完成。
+  it('P38: 追问坞只在笔记页渲染，可折叠成入口钮再恢复', async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
     await waitForSelector('.course-head')
-    expect(host.querySelector('[data-testid="qa-dock"]')).not.toBeNull()
+    // 默认落点是任务页：坞与折叠态入口钮都不在 DOM 里。
+    expect(host.querySelector('[data-testid="qa-dock"]')).toBeNull()
+    expect(host.querySelector('.qa-dock-launcher')).toBeNull()
+    // 设置页同样没有——「只在笔记页」要覆盖全部非笔记 tab。
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '设置') ?? null)
+    await waitForSelector('.settings-panel')
+    expect(host.querySelector('[data-testid="qa-dock"]')).toBeNull()
+    expect(host.querySelector('.qa-dock-launcher')).toBeNull()
+    // 点「笔记」tab 后坞出现；折叠→入口钮→恢复循环在笔记页完成。
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('[data-testid="qa-dock"]')
     click(host.querySelector('.qa-dock-collapse'))
     await vi.waitFor(() => {
       expect(host.querySelector('[data-testid="qa-dock"]')).toBeNull()
@@ -137,6 +148,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     click(host.querySelector('.qa-dock-launcher'))
     await vi.waitFor(() => {
       expect(host.querySelector('[data-testid="qa-dock"]')).not.toBeNull()
+      expect(host.querySelector('.qa-dock-launcher')).toBeNull()
     })
   })
 
@@ -224,9 +236,11 @@ describe('App shell (useAppState over a mocked bridge)', () => {
       { question: '第二问', answer: '答二' },
       { question: '第一问', answer: '答一' }
     ]
-    mount(<App bridge={bridge} />)
+    const host = mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
-    // P36: 追问右坞全 tab 常驻——不再需要切到「追问」tab（tab 已移除）。
+    // P38 (plan 2026-09-22): 坞只在笔记页渲染——selectLesson 把「无笔记课时」停在
+    // 任务页，先点「笔记」tab 才看得到对话流（与 :201 的 tab 点法同款）。
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
     await waitForSelector('.qa-q')
     const questions = Array.from(document.querySelectorAll('.qa-q')).map((q) => q.textContent)
     expect(questions).toEqual(['第一问', '第二问'])
@@ -235,13 +249,19 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   it('does not leak the previous lesson qa panel when the new one has no history', async () => {
     const bridge = makeBridge()
     fakeState.qaHistory = [{ question: '旧课时的问题', answer: '答' }]
-    mount(<App bridge={bridge} />)
+    const host = mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
+    // P38 (plan 2026-09-22): 同上——坞只挂在笔记页，先切 tab 再断言。
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
     await waitForSelector('.qa-q')
 
     // Re-select the same lesson with an emptied history: panel must clear.
+    // 重选会按「该课时有无笔记」导航 tab（无笔记 → 任务页），坞随 tab 卸载；所以先
+    // 切回「笔记」页、确认坞还在，再断言问答消失——否则 gone 只是坞被卸载的假象。
     fakeState.qaHistory = []
     click(document.querySelector('.lesson-row'))
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('[data-testid="qa-dock"]')
     await waitForGone('.qa-q')
   })
 

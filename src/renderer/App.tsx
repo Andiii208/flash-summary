@@ -717,29 +717,33 @@ prevLesson={state.lessonNeighbors.prev}
             </div>
           )}
         </main>
-        {/* P36 (plan 2026-09-21): 追问右坞——tab 之外、全 tab 常驻。≥1400 CSS
-            时是 .app-main 的第三列（吸收宽屏右侧空白，与窗口缩放联合定档），
-            <1400 由 CSS 切成固定位置悬浮窗；折叠态只剩右缘一颗入口钮。挂在
-            .app-shell 内：@media print 整体隐藏 .app-shell，PDF 自动不含坞。 */}
-        {qaDockOpen ? (
-          <QaDock
-            entries={state.qaEntries}
-            busy={state.qaBusy}
-            hasLesson={state.currentLesson !== ''}
-            lessonContext={state.lessonContextOrIndex != null ? { ...state.lessonContextOrIndex, lessonId: state.currentLesson } : null}
-            lessonOptions={state.currentCourseLessons}
-            onSelectLesson={state.switchLesson}
-            hasNote={state.note != null}
-            onAsk={state.ask}
-            recent={state.qaRecent}
-            onOpenLesson={state.selectLesson}
-            onCollapse={toggleQaDock}
-          />
-        ) : (
-          <button class="qa-dock-launcher" onClick={toggleQaDock} title="打开追问" aria-label="打开追问">
-            追问
-          </button>
-        )}
+        {/* P38 (plan 2026-09-22): 追问坞只在笔记页渲染（用户明示「不需要在除了
+            笔记之外的其他界面展示」）；不再全 tab 常驻，折叠态入口钮同样只在笔记页
+            出现。结构不动：仍挂 .app-main 内、</main> 之后，与 <main> 平级、不在任何
+            tab 面板内；形态由方案批2 在 style.css 落地为单一 fixed 悬浮小卡片（右缘
+            对齐内容盒右缘、垂直居中、宽 380px、高随内容，无断点）——本批只收窄
+            挂载范围。挂在 .app-shell 内：@media print 整体隐藏 .app-shell，PDF 自动
+            不含坞（SKILL §5）。 */}
+        {tab === 'notes' &&
+          (qaDockOpen ? (
+            <QaDock
+              entries={state.qaEntries}
+              busy={state.qaBusy}
+              hasLesson={state.currentLesson !== ''}
+              lessonContext={state.lessonContextOrIndex != null ? { ...state.lessonContextOrIndex, lessonId: state.currentLesson } : null}
+              lessonOptions={state.currentCourseLessons}
+              onSelectLesson={state.switchLesson}
+              hasNote={state.note != null}
+              onAsk={state.ask}
+              recent={state.qaRecent}
+              onOpenLesson={state.selectLesson}
+              onCollapse={toggleQaDock}
+            />
+          ) : (
+            <button class="qa-dock-launcher" onClick={toggleQaDock} title="打开追问" aria-label="打开追问">
+              追问
+            </button>
+          ))}
       </div>
       </div>
     </>
