@@ -58,6 +58,12 @@ function buttonByText(selector: string, label: string): HTMLElement | null {
   return found instanceof HTMLElement ? found : null
 }
 
+/** P48: 次要导出（Anki / Markdown / Obsidian）收进「其它导出」菜单——开菜单再点项。 */
+function clickMenuExport(label: string): void {
+  click(buttonByText('.note-toolbar button', '其它导出'))
+  click(buttonByText('.note-export-items button', label))
+}
+
 const NOTICE_TITLE = () => document.body.textContent?.includes(COPYRIGHT_NOTICE_TITLE) === true
 
 /** The reminder is a shared Dialog: cancel first, confirm second. */
@@ -104,7 +110,8 @@ describe('导出前的版权提醒', () => {
 
   it('未经提醒不导出，且提醒里写的是版权事实而不是法条', async () => {
     const bridge = await openNote()
-    click(buttonByText('.note-toolbar button', '导出 Markdown'))
+    // P48: Markdown 导出收进「其它导出」菜单——先开菜单再点项。
+    clickMenuExport('导出 Markdown')
     await waitFor('.dialog-actions')
     expect(bridge.notes.exportMarkdown).not.toHaveBeenCalled()
     expect(document.body.textContent).toContain(COPYRIGHT_NOTICE_MESSAGE)
@@ -114,16 +121,15 @@ describe('导出前的版权提醒', () => {
     const bridge = await openNote()
     const toolbar = '.note-toolbar button'
 
-    // ① Markdown ② Anki ③ Obsidian 单课时 ④ PDF —— 都在笔记工具栏上。
-    const single = [
+    // ① Markdown ② Anki ③ Obsidian 在「其它导出」菜单里（P48）；④ PDF 是工具栏主行动。
+    const menu = [
       { label: '导出 Markdown', call: () => bridge.notes.exportMarkdown },
       { label: '导出 Anki', call: () => bridge.notes.exportAnki },
-      { label: '导出 Obsidian', call: () => bridge.notes.exportObsidian },
-      { label: '导出 PDF 讲义', call: () => bridge.notes.exportPdfDialog }
+      { label: '导出 Obsidian', call: () => bridge.notes.exportObsidian }
     ]
-    for (const { label, call } of single) {
+    for (const { label, call } of menu) {
       const spy = call() as ReturnType<typeof vi.fn>
-      click(buttonByText(toolbar, label))
+      clickMenuExport(label)
       await waitFor('.dialog-actions')
       expect(spy, `${label} 未经提醒就导出了`).toHaveBeenCalledTimes(0)
       confirmNotice()
@@ -131,6 +137,17 @@ describe('导出前的版权提醒', () => {
       // 健康巡查批5: while an export is in flight every export button is
       // disabled (native save dialogs must not stack) — wait for it to clear
       // before driving the next exit.
+      await settle()
+    }
+
+    // ④ PDF 讲义——工具栏主行动按钮（P48 起仍在工具栏上，不进菜单）。
+    {
+      const spy = bridge.notes.exportPdfDialog as ReturnType<typeof vi.fn>
+      click(buttonByText(toolbar, '导出 PDF 讲义'))
+      await waitFor('.dialog-actions')
+      expect(spy, '导出 PDF 讲义 未经提醒就导出了').toHaveBeenCalledTimes(0)
+      confirmNotice()
+      await vi.waitFor(() => expect(spy, '导出 PDF 讲义 确认后没导出').toHaveBeenCalledTimes(1))
       await settle()
     }
 
@@ -165,7 +182,7 @@ describe('导出前的版权提醒', () => {
 
   it('取消就是这次不导——不留任何副作用', async () => {
     const bridge = await openNote()
-    click(buttonByText('.note-toolbar button', '导出 Markdown'))
+    clickMenuExport('导出 Markdown')
     await waitFor('.dialog-actions')
     click(buttonByText('.dialog-actions button', '取消'))
 
@@ -177,7 +194,7 @@ describe('导出前的版权提醒', () => {
 
   it('勾上「不再提示」才写库，之后的导出直接放行', async () => {
     const bridge = await openNote()
-    click(buttonByText('.note-toolbar button', '导出 Markdown'))
+    clickMenuExport('导出 Markdown')
     await waitFor('.dialog-actions')
 
     const box = document.querySelector('.dialog-check input') as HTMLInputElement | null
@@ -195,21 +212,21 @@ describe('导出前的版权提醒', () => {
 
     // 第二次导出：不再打扰（先等 settings 重新读回来）。
     await settle()
-    click(buttonByText('.note-toolbar button', '导出 Anki'))
+    clickMenuExport('导出 Anki')
     await vi.waitFor(() => expect(bridge.notes.exportAnki).toHaveBeenCalledTimes(1))
     expect(NOTICE_TITLE()).toBe(false)
   })
 
   it('不勾就只是这次放过——下次导出还会提醒', async () => {
     const bridge = await openNote()
-    click(buttonByText('.note-toolbar button', '导出 Markdown'))
+    clickMenuExport('导出 Markdown')
     await waitFor('.dialog-actions')
     confirmNotice()
     await vi.waitFor(() => expect(bridge.notes.exportMarkdown).toHaveBeenCalledTimes(1))
     expect(bridge.settings.optOutCopyrightNotice).not.toHaveBeenCalled()
     await settle()
 
-    click(buttonByText('.note-toolbar button', '导出 Anki'))
+    clickMenuExport('导出 Anki')
     await waitFor('.dialog-actions')
     expect(bridge.notes.exportAnki).not.toHaveBeenCalled()
     confirmNotice()

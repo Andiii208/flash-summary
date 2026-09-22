@@ -7,6 +7,7 @@ import { noteHealth, HEALTH_FIELD_LABELS } from '../../shared/notes/health'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
 import { VIEW_LABELS } from '../labels'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
+import { NoteExportMenu } from './NoteExportMenu'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { NoteLibrary } from './NoteLibrary'
 import { MindMap } from './MindMap'
@@ -265,18 +266,47 @@ function noteReadMinutes(note: Note): number {
   const sections = useMemo(() => (note == null ? [] : projectNoteBlocks(note, view)), [note, view])
   return (
     <div class="note-viewer">
+      {/* P48: 题头右侧上下文组 = 课时身份 chip + 课时导航。「上一节/下一节」是**导航**
+          （在课时之间移动），不是对这篇笔记的动作——把它混在动作行里正是工具行混乱的
+          源头之一；移上来后动作行只剩「对这篇笔记做什么」。 */}
       <PageHeader
         title="笔记"
         chip={
-          lesson != null ? (
-            <LessonChip
-              courseName={lesson.courseName}
-              lessonTitle={lesson.lessonTitle}
-              lessons={lessonOptions}
-              currentLessonId={currentLessonId}
-              onSelectLesson={onNavigateLesson}
-            />
-          ) : undefined
+          <span class="page-head-context">
+            {lesson != null && (
+              <LessonChip
+                courseName={lesson.courseName}
+                lessonTitle={lesson.lessonTitle}
+                lessons={lessonOptions}
+                currentLessonId={currentLessonId}
+                onSelectLesson={onNavigateLesson}
+              />
+            )}
+            {onNavigateLesson != null && (prevLesson != null || nextLesson != null) && (
+              <span class="lesson-nav">
+                <button
+                  class="btn small"
+                  disabled={prevLesson == null}
+                  title={prevLesson?.title ?? '已是第一节'}
+                  onClick={() => {
+                    if (prevLesson != null) onNavigateLesson(prevLesson.id)
+                  }}
+                >
+                  ‹ 上一节
+                </button>
+                <button
+                  class="btn small"
+                  disabled={nextLesson == null}
+                  title={nextLesson?.title ?? '已是最后一节'}
+                  onClick={() => {
+                    if (nextLesson != null) onNavigateLesson(nextLesson.id)
+                  }}
+                >
+                  下一节 ›
+                </button>
+              </span>
+            )}
+          </span>
         }
       />
       {/* 2026-09-05: the toolbar only makes sense with a note on screen —
@@ -314,92 +344,56 @@ function noteReadMinutes(note: Note): number {
               </button>
             ))}
           </nav>
+          {/* P48: 行动行 = 三个**组内不换行**的组（组间才换）——维护 · 输出 · 主行动。
+              旧结构把 9 个按钮平铺让 flex-wrap 自由切，分隔线被拦腰切断、主按钮被
+              margin-left:auto 孤悬在最右（Andiii：「布局太混乱了，一点也不整齐」）。 */}
           <div class="note-actions">
-            {onNavigateLesson != null && (prevLesson != null || nextLesson != null) && (
-              <span class="lesson-nav">
+            <span class="note-action-group">
+              {health != null && (
                 <button
-                  class="btn small"
-                  disabled={prevLesson == null}
-                  title={prevLesson?.title ?? '已是第一节'}
-                  onClick={() => {
-                    if (prevLesson != null) onNavigateLesson(prevLesson.id)
-                  }}
+                  class="btn small note-health-toggle"
+                  title="内容体检——对照批1 质量规约检查这份笔记"
+                  onClick={() => setHealthOpen(!healthOpen)}
                 >
-                  ‹ 上一节
+                  {health.warnCount > 0 ? `体检：${health.warnCount} 项待改进` : '体检：良好'}
                 </button>
-                <button
-                  class="btn small"
-                  disabled={nextLesson == null}
-                  title={nextLesson?.title ?? '已是最后一节'}
-                  onClick={() => {
-                    if (nextLesson != null) onNavigateLesson(nextLesson.id)
-                  }}
-                >
-                  下一节 ›
+              )}
+              {hitRate != null && hitRate.total > 0 && (
+                <span class="badge" title={`时间线证据引用精确命中附件 ${hitRate.hits}/${hitRate.total}`}>
+                  引用命中 {hitRate.hits}/{hitRate.total}
+                </span>
+              )}
+              {onRegenerate != null && note != null && (
+                <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
+                  {regenBusy ? '生成中…' : '重新生成'}
                 </button>
-              </span>
-            )}
-            {health != null && (
-              <button
-                class="btn small note-health-toggle"
-                title="内容体检——对照批1 质量规约检查这份笔记"
-                onClick={() => setHealthOpen(!healthOpen)}
-              >
-                {health.warnCount > 0 ? `体检：${health.warnCount} 项待改进` : '体检：良好'}
-              </button>
-            )}
-            {hitRate != null && hitRate.total > 0 && (
-              <span class="badge" title={`时间线证据引用精确命中附件 ${hitRate.hits}/${hitRate.total}`}>
-                引用命中 {hitRate.hits}/{hitRate.total}
-              </span>
-            )}
-            {onRegenerate != null && note != null && (
-              <button class="btn small" onClick={onRegenerate} disabled={regenBusy}>
-                {regenBusy ? '生成中…' : '重新生成'}
-              </button>
-            )}
-            {/* 批6 (T43): 工具行按「维护 · 导出 · 主行动」三域分组（与导图工具栏
-                同一套分隔线）。此前 7 个按钮平铺，4 个导出动作无从分辨主次。 */}
-            {onCopy != null && note != null && (
-              <>
-                <span class="toolbar-divider" aria-hidden="true" />
+              )}
+            </span>
+            {/* 输出组：复制 + 其它导出（Anki / Markdown / Obsidian 收进菜单）。 */}
+            <span class="note-action-group">
+              <span class="toolbar-divider" aria-hidden="true" />
+              {onCopy != null && note != null && (
                 <button class="btn small" onClick={onCopy}>
                   复制 Markdown
                 </button>
-              </>
-            )}
-            {onExportAnki != null && note != null && (
-              <button class="btn small" onClick={onExportAnki} disabled={exportBusy != null}>
-                {exportBusy === 'anki' ? '导出中…' : '导出 Anki'}
-              </button>
-            )}
-            {onExport != null && note != null && (
-              <button class="btn small" onClick={onExport} disabled={exportBusy != null}>
-                {exportBusy === 'markdown' ? '导出中…' : '导出 Markdown'}
-              </button>
-            )}
-            {onExportObsidian != null && note != null && (
-              <button
-                class="btn small"
-                onClick={onExportObsidian}
-                disabled={exportBusy != null}
-                title="结构化 Markdown 写入 Obsidian 仓库（首次需选择仓库目录）"
-              >
-                {exportBusy === 'obsidian' ? '导出中…' : '导出 Obsidian'}
-              </button>
-            )}
-            {/* A5/D9 (plan 2026-09-13): the page's primary action sits LAST and
-                pins to the right edge of the 860 axis — the wrapped second row
-                used to end 126px short with the green button second from the
-                left. */}
-            {onExportPdf != null && (
-              <>
-                <span class="toolbar-divider" aria-hidden="true" />
+              )}
+              <NoteExportMenu
+                onExportAnki={onExportAnki != null && note != null ? () => onExportAnki() : undefined}
+                onExport={onExport != null && note != null ? () => onExport() : undefined}
+                onExportObsidian={onExportObsidian != null && note != null ? () => onExportObsidian() : undefined}
+                exportBusy={exportBusy}
+              />
+            </span>
+            {/* 主行动：A5/D9 (plan 2026-09-13) 的「主行动在最后、贴右缘」沿用——改为挂在
+                主行动组上（组内仍居末），640 轴上不再被 wrap 扔到孤行。 */}
+            <span class="note-action-group note-action-primary">
+              <span class="toolbar-divider" aria-hidden="true" />
+              {onExportPdf != null && (
                 <button class="btn small primary note-pdf-btn" onClick={onExportPdf} disabled={pdfBusy}>
                   {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
                 </button>
-              </>
-            )}
+              )}
+            </span>
           </div>
         </div>
       )}

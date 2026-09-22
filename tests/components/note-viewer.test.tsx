@@ -58,7 +58,10 @@ describe('NoteViewer', () => {
     expect(host.querySelectorAll('.note-tabs button')).toHaveLength(0)
   })
 
-  it('A5 (plan 2026-09-13): 导出 PDF 讲义 is the toolbar’s LAST action and pins right', () => {
+  // P48 (plan 2026-09-22): 工具行重排为三组（维护 · 输出 · 主行动）——A5 的「主行动在
+  // 最后、贴右缘」不变，但断言从「最后一个平铺按钮」改写为「主行动组居末、组内 PDF 仍
+  // 居末」（次要导出收进「其它导出」菜单，工具栏上不再平铺）。
+  it('A5 (plan 2026-09-13) → P48: 导出 PDF 讲义 is the LAST action (主行动组末位)', () => {
     const host = mount(
       <NoteViewer
         note={NOTE}
@@ -72,8 +75,12 @@ describe('NoteViewer', () => {
     )
     const pdf = host.querySelector('.note-actions .note-pdf-btn')
     expect(pdf).not.toBeNull()
-    const actionNodes = [...host.querySelectorAll('.note-actions > *')]
-    expect(actionNodes[actionNodes.length - 1]).toBe(pdf)
+    const groups = [...host.querySelectorAll('.note-actions > .note-action-group')]
+    expect(groups).toHaveLength(3)
+    const primary = groups[groups.length - 1]!
+    expect(primary).toBe(pdf?.closest('.note-action-group'))
+    const groupButtons = [...primary.querySelectorAll('button')]
+    expect(groupButtons[groupButtons.length - 1]).toBe(pdf)
   })
 
   it('renders the exam-paper masthead only with a note and lesson context (V4)', () => {
@@ -264,13 +271,18 @@ describe('NoteViewer', () => {
     expect(Array.from(busy.querySelectorAll('button')).find((b) => b.textContent === '生成中…')).not.toBeNull()
   })
 
-  it('shows the Anki export button only with a note and wires the click (roadmap 2.2)', () => {
+  // P48: 次要导出（Anki/Markdown/Obsidian）从工具栏平铺改为「其它导出」菜单项——先开菜单
+  // 再点项；无笔记时整个工具行（含菜单）都不渲染。
+  it('shows the Anki export item only with a note and wires the click (roadmap 2.2)', () => {
     const onExportAnki = vi.fn()
     const host = mount(<NoteViewer note={NOTE} onExportAnki={onExportAnki} />)
-    const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '导出 Anki')!
-    click(button)
+    click(host.querySelector('.note-export-trigger'))
+    const item = Array.from(host.querySelectorAll('.note-export-items button')).find((b) => b.textContent === '导出 Anki')!
+    expect(item).not.toBeUndefined()
+    click(item)
     expect(onExportAnki).toHaveBeenCalledTimes(1)
     const bare = mount(<NoteViewer note={null} onExportAnki={onExportAnki} />)
+    expect(bare.querySelector('.note-toolbar')).toBeNull()
     expect(Array.from(bare.querySelectorAll('button')).find((b) => b.textContent === '导出 Anki')).toBeUndefined()
   })
 
@@ -359,7 +371,9 @@ describe('NoteViewer', () => {
     expect(host.textContent).toContain('或打开其他笔记')
   })
 
-  it('navigates to the previous/next lesson via the toolbar (批2 B4)', () => {
+  // P48: 课时导航从工具行动行移到题头右侧上下文组（chip 旁）——它是在课时之间移动，
+  // 不是对这篇笔记的动作；行动行只剩「对这篇笔记做什么」。
+  it('navigates to the previous/next lesson via the page-head context (批2 B4 → P48)', () => {
     const onNavigate = vi.fn()
     const host = mount(
       <NoteViewer
@@ -374,6 +388,9 @@ describe('NoteViewer', () => {
     click(prev ?? null)
     expect(onNavigate).toHaveBeenCalledWith('l0')
     expect((next as HTMLButtonElement | undefined)?.disabled).toBe(true)
+    // P48: 导航挂在题头上下文组里，且不在工具行动行中（行动行只剩笔记动作）。
+    expect(prev?.closest('.page-head-context')).not.toBeNull()
+    expect(host.querySelector('.note-actions .lesson-nav')).toBeNull()
   })
 
   it('hides the lesson nav when no neighbors are provided', () => {
@@ -572,9 +589,12 @@ describe('NoteViewer 健康巡查 2026-09-12 批5 (export busy feedback)', () =>
         exportBusy="markdown"
       />
     )
+    // P48: 三个次要导出在「其它导出」菜单里——先开菜单再断言（busy 语义不变：在途项换
+    // 文案、其余全禁）。
+    click(host.querySelector('.note-export-trigger'))
     const byLabel = (label: string): HTMLButtonElement | null =>
       Array.from(host.querySelectorAll('button')).find((b) => b.textContent === label) as HTMLButtonElement | null
-    // The running export's button swapped its label; the rest just disable.
+    // The running export's item swapped its label; the rest just disable.
     expect(byLabel('导出中…')?.disabled).toBe(true)
     expect(byLabel('导出 Markdown')).toBeUndefined()
     expect(byLabel('导出 Anki')?.disabled).toBe(true)
@@ -591,7 +611,9 @@ describe('NoteViewer 健康巡查 2026-09-12 批5 (export busy feedback)', () =>
         exportBusy={null}
       />
     )
-    const markdown = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '导出 Markdown') as HTMLButtonElement
+    // P48: 次要导出在菜单里——开菜单后三项都是 plain label 且可点。
+    click(host.querySelector('.note-export-trigger'))
+    const markdown = Array.from(host.querySelectorAll('.note-export-items button')).find((b) => b.textContent === '导出 Markdown') as HTMLButtonElement
     expect(markdown.disabled).toBe(false)
   })
 })

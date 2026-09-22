@@ -629,6 +629,10 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
 
 /* ---- 批A: unified page head + lesson identity chip ---- */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 2px 0 14px; }
+/* P48 (plan 2026-09-22-qa-dock-float-window): 题头右侧上下文组——课时身份 chip + 课时
+   导航（上一节/下一节）。导航是「在课时之间移动」，与 chip 同属身份行；把它从工具行动
+   行里挪走，行动行才只剩「对这篇笔记做什么」。min-width:0 让长课名时 chip 先压缩。 */
+.page-head-context { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .page-head h2 { margin: 0; }
 .lesson-chip { position: relative; flex-shrink: 0; max-width: 100%; }
 .lesson-chip-btn {
@@ -691,6 +695,46 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .lesson-chip-menu button:hover { background: var(--surface-2); }
 .lesson-chip-menu button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .lesson-chip-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* P48: 「其它导出」下拉（Anki / Markdown / Obsidian）——工具行导出格式收纳。与
+   .lesson-chip-menu 同一形制（右对齐、shadow-sm、gap 发丝、z-index 30 低于四个自绘
+   overlay 的 40）；菜单右缘贴触发器右缘，不会向左溢出阅读轴。 */
+.note-export-menu { position: relative; display: inline-flex; }
+.note-export-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 150px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-hair);
+}
+.note-export-items button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.note-export-items button:hover { background: var(--surface-2); }
+.note-export-items button:disabled { opacity: 0.6; cursor: default; }
+.note-export-items button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .menu-lesson-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- tabs（度量见基元 .seg-tabs） ---- */
@@ -1466,8 +1510,11 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    tabs' line instead (measured: buttons shrank to 40-82px), and with no flex
    at all the wrapped group shrink-wrapped and ended 126px short (328→1062
    against the 328→1188 axis). */
-.note-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); flex: 1 1 100%; }
-.note-actions .note-pdf-btn { margin-left: auto; }
+/* P48: 行动行按「维护 · 输出 · 主行动」分三组，**组内不换行、组间才换**——旧结构 9 个
+   按钮平铺让 flex-wrap 自由切，分隔线被拦腰切断、主按钮被 margin-left:auto 孤悬最右。 */
+.note-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); flex: 1 1 100%; align-items: center; }
+.note-action-group { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: nowrap; }
+.note-action-primary { margin-left: auto; }
 /* 批3 (plan 2026-09-08 note-quality-overhaul): 体检面板——findings 列表。
    warn 用琥珀语义色（考点/缺口语义色的既有约定），info 用弱化文本。 */
 .note-health-panel {
