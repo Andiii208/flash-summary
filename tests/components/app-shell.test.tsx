@@ -145,7 +145,11 @@ describe('App shell (useAppState over a mocked bridge)', () => {
       expect(host.querySelector('[data-testid="qa-dock"]')).toBeNull()
       expect(host.querySelector('.qa-dock-launcher')).not.toBeNull()
     })
-    click(host.querySelector('.qa-dock-launcher'))
+    // P46: 折叠态 = 右缘悬浮小球（图标钮）——无文字、带 aria-label，点击恢复卡片。
+    const launcher = host.querySelector('.qa-dock-launcher')
+    expect(launcher?.textContent?.trim()).toBe('')
+    expect(launcher?.getAttribute('aria-label')).toBe('打开追问')
+    click(launcher)
     await vi.waitFor(() => {
       expect(host.querySelector('[data-testid="qa-dock"]')).not.toBeNull()
       expect(host.querySelector('.qa-dock-launcher')).toBeNull()

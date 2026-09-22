@@ -499,10 +499,42 @@ describe('追问坞窄长化与零重叠（P44）', () => {
     expect(stripped).not.toContain('.qa-dock-head .lesson-chip')
   })
 
+
+
   it('溢出防护：气泡内长 token（网址/无空格串）可断行，气泡不被顶破', () => {
     const bubble = bodyOf('.qa-dock .qa-q, .qa-dock .qa-a')
     expect(bubble).toContain('max-width: 100%')
     expect(bubble).toContain('overflow-wrap: anywhere')
+  })
+})
+
+/**
+ * P46 (plan 2026-09-22-qa-dock-float-window)：Andiii「我认为这个小窗口应该是可以折叠
+ * 的，比如折叠成一个悬浮小球你看看你当前有没有做到」——折叠功能本来就有（收起键 → 右缘
+ * 入口钮），但旧形态是文字药丸；本批升级为 44px 圆形图标钮，位置与展开态卡片同一组值。
+ */
+describe('追问坞折叠态悬浮小球（P46）', () => {
+  it('入口钮是 44px 圆形图标钮（不是文字药丸）：50% 圆角、padding:0、accent 填充', () => {
+    const ball = bodyOf('.qa-dock-launcher')
+    expect(ball).toContain('border-radius: 50%')
+    expect(ball).toContain('width: 44px')
+    expect(ball).toContain('height: 44px')
+    expect(ball).toContain('padding: 0')
+    expect(ball).toContain('background: var(--accent-fill)')
+    expect(ball).toContain('color: var(--accent-contrast)')
+    // 图标居中：flex 居中而非文字内边距。
+    expect(ball).toContain('display: inline-flex')
+    expect(ball).toContain('align-items: center')
+    expect(ball).toContain('justify-content: center')
+  })
+
+  it('小球与展开态卡片同一组定位值（右缘、垂直居中、同层）——读作「卡片收了头」', () => {
+    const positionOf = (selector: string): string =>
+      ['right', 'top', 'transform', 'z-index']
+        .map((prop) => new RegExp(`${prop}\\s*:\\s*([^;}]+)`).exec(bodyOf(selector))?.[1]?.trim() ?? '')
+        .join(' | ')
+    expect(positionOf('.qa-dock-launcher')).toBe(positionOf('.qa-dock'))
+    expect(positionOf('.qa-dock')).toBe('var(--space-5) | 50% | translateY(-50%) | 30')
   })
 })
 

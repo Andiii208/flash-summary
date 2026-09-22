@@ -1594,22 +1594,34 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .qa-dock .qa-q, .qa-dock .qa-a { max-width: 100%; overflow-wrap: anywhere; }
 .qa-dock .qa-input-row .qa-input { min-width: 0; }
 /* 折叠态：与卡片同一位置（右缘、垂直居中）同一形制——读作「卡片收了头」。 */
+/* P46 (plan 2026-09-22-qa-dock-float-window): 折叠态 = 右缘悬浮小球——用户原话
+   「我认为这个小窗口应该是可以折叠的，比如折叠成一个悬浮小球你看看你当前有没有
+   做到」。折叠功能本来就有，但旧形态是文字药丸（「追问」两字 + 面板轴圆角），不像球；
+   本规则改成 44px 圆形图标钮（MessageCircleQuestionMark），位置与展开态卡片同一组值
+   （右缘 --space-5、垂直居中），z-index 同 30。accent 填充 + 对比色图标——小球是「入
+   口」，要比卡片更醒目；hover 轻微放大给触感。 */
 .qa-dock-launcher {
   position: fixed;
   right: var(--space-5);
   top: 50%;
   transform: translateY(-50%);
   z-index: 30;
-  padding: var(--space-2) var(--space-4);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  color: var(--accent);
-  background: var(--surface);
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-contrast);
+  background: var(--accent-fill);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
+  border-radius: 50%;
   box-shadow: var(--shadow-lg);
   cursor: pointer;
+  transition: transform var(--speed), box-shadow var(--speed);
 }
+.qa-dock-launcher:hover { transform: translateY(-50%) scale(1.06); }
+.qa-dock-launcher:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leading-snug); font-family: inherit; }
 /* B4: lesson-to-lesson navigation in the note toolbar. */
 .lesson-nav { display: inline-flex; gap: var(--space-2); }

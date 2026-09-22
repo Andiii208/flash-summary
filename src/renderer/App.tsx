@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
-import { ChevronDown, ChevronRight, Maximize2, PanelLeftClose, PanelLeftOpen } from 'lucide-preact'
+import { ChevronDown, ChevronRight, Maximize2, MessageCircleQuestionMark, PanelLeftClose, PanelLeftOpen } from 'lucide-preact'
 import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskRowInfo } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { withSessionRetry } from '../shared/session-retry'
@@ -725,9 +725,14 @@ prevLesson={state.lessonNeighbors.prev}
             笔记之外的其他界面展示」）；不再全 tab 常驻，折叠态入口钮同样只在笔记页
             出现。结构不动：仍挂 .app-main 内、</main> 之后，与 <main> 平级、不在任何
             tab 面板内；形态由方案批2 在 style.css 落地为单一 fixed 悬浮小卡片（右缘
-            对齐内容盒右缘、垂直居中、宽 380px、高随内容，无断点）——本批只收窄
-            挂载范围。挂在 .app-shell 内：@media print 整体隐藏 .app-shell，PDF 自动
+            对齐内容盒右缘、垂直居中、宽取笔记右侧空白封顶 260、高随内容至 84vh，
+            无断点；坞展开时笔记盒经 .app-main 的 qa-dock-open 类收到 640 阅读轴）
+            ——本批只收窄挂载范围。挂在 .app-shell 内：@media print 整体隐藏 .app-shell，PDF 自动
             不含坞（SKILL §5）。 */}
+        {/* P46 (plan 2026-09-22): 折叠态 = 右缘一颗悬浮小球（图标钮，非文字药丸）——用户
+            「我认为这个小窗口应该是可以折叠的，比如折叠成一个悬浮小球你看看你当前有没有
+            做到」。位置与展开态卡片同一组值（右缘、垂直居中），读作「卡片收了头」；只在
+            笔记页出现（tab === 'notes' 守卫同时管卡片与小球）。 */}
         {tab === 'notes' &&
           (qaDockOpen ? (
             <QaDock
@@ -742,7 +747,7 @@ prevLesson={state.lessonNeighbors.prev}
             />
           ) : (
             <button class="qa-dock-launcher" onClick={toggleQaDock} title="打开追问" aria-label="打开追问">
-              追问
+              <MessageCircleQuestionMark size={20} strokeWidth={1.75} aria-hidden="true" />
             </button>
           ))}
       </div>
