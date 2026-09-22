@@ -94,7 +94,7 @@ version: 1.0.0
 - **课程行的三个动作键**顺序固定为「星标 → 导图 → 删除」（收藏最常用在前，破坏性动作最后），
   侧栏与全屏浏览页必须一致；图标键一律带 `aria-label`。
 - **展开/收起**三处（侧栏、树视图、导图）统一为「由少到多」：全部收起 → … → 全部展开。
-- **工具行分组**用 `.toolbar-divider`（`aria-hidden`）把「维护 · 导出 · 主行动」分开。
+- **工具行分组**用 `.toolbar-divider`（`aria-hidden`）把「维护 · 导出 · 主行动」分开。**笔记工具行（P48，2026-09-22）**：三组各自 `display:inline-flex; flex-wrap:nowrap`（组内不换行、组间才换——别把按钮平铺给 flex-wrap 自由切，分隔线会被拦腰切断）；课时导航（上一节/下一节）在题头右侧上下文组（`.page-head-context`）而不在行动行；次要导出格式收进「其它导出」菜单（`NoteExportMenu`，形制同 `.lesson-chip-menu`），「导出 PDF 讲义」作为主行动留在行尾贴右。
 - **按钮标签不折行**（`.btn { white-space: nowrap }`），由容器负责换行（`flex-wrap`）。
 - **弹层**：确认类用共享 `ui/Dialog`（底部右下两键；额外行动键走 `extraActions` 靠左，
   弹层只有一行按钮）；视图类自绘弹层用右上关闭键 + `aria-label`。弹窗有 `max-height: 86vh`
