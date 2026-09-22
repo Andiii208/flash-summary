@@ -409,14 +409,11 @@ describe('追问坞内防挤爆（批3，P40）', () => {
     expect(q).toContain('min-width: 0')
   })
 
-  it('坞头防挤爆：chip 可压缩且两个文本段省略，选择器带 .qa-dock-head 前缀', () => {
+  // P45 (2026-09-22): 课时切换 chip 按用户明示从坞头删除（切课时归侧栏/题头/面包屑），
+  // 原「chip 可压缩」断言随被测对象消失改写为「坞头只剩标题 + 收起，且不残留 chip 规则」。
+  it('坞头防挤爆：只剩标题与收起键，min-width:0 兜底保留，无 chip 残留', () => {
     expect(bodyOf('.qa-dock-head')).toContain('min-width: 0')
-    const chip = bodyOf('.qa-dock-head .lesson-chip')
-    expect(chip).toContain('flex: 1 1 auto')
-    expect(chip).toContain('min-width: 0')
-    const spans = bodyOf('.qa-dock-head .lesson-chip-course, .qa-dock-head .lesson-chip-lesson')
-    expect(spans).toContain('overflow: hidden')
-    expect(spans).toContain('text-overflow: ellipsis')
+    expect(stripped).not.toContain('.qa-dock-head .lesson-chip')
   })
 
   it('气泡拉满坞内可用宽、输入框不顶着内容轴上限', () => {
@@ -464,6 +461,48 @@ describe('追问坞卡片窗口感（批4，P41）', () => {
   it('滚动条不新增：::-webkit-scrollbar 规则仍只有全站那一处，坞日志区复用之', () => {
     expect((stripped.match(/::-webkit-scrollbar\s*\{/g) ?? []).length).toBe(1)
     expect(bodyOf('.qa-dock .qa-log')).toContain('overflow-y: auto')
+  })
+})
+
+/**
+ * P44→P45 (plan 2026-09-22-qa-dock-float-window)：Andiii 2026-09-22 两轮订正——
+ * P44「卡片太宽了，我要它窄一点、长一点；不要跟笔记的部分有重叠，只利用笔记右侧空白
+ * 那一点位置；还要注意组件溢出和文字溢出」；P45「卡片还不够，要再瘦长一点，并且课程
+ * 名字这一栏是溢出的——根本没有必要设置这个课程栏小组件，我本身就在笔记内部针对当前
+ * 笔记提问」。落地：① 坞展开时笔记盒收到阅读轴 640（右缘 968），卡片宽公式从 968 以右
+ * 算起，任何窗宽零重叠；② 宽 380→320→260 封顶、高 70vh/620→78vh/680→84vh/720；
+ * ③ 删除坞内课时切换 chip（QaDock 组件同步瘦身，切课时归侧栏/题头/面包屑）；
+ * ④ 溢出防护（气泡长 token 可断行、基则不被破坏）。
+ */
+describe('追问坞窄长化与零重叠（P44）', () => {
+  it('坞展开时笔记盒收到阅读轴 640——右缘止于 968，卡片只落在 968 以右', () => {
+    expect(bodyOf('.app-main.qa-dock-open .note-viewer')).toContain('max-width: 640px')
+    // 基则不动：折叠坞/非笔记页仍是 860 面板轴。
+    expect(/\.note-viewer\s*\{[^}]*max-width:\s*var\(--content-max\)/.test(stripped)).toBe(true)
+    // 不得回流成 :has()——契约是 App.tsx 上的 .qa-dock-open 类。
+    expect(stripped.includes(':has(.qa-dock)')).toBe(false)
+  })
+
+  it('卡片宽 = 笔记右侧空白本身：封顶 260，且公式从阅读列 640 右缘算起（间距 --space-3）', () => {
+    const dock = bodyOf('.qa-dock')
+    expect(dock).toContain('width: max(200px, min(260px')
+    expect(dock).toContain('calc(100vw')
+    expect(dock).toContain('640px')
+    expect(dock).toContain('var(--space-3)')
+  })
+
+  it('「变长一点」两连：max-height 70vh/620 → 78vh/680 → 84vh/720', () => {
+    expect(bodyOf('.qa-dock')).toContain('max-height: min(84vh, 720px)')
+  })
+
+  it('坞内不得再有课时切换 chip——用户明示「在笔记内部问当前笔记，不需要这个」', () => {
+    expect(stripped).not.toContain('.qa-dock-head .lesson-chip')
+  })
+
+  it('溢出防护：气泡内长 token（网址/无空格串）可断行，气泡不被顶破', () => {
+    const bubble = bodyOf('.qa-dock .qa-q, .qa-dock .qa-a')
+    expect(bubble).toContain('max-width: 100%')
+    expect(bubble).toContain('overflow-wrap: anywhere')
   })
 })
 

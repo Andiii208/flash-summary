@@ -3,7 +3,6 @@ import type { JSX } from 'preact'
 import type { QaRecentInfo } from '../../shared/bridge'
 import { formatRelativeStamp } from '../../shared/format'
 import { MdLite } from './MdLite'
-import { LessonChip, type LessonChipLesson } from './LessonChip'
 import { EmptyState } from './EmptyState'
 
 export interface QaEntry {
@@ -23,12 +22,6 @@ export interface QaDockProps {
   busy: boolean
   /** False when no lesson is selected — the input then reads as unavailable instead of silently no-op'ing. */
   hasLesson: boolean
-  /** 批A: identity of the selection for the header chip. */
-  lessonContext?: { courseName: string; lessonTitle: string; lessonId?: string } | null
-  /** 批A: sibling lessons for the chip's quick-switch dropdown. */
-  lessonOptions?: LessonChipLesson[]
-  /** 批A: chip dropdown selection — switches lesson, keeps the dock. */
-  onSelectLesson?: (lessonId: string) => void
   /** P37 (plan 2026-09-21): false 时输入不可用——追问只针对已有笔记的课时
       （主侧 qa:ask 同款硬门禁；此前无笔记也放行，回答退化成「基于转写」甚至
       「不依赖课时材料的一般性问题」，用户明示没必要）。 */
@@ -53,13 +46,16 @@ export function qaTimeLabel(iso: string, now = new Date()): string {
 
 /**
  * P36 (plan 2026-09-21): 追问右坞——从 QaPanel（顶部 tab 的整页形态）搬迁而来，
- * 断言随迁（见 tests/components/qa-dock.test.tsx）。差异只有三处：
- * ① 紧凑头（标题 + LessonChip + 收起键，不再用 PageHeader 的整页题头）；
+ * 断言随迁（见 tests/components/qa-dock.test.tsx）。与 QaPanel 的差异：
+ * ① 紧凑头（标题 + 收起键，不再用 PageHeader 的整页题头）；P44（2026-09-22）删掉
+ *    头部 LessonChip 课时切换器——用户明示「本身就在笔记内部针对当前笔记提问，
+ *    不需要这个」：切课时在侧栏/题头 chip/顶栏面包屑三处都可做，坞里是冗余的，
+ *    而且在窄卡片里它正是溢出源；
  * ② hasNote 从「软提示」改为硬门禁（输入 disabled + 说明请先生成笔记）；
  * ③ 根元素 .qa-panel → .qa-dock（单一 fixed 形态：2026-09-22 批2 起重写为
  *    右侧悬浮小卡片，右缘垂直居中、无断点，样式在 style.css）。
  */
-export function QaDock({ entries, busy, hasLesson, lessonContext = null, lessonOptions, onSelectLesson, hasNote = true, onAsk, recent = [], onOpenLesson, onCollapse }: QaDockProps): JSX.Element {
+export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent = [], onOpenLesson, onCollapse }: QaDockProps): JSX.Element {
   const [draft, setDraft] = useState('')
   const askable = hasLesson && hasNote && !busy
   const submit = (): void => {
@@ -68,21 +64,11 @@ export function QaDock({ entries, busy, hasLesson, lessonContext = null, lessonO
     setDraft('')
     onAsk(q)
   }
-  const chip =
-    lessonContext != null ? (
-      <LessonChip
-        courseName={lessonContext.courseName}
-        lessonTitle={lessonContext.lessonTitle}
-        lessons={lessonOptions}
-        currentLessonId={lessonContext.lessonId}
-        onSelectLesson={onSelectLesson}
-      />
-    ) : undefined
   return (
     <section class="qa-dock" data-testid="qa-dock" aria-label="追问">
       <header class="qa-dock-head">
         <span class="qa-dock-title">追问</span>
-        {chip ?? (hasLesson ? null : <span class="qa-dock-no-lesson">未选择课时</span>)}
+        {hasLesson ? null : <span class="qa-dock-no-lesson">未选择课时</span>}
         {onCollapse != null && (
           <button class="btn small ghost qa-dock-collapse" onClick={onCollapse} title="收起追问（需要时点右缘「追问」钮再打开）">
             收起

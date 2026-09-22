@@ -385,7 +385,11 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
           top instead of behind. z-index untouched (the three overlays stay
           peers; the shared confirm layer is a different tier). */}
       {state.courseMap != null && <CourseMapDialog info={state.courseMap} onClose={state.closeCourseMap} />}
-      <div class="app-main">
+      {/* P44 (plan 2026-09-22-qa-dock-float-window): 坞展开时给 .app-main 打标记——
+          笔记盒随之收到阅读轴 640（与题头/正文同轴，右缘止于 968），追问小卡片只落在
+          968 以右的空白里，任何窗宽都不压笔记内容（旧 860 面板轴的右带正是工具行/
+          导出按钮所在，卡片盖上去就等于盖住功能）。坞折叠/非笔记页时恢复 860 面板轴。 */}
+      <div class={`app-main${tab === 'notes' && qaDockOpen ? ' qa-dock-open' : ''}`}>
         <aside class={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`} ref={sidebarRef}>
           {/* A1 (plan 2026-09-13): the toggle lives at the END of the header
               row. It used to be the aside's first flex child, which gave a
@@ -730,9 +734,6 @@ prevLesson={state.lessonNeighbors.prev}
               entries={state.qaEntries}
               busy={state.qaBusy}
               hasLesson={state.currentLesson !== ''}
-              lessonContext={state.lessonContextOrIndex != null ? { ...state.lessonContextOrIndex, lessonId: state.currentLesson } : null}
-              lessonOptions={state.currentCourseLessons}
-              onSelectLesson={state.switchLesson}
               hasNote={state.note != null}
               onAsk={state.ask}
               recent={state.qaRecent}

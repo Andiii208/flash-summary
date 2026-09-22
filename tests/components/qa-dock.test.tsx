@@ -134,6 +134,16 @@ describe('QaDock', () => {
     click(collapse)
     expect(onCollapse).toHaveBeenCalled()
   })
+
+  // P45 (plan 2026-09-22-qa-dock-float-window): 用户明示「我本身就在笔记内部针对当前
+  // 笔记进行提问，不需要这个课程栏」——坞头只剩「追问 + 收起」，LessonChip 及其在窄卡
+  // 里的溢出源一并删除；切课时在侧栏课程树/笔记题头 chip/顶栏面包屑三处都可做。
+  it('P45: 坞头不再渲染课时切换 chip', () => {
+    const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={() => undefined} onCollapse={() => undefined} />)
+    expect(host.querySelector('.qa-dock-head .lesson-chip')).toBeNull()
+    expect(host.querySelector('.qa-dock-title')?.textContent).toBe('追问')
+    expect(host.querySelector('.qa-dock-collapse')).not.toBeNull()
+  })
 })
 
 describe('QaPanel 批4 错误反馈', () => {

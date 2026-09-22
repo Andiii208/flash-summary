@@ -1529,19 +1529,40 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 /* ---- 批2 (plan 2026-09-22 qa-dock-float-window, P39): 右侧悬浮小卡片 ---- *
    用户两轮否定旧双形态（贴右下角小窗 / ≥1400 拉伸满高第三列）后定案的唯一形态：
    固定悬浮在笔记页右侧空白上，右缘对齐内容盒右缘（--space-5）、垂直居中——
-   既不在右上角也不在右下角；宽 380px、高随对话内容（max-height 后日志区自滚），
-   不随窗口占去小半屏。z-index 30 低于四个自绘 overlay 的 40、高于内容；
-   不是弹层：不挂 .fullscreen-overlay、不加遮罩、不锁滚动（SKILL §5）。
-   单一 fixed 形态、无断点：宽屏由 main 侧窗口缩放（window-zoom.ts）把 CSS 视口
-   钉在 1600 消化，卡片逐像素复用同一尺寸，只被物理等比例放大。 */
+   既不在右上角也不在右下角；高随对话内容（max-height 后日志区自滚），不随窗口占去
+   小半屏。z-index 30 低于四个自绘 overlay 的 40、高于内容；不是弹层：不挂
+   .fullscreen-overlay、不加遮罩、不锁滚动（SKILL §5）。单一 fixed 形态、无断点：
+   宽屏由 main 侧窗口缩放（window-zoom.ts）把 CSS 视口钉在 1600 消化，卡片逐像素
+   复用同一尺寸，只被物理等比例放大。 */
+/* P44 (plan 2026-09-22-qa-dock-float-window): 坞展开时笔记盒收到阅读轴 640——与题头
+   （.note-masthead 本就 640）、正文列同轴（SKILL §6「题头与正文列同轴」），右缘止于
+   328+640=968；追问小卡片只落在 968 以右的空白里（宽公式见 .qa-dock），任何窗宽都不压
+   笔记内容。旧 860 面板轴的右带（968→1188）正是工具行与导出按钮所在——卡片盖上去就
+   是盖住功能（2026-09-22 实拍：默认窗下卡片压住「导出 PDF 讲义」右端）。坞折叠/非笔记
+   页恢复 860 面板轴（基则不变，本规则只在 .qa-dock-open 下生效）。
+   代价（如实记）：工具行在 640 轴上换行更多（9 键从 2 行到约 3 行）、笔记库行窄 220px；
+   两者都是「给追问卡让位」的自觉取舍，折叠坞即回 860。 */
+.app-main.qa-dock-open .note-viewer { max-width: 640px; }
 .qa-dock {
   position: fixed;
   right: var(--space-5);
   top: 50%;
   transform: translateY(-50%);
   z-index: 30;
-  width: min(380px, calc(100vw - 2 * var(--space-5)));
-  max-height: min(70vh, 620px);
+  /* P43→P44（2026-09-22 实拍订正 + 用户二次订正「更窄、更长、不压笔记」）：
+     宽 = 笔记右侧那条空白本身——视口 − 右缘 24 −（侧栏 304 + 内容左距 24 +
+     阅读列 640 + 卡片与笔记的间距 12）= 正文右缘（968）以左不占一格；配合
+     .app-main.qa-dock-open 把笔记盒收到 640 阅读轴，工具行/封面/时间线 chips
+     全部让出，任何窗宽零重叠。≥1332 CSS 时长到 320 封顶（用户要「窄一点」，
+     380→320→260）。200px 下限：窗窄于「侧栏 304 + 阅读列 640 + 间距」之和时空白
+     算出来是负数，min() 会跟着变负（width 非法），max() 把下限兜住——那种窗下（≤1100
+     CSS）要么侧栏已自动收起（≤1024，空白反而够），要么用户手动收起，重叠不可避免、
+     如实记在探针 coversNote 里，可一键折叠。
+     订正：内容左距是 .content 的 padding --space-5（24px）而非 --space-4——用 16
+     算出的卡片左缘会比笔记右缘近 8px（与笔记的间距只剩 4px）。 */
+  width: max(200px, min(260px, calc(100vw - var(--space-5) - 304px - var(--space-5) - 640px - var(--space-3))));
+  /* 「变长一点」两连：70vh/620 → 78vh/680 → 84vh/720（默认窗 738 下 517→620px 高）。 */
+  max-height: min(84vh, 720px);
   display: flex;
   flex-direction: column;
   /* 批4 (P41): 兄弟间距——含「对话流 ↔ 输入行」——只在此处单点定义：
@@ -1560,11 +1581,6 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .qa-dock-title { font-size: var(--font-size-sm); font-weight: 600; color: var(--text); flex-shrink: 0; }
 .qa-dock-no-lesson { font-size: var(--font-size-xs); color: var(--text-muted); }
 .qa-dock-collapse { margin-left: auto; flex-shrink: 0; }
-/* 批3 (plan 2026-09-22 qa-dock-float-window, P40): 坞头一行要塞「标题 + 课时 chip +
-   收起键」，chip 必须可压缩——选择器带 .qa-dock-head 前缀，PageHeader/侧栏里的
-   chip 不受影响。 */
-.qa-dock-head .lesson-chip { flex: 1 1 auto; min-width: 0; }
-.qa-dock-head .lesson-chip-course, .qa-dock-head .lesson-chip-lesson { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 批4 (P41): margin-bottom: 0 兜底已删（base 规则也不再写 margin）——
    「对话流 ↔ 输入行」间距单点定义在 .qa-dock 的 gap。 */
 .qa-dock .qa-log { flex: 1; min-height: 0; overflow-y: auto; max-width: none; }
@@ -1575,7 +1591,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .qa-dock .qa-input-row .btn { flex: none; }
 /* 批3 (plan 2026-09-22, P40): 气泡拉满坞内可用宽（Q 右对齐/A 左对齐、ai-tag、
    ::before 3px 条纹语义不变），输入框不顶着内容轴上限。 */
-.qa-dock .qa-q, .qa-dock .qa-a { max-width: 100%; }
+.qa-dock .qa-q, .qa-dock .qa-a { max-width: 100%; overflow-wrap: anywhere; }
 .qa-dock .qa-input-row .qa-input { min-width: 0; }
 /* 折叠态：与卡片同一位置（右缘、垂直居中）同一形制——读作「卡片收了头」。 */
 .qa-dock-launcher {
