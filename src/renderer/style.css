@@ -60,6 +60,11 @@
      left edge. 批6 (P10/D6): 导图视图曾是这个 860 轴上的唯一破格例外
      （正文列 640 → 860），破格已删，五个视图同轴。 */
   --content-max: 860px;
+  /* 批1 (plan 2026-09-22-wide-screen-blank-space)：宽屏弹性轴上界——内容盒宽 =
+     CSS 视口 1600 − 侧栏 304 − .content 左右内边距 24×2。任务/设置面板轴从 860
+     封顶改为 min(本值, 100%)：宽视口内容撑满内容盒，窗口化窄窗时 100% 自然回落
+     单列——不引入任何 min-width 断点（style-scale 宽屏钉子保持零命中）。 */
+  --content-max-wide: 1248px;
   --shadow-sm: 0 1px 2px rgba(28, 34, 28, 0.04), 0 1px 4px rgba(28, 34, 28, 0.03);
   --shadow: 0 2px 6px rgba(28, 34, 28, 0.05), 0 8px 20px rgba(28, 34, 28, 0.06);
   --shadow-lg: 0 4px 10px rgba(28, 34, 28, 0.08), 0 16px 36px rgba(28, 34, 28, 0.12);
@@ -624,7 +629,7 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
    （Andiii 2026-09-22：「我不想让它发生任何的布局变化……其他任何都不要改变」）。
    旧实现用 `.app-main.qa-dock-open .note-viewer` 按展开态收窄，展开瞬间题头 chip 行/
    工具行重排、「导出 PDF 讲义」移位——正是他不要的布局跳变。 */
-.task-panel { max-width: var(--content-max); }
+.task-panel { max-width: min(var(--content-max-wide), 100%); }
 .note-viewer { max-width: 640px; }
 
 /* ---- 批A: unified page head + lesson identity chip ---- */
@@ -897,7 +902,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 
 /* M1-2: history filter chips + tools row */
-.history-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.history-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); /* 批1: 双列网格里的控制条跨整行（它是筛选条不是任务卡）。 */ grid-column: 1 / -1; }
 .filter-chips { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .chip {
   border: 1px solid var(--border);
@@ -1373,7 +1378,14 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .task-percent { flex-shrink: 0; font-size: var(--font-size-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
 
 /* History (M2 批 B: 课程名·课时名为主体的可读行) */
-.history-list { display: flex; flex-direction: column; gap: var(--space-2); }
+/* 批1 (plan 2026-09-22-wide-screen-blank-space)：任务卡双列网格。auto-fill +
+   minmax(600px, 1fr) 让列数随容器连续增减（窄内容盒自动单列、宽内容盒双列）——
+   没有断点、没有跳变阈值。 */
+.history-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
+  gap: var(--space-2);
+}
 .history-row {
   display: flex;
   align-items: center;
@@ -1858,6 +1870,13 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
 /* 批2: 内容列里的首启卡（零课程）——860px 上有余量，卡片更舒展，三个按钮横排。 */
 .welcome-guide-main { padding: var(--space-5); }
 .welcome-guide-main .guide-steps { margin: 0 auto var(--space-5); }
+/* 批1 (plan 2026-09-22-wide-screen-blank-space)：零课程首页 = 引导卡 + 数据流向卡
+   两张并排。flex-wrap + 卡片 1 1 460px：内容盒 ≥~940 时并排、更窄自然堆叠——无
+   断点；卡内容与 DISCLAIMER.md 第 4/7 条逐字对应（可核对，不新增承诺）。 */
+.welcome-guide-pair { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-4); }
+.welcome-guide-pair .welcome-guide { flex: 1 1 460px; max-width: 560px; margin: 0; }
+.welcome-guide-pair .welcome-guide .guide-steps { text-align: left; }
+.welcome-guide-note { font-size: var(--font-size-xs); }
 .empty-mark { color: var(--brass); opacity: 0.85; margin-bottom: 6px; display: flex; justify-content: center; }
 .empty-state h3 { margin: 0 0 8px; font-size: var(--font-size-lg); font-family: var(--font-display); font-weight: 400; letter-spacing: var(--tracking); }
 .empty-state p { color: var(--text-muted); margin: 0 0 14px; font-size: var(--font-size-md); }

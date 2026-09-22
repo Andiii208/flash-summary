@@ -200,8 +200,15 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     const host = mount(<App bridge={bridge} />)
     await waitForSelector('.welcome-guide-main')
     // 侧栏紧凑版 + 主区首启卡：同一份三步内容，两个落点。
-    expect(host.querySelectorAll('.welcome-guide')).toHaveLength(2)
+    // 批1（plan 2026-09-22-wide-screen-blank-space）：主区从单卡变**两张并排**
+    // （三步引导 + 数据流向说明，文案逐字对应 DISCLAIMER.md 第 4/7 条）。
+    expect(host.querySelectorAll('.welcome-guide')).toHaveLength(3)
     expect(host.querySelectorAll('.guide-steps')).toHaveLength(2)
+    // 数据流向卡的标题与两句关键事实（只发用户自配服务商 / 没有开发者服务器不上报）。
+    expect(host.textContent).toContain('数据流向')
+    expect(host.textContent).toContain('不发给本软件开发者，也不发给学校')
+    expect(host.textContent).toContain('没有开发者自有服务器，不上报任何数据给开发者')
+    expect(host.textContent).toContain('完整条款见「设置 › 关于与声明」')
     // 负向红线：左侧一门课都没有时，主区不许再给「点左侧课程树」这种不成立的指引。
     expect(host.textContent).not.toContain('先选择课时')
     expect(host.textContent).not.toContain('从左侧课程树点击一个课时')

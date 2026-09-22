@@ -500,8 +500,10 @@ describe('追问坞窄长化与零重叠（P44）', () => {
     expect(bodyOf('.note-viewer')).toContain('max-width: 640px')
     expect(stripped).not.toContain('qa-dock-open')
     expect(stripped.includes(':has(.qa-dock)')).toBe(false)
-    // 任务/设置面板仍是 860 面板轴（基则未被误伤）。
-    expect(bodyOf('.task-panel')).toContain('max-width: var(--content-max)')
+    // 任务/设置面板轴：批1（plan 2026-09-22-wide-screen-blank-space）起从 860 封顶
+    // 改为宽视口弹性上界（内容盒 1248）——笔记盒 640 阅读轴不受影响（上方已钉）。
+    expect(bodyOf('.task-panel')).toContain('max-width: min(var(--content-max-wide), 100%)')
+    expect(bodyOf(':root')).toContain('--content-max-wide: 1248px')
   })
 
   it('P47 卡片/小球 absolute 挂 .app-main——top:50% 即内容区垂直居中，不伸进顶栏', () => {
@@ -596,5 +598,22 @@ describe('首启与空库的排版合同（批2）', () => {
   it('升级旧笔记弹窗不再让列表顶出弹窗外框（min-width 比内容盒还宽的旧账）', () => {
     expect(bodyOf('.note-upgrade-list')).not.toContain('min-width')
     expect(stripped).toContain('.dialog:has(.note-upgrade-list)')
+  })
+})
+
+describe('宽屏吃空白批1（plan 2026-09-22-wide-screen-blank-space）', () => {
+  it('任务卡双列网格：auto-fill + minmax 连续增减列数，不用断点', () => {
+    const list = bodyOf('.history-list')
+    expect(list).toContain('display: grid')
+    expect(list).toContain('repeat(auto-fill, minmax(600px, 1fr))')
+    // 宽屏方向仍不得有 min-width 断点（P28 钉子，本批靠 auto-fill 而非断点实现）。
+    const wide = [...stripped.matchAll(/@media\s*\(min-width:\s*(\d+)px\)/g)].map((m) => m[1])
+    expect([...new Set(wide)]).toEqual([])
+  })
+
+  it('首页双卡（引导 + 数据流向）flex-wrap 并排——宽内容盒并排、窄内容盒堆叠', () => {
+    expect(bodyOf('.welcome-guide-pair')).toContain('display: flex')
+    expect(bodyOf('.welcome-guide-pair')).toContain('flex-wrap: wrap')
+    expect(bodyOf('.welcome-guide-pair .welcome-guide')).toContain('flex: 1 1 460px')
   })
 })

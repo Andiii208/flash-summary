@@ -335,7 +335,13 @@ async function probeZoomTiers(cdp, out) {
     const dr = dock == null ? null : dock.getBoundingClientRect()
     const nv = document.querySelector('.note-viewer')
     const nvRight = nv == null ? null : Math.round(nv.getBoundingClientRect().right)
-    return { outerW: window.outerWidth, cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth, dockW: dr == null ? null : Math.round(dr.width), dockH: dr == null ? null : Math.round(dr.height), dockRight: dr == null ? null : Math.round(dr.right), blankDock: dr == null ? null : Math.round(innerWidth - dr.right), dockPosition: dock == null ? null : getComputedStyle(dock).position, dockCoversNote: dr == null || nvRight == null ? null : dr.left < nvRight, dockCenterOffset: dr == null ? null : +Math.abs((dr.top + dr.bottom) / 2 - innerHeight / 2).toFixed(1), viewportH: innerHeight }
+    // 批1 (plan 2026-09-22-wide-screen-blank-space)：任务页口径——弹性面板轴右缘
+    // 空白 + 历史网格实际列数（auto-fill，反映当前内容盒下的真实列数）。
+    const taskPanel = document.querySelector('.task-panel')
+    const tpr = taskPanel == null ? null : taskPanel.getBoundingClientRect()
+    const grid = document.querySelector('.history-list')
+    const cols = grid == null ? null : getComputedStyle(grid).gridTemplateColumns.split(' ').length
+    return { outerW: window.outerWidth, cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth, dockW: dr == null ? null : Math.round(dr.width), dockH: dr == null ? null : Math.round(dr.height), dockRight: dr == null ? null : Math.round(dr.right), blankDock: dr == null ? null : Math.round(innerWidth - dr.right), dockPosition: dock == null ? null : getComputedStyle(dock).position, dockCoversNote: dr == null || nvRight == null ? null : dr.left < nvRight, dockCenterOffset: dr == null ? null : +Math.abs((dr.top + dr.bottom) / 2 - innerHeight / 2).toFixed(1), viewportH: innerHeight, taskPanelRight: tpr == null ? null : Math.round(tpr.right), taskBlankCss: tpr == null ? null : Math.round(cr.right - tpr.right), taskCols: cols }
   })()`
   for (const width of widths) {
     // P50-2: 每档先滚进正文，保证量到的是展开态卡片（停在 hero 带时它自动收成球）。
@@ -362,7 +368,15 @@ async function probeZoomTiers(cdp, out) {
     m = await cdp.json(measure)
     if (m == null) continue
     const zoom = +((width - inset) / m.cssVW).toFixed(3)
-    out.zoomTiers.push({ width, inset, expectedCssVW: expected, zoom, ...m })
+    // 批1 (plan 2026-09-22-wide-screen-blank-space)：任务页口径——切到「任务」tab
+    // 再量一次（弹性轴 + 双列网格），量完切回「笔记」（下一档的滚动状态由
+    // scrollIntoBody 重建，与既有口径一致）。
+    await clickTab(cdp, '任务')
+    await sleep(400)
+    const tm = await cdp.json(measure)
+    await clickTab(cdp, '笔记')
+    await sleep(200)
+    out.zoomTiers.push({ width, inset, expectedCssVW: expected, zoom, ...m, taskBlankCss: tm?.taskBlankCss ?? null, taskPanelRight: tm?.taskPanelRight ?? null, taskCols: tm?.taskCols ?? null })
   }
   // zoom≠1 下的弹层稳定性：最宽档打开全屏课程浏览器（fixed overlay + 96vw 卡片），
   // 量卡片是否完整落在视口内、文档有无横向溢出，然后 Esc 关掉。
@@ -886,7 +900,11 @@ function summarize(out) {
     for (const t of out.zoomTiers) {
       const ok = Math.abs(t.cssVW - t.expectedCssVW) <= 2
       const small = dockFitsSmall(t)
-      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤400 封顶且高 ≤560 封顶，P49-2/P50-1 规格）`)
+      // 批1 (plan 2026-09-22-wide-screen-blank-space)：任务页弹性轴空白与双列实况。
+      const taskPart = t.taskBlankCss == null
+        ? ''
+        : ` · 任务面板空白 ${t.taskBlankCss} CSS px · 历史网格 ${t.taskCols} 列`
+      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤400 封顶且高 ≤560 封顶，P49-2/P50-1 规格）${taskPart}`)
     }
   }
   if (out.zoomOverlay != null) {

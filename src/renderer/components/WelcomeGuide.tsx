@@ -21,9 +21,13 @@ export interface WelcomeGuideProps {
  * First-run onboarding: two parallel content sources, then providers, then
  * notes. 批6 (plan 2026-09-07 v07): this used to be a near-duplicate card —
  * it is now an EmptyState variant (steps as children, three actions).
+ * 批1 (plan 2026-09-22-wide-screen-blank-space): 'main' 变体在内容列里是**两张
+ * 并排的卡**——引导三步 + 数据流向说明。第二张把 DISCLAIMER.md 第 4/7 条的用户
+ * 最关心的两句（只发你自己配的服务商 / 没有开发者服务器不上报）搬到首屏，
+ * 完整条款仍指向「设置 › 关于与声明」。文案逐字可核对，不新增承诺。
  */
 export function WelcomeGuide({ onLogin, onOpenBili, onOpenSettings, busy = false, variant = 'sidebar' }: WelcomeGuideProps): JSX.Element {
-  return (
+  const guide = (
     <EmptyState
       className={variant === 'main' ? 'welcome-guide welcome-guide-main' : 'welcome-guide'}
       title="开始使用"
@@ -39,5 +43,16 @@ export function WelcomeGuide({ onLogin, onOpenBili, onOpenSettings, busy = false
         <li>选择课程或导入视频，生成笔记</li>
       </ol>
     </EmptyState>
+  )
+  if (variant !== 'main') return guide
+  return (
+    <div class="welcome-guide-pair">
+      {guide}
+      <EmptyState className="welcome-guide welcome-guide-main" title="数据流向">
+        <p>音频、视频截图、转写文本与追问内容，只发送到你自己在设置里配置的 ASR / LLM 服务商；不发给本软件开发者，也不发给学校。</p>
+        <p>本软件没有开发者自有服务器，不上报任何数据给开发者；课程、任务与笔记只存在这台电脑的资料库里。</p>
+        <p class="welcome-guide-note">完整条款见「设置 › 关于与声明」。</p>
+      </EmptyState>
+    </div>
   )
 }
