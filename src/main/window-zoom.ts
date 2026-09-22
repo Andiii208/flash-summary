@@ -16,6 +16,21 @@
  *
  * 纯函数、零依赖——挂点与节流在 src/main/index.ts，PDF 打印的临时复位在
  * src/main/notes/pdf-export.ts。
+ *
+ * ⚠️ 2026-09-22（plan 2026-09-22-wide-screen-blank-space）两条订正，后来者据此
+ * 推理前先读：
+ * ① **width 口径 = 物理像素**（`.tmp-zoom-check` 实验锁定：PowerShell
+ *    SetWindowPos 设物理宽 1500 → innerWidth 1486、zoom=1；若 getContentBounds
+ *    返回 DIP，同设置下视口会是 2250）。DPR 1.5 屏上 zoom=1 时 1 CSS px = 1
+ *    物理 px，字号物理值 = 15z——DPI 缩放不额外介入。
+ * ② **ZOOM_CAP 触顶后视口不再钉 1600**：W > 4000 物理时 z=2.5 封顶，视口 =
+ *    W/2.5 > 1600，布局会第一次「看见」>1600 的视口——而它按 ≤1600 设计，
+ *    右侧空白 =（视口−968）× 2.5 物理 px（双屏横拼拖窗会看到「越拖越空」）。
+ *    P28 钉子注释「宽屏档永不可命中」在 cap 之上是**假命题**；本机 2560 触不到，
+ *    但修复（让 cap 之上也钉视口，即改公式）属产品边界决策，未擅自改——
+ *    plan 2026-09-22-wide-screen-blank-space D10 记录在案。
+ * ③ 只监听 'resize'：换显示器/改系统缩放/RDP 后 zoom 不重算（跨屏拖动会漂移）。
+ *    加 'display-metric-changed' 监听是纯增益小修，列入该 plan D10 走查项。
  */
 
 /** CSS 视口的锚：窗口达到该宽度时缩放为 1，更宽按比例放大。 */

@@ -48,7 +48,7 @@ version: 1.0.0
 
 | 基元 | 规格 | 成员（选择器列表在 style.css 顶部基元块） |
 |---|---|---|
-| `.seg-tabs` | 14px / `8px 16px`，容器 `gap 4px + padding 4px`，允许换行 | `.tabs`（主导航）、`.note-tabs`（笔记视图切换） |
+| `.seg-tabs` | 14px / `8px 16px`，容器 `gap 4px + padding 4px`，允许换行 | `.tabs`（主导航）、`.note-tabs`（笔记视图切换）、`.qa-dock-tabs`（追问坞头「追问/目录」，2026-09-22 批2 入列） |
 | `.card` / `.card-lg` | padding 12px / 16px，圆角 `--radius` | 概念卡、公式卡、自测卡、时间线卡、体检面板、课程卡（大卡：任务状态条、设置块） |
 | `.row` / `.row-sm` | padding `8px 12px` / `8px 8px`，圆角 `--radius` | 历史行、笔记库行、考点卡 / provider 行、课程行、升级行（`.row-sm` 的横向内缩是 `--space-2`=8px——2026-09-21 批7 订正：规格表此前沿用了 8057786 收敛前的旧值 10px） |
 | `.group-head` | 12.5px / 620 / `--text-secondary` | 笔记库分组标题、`MyStudyPanel` 组头（侧栏一级 `.sidebar-head h2` 是 14px/650，内容区小节标题见 `.subheading` 14px/620） |
@@ -65,18 +65,25 @@ version: 1.0.0
 | `@media (max-width: 1180px)` | 内容盒装不下 860（面板轴） | 内容区横向内边距 24 → 16；任务行的时间列收起（让位给失败原因，完整时间戳仍在 `title` 里） |
 | `@media (max-width: 1024px)` | 装不下 640（正文轴） | 正文列与题头改流式；App 侧 `matchMedia` 让侧栏**挂载时**默认收起（不监听 resize，免得夺走用户的手动展开） |
 
-**宽屏方向没有断点——用窗口缩放代替（2026-09-21 P28）**：窗口一放大，`main`
-侧 `src/main/window-zoom.ts` 按物理宽度设 `webContents.setZoomFactor`
-（`z = clamp(W/1600, 1, 2.5)`），CSS 视口随之钉在 1600：所有页面的既定布局在
-宽屏逐像素复用 1600 窗口的形态，只是物理等比例放大；笔记页右侧空白由追问坞小窗
-（`.qa-dock`，见 §5）吸收，其余页面仅由缩放本身消化。**不要再加 `min-width` 断点去「适配宽
-屏」**——宽屏档在缩放方案下永不可命中（批6 的 1600 宽屏档已因此删除，见
-`style.css` 该处注释）；追问坞曾经的「坞档 `min-width: 1400px`」是唯一例外，已随
-2026-09-22「右侧悬浮小卡片」方案取消（§5）——**宽屏方向不再有任何 `min-width` 断点**。
+**宽屏方向没有断点——用窗口缩放 + 连续弹性函数代替**：窗口一放大，`main` 侧
+`src/main/window-zoom.ts` 按**物理宽度**设 `webContents.setZoomFactor`
+（`z = clamp(W/1600, 1, 2.5)`，W 口径 2026-09-22 实验锁定为物理像素），CSS 视口
+随之钉在 1600。2026-09-22「宽屏吃空白」四批（plan 2026-09-22-wide-screen-blank-space）
+起，宽屏填充改用**连续弹性函数**，与缩放互补而不是互斥：
 
-新增断点前先问：能不能用现有断点或窗口缩放解决？`tests/style-scale.test.ts`
-钉住了「窄窗只有 1180 与 1024、宽屏零 min-width」——加档要同时
-改测试，也就是要过审。
+- 面板轴：`max-width: min(var(--content-max-wide), 100%)`（`--content-max-wide: 1248px`
+  = 内容盒宽），任务/设置共用；
+- 网格：`repeat(auto-fill, minmax(Npx, 1fr))`——列数随容器连续增减，窄盒自动单列；
+- 正文装订线：`.note-viewer` 槽位居中公式 `margin-left: max(0px, calc((100% - 640px -
+  var(--space-3) - 460px) / 2))`（负值坍缩为左对齐兜底）；
+- 弹层卡宽：`clamp(下界, 96vw/98vw, 上界)` 随视口走，不再 px 封顶。
+
+**不要再加 `min-width` 断点去「适配宽屏」**——`tests/style-scale.test.ts` 钉住
+「宽屏方向零 min-width 断点、窄窗只有 1180/1024」。注意该钉子注释的旧理由
+「宽屏档在缩放方案下永不可命中」在 `ZOOM_CAP` 触顶（W>4000 物理，视口 >1600）
+后是假命题（见 `window-zoom.ts` 文件头订正②）；现在的理由是「宽屏用弹性函数已
+被证明够用，断点是最后一招」。追问坞的三种宽度形态（悬浮卡 200–460 / 折叠球 44px /
+宽屏不收球）全部由公式与 hook 视口判据实现，无断点。
 
 ## 4. 主题（浅色 «宣纸» / 暗色 «墨面»）
 
@@ -105,17 +112,16 @@ version: 1.0.0
 - **时间口径**：时间戳用 `formatTime`（mm:ss）/ `formatStamp`（绝对）/ `formatRelativeStamp`
   （一周内相对）；时长用 `formatDuration`（中文单位）。实现只有 `shared/format.ts` 与
   `shared/notes/format.ts` 两处，不许再抄。
-- **追问坞 `.qa-dock`（2026-09-22 改为笔记页右侧悬浮小卡片，见 docs/plans/2026-09-22-qa-dock-float-window.md）**：
+- **追问坞 `.qa-dock`（2026-09-22 右侧悬浮小卡片；2026-09-22 晚 R1+ 升格为「笔记副驾驶面板」，见 docs/plans/2026-09-22-qa-dock-float-window.md 与 2026-09-22-wide-screen-blank-space.md）**：
   **只在笔记页渲染**（任务页/设置页不显示）；**不是弹层**——不挂 `.fullscreen-overlay`、不加遮罩、不锁滚动。
-  **单一 `position: fixed` 形态，不依赖任何断点**：右缘对齐内容盒右缘（`var(--space-5)`）、
+  **单一 `absolute` 形态，不依赖任何断点**：右缘对齐内容盒右缘（`var(--space-5)`）、
   垂直居中（`top: 50% + translateY(-50%)`，不在右上角也不在右下角）、宽 = 笔记右侧空白本身
-  （`max(200px, min(260px, calc(100vw - 24 - 304 - 24 - 640 - 12)))`，默认窗 260px）、
-  高随对话内容（`min-height: min(300px, …)`、`max-height: min(56vh, 560px)`——卡片 absolute 挂 `.app-main`（后者 `position: relative`），`top: 50%` 即**内容区**垂直居中，不伸进顶栏；日志区自滚）、宽 = 笔记右侧空白本身（`max(200px, min(400px, calc(100vw - 24 - 304 - 24 - 640 - 12)))`——任何窗宽左缘贴笔记右缘、右缘贴窗缘，不留悬空 gap）、`z-index: 30`——低于四个自绘 overlay 的 40、高于内容。**跟正文一起出现（P50-2）**：滚到题头 hero 带自动收成小球、滚进正文自动展开（`use-qa-dock-at-hero`：滚动位置 < 题头带内容坐标底缘 − 80）；用户手动收起/展开置 closed/open 后手动意志优先。
+  （`max(200px, min(460px, calc(100vw - 24 - 304 - 24 - 640 - 12)))`——任何窗宽左缘贴笔记右缘、右缘贴窗缘，不留悬空 gap）、
+  高 = `min-height: min(300px, …)` + `max-height: min(70vh, 680px)`（R1+ 升格：化解「嫌短/嫌大」两头拉扯，输出后不再变大）、`z-index: 30`——低于四个自绘 overlay 的 40、高于内容。卡片 absolute 挂 `.app-main`（后者 `position: relative`），`top: 50%` 即**内容区**垂直居中，不伸进顶栏；日志区自滚。
+  **R1+ 三升格（2026-09-22 批2）**：① 坞头是 `.seg-tabs` 基元第三成员「追问 | 目录」tab 段（无章节时目录 tab 禁用并说明原因；目录复用 NoteViewer 的 `data-chapter-at` 锚点契约，不引第二数据源）；② **宽视口（≥1500 CSS）不收球**（`use-qa-dock-at-hero` 视口判据；窄窗 hero 带收球/滚进正文展开的原行为不变）；③ 空对话态给**建议问题 chips**（章节标题现成数据）；长答案可**全宽查看**（`.qa-wide` 挂 `.fullscreen-overlay` 基元 + scroll lock + focus trap + Esc 只关最上层——那是 modal，与坞本体「不是弹层」不矛盾）。
+  **跟正文一起出现（P50-2，窄窗）**：滚到题头 hero 带自动收成小球、滚进正文自动展开（`use-qa-dock-at-hero`：滚动位置 < 题头带内容坐标底缘 − 80）；用户手动收起/展开置 closed/open 后手动意志优先。
   折叠态为**同位置**的**悬浮小球** `.qa-dock-launcher`（P46，2026-09-22 用户「我认为这个小窗口应该是可以折叠的，比如折叠成一个悬浮小球」）：44px 圆形图标钮（`border-radius: 50%`、`MessageCircleQuestionMark`、accent 填充 + 对比色图标），与展开态卡片同一组定位值（右缘、内容区垂直居中、z-index 30）——折叠功能本来就有，旧形态是文字药丸，本批升级为球。
-  **展开/折叠零布局变化（P47）**：`.note-viewer` **常驻 640 阅读轴**（追问卡槽位常驻，不随展开状态收放），点小球展开时笔记侧一个像素都不动；旧实现按展开态收窄笔记盒，展开瞬间题头 chip 行/工具行重排、「导出 PDF 讲义」移位（Andiii 明令禁止）。**正文列 640 不变**（§6）；坞展开时
-  `.app-main.qa-dock-open` 把笔记盒收到阅读轴 640（右缘 968），卡片只落在 968 以右的空白里，
-  任何窗宽不压笔记内容（P44 实拍订正：旧 860 面板轴右带正是工具行/导出按钮所在）。**坞头无课时切换
-  chip**（P45，用户明示）——只剩「追问 + 收起」。
+  **展开/折叠零布局变化（P47）**：`.note-viewer` **常驻 640 阅读轴**（追问卡槽位常驻，不随展开状态收放），点小球展开时笔记侧一个像素都不动；旧实现按展开态收窄笔记盒，展开瞬间题头 chip 行/工具行重排、「导出 PDF 讲义」移位（Andiii 明令禁止）。**正文列 640 不变**（§6）；卡片只落在正文右缘以右的空白里，任何窗宽不压笔记内容（P44 实拍订正：旧 860 面板轴右带正是工具行/导出按钮所在）。**坞头无课时切换 chip**（P45，用户明示）。
   打印不受影响：`@media print` 整体隐藏 `.app-shell`，坞挂在其内。
 
 ## 6. 阅读排版（笔记正文）
