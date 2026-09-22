@@ -11,6 +11,7 @@ import { NoteExportMenu } from './NoteExportMenu'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { NoteLibrary } from './NoteLibrary'
 import { MindMap } from './MindMap'
+import { MindMapFullDialog } from './MindMapFullDialog'
 import { PageHeader } from './PageHeader'
 import { LessonChip, type LessonChipLesson } from './LessonChip'
 import { EmptyState } from './EmptyState'
@@ -178,6 +179,8 @@ export function NoteViewer({
   const [pendingAnchor, setPendingAnchor] = useState<string | null>(null)
   // 批3 (plan 2026-09-08 note-quality-overhaul): 内容体检面板开合；换笔记即收。
   const [healthOpen, setHealthOpen] = useState(false)
+  // P51 (plan 2026-09-22): 导图「全图」全屏浏览弹层；同样是阅后即收的临时态。
+  const [fullMapOpen, setFullMapOpen] = useState(false)
   useEffect(() => {
     setHealthOpen(false)
   }, [note])
@@ -559,6 +562,7 @@ function noteReadMinutes(note: Note): number {
               onExportSvg={onExportSvg}
               onExportPng={onExportPng}
               exportBusy={exportBusy}
+              onOpenFullMap={() => setFullMapOpen(true)}
             />
           ) : (
             sections.map((section) => (
@@ -580,6 +584,19 @@ function noteReadMinutes(note: Note): number {
           )}
         </div>
         </>
+      )}
+      {/* P51: 导图全图浏览弹层——只在思维导图视图开过；换视图/换笔记都随手关。 */}
+      {fullMapOpen && note != null && (
+        <MindMapFullDialog
+          tree={note.knowledgeTree}
+          concepts={note.concepts}
+          conceptLinks={note.conceptLinks}
+          onViewDetailed={jumpToConcept}
+          onExportSvg={onExportSvg}
+          onExportPng={onExportPng}
+          exportBusy={exportBusy}
+          onClose={() => setFullMapOpen(false)}
+        />
       )}
       {/* 批5: feedback polish — end of the note, every view except the mindmap
           (the map is a canvas, not prose to revise). */}

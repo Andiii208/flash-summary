@@ -293,7 +293,7 @@
 /* ---- 近全屏模态：四个自绘弹层此前各自手写同一套层语法（逐字重复四份），
         第四个「我的学习」本该是第五份。成员只挂选择器，规则体不得再出现
         position / inset / z-index / background / padding。 ---- */
-.fullscreen-overlay, .course-browser-overlay, .course-map-overlay, .bili-dialog-overlay {
+.fullscreen-overlay, .course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .mindmap-full-overlay {
   position: fixed; inset: 0; z-index: 40;
   background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
@@ -2199,9 +2199,10 @@ button.concept-ref:hover { color: var(--accent); }
 .mindmap-node.search-hit .mindmap-box { stroke: var(--accent); stroke-width: 2; }
 .mindmap-node.search-dim { opacity: 0.3; }
 /* M1.3 (map expansion): pan/zoom canvas affordances. */
-.mindmap-scroll { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 8px; cursor: grab; user-select: none; position: relative; }
-.mindmap-scroll.panning { cursor: grabbing; }
-.mindmap-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* P51 (plan 2026-09-22): 内部滚动/拖拽光标移除——导图是普通内容块，页面原生下滑
+   看完（Andiii「不应该是在内部去放大和缩小呀，应该跟其他界面一样可以直接下滑」）。
+   留 8px 内边距 + 边框/底色，`overflow: visible` 让 SVG 按拟合高度自然撑开。 */
+.mindmap-scroll { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 8px; user-select: none; position: relative; }
 
 /* M2.2 (map expansion): node info button + linked-content popover. */
 .mindmap-info { cursor: pointer; }
@@ -2244,8 +2245,11 @@ button.concept-ref:hover { color: var(--accent); }
 
 /* M4.1 (map expansion): course-level mind map dialog. */
 /* 批4: 覆盖层语法走 .fullscreen-overlay 基元（选择器在顶部基元块）。 */
+/* P51: 确定高度（而非 max-height）——卡片高度若由内容驱动，导图「按容器拟合」会形成
+   恶性反馈：图缩小 ⇒ 卡变小 ⇒ 容器变小 ⇒ 图更小……一路 ratchet 到 MIN_SCALE（全图弹层
+   首跑就踩到：图被压成 270×330、scale 0.4）。钉死 92vh 后 flex 布局给出确定盒，fit 收敛。 */
 .course-map-card {
-  width: min(1100px, 96vw); max-height: 92vh;
+  width: min(1100px, 96vw); height: 92vh;
   display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px;
@@ -2255,15 +2259,20 @@ button.concept-ref:hover { color: var(--accent); }
 .course-map-meta { margin: 2px 0 0; font-size: var(--font-size-sm); color: var(--text-muted); }
 .course-map-card .mindmap-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .course-map-card .mindmap-wrap .mindmap-scroll { flex: 1; min-height: 0; }
-/* 批6 (P12/D7, plan 2026-09-20-ux-issues-remediation): 笔记宿主此前没有高度规则，
-   容器被 SVG 内容撑起（实测 862 ≈ 内容 718 + 工具栏/面包屑 + padding）——画布连同
-   工具栏一起走页面级滚动，工具栏被滚出视口，「适应窗口」的竖直半边也在此宿主空转
-   （fitToViewport 量到的 clientHeight 是内容高度而非视口高度）。这里给宿主一个**确定
-   高度**，与课程导图弹层宿主（上面两条）同一策略：高度是容器级一次性预算（同弹层
-   max-height: 86vh 的先例），不走间距 token——D7 定档 min(60vh, 640px)，实拍数字见
-   批6 6.3 的提交信息。 */
-.note-body[data-view='mindmap'] .mindmap-wrap { height: min(60vh, 640px); display: flex; flex-direction: column; }
-.note-body[data-view='mindmap'] .mindmap-scroll { flex: 1; min-height: 0; }
+/* P51: 全图浏览弹层卡（与课程导图卡同形制：96vw/92vh、flex 列）——导图 fit='box' 在
+   卡内宽高拟合；仍装不下时倍率夹 MIN_SCALE，卡内滚动兜底。 */
+.mindmap-full-card {
+  width: min(1100px, 96vw); height: 92vh;
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 16px;
+}
+.mindmap-full-card .mindmap-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mindmap-full-card .mindmap-wrap .mindmap-scroll { flex: 1; min-height: 0; overflow: auto; }
+/* P51 (plan 2026-09-22): 笔记宿主回归自然高度——导图按容器宽适合比例呈现后，高度按
+   比例跟着长，交给**页面原生滚动**看完（旧固定高 60vh + 内部滚动盒正是「划不到底、
+   图也不完全」的根因）。工具栏/面包屑随页面一起滚，不再是钉住的视口 chrome。 */
+.note-body[data-view='mindmap'] .mindmap-wrap { display: flex; flex-direction: column; }
 /* 批3: 课程下暂无任何可用笔记时的空态（替代"空画布+全套工具栏"）。 */
 .course-map-empty {
   flex: 1;

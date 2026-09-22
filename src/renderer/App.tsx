@@ -196,7 +196,10 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   //   closed 用户手动收起过：只显示小球。
   // 不持久化：与 courseBrowserOpen 同类，刷新回到 auto（用户要的是「提问跟着内容走」）。
   const [qaDockMode, setQaDockMode] = useState<'auto' | 'open' | 'closed'>('auto')
-  const qaDockAtHero = useQaDockAtHero(tab === 'notes', state.currentLesson)
+  // contentKey 必须带上「笔记到位」：笔记是异步加载的，只跟 lesson id 的话 effect 不会
+  // 在笔记到达时重跑——那时量到的还是没有 .note-masthead 的陈旧态（探针实测：停在顶部
+  // 而卡片不收起）。无笔记记 ''，笔记到位记课时 id。
+  const qaDockAtHero = useQaDockAtHero(tab === 'notes', state.note == null ? '' : state.currentLesson)
   const qaDockVisible = tab === 'notes' && (qaDockMode === 'open' || (qaDockMode === 'auto' && !qaDockAtHero))
   const showWelcome = state.treeLoaded && state.tree.length === 0
 

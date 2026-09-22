@@ -518,7 +518,14 @@ const scrollIntoBody = (cdp) => cdp.eval(`(() => {
 async function probeDockAutoHide(cdp, out) {
   const state = () => cdp.json(`(() => ({ dock: document.querySelector('.qa-dock') != null, ball: document.querySelector('.qa-dock-launcher') != null }))()`)
   await cdp.eval(`(() => { const c = document.querySelector('.content'); if (c != null) c.scrollTop = 0; return true })()`)
-  await sleep(700)
+  // .content 是 scroll-behavior:smooth——睡 700ms 对长页可能还没滚到头，会把「还在滚」
+  // 误判成「没收起」。轮询到 scrollTop 归零再量。
+  for (let i = 0; i < 20; i++) {
+    const top = await cdp.eval(`(() => document.querySelector('.content')?.scrollTop ?? 0)()`)
+    if (top === 0) break
+    await sleep(200)
+  }
+  await sleep(500)
   const atTop = await state()
   await scrollIntoBody(cdp)
   await sleep(700)
@@ -688,22 +695,29 @@ const MINDMAP_GEOMETRY = `(() => {
   const w = Number(svg.getAttribute('width'))
   const h = Number(svg.getAttribute('height'))
   const vb = (svg.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number)
-  const scale = w / vb[2]
   return {
-    found: true, scale,
+    found: true,
+    // P51: 只剩「适合比例」倍率 = 元素盒宽 / 图幅宽（viewBox 恒为整幅，无平移）。
+    scale: w / vb[2],
     scrollW: sc.clientWidth, scrollH: sc.clientHeight,
     wrapH: wrap == null ? null : Math.round(wrap.getBoundingClientRect().height),
     noteBodyW: noteBody == null ? null : Math.round(noteBody.getBoundingClientRect().width),
     svgW: w, svgH: h,
-    drawnW: Math.round(w), drawnH: Math.round(h),
-    overX: sc.scrollWidth - sc.clientWidth, overY: sc.scrollHeight - sc.clientHeight,
+    vb: vb,
+    // 图幅宽（viewBox 宽）——余量判据用它。
+    frameW: vb[2], frameH: vb[3],
+    // 元素盒右缘 → 容器内容盒右缘的余量（应 ≥ 0；规格 FIT_MARGIN 16 ⇒ 实际 ≥ 16 或图更小）。
+    rightGap: Math.max(0, sc.clientWidth - svg.getBoundingClientRect().width),
+    // 页面级滚动：导图跟着页面滚（内容区滚动量 > 0），滚动容器自身无内部滚动。
+    pageScrollable: content == null ? null : content.scrollHeight > content.clientHeight + 4,
+    innerOverflowX: sc.scrollWidth - sc.clientWidth,
     toolbarTop: content == null || toolbar == null ? null : Math.round(toolbar.getBoundingClientRect().top - content.getBoundingClientRect().top),
-    pageOverflow: content == null ? null : content.scrollHeight - content.clientHeight,
-    fits: w <= sc.clientWidth + 1 && h <= sc.clientHeight + 1
+    pageOverflow: content == null ? null : content.scrollHeight - content.clientHeight
   }
 })()`
 
-/** 导图三态：首屏适应 / 放大后适应 / 窄窗适应（批3 T15）。 */
+/** P51 (plan 2026-09-22): 导图新验收——无内部缩放/平移；按容器宽适合比例 + 16px 余量；
+    页面原生下滑看完；「全图」钮开全屏浏览弹层，弹层里图更大。 */
 async function probeMindmap(cdp, out) {
   await selectNotedLesson(cdp)
   await clickTab(cdp, '笔记')
@@ -711,23 +725,40 @@ async function probeMindmap(cdp, out) {
   await clickByText(cdp, '.note-tabs button', '思维导图')
   await sleep(1500)
   out.mindmap = await cdp.json(MINDMAP_GEOMETRY)
-  // P27 (plan 2026-09-21): 可见的「放大」按钮——点它之后倍率必须真的上去（此前
-  // 缩放只有 Ctrl+滚轮/键盘两条不可见路径，这条把「按钮能放大」变成可执行验收）。
-  await clickByText(cdp, '.mindmap-toolbar button', '放大')
-  await sleep(400)
-  out.mindmapBtnZoom = await cdp.json(MINDMAP_GEOMETRY)
-  out.mindmapZoomLabel = await cdp.json(`(() => document.querySelector('[data-testid="mindmap-zoom-label"]')?.textContent ?? null)()`)
-  await cdp.eval(`(() => { const c = document.querySelector('.mindmap-scroll'); c.focus(); for (let i = 0; i < 3; i++) c.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true })); return true })()`)
-  await sleep(400)
-  out.mindmapZoomed = await cdp.json(MINDMAP_GEOMETRY)
-  await clickByText(cdp, '.mindmap-toolbar button', '适应窗口')
-  await sleep(500)
-  out.mindmapRefit = await cdp.json(MINDMAP_GEOMETRY)
+  // ① 无内部缩放入口：工具栏里没有 放大/缩小/倍率/适应窗口。
+  out.mindmapNoZoomControls = await cdp.json(`(() => ({
+    zoomIn: document.querySelector('[data-testid="mindmap-zoom-in"]') != null,
+    zoomOut: document.querySelector('[data-testid="mindmap-zoom-out"]') != null,
+    zoomLabel: document.querySelector('.mindmap-zoom-label') != null,
+    fitBtn: [...document.querySelectorAll('.mindmap-toolbar button')].some(b => b.textContent === '适应窗口'),
+    fullBtn: [...document.querySelectorAll('.mindmap-toolbar button')].some(b => b.textContent === '全图')
+  }))()`)
+  // ② Ctrl+滚轮不再改变 viewBox（缩放整套移除）。
+  const before = await cdp.json(`(() => { const s = document.querySelector('.mindmap-scroll svg'); return s.getAttribute('viewBox') })()`)
+  await cdp.eval(`(() => { const c = document.querySelector('.mindmap-scroll'); const e = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120 }); Object.defineProperty(e, 'ctrlKey', { value: true }); c.dispatchEvent(e); return true })()`)
+  const after = await cdp.json(`(() => { const s = document.querySelector('.mindmap-scroll svg'); return s.getAttribute('viewBox') })()`)
+  out.mindmapCtrlWheelNoZoom = before === after
+  // ③ 「全图」开弹层：弹层里图更大（fit='box'）、Esc 可关。
+  await clickByText(cdp, '.mindmap-toolbar button', '全图')
+  await sleep(900)
+  out.mindmapFull = await cdp.json(`(() => {
+    const d = document.querySelector('[data-testid="mindmap-full-dialog"]')
+    const svg = d == null ? null : d.querySelector('.mindmap-scroll svg')
+    if (d == null || svg == null) return { opened: false }
+    const r = svg.getBoundingClientRect()
+    const vb = (svg.getAttribute('viewBox') || '').split(/[ ,]+/).map(Number)
+    return { opened: true, svgW: Math.round(r.width), svgH: Math.round(r.height), frameW: vb[2], frameH: vb[3], scale: +(Math.round(r.width) / vb[2]).toFixed(3), vh: innerHeight, fits: r.height <= innerHeight + 1 }
+  })()`)
+  await cdp.shot(join(ROOT, '.ui-shots', 'mindmap', 'full-map.png'))
+  await cdp.eval(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true })()`)
+  await sleep(600)
+  out.mindmapFullClosed = await cdp.json(`(() => document.querySelector('[data-testid="mindmap-full-dialog"]') == null)()`)
+  // ④ 窄窗（Emulation 覆盖视口）：图仍按宽拟合、页面仍可下滑看完。
   await cdp.setViewport(960, 600)
-  await clickByText(cdp, '.mindmap-toolbar button', '适应窗口')
-  await sleep(500)
+  await sleep(600)
   out.mindmapNarrow = await cdp.json(MINDMAP_GEOMETRY)
   await cdp.clearViewport()
+  await sleep(400)
   await cdp.shot(join(ROOT, '.ui-shots', 'mindmap', 'fitted.png'))
 }
 
@@ -831,9 +862,21 @@ function summarize(out) {
   if (out.provider?.found === true) {
     lines.push(`能力复选框组 ${out.provider.display} · gap ${out.provider.gap} · ${out.provider.checks.map((c) => `${c.text} ${c.w}×${c.h}`).join(' / ')}`)
   }
-  for (const [key, label] of [['mindmap', '导图首屏'], ['mindmapZoomed', '放大后'], ['mindmapRefit', '适应后'], ['mindmapNarrow', '窄窗适应']]) {
-    const m = out[key]
-    if (m?.found === true) lines.push(`${label} scale ${m.scale.toFixed(3)} · 画布 ${m.scrollW}×${m.scrollH} · 宿主高 ${m.wrapH} · 内容 ${m.svgW}×${m.svgH} → 元素盒 ${m.drawnW}×${m.drawnH} · 溢出 ${m.overX}/${m.overY} · 工具栏顶 ${m.toolbarTop} vs 页滚 ${m.pageOverflow} · 装得下 ${m.fits}`)
+  if (out.mindmap?.found === true) {
+    const m = out.mindmap
+    lines.push(`导图（页内）scale ${m.scale.toFixed(3)} · 元素盒 ${m.svgW}×${m.svgH} · 图幅 ${m.frameW}×${m.frameH} · 右缘余量 ${m.rightGap}px · 内部横溢 ${m.innerOverflowX} · 页面可下滑 ${yesno(m.pageScrollable)}`)
+  }
+  if (out.mindmapNoZoomControls != null) {
+    const z = out.mindmapNoZoomControls
+    lines.push(`无内部缩放入口 ${!z.zoomIn && !z.zoomOut && !z.zoomLabel && !z.fitBtn ? '✓' : '✗'} · 工具栏「全图」钮 ${z.fullBtn ? '✓' : '✗'} · Ctrl+滚轮不改 viewBox ${out.mindmapCtrlWheelNoZoom ? '✓' : '✗'}`)
+  }
+  if (out.mindmapFull?.opened === true) {
+    const f = out.mindmapFull
+    lines.push(`全图弹层：图 ${f.svgW}×${f.svgH}（图幅 ${f.frameW}×${f.frameH}，scale ${f.scale}）· 视口内 ${f.fits}${out.mindmapFullClosed === true ? ' · Esc 关闭 ✓' : ' · Esc 关闭 ✗'}`)
+  }
+  if (out.mindmapNarrow?.found === true) {
+    const n = out.mindmapNarrow
+    lines.push(`导图（窄窗 960）scale ${n.scale.toFixed(3)} · 元素盒 ${n.svgW}×${n.svgH} · 右缘余量 ${n.rightGap}px · 内部横溢 ${n.innerOverflowX}`)
   }
   if (out.dockAutoHide != null) {
     const a = out.dockAutoHide

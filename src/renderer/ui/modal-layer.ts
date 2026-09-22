@@ -15,7 +15,7 @@
  * 自己的层根再比对——卸载过的旧实例其元素已脱离文档，天然不再是最上层（这同时
  * 治掉了 tests/helpers/preact.ts 不清 unmount 带来的「旧实例也响应 Esc」噪声）。
  */
-const OVERLAY_SELECTOR = '.fullscreen-overlay, .course-browser-overlay, .course-map-overlay, .bili-dialog-overlay'
+const OVERLAY_SELECTOR = '.fullscreen-overlay, .course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .mindmap-full-overlay'
 const MODAL_ROOT_SELECTOR = `.dialog-backdrop, ${OVERLAY_SELECTOR}`
 
 /** 只有最上层的模态层该响应 Esc（被压在下面的层不响应）。 */

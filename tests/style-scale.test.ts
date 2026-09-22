@@ -234,12 +234,23 @@ describe('近全屏模态基元（批4）', () => {
     expect(body).toContain('z-index: 40')
     expect(body).toContain('background: var(--scrim)')
     expect(body).toContain('padding: var(--space-3)')
-    for (const sel of ['.course-browser-overlay', '.course-map-overlay', '.bili-dialog-overlay']) {
+    for (const sel of ['.course-browser-overlay', '.course-map-overlay', '.bili-dialog-overlay', '.mindmap-full-overlay']) {
       expect(stripped, `${sel} 必须在基元的选择器列表里`).toContain(sel)
       expect(hasOwnRule(sel), `${sel} 不该再自写一条覆盖层规则（成员只挂选择器）`).toBe(false)
     }
     // 全站只剩这一处 z-index: 40（此前三处逐字重复 + 新增一处）。
     expect((stripped.match(/z-index: 40/g) ?? []).length).toBe(1)
+  })
+
+  // P51 (plan 2026-09-22): 导图全图浏览卡必须**确定高度**（height，不是 max-height）。
+  // 卡片高度若由内容驱动，「按容器拟合」会恶性反馈：图缩小 ⇒ 卡变小 ⇒ 容器变小 ⇒
+  // 图更小……一路 ratchet 到 MIN_SCALE（首跑实测被压成 270×330/scale 0.4）。
+  it('P51 反 ratchet：全图浏览卡用确定高度（height: 92vh，不靠内容撑）', () => {
+    const card = bodyOf('.mindmap-full-card')
+    expect(card).toContain('height: 92vh')
+    expect(card).not.toContain('max-height')
+    // 宿主给导图容器的 flex 预算不变（flex:1 + min-height:0）。
+    expect(bodyOf('.mindmap-full-card .mindmap-wrap .mindmap-scroll')).toContain('flex: 1')
   })
 
   it('共享确认弹层是另一档（z-index 60、grid 居中），不并入这个基元', () => {

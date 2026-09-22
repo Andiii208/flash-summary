@@ -6,37 +6,23 @@ import { computeRelationLayout } from '../../shared/notes/relation-layout'
 import { QuizCards } from './NoteBlocks'
 import { InlineText } from './InlineText'
 
-/** M1.3 viewport transform: viewBox window over the unchanged layout geometry. */
-interface View {
-  scale: number
-  x: number
-  y: number
-}
+/**
+ * P51 (plan 2026-09-22-qa-dock-float-window): 导图回归「普通内容块」——**内部缩放/平移
+ * 整套移除**（Andiii：「不应该是在内部去放大和缩小呀，应该跟其他界面一样可以直接下滑……
+ * 不需要你设置一个内部的放大缩小」）。两种 fit：
+ *   width  按容器**宽**拟合，高度按比例跟着长，页面原生下滑看完（笔记页默认）；
+ *   box    宽高都拟合进容器（课程导图弹层 / 全图浏览弹层——容器有确定高度）。
+ * FIT_MARGIN_PX 就是 Andiii 要的「余量」：图不贴边。旧「内部滚动 + viewBox 平移」那套
+ * 的病（窗口=容器高 ⇒ 竖直无可滚内容、平移把底部钳走 ⇒ 划不到底、图也不完全）随之消失。
+ */
+export type MindMapFit = 'width' | 'box'
 
+const FIT_MARGIN_PX = 16
+/** fit='box' 的倍率下限：图大到拟合不出可读尺寸时兜底，交给容器滚动。 */
 const MIN_SCALE = 0.4
-const MAX_SCALE = 3
-const IDENTITY_VIEW: View = Object.freeze({ scale: 1, x: 0, y: 0 })
 /** 批3 (T13): 关系标签的字号——必须与 style.css 的 .mindmap-link-label 一致，
  *  胶囊盒宽按同一套单位模型算（CJK = 1 个字宽）。 */
 const LABEL_FONT_SIZE = 11
-
-/**
- * 批6 (P11, plan 2026-09-20-ux-issues-remediation): 视口窗口的**用户单位**尺寸。
- *
- * 旧模型把元素盒钉死在布局原宽（`<svg width={frame.width}>`），缩放只改 viewBox，
- * 于是 892px 的元素盒配 859px 的容器 = 常驻 49px 幽灵横滚条（「适应窗口」也消不掉）。
- * 新模型：窗口 = min(内容/缩放, 内容)——缩到装得下时窗口就是整幅内容（元素盒 =
- * 内容 × 缩放，装得进容器），放大时窗口小于内容（元素盒 = 布局原宽，真实溢出照常可滚）。
- * 缩放倍率不变：元素盒 / 窗口 = scale。
- */
-function viewportWindow(scale: number, layoutWidth: number, layoutHeight: number): { width: number; height: number } {
-  return { width: Math.min(layoutWidth / scale, layoutWidth), height: Math.min(layoutHeight / scale, layoutHeight) }
-}
-
-/** 视口偏移钳到 [0, 内容 − 窗口]——窗口不得越出内容，否则画布边出现空白带。 */
-function clampOffset(value: number, max: number): number {
-  return Math.min(Math.max(value, 0), Math.max(0, max))
-}
 
 /**
  * 滚动容器的**内容盒**尺寸：clientWidth/Height 含 padding，画布元素盒必须装进
@@ -50,21 +36,6 @@ function contentBoxSize(el: HTMLElement): { width: number; height: number } {
   return {
     width: el.clientWidth - px(style.paddingLeft) - px(style.paddingRight),
     height: el.clientHeight - px(style.paddingTop) - px(style.paddingBottom)
-  }
-}
-
-/** Zoom to `nextScale` keeping the layout point at viewport fractions fx/fy fixed. */
-function zoomAt(view: View, nextScale: number, fx: number, fy: number, layoutWidth: number, layoutHeight: number): View {
-  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, nextScale))
-  if (scale === view.scale) return view
-  const before = viewportWindow(view.scale, layoutWidth, layoutHeight)
-  const after = viewportWindow(scale, layoutWidth, layoutHeight)
-  const anchorX = view.x + fx * before.width
-  const anchorY = view.y + fy * before.height
-  return {
-    scale,
-    x: clampOffset(anchorX - fx * after.width, layoutWidth - after.width),
-    y: clampOffset(anchorY - fy * after.height, layoutHeight - after.height)
   }
 }
 
@@ -131,9 +102,9 @@ function crumbsFor(tree: TreeNode, focusPath: string): Array<{ path: string; tit
  * highlights hits, dims the rest, unfolds hit ancestors and scrolls the
  * first hit into view.
  *
- * M1.3 (map expansion): Ctrl/⌘+wheel zooms around the pointer, background
- * drag pans, keyboard +/-/0 zoom & reset — all as viewBox transforms, the
- * layout geometry stays untouched (PDF handout shares it unchanged).
+ * P51 (plan 2026-09-22): 内部缩放/平移已移除——导图是普通内容块，按容器宽适合比例
+ * 呈现、页面原生下滑看完；看不清时用工具栏「全图」开全屏浏览弹层。布局几何本身
+ * 不变（PDF handout / SVG 导出照旧共用）。
  */
 /** M2.2 node popover: linked concepts + anchored quiz + a jump into the
  *  detailed view (决策点 D2 — the node body keeps its collapse click, the
@@ -152,6 +123,12 @@ export interface MindMapProps {
   onExportPng?: () => void
   /** 健康巡查 2026-09-12 批5: the in-flight export kind (busy state). */
   exportBusy?: string | null
+  /** P51 (plan 2026-09-22): 适合比例模式——width=按容器宽拟合（默认，页面下滑看完），
+   *  box=宽高都拟合进容器（课程导图弹层/全图浏览弹层这类有确定高度的宿主）。 */
+  fit?: MindMapFit
+  /** P51: 传了才在工具栏渲染「全图」钮（开全屏浏览弹层）——弹层内的实例不传，
+   *  避免套娃。 */
+  onOpenFullMap?: () => void
 }
 
 const EMPTY_LINKS: ConceptLink[] = []
@@ -164,18 +141,18 @@ export function MindMap({
   onViewDetailed,
   onExportSvg,
   onExportPng,
-  exportBusy = null
+  exportBusy = null,
+  fit = 'width',
+  onOpenFullMap
 }: MindMapProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
-  const [view, setView] = useState<View>(IDENTITY_VIEW)
-  const [panning, setPanning] = useState(false)
+  /** P51: 只剩一个「适合比例」倍率（≤1，只缩小不放大），没有任何 pan/zoom 状态。 */
+  const [scale, setScale] = useState(1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<SVGSVGElement>(null)
   /** FLIP bookkeeping: previous y per node path (x is depth-fixed). */
   const prevYRef = useRef<Map<string, number>>(new Map())
-  /** M1.3 active background-drag gesture (null = not panning). */
-  const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: View } | null>(null)
   /** M2.2 path of the node whose popover is open (null = closed). */
   const [popoverPath, setPopoverPath] = useState<string | null>(null)
   /** M2.3 recall mode: masked titles revealed one click at a time. */
@@ -236,41 +213,35 @@ export function MindMap({
   )
 
   /**
-   * 批3 (T15, D11): 把整张图装进视口。此前打开一张两课时的地图，svg 938×1420
-   * 而滚动视口只有 525 高——竖直只显示约 37%，用户得先滚再找。scale 夹在
-   * MIN_SCALE..1（不放大，只缩小到装得下），并把滚动位置居中到内容上。
+   * P51: 适合比例倍率——容器宽（fit='width'）或宽高（fit='box'）拟合，留
+   * FIT_MARGIN_PX 余量（Andiii「你可以设置一个余量」）。≤1：只把大图缩小到装得下，
+   * 小图不放大（放大了节点文字跟着矢量放大，反而稀散）。width 模式下高度按比例跟着
+   * 长，交给**页面原生滚动**看完——不再有内部滚动盒。
    *
-   * 批6 (P11): 量的是**内容盒**而不是 clientWidth/Height——clientWidth 含 padding，
-   * 而 `.mindmap-scroll` 有 8px padding：按 clientWidth 算出来的元素盒加上 padding
-   * 正好比容器宽 16px，就是那条「适应窗口也消不掉」的幽灵横滚（6.0 探针量到的
-   * overX 就是它）。
+   * 量的是滚动容器的**内容盒**（clientWidth/Height 含 padding，见 contentBoxSize）。
+   * ResizeObserver 让侧栏折叠/窗口缩放/弹层尺寸变化都能重算；happy-dom 没有
+   * ResizeObserver，按「仅布局变化时重算」退化（组件测试 stub clientWidth 即可）。
    */
-  const fitToViewport = useCallback((): boolean => {
+  const measureScale = useCallback((): void => {
     const el = scrollRef.current
-    if (el == null || frame.width <= 0 || frame.height <= 0) return false
+    if (el == null || frame.width <= 0 || frame.height <= 0) return
     const box = contentBoxSize(el)
-    if (box.width <= 0 || box.height <= 0) return false
-    const target = Math.min(1, Math.max(MIN_SCALE, Math.min(box.width / frame.width, box.height / frame.height)))
-    setView(zoomAt(IDENTITY_VIEW, target, 0.5, 0.5, frame.width, frame.height))
-    if (typeof el.scrollTo === 'function') {
-      el.scrollTo({ left: Math.max(0, (frame.width - box.width) / 2), top: Math.max(0, (frame.height - box.height) / 2) })
-    }
-    return true
-  }, [frame.width, frame.height])
+    if (box.width <= 0) return
+    const byWidth = (box.width - FIT_MARGIN_PX * 2) / frame.width
+    const target = fit === 'box' ? Math.min(byWidth, box.height > 0 ? (box.height - FIT_MARGIN_PX * 2) / frame.height : 1) : byWidth
+    setScale(Math.min(1, Math.max(MIN_SCALE, target)))
+  }, [frame.width, frame.height, fit])
 
-  // 首屏自适应：只在首次量到内容尺寸时做一次（之后用户的缩放/平移不再被夺走）。
-  const fittedRef = useRef(false)
-  useEffect(() => {
-    if (fittedRef.current) return
-    // 量到尺寸才吃这一次机会：挂载首帧 clientWidth 可能还是 0。
-    if (fitToViewport()) fittedRef.current = true
-  }, [fitToViewport])
+  useLayoutEffect(measureScale, [measureScale])
 
-  // Any pan/zoom move closes the popover — the HTML card cannot track the
-  // transformed SVG content.
+  // 容器尺寸变化（窗口缩放/侧栏折叠/弹层）时重算——只观察存在的环境。
   useEffect(() => {
-    setPopoverPath(null)
-  }, [view])
+    const el = scrollRef.current
+    if (el == null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => measureScale())
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [measureScale])
 
   // M3.2: collapse state lives in FULL-path space; a toggle arriving from the
   // layout (subtree-relative) is translated before it lands in the set.
@@ -327,78 +298,6 @@ export function MindMap({
     if (el != null && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [layout, matched])
 
-  // M1.3: Ctrl/⌘+wheel zooms around the pointer — a native non-passive
-  // listener so preventDefault beats the browser page-zoom; a plain wheel
-  // (no modifier) falls through to native scrolling.
-  useEffect(() => {
-    const container = scrollRef.current
-    if (container == null) return
-    const onWheel = (e: WheelEvent): void => {
-      if (!e.ctrlKey && !e.metaKey) return
-      e.preventDefault()
-      const rect = (rootRef.current ?? container).getBoundingClientRect()
-      const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5
-      const fy = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5
-      setView((prev) => zoomAt(prev, prev.scale * Math.exp(-e.deltaY * 0.002), fx, fy, frame.width, frame.height))
-    }
-    container.addEventListener('wheel', onWheel, { passive: false })
-    return () => container.removeEventListener('wheel', onWheel)
-  }, [frame.width, frame.height])
-
-  // M1.3: background drag pans via the viewBox offset. A drag starting on a
-  // node stays a click so collapse keeps its single-click semantics.
-  const onPointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
-    if ((e.target as Element).closest?.('.mindmap-node') != null) return
-    panRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, origin: view }
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId)
-    } catch {
-      // Capture unavailable (env without active-pointer tracking): panning
-      // still works while the pointer stays over the canvas.
-    }
-    setPanning(true)
-  }
-
-  const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
-    const pan = panRef.current
-    if (pan == null || e.pointerId !== pan.pointerId) return
-    // 批6 (P11): 平移同样钳在内容边界内（窗口越界 = 画布边出现空白带）。
-    const win = viewportWindow(pan.origin.scale, frame.width, frame.height)
-    setView({
-      scale: pan.origin.scale,
-      x: clampOffset(pan.origin.x - (e.clientX - pan.startX) / pan.origin.scale, frame.width - win.width),
-      y: clampOffset(pan.origin.y - (e.clientY - pan.startY) / pan.origin.scale, frame.height - win.height)
-    })
-  }
-
-  const endPan = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
-    if (panRef.current == null || e.pointerId !== panRef.current.pointerId) return
-    panRef.current = null
-    setPanning(false)
-  }
-
-  /** P27 (plan 2026-09-21): 工具栏可见的放大/缩小——倍率与键盘 +/- 同一（1.2），
-   *  锚点取画布中心（按钮点击没有指针位置可言）。此前缩放只有 Ctrl+滚轮与「选中
-   *  画布后按 +/-」两条不可见路径，界面上没有任何放大入口，而默认窗首屏还把图
-   *  压到 0.4 倍——用户实报「太小了影响观看」。 */
-  const zoomBy = useCallback((factor: number): void => {
-    setView((prev) => zoomAt(prev, prev.scale * factor, 0.5, 0.5, frame.width, frame.height))
-  }, [frame.width, frame.height])
-
-  /** M1.3 keyboard: +/-/=/0 zoom and reset while the canvas holds focus. */
-  const canvasKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
-    if (e.key === '+' || e.key === '=') {
-      e.preventDefault()
-      setView((prev) => zoomAt(prev, prev.scale * 1.2, 0.5, 0.5, frame.width, frame.height))
-    } else if (e.key === '-') {
-      e.preventDefault()
-      setView((prev) => zoomAt(prev, prev.scale / 1.2, 0.5, 0.5, frame.width, frame.height))
-    } else if (e.key === '0') {
-      e.preventDefault()
-      fitToViewport()
-    }
-  }
-
   // 批D FLIP: after each re-layout, every surviving node starts from its
   // previous y (no transition), then CSS-transitions to the new position.
   useLayoutEffect(() => {
@@ -445,9 +344,6 @@ export function MindMap({
   }
 
   const searching = matched.size > 0
-  /* 批6 (P11): 元素盒 = 视口窗口 × 缩放（不再是布局原宽）——缩放倍率仍然是
-     元素盒/viewBox = scale，但缩到装得下时元素盒跟着变小，幽灵横滚条消失。 */
-  const win = viewportWindow(view.scale, frame.width, frame.height)
 
   return (
     <div class="mindmap-wrap" data-testid="mindmap">
@@ -467,20 +363,14 @@ export function MindMap({
         </button>
         {/* 批3: 工具栏分组——折叠控制 · 视图 · 模式 · 导出，分隔线让功能域可扫读。 */}
         <span class="mindmap-toolbar-divider" aria-hidden="true" />
-        <button class="btn small" onClick={fitToViewport} title="把整张图缩到刚好装进窗口（快捷键 0）">
-          适应窗口
-        </button>
-        {/* P27 (plan 2026-09-21): 放大/缩小入口 + 倍率常驻——缩放能力本就存在
-            （Ctrl+滚轮、画布聚焦后 +/-），缺的只是看得见点得到。 */}
-        <button class="btn small" onClick={() => zoomBy(1.2)} title="放大（快捷键 +，或 Ctrl+滚轮）" data-testid="mindmap-zoom-in">
-          放大
-        </button>
-        <button class="btn small" onClick={() => zoomBy(1 / 1.2)} title="缩小（快捷键 -，或 Ctrl+滚轮）" data-testid="mindmap-zoom-out">
-          缩小
-        </button>
-        <span class="mindmap-zoom-label" data-testid="mindmap-zoom-label" title="当前缩放倍率（Ctrl+滚轮 / +/- 也可调）">
-          {Math.round(view.scale * 100)}%
-        </span>
+        {/* P51 (plan 2026-09-22): 内部缩放/平移整套移除，视图组只剩「全图」——图按容器
+            宽适合比例呈现、页面下滑看完；元素太多看不清时点它开全屏浏览弹层
+            （Andiii：「不需要你设置一个内部的放大缩小……用户可以直接点击全图去看」）。 */}
+        {onOpenFullMap != null && (
+          <button class="btn small" onClick={onOpenFullMap} title="全屏浏览整张导图（元素多、看不清时用）" data-testid="mindmap-full-map">
+            全图
+          </button>
+        )}
         <span class="mindmap-toolbar-divider" aria-hidden="true" />
         {/* M2.3: recall mode — masks tier-2+ titles for retrieval practice
             (Karpicke & Blunt 2011); mutually exclusive with search. */}
@@ -553,8 +443,10 @@ export function MindMap({
       {/* M3.2/批3: breadcrumb 常驻——未下钻时也展示焦点机制的存在（可发现性），
           「全图」在焦点态下提供一键返回。 */}
       <nav class="mindmap-crumbs" aria-label="焦点分支路径">
+        {/* P51: 改名「返回整图」——工具栏那颗「全图」是开全屏浏览弹层，两者消歧；
+            未下钻时它本来就是 disabled 的（曾让人以为「全图打不开」）。 */}
         <button class="btn small ghost" disabled={focusPath === ''} onClick={() => focusAt('')}>
-          全图
+          返回整图
         </button>
         {focusPath === '' ? (
           <span class="mindmap-crumbs-hint">提示：双击节点可聚焦该分支，ℹ️ 查看关联概念</span>
@@ -566,22 +458,14 @@ export function MindMap({
           ))
         )}
       </nav>
-      <div
-        class={`mindmap-scroll${panning ? ' panning' : ''}`}
-        ref={scrollRef}
-        tabIndex={0}
-        aria-label={`导图画布：Ctrl+滚轮缩放，按住拖拽平移，+/-/0 缩放与复位`}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endPan}
-        onPointerCancel={endPan}
-        onKeyDown={canvasKeyDown}
-      >
+      {/* P51: 普通内容块——没有内部滚动/缩放/拖拽；高度按比例跟着宽走，页面原生下滑
+          看完（fit='width'）。弹层宿主（fit='box'）里容器有确定高度，图整体装进盒子。 */}
+      <div class="mindmap-scroll" ref={scrollRef}>
       <svg
         ref={rootRef}
-        width={win.width * view.scale}
-        height={win.height * view.scale}
-        viewBox={`${view.x} ${view.y} ${win.width} ${win.height}`}
+        width={Math.round(frame.width * scale)}
+        height={Math.round(frame.height * scale)}
+        viewBox={`0 0 ${frame.width} ${frame.height}`}
         role="img"
         aria-label={`知识导图：${tree.title}`}
       >

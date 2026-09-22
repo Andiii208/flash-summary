@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render } from 'preact'
 import { act } from 'preact/test-utils'
 import { afterEach } from 'vitest'
-import { MindMap } from '../../src/renderer/components/MindMap'
+import { MindMap, type MindMapProps } from '../../src/renderer/components/MindMap'
 import type { TreeNode } from '../../src/shared/notes/schema'
 
 const TREE: TreeNode = {
@@ -19,10 +19,33 @@ const TREE: TreeNode = {
   ]
 }
 
-function mountMindMap(tree: TreeNode): HTMLElement {
+interface MountBox {
+  width: number
+  height?: number
+}
+
+/** P51: box 传入时在渲染前给容器盒打桩（happy-dom 没有布局，也没 ResizeObserver）——
+    measureScale 跑在 useLayoutEffect 里，渲染期间就能读到桩。render 后立即还原原型。 */
+function mountMindMap(tree: TreeNode, props: Partial<MindMapProps> = {}, box?: MountBox): HTMLElement {
   const host = document.createElement('div')
   document.body.appendChild(host)
-  act(() => render(<MindMap tree={tree} />, host))
+  if (box == null) {
+    act(() => render(<MindMap tree={tree} {...props} />, host))
+    return host
+  }
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>
+  const savedWidth = Object.getOwnPropertyDescriptor(proto, 'clientWidth')
+  const savedHeight = Object.getOwnPropertyDescriptor(proto, 'clientHeight')
+  Object.defineProperty(proto, 'clientWidth', { value: box.width, configurable: true })
+  if (box.height != null) Object.defineProperty(proto, 'clientHeight', { value: box.height, configurable: true })
+  try {
+    act(() => render(<MindMap tree={tree} {...props} />, host))
+  } finally {
+    if (savedWidth == null) delete proto.clientWidth
+    else Object.defineProperty(proto, 'clientWidth', savedWidth)
+    if (savedHeight == null) delete proto.clientHeight
+    else Object.defineProperty(proto, 'clientHeight', savedHeight)
+  }
   return host
 }
 
@@ -62,7 +85,7 @@ describe('MindMap 批D', () => {
     expect(branch?.querySelector('title')?.textContent).toContain('双击聚焦此分支')
     // Unfocused state still shows the focus mechanism (discoverability).
     expect(host.querySelector('.mindmap-crumbs')).not.toBeNull()
-    expect(host.querySelector('.mindmap-crumbs')?.textContent).toContain('全图')
+    expect(host.querySelector('.mindmap-crumbs')?.textContent).toContain('返回整图')
     expect(host.querySelector('.mindmap-crumbs-hint')?.textContent).toContain('双击节点可聚焦')
   })
 
@@ -109,8 +132,26 @@ describe('MindMap M1.2 工具栏', () => {
     const toolbar = host.querySelector('[data-testid="mindmap-toolbar"]')
     expect(toolbar).not.toBeNull()
     const labels = Array.from(toolbar!.querySelectorAll('button')).map((b) => b.textContent)
-    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '适应窗口', '放大', '缩小', '回忆模式'])
+    // P51: 内部缩放那套（适应窗口/放大/缩小/倍率）已移除，视图组只剩「全图」——
+    // 默认挂载不传 onOpenFullMap，所以这里看不到它（见 P51 describe 的用例）。
+    expect(labels).toEqual(['全部收起', '展开 L2', '展开 L3', '全部展开', '回忆模式'])
     expect(toolbar!.querySelector('.mindmap-search')).not.toBeNull()
+  })
+
+  // P51 (plan 2026-09-22): Andiii「不需要你设置一个内部的放大缩小……用户可以直接点击
+  // 全图去看呀」——缩放入口全撤，「全图」只在调用方给回调时出现。
+  it('P51: 工具栏没有内部缩放入口，「全图」仅在被提供回调时渲染并可点', () => {
+    const withoutCb = mountMindMap(TREE)
+    const toolbar = withoutCb.querySelector('[data-testid="mindmap-toolbar"]')!
+    expect(Array.from(toolbar.querySelectorAll('button')).map((b) => b.textContent)).not.toContain('全图')
+    expect(toolbar.querySelector('[data-testid="mindmap-zoom-in"]')).toBeNull()
+    expect(toolbar.querySelector('.mindmap-zoom-label')).toBeNull()
+    let opened = 0
+    const withCb = mountMindMap(TREE, { onOpenFullMap: () => { opened += 1 } })
+    const full = withCb.querySelector<HTMLButtonElement>('[data-testid="mindmap-full-map"]')!
+    expect(full?.textContent).toBe('全图')
+    act(() => { full.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(opened).toBe(1)
   })
 
   it('全部收起 folds every branchable node; 全部展开 restores', () => {
@@ -211,202 +252,94 @@ describe('MindMap M1.2 工具栏', () => {
   })
 })
 
-describe('MindMap M1.3 缩放与平移', () => {
-  const viewBoxOf = (host: HTMLElement): number[] =>
-    host.querySelector('svg')!.getAttribute('viewBox')!.split(/\s+/).map(Number)
+describe('MindMap P51 适合比例（内部缩放/平移已移除）', () => {
+  const svgOf = (host: HTMLElement): SVGSVGElement => host.querySelector('svg')!
+  const viewBoxOf = (host: HTMLElement): number[] => svgOf(host).getAttribute('viewBox')!.split(/\s+/).map(Number)
 
-  /** 批3: 适应窗口按滚动容器的 clientWidth/Height 算缩放——happy-dom 里量到 0，
-   *  所以测试显式给一个可测视口（真实浏览器由布局给出）。 */
-  const stubViewport = (host: HTMLElement, width: number, height: number): void => {
-    const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
-    Object.defineProperty(container, 'clientWidth', { value: width, configurable: true })
-    Object.defineProperty(container, 'clientHeight', { value: height, configurable: true })
-  }
+  it('没量到容器尺寸时保持 1:1，viewBox 是整幅内容', () => {
+    const host = mountMindMap(TREE)
+    const svg = svgOf(host)
+    const [x, y, w, h] = viewBoxOf(host)
+    expect([x, y]).toEqual([0, 0])
+    expect(Number(svg.getAttribute('width'))).toBeCloseTo(w!, 4)
+    expect(Number(svg.getAttribute('height'))).toBeCloseTo(h!, 4)
+  })
 
-  const fireWheel = (host: HTMLElement, init: WheelEventInit): void => {
+  it('fit=width：按容器宽拟合并留 16px 余量——元素盒 ≤ 容器宽−32，宽高同比，viewBox 恒为整幅', () => {
+    const probe = mountMindMap(TREE)
+    const frameW = viewBoxOf(probe)[2]!
+    const frameH = viewBoxOf(probe)[3]!
+    const host = mountMindMap(TREE, {}, { width: 400 })
+    const svg = svgOf(host)
+    const expected = Math.min(1, (400 - 32) / frameW)
+    // 元素盒 = 图幅 × 倍率（宽高属性都 Math.round 过，按 ±1px 比）。
+    expect(Number(svg.getAttribute('width'))).toBeCloseTo(frameW * expected, 0)
+    // 元素盒装得进「容器宽 − 余量×2」：不再有幽灵横滚，也不需要内部滚动。
+    expect(Number(svg.getAttribute('width'))).toBeLessThanOrEqual(400 - 32 + 0.5)
+    // 等比：高度按同一个倍率跟着长（页面下滑看完，见 CSS：宿主自然高度）。
+    expect(Number(svg.getAttribute('height'))).toBeCloseTo(frameH * expected, 0)
+    expect(viewBoxOf(host).slice(0, 2)).toEqual([0, 0])
+    expect(viewBoxOf(host).slice(2)).toEqual([frameW, frameH])
+  })
+
+  it('fit=width：只缩小不放大——小图在宽容器里保持 1:1（节点文字不跟着放大变稀散）', () => {
+    const probe = mountMindMap(TREE)
+    const frameW = viewBoxOf(probe)[2]!
+    const host = mountMindMap(TREE, {}, { width: frameW * 4 + 64 })
+    expect(Number(svgOf(host).getAttribute('width'))).toBeCloseTo(frameW, 4)
+  })
+
+  it('fit=box：宽高都拟合进容器（全图弹层/课程导图弹层宿主）', () => {
+    const probe = mountMindMap(TREE)
+    const frameW = viewBoxOf(probe)[2]!
+    const frameH = viewBoxOf(probe)[3]!
+    const host = mountMindMap(TREE, { fit: 'box' }, { width: 400, height: 300 })
+    const svg = svgOf(host)
+    const expected = Math.min(1, Math.min((400 - 32) / frameW, (300 - 32) / frameH))
+    expect(Number(svg.getAttribute('width'))).toBeCloseTo(frameW * expected, 0)
+    expect(Number(svg.getAttribute('height'))).toBeCloseTo(frameH * expected, 0)
+    expect(Number(svg.getAttribute('height'))).toBeLessThanOrEqual(300 - 32 + 0.5)
+    expect(Number(svg.getAttribute('width'))).toBeLessThanOrEqual(400 - 32 + 0.5)
+  })
+
+  it('倍率下限 MIN_SCALE：图大到拟合不出可读尺寸时兜底（fit=box 由容器滚动收尾）', () => {
+    const probe = mountMindMap(TREE)
+    const frameW = viewBoxOf(probe)[2]!
+    const frameH = viewBoxOf(probe)[3]!
+    const host = mountMindMap(TREE, { fit: 'box' }, { width: 10, height: 10 })
+    const svg = svgOf(host)
+    // 0.4 下限：图幅 × 0.4（宽高属性 Math.round 过，按 ±1px 比）。
+    expect(Number(svg.getAttribute('width'))).toBeCloseTo(frameW * 0.4, 0)
+    expect(Number(svg.getAttribute('height'))).toBeCloseTo(frameH * 0.4, 0)
+  })
+
+  it('没有内部缩放监听：Ctrl+滚轮不改变 viewBox（缩放整套已移除）', () => {
+    const host = mountMindMap(TREE, {}, { width: 400 })
+    const before = viewBoxOf(host)
     const container = host.querySelector('.mindmap-scroll')!
     act(() => {
-      const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: init.deltaY })
-      // happy-dom drops the MouseEvent modifier init on WheelEvent — patch
-      // the instance so the handler sees the shape a real browser delivers.
-      Object.defineProperty(event, 'ctrlKey', { value: init.ctrlKey ?? false })
-      container.dispatchEvent(event)
+      const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120 })
+      Object.defineProperty(wheel, 'ctrlKey', { value: true })
+      container.dispatchEvent(wheel)
     })
-  }
-
-  it('starts at identity (scale 1, origin 0,0)', () => {
-    const host = mountMindMap(TREE)
-    const [x, y] = viewBoxOf(host)
-    expect(x).toBe(0)
-    expect(y).toBe(0)
-  })
-
-  it('Ctrl+wheel zooms in; a plain wheel leaves the view untouched', () => {
-    const host = mountMindMap(TREE)
-    const before = viewBoxOf(host)
-    fireWheel(host, { ctrlKey: true, deltaY: -120 })
-    const [, , wIn] = viewBoxOf(host)
-    expect(wIn).toBeLessThan(before[2]!)
-    // A plain wheel is native scrolling — the zoom state must not move.
-    const afterZoom = viewBoxOf(host)
-    fireWheel(host, { deltaY: 120 })
-    expect(viewBoxOf(host)).toEqual(afterZoom)
-  })
-
-  it('zoom clamps at 3x, and 放大后元素盒 = 布局原宽（真实溢出照常可滚）', () => {
-    const host = mountMindMap(TREE)
-    const svg = host.querySelector('svg')!
-    const contentW = Number(svg.getAttribute('width'))
-    const [, , w0] = viewBoxOf(host)
-    for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 })
-    // 放大：视口窗口小于内容（窗口 = 内容/3），元素盒回到布局原宽。
-    expect(viewBoxOf(host)[2]).toBeCloseTo(w0! / 3, 4)
-    expect(Number(svg.getAttribute('width'))).toBeCloseTo(contentW, 4)
-  })
-
-  it('批6 (P11): 元素盒 = 视口窗口 × 缩放——缩态装得进容器、放大态 = 布局原宽、viewBox 不越出内容', () => {
-    const host = mountMindMap(TREE)
-    const svg = host.querySelector('svg')!
-    const contentW = Number(svg.getAttribute('width'))
-    const contentH = Number(svg.getAttribute('height'))
-    const fit = (): void => {
-      const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '适应窗口')
-      act(() => {
-        button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      })
-    }
-    stubViewport(host, 400, 300)
-    // 每个状态的**期望缩放倍率**是独立算出来的（不是从元素盒反解的）——批6 二次评审
-    // 点名：旧断言 `scale = box.w / vb[2]` 再 `expect(box.w).toBeCloseTo(vb[2] * scale)`
-    // 右式恒等于 box.w，只在 vb[2] 为 0/NaN 时才可能红，捕捉不到任何元素盒回归。
-    const fitScale = Math.min(1, Math.max(0.4, Math.min(400 / contentW, 300 / contentH)))
-    const states: Array<[string, number, () => void]> = [
-      ['首屏 1:1', 1, () => {}],
-      ['放大 3x', 3, () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: -120 }) }],
-      ['适应窗口', fitScale, fit],
-      ['缩到下限', 0.4, () => { for (let i = 0; i < 20; i++) fireWheel(host, { ctrlKey: true, deltaY: 120 }) }],
-      ['再适应窗口', fitScale, fit]
-    ]
-    for (const [label, expectedScale, step] of states) {
-      step()
-      const box = { w: Number(svg.getAttribute('width')), h: Number(svg.getAttribute('height')) }
-      const vb = viewBoxOf(host)
-      const scale = box.w / vb[2]!
-      // 缩放倍率 = 元素盒 / 视口窗口，且必须等于**这个状态应有的倍率**。
-      expect(scale, `${label}: 缩放倍率 = 元素盒宽 / 窗口宽`).toBeCloseTo(expectedScale, 4)
-      // 等比：宽高两个方向的倍率一致（元素盒不得被拉伸）。
-      expect(box.h / vb[3]!, `${label}: 元素盒高 / 窗口高 = 同一个倍率`).toBeCloseTo(scale, 4)
-      if (scale < 1) {
-        // 缩态：整幅内容缩到装得进容器（幽灵横滚条消失的条件）。
-        expect(box.w, `${label}: 缩态元素盒宽 ≤ 容器宽`).toBeLessThanOrEqual(400 + 0.5)
-        expect(box.h, `${label}: 缩态元素盒高 ≤ 容器高`).toBeLessThanOrEqual(300 + 0.5)
-        expect(vb[2], `${label}: 缩态窗口 = 整幅内容`).toBeCloseTo(contentW, 4)
-      } else {
-        expect(box.w, `${label}: 放大态元素盒 = 布局原宽`).toBeCloseTo(contentW, 4)
-      }
-      // 视口窗口不越出内容（否则画布边出现空白带）。
-      expect(vb[0], `${label}: viewBox 左缘不越界`).toBeGreaterThanOrEqual(-1e-6)
-      expect(vb[1], `${label}: viewBox 上缘不越界`).toBeGreaterThanOrEqual(-1e-6)
-      expect(vb[0]! + vb[2]!, `${label}: viewBox 右缘不越界`).toBeLessThanOrEqual(contentW + 1e-6)
-      expect(vb[1]! + vb[3]!, `${label}: viewBox 下缘不越界`).toBeLessThanOrEqual(contentH + 1e-6)
-    }
-    // 适应窗口：只缩小不放大，scale 夹在 0.4..1，且整幅图真的进了视口。
-    fit()
-    const fitted = Number(svg.getAttribute('width')) / viewBoxOf(host)[2]!
-    expect(fitted).toBeCloseTo(Math.min(1, Math.max(0.4, Math.min(400 / contentW, 300 / contentH))), 4)
-  })
-
-  it('P27: 工具栏放大/缩小按钮与倍率显示——倍率与键盘 + 一致（期望值独立算）', () => {
-    const host = mountMindMap(TREE)
-    const [, , w0] = viewBoxOf(host)
-    const label = host.querySelector('[data-testid="mindmap-zoom-label"]')!
-    // 首屏 1:1，倍率读 100%。
-    expect(label.textContent).toBe('100%')
-    const clickButton = (testId: string): void => {
-      const button = host.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)!
-      act(() => {
-        button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      })
-    }
-    // 放大一次：倍率 1.2（与 canvasKeyDown 的 + 同一系数），窗口 = 内容/1.2。
-    clickButton('mindmap-zoom-in')
-    expect(viewBoxOf(host)[2]).toBeCloseTo(w0! / 1.2, 4)
-    expect(label.textContent).toBe('120%')
-    // 缩小一次回到 1:1，倍率读回 100%。
-    clickButton('mindmap-zoom-out')
-    expect(viewBoxOf(host)[2]).toBeCloseTo(w0!, 4)
-    expect(label.textContent).toBe('100%')
-    // 连点放大到上限 3x 后倍率显示封顶（zoomAt 内部 clamp，按钮无需自己判）。
-    for (let i = 0; i < 20; i++) clickButton('mindmap-zoom-in')
-    expect(label.textContent).toBe('300%')
-  })
-
-  it('keyboard +/-/0 zooms and fits while the canvas holds focus', () => {
-    const host = mountMindMap(TREE)
-    const svg = host.querySelector('svg')!
-    const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
-    const contentW = Number(svg.getAttribute('width'))
-    const [, , w0] = viewBoxOf(host)
-    act(() => {
-      container.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }))
-    })
-    expect(viewBoxOf(host)[2]).toBeLessThan(w0!)
-    // 0 = 适应窗口（批3 起不再是回到 1:1）：窗口回到整幅内容、元素盒随之缩进容器。
-    stubViewport(host, 400, 300)
-    act(() => {
-      container.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }))
-    })
-    expect(viewBoxOf(host)[2]).toBeCloseTo(contentW, 4)
-    expect(Number(svg.getAttribute('width'))).toBeLessThanOrEqual(400 + 0.5)
-  })
-
-  it('background drag pans within the content bounds; a drag on a node does not', () => {
-    const host = mountMindMap(TREE)
-    const svg = host.querySelector('svg')!
-    const container = host.querySelector<HTMLElement>('.mindmap-scroll')!
-    const contentW = Number(svg.getAttribute('width'))
-    const contentH = Number(svg.getAttribute('height'))
-    const pointer = (type: string, target: EventTarget, init: MouseEventInit & { pointerId?: number }): void => {
-      act(() => {
-        target.dispatchEvent(new MouseEvent(type, { bubbles: true, ...init }))
-      })
-    }
-    // 1:1 时视口窗口就是整幅内容，没有可平移的余量——拖拽不改变视口（批6 P11 的钳制）。
-    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 1 })
-    pointer('pointermove', container, { clientX: 160, clientY: 130, pointerId: 1 })
-    pointer('pointerup', container, { clientX: 160, clientY: 130, pointerId: 1 })
-    expect(viewBoxOf(host)[0]).toBeCloseTo(0, 4)
-    expect(viewBoxOf(host)[1]).toBeCloseTo(0, 4)
-    // 放大后窗口小于内容，拖拽才真的有平移量（dx/scale）。
-    fireWheel(host, { ctrlKey: true, deltaY: -120 })
-    const [x0, y0, winW, winH] = viewBoxOf(host)
-    const zoom = Number(svg.getAttribute('width')) / winW!
-    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 2 })
-    pointer('pointermove', container, { clientX: 80, clientY: 80, pointerId: 2 })
-    pointer('pointerup', container, { clientX: 80, clientY: 80, pointerId: 2 })
-    const [x1, y1] = viewBoxOf(host)
-    expect(x1).toBeCloseTo(x0! + 20 / zoom, 4)
-    expect(y1).toBeCloseTo(y0! + 20 / zoom, 4)
-    // After pointerup the gesture is over — further moves change nothing.
-    pointer('pointermove', container, { clientX: 300, clientY: 300, pointerId: 2 })
-    expect(viewBoxOf(host)[0]).toBeCloseTo(x1!, 4)
-    // 两个方向都钳在 [0, 内容 − 窗口]：窗口不得跑出内容。
-    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 3 })
-    pointer('pointermove', container, { clientX: 9999, clientY: 9999, pointerId: 3 })
-    pointer('pointerup', container, { clientX: 9999, clientY: 9999, pointerId: 3 })
-    expect(viewBoxOf(host)[0]).toBeCloseTo(0, 4)
-    expect(viewBoxOf(host)[1]).toBeCloseTo(0, 4)
-    pointer('pointerdown', svg, { clientX: 100, clientY: 100, pointerId: 4 })
-    pointer('pointermove', container, { clientX: -9999, clientY: -9999, pointerId: 4 })
-    pointer('pointerup', container, { clientX: -9999, clientY: -9999, pointerId: 4 })
-    expect(viewBoxOf(host)[0]).toBeCloseTo(contentW - winW!, 4)
-    expect(viewBoxOf(host)[1]).toBeCloseTo(contentH - winH!, 4)
-    // A drag starting on a node is a click, not a pan.
-    const before = viewBoxOf(host)
-    pointer('pointerdown', host.querySelector('.mindmap-node')!, { clientX: 10, clientY: 10, pointerId: 5 })
-    pointer('pointermove', container, { clientX: 200, clientY: 200, pointerId: 5 })
-    pointer('pointerup', container, { clientX: 200, clientY: 200, pointerId: 5 })
     expect(viewBoxOf(host)).toEqual(before)
+    expect(container.className).not.toContain('panning')
+  })
+
+  it('布局变化后重算适合比例（收起 ⇒ 图变小 ⇒ 仍装进容器）', () => {
+    const host = mountMindMap(TREE, {}, { width: 400 })
+    const clickButton = (label: string): void => {
+      const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === label)
+      act(() => { button?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    }
+    const wide = (): number => Number(svgOf(host).getAttribute('width'))
+    const before = wide()
+    clickButton('全部收起')
+    const after = wide()
+    // 收起来图更小：要么倍率抬到 1（元素盒=新图宽），要么仍按宽拟合——两者都 ≤ 容器−32
+    // 或 =1:1 的原图宽；关键是「装得进容器」这条不变量。
+    expect(after).toBeLessThanOrEqual(before + 0.5)
+    expect(after).toBeLessThanOrEqual(400 - 32 + 0.5)
   })
 })
 
@@ -624,7 +557,7 @@ describe('MindMap M3.2 焦点模式', () => {
     const rootLabel = host.querySelector('.mindmap-node.root text')?.textContent
     expect(rootLabel).toBe('第一章')
     const crumbs = host.querySelectorAll<HTMLButtonElement>('.mindmap-crumbs button')
-    expect(Array.from(crumbs).map((b) => b.textContent)).toEqual(['全图', '第一章'])
+    expect(Array.from(crumbs).map((b) => b.textContent)).toEqual(['返回整图', '第一章'])
     expect(crumbs[1]?.disabled).toBe(true)
   })
 
@@ -641,11 +574,11 @@ describe('MindMap M3.2 焦点模式', () => {
     ).toBe('false')
   })
 
-  it('clicking 全图 returns to the whole map with the fold state preserved', () => {
+  it('clicking 返回整图 returns to the whole map with the fold state preserved', () => {
     const host = mountMindMap(TREE)
     clickButtonM(host, '全部收起')
     dblClickNode(host, '第一章')
-    const whole = Array.from(host.querySelectorAll('.mindmap-crumbs button')).find((b) => b.textContent === '全图')
+    const whole = Array.from(host.querySelectorAll('.mindmap-crumbs button')).find((b) => b.textContent === '返回整图')
     act(() => {
       whole?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
