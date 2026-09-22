@@ -123,7 +123,7 @@ describe('QaDock', () => {
     expect(onAsk).not.toHaveBeenCalled()
   })
 
-  it('P36: 根元素是 .qa-dock（常驻列/悬浮窗两形态同一组件），带头部收起键', () => {
+  it('P36→P39: 根元素是 .qa-dock（单一 fixed 悬浮小卡片形态），带头部收起键', () => {
     const onCollapse = vi.fn()
     const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={() => undefined} onCollapse={onCollapse} />)
     expect(host.querySelector('.qa-dock')).not.toBeNull()

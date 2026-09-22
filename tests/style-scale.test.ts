@@ -182,22 +182,6 @@ function bodyOf(selector: string): string {
   return m![1].replace(/\s+/g, ' ')
 }
 
-/** 取某个 @media 块的声明体。媒体块里有嵌套规则，`[^}]*` 会在第一个 } 截断——按花括号配平扫。 */
-function mediaBlock(condition: string): string {
-  const start = stripped.indexOf(`@media ${condition}`)
-  expect(start, `style.css 必须有 @media ${condition}`).toBeGreaterThanOrEqual(0)
-  const bodyStart = stripped.indexOf('{', start) + 1
-  let depth = 0
-  for (let i = bodyStart - 1; i < stripped.length; i++) {
-    if (stripped[i] === '{') depth++
-    else if (stripped[i] === '}') {
-      depth--
-      if (depth === 0) return stripped.slice(bodyStart, i)
-    }
-  }
-  throw new Error(`@media ${condition} 未闭合`)
-}
-
 describe('窄窗断点与弹窗高度（批5）', () => {
   it('弹窗有高度钳制、且滚动区只有一个（.dialog-body）', () => {
     expect(bodyOf('.dialog')).toContain('max-height: 86vh')
@@ -210,22 +194,26 @@ describe('窄窗断点与弹窗高度（批5）', () => {
     }
   })
 
-  it('全站宽度断点：窄窗只有 1180/1024，宽屏（min-width）只有追问坞档 1400', () => {
+  it('全站宽度断点：窄窗只有 1180/1024，宽屏零 min-width 断点', () => {
     const narrow = [...stripped.matchAll(/@media\s*\(max-width:\s*(\d+)px\)/g)].map((m) => m[1])
     expect([...new Set(narrow)].sort()).toEqual(['1024', '1180'])
     const wide = [...stripped.matchAll(/@media\s*\(min-width:\s*(\d+)px\)/g)].map((m) => m[1])
     // P28：批6 的 1600 宽屏档已删（缩放把 CSS 视口钉在 1600，永不可命中）；
-    // P36：唯一的 min-width 断点是追问坞档 1400（与缩放联合定档）。
-    expect([...new Set(wide)].sort(), '宽屏方向只允许坞档 1400（加档要过审）').toEqual(['1400'])
+    // P39：坞档 1400 随 2026-09-22「右侧悬浮小卡片」方案取消（SKILL §3）——
+    // 坞改单一 fixed 形态，宽屏方向从此零 min-width 断点。加档要过审。
+    expect([...new Set(wide)].sort(), '宽屏方向不得再有 min-width 断点（用窗口缩放代替）').toEqual([])
   })
 
-  it('坞档只放坞与内容面板的列宽——阅读列（640）不进去', () => {
-    const body = mediaBlock('(min-width: 1400px)')
-    expect(body).toContain('.qa-dock')
-    // 内容面板在该档下改流式（860 帽只在坞折叠/悬浮时生效）。
-    expect(body).toContain('.note-viewer')
-    // 阅读列不得成为任何规则的主语。
-    expect(/(^|[\s,])\.note-body\s*[,{]/.test(body), '.note-body 的 640 是阅读铁律，坞档不放开').toBe(false)
+  it('坞不依赖任何断点——也不再用 :has() 把内容面板拉宽', () => {
+    // 2026-09-22 P39（SKILL §5）：单一 fixed 悬浮小卡片、无断点；与上一条等价地
+    // 复述「宽屏零 min-width」。另钉住 :has(.qa-dock) 拉伸规则已删、正文列 640
+    // 回归 --content-max。
+    expect(/@media\s*\(min-width:/.test(stripped), '坞不得依赖任何 min-width 断点').toBe(false)
+    expect(stripped.includes(':has(.qa-dock)'), '不得再用 :has(.qa-dock) 拉伸面板').toBe(false)
+    expect(
+      /\.note-viewer\s*\{[^}]*max-width:\s*var\(--content-max\)/.test(stripped),
+      '.note-viewer 的阅读列 640 回归 --content-max'
+    ).toBe(true)
   })
 })
 

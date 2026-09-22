@@ -56,8 +56,8 @@ export function qaTimeLabel(iso: string, now = new Date()): string {
  * 断言随迁（见 tests/components/qa-dock.test.tsx）。差异只有三处：
  * ① 紧凑头（标题 + LessonChip + 收起键，不再用 PageHeader 的整页题头）；
  * ② hasNote 从「软提示」改为硬门禁（输入 disabled + 说明请先生成笔记）；
- * ③ 根元素 .qa-panel → .qa-dock（两种形态同一组件：≥1400 CSS 常驻列、
- *    <1400 固定悬浮窗，样式在 style.css）。
+ * ③ 根元素 .qa-panel → .qa-dock（单一 fixed 形态：2026-09-22 批2 起重写为
+ *    右侧悬浮小卡片，右缘垂直居中、无断点，样式在 style.css）。
  */
 export function QaDock({ entries, busy, hasLesson, lessonContext = null, lessonOptions, onSelectLesson, hasNote = true, onAsk, recent = [], onOpenLesson, onCollapse }: QaDockProps): JSX.Element {
   const [draft, setDraft] = useState('')
