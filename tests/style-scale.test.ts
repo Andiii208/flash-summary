@@ -425,6 +425,48 @@ describe('追问坞内防挤爆（批3，P40）', () => {
   })
 })
 
+/**
+ * 批4 (plan 2026-09-22-qa-dock-float-window, P41): 卡片窗口感细化——只做可验证
+ * 小项（D6，不做无实测支撑的大改）：头部分隔线、输入行与 textarea 等高、「对话流
+ * ↔ 输入行」间距单点定义、入口钮与卡片同一组定位值、滚动条不新增。
+ */
+describe('追问坞卡片窗口感（批4，P41）', () => {
+  it('头部分隔线：底部 1px --border + padding-bottom --space-2；坞整体 padding 维持 --space-3', () => {
+    const head = bodyOf('.qa-dock-head')
+    expect(head).toContain('border-bottom: 1px solid var(--border)')
+    expect(head).toContain('padding-bottom: var(--space-2)')
+    expect(bodyOf('.qa-dock')).toContain('padding: var(--space-3)')
+  })
+
+  it('输入行与 textarea 等高：align-items: stretch + 按钮 flex: none；44px/resize 维持', () => {
+    expect(bodyOf('.qa-dock .qa-input-row')).toContain('align-items: stretch')
+    expect(bodyOf('.qa-dock .qa-input-row .btn')).toContain('flex: none')
+    const textarea = bodyOf('textarea.qa-input')
+    expect(textarea).toContain('min-height: 44px')
+    expect(textarea).toContain('resize: vertical')
+  })
+
+  it('对话流↔输入行间距单点定义在坞 gap——.qa-log 基则与坞内覆盖都不再写 margin-bottom', () => {
+    expect(bodyOf('.qa-dock')).toContain('gap: var(--space-2)')
+    expect(bodyOf('.qa-log')).not.toContain('margin-bottom')
+    expect(bodyOf('.qa-dock .qa-log')).not.toContain('margin-bottom')
+  })
+
+  it('入口钮与卡片同一组定位值（右缘、垂直居中、同层）——折叠态不另写一套', () => {
+    const positionOf = (selector: string): string =>
+      ['right', 'top', 'transform', 'z-index']
+        .map((prop) => new RegExp(`${prop}\\s*:\\s*([^;}]+)`).exec(bodyOf(selector))?.[1]?.trim() ?? '')
+        .join(' | ')
+    expect(positionOf('.qa-dock-launcher')).toBe(positionOf('.qa-dock'))
+    expect(positionOf('.qa-dock')).toBe('var(--space-5) | 50% | translateY(-50%) | 30')
+  })
+
+  it('滚动条不新增：::-webkit-scrollbar 规则仍只有全站那一处，坞日志区复用之', () => {
+    expect((stripped.match(/::-webkit-scrollbar\s*\{/g) ?? []).length).toBe(1)
+    expect(bodyOf('.qa-dock .qa-log')).toContain('overflow-y: auto')
+  })
+})
+
 describe('首启与空库的排版合同（批2）', () => {
   it('.empty-actions 允许换行——否则窄容器里的中文按钮会被逐字换行', () => {
     expect(bodyOf('.empty-actions')).toContain('flex-wrap: wrap')
