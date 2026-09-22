@@ -422,10 +422,13 @@ async function main() {
       await sleep(400)
     }
 
-    // 4. qa + settings
-    await goTab('追问')
+    // 4. note page with the qa dock + settings
+    // P42 (plan 2026-09-22): 「追问」tab 已删（P36）——坞只在笔记页渲染。旧代码
+    // goTab('追问') 找不到按钮、静默 no-op，05-qa 拍的其实是上一屏的思维导图视图，
+    // 名不副实；改为回到详细笔记视图，拍「带追问小卡片的笔记页」（总张数不变）。
+    await goNoteView('详细笔记')
     await sleep(700)
-    await cdp.shot(shotName('05-qa'))
+    await cdp.shot(shotName('05-note-dock'))
     await goTab('设置')
     await sleep(700)
     await cdp.shot(shotName('06-settings'))

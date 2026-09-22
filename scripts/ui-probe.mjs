@@ -7,8 +7,9 @@
  *   node scripts/ui-probe.mjs [--empty] [--width=960] [--shot]
  *                             [--dialog] [--provider] [--mindmap] [--out=path]
  *
- *   （无参数）      默认视口：走一遍「选一个已有笔记的课时 → 笔记 / 追问 / 任务」
- *                  三个页面，量内容轴、正文行长、工具行、弹窗、任务行列宽。
+ *   （无参数）      默认视口：走一遍「选一个已有笔记的课时 → 笔记（带追问坞）/ 任务 /
+ *                  设置」三个页面，量内容轴、正文行长、工具行、弹窗、任务行列宽；
+ *                  另实测任务页/设置页无坞（P42：坞只在笔记页渲染）。
  *   --empty        空库首启（不拷贝真实库）：量侧栏引导卡与主区首启卡。
  *   --width=960    追加一轮窄窗测量（Emulation 覆盖视口，不改窗口）。
  *   --shot         额外存图（空库首启两态；其它模式各自目录）。
@@ -135,10 +136,29 @@ const MEASURE = `(() => {
     /* P26 (plan 2026-09-21): 封面盒几何——验收「按 16:9 完整显示、不再被裁」。
        B 站课时才有封面（SEU 源合法无封面，R 返回 null）。 */
     noteCover: R('.note-cover'),
-    /* P36 (plan 2026-09-21): 追问右坞——position 区分两形态（static=≥1400 CSS
-       常驻列 / fixed=<1400 悬浮窗），blankDock 只在常驻态有意义（坞右缘→内容盒
-       右缘；常驻态下它应当≈0——坞把宽屏右侧空白吸收掉了）。 */
-    qaDock: (() => { const e = document.querySelector('.qa-dock'); if (e == null) return null; const r = e.getBoundingClientRect(); const c = document.querySelector('.content'); const s = getComputedStyle(e); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right), position: s.position, blankDock: Math.round(innerWidth - r.right) } })(),
+    /* P42 (plan 2026-09-22): 右侧悬浮小卡片（单一 fixed 形态、无断点）。除盒几何
+       外量新判据：blankRight=视口右缘−坞右缘（规格 right: var(--space-5)=24，即
+       坞右缘贴内容盒右缘）；coversNote=坞左缘 < .note-viewer 右缘（压正文列多少
+       如实记、不漂白——窄物理窗下这是已知可接受的折衷）；centerOffset=|坞垂直中心
+       −视口垂直中心|（规格 top:50% + translateY(-50%)，应≈0，佐证「不在角落」）。 */
+    qaDock: (() => {
+      const e = document.querySelector('.qa-dock')
+      if (e == null) return null
+      const r = e.getBoundingClientRect()
+      const s = getComputedStyle(e)
+      const nv = document.querySelector('.note-viewer')
+      const nvRight = nv == null ? null : Math.round(nv.getBoundingClientRect().right)
+      return {
+        w: Math.round(r.width), h: Math.round(r.height),
+        top: Math.round(r.top), bottom: Math.round(r.bottom),
+        left: Math.round(r.left), right: Math.round(r.right),
+        position: s.position,
+        blankRight: Math.round(innerWidth - r.right),
+        coversNote: nvRight == null ? null : r.left < nvRight,
+        centerOffset: +Math.abs((r.top + r.bottom) / 2 - innerHeight / 2).toFixed(1),
+        viewportH: innerHeight
+      }
+    })(),
     noteToolbar: R('.note-toolbar'),
     noteActions: R('.note-actions'),
     firstSection: R('.note-section'),
@@ -310,7 +330,9 @@ async function probeZoomTiers(cdp, out) {
     const pr = panel.getBoundingClientRect(), cr = content.getBoundingClientRect()
     const dock = document.querySelector('.qa-dock')
     const dr = dock == null ? null : dock.getBoundingClientRect()
-    return { outerW: window.outerWidth, cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth, dockW: dr == null ? null : Math.round(dr.width), dockRight: dr == null ? null : Math.round(dr.right), blankDock: dr == null ? null : Math.round(innerWidth - dr.right), dockPosition: dock == null ? null : getComputedStyle(dock).position }
+    const nv = document.querySelector('.note-viewer')
+    const nvRight = nv == null ? null : Math.round(nv.getBoundingClientRect().right)
+    return { outerW: window.outerWidth, cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth, dockW: dr == null ? null : Math.round(dr.width), dockH: dr == null ? null : Math.round(dr.height), dockRight: dr == null ? null : Math.round(dr.right), blankDock: dr == null ? null : Math.round(innerWidth - dr.right), dockPosition: dock == null ? null : getComputedStyle(dock).position, dockCoversNote: dr == null || nvRight == null ? null : dr.left < nvRight, dockCenterOffset: dr == null ? null : +Math.abs((dr.top + dr.bottom) / 2 - innerHeight / 2).toFixed(1), viewportH: innerHeight }
   })()`
   for (const width of widths) {
     // CSS 视口 = min(窗宽 − inset, 1600)。窗口可能以最小化态起来、SetWindowPos
@@ -348,7 +370,7 @@ async function probeZoomTiers(cdp, out) {
     await cdp.eval(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true })()`)
     await sleep(500)
   }
-  // 最宽档的坞常驻实拍（必须在还原窗口尺寸之前拍）。
+  // 最宽档的坞实拍（笔记 tab 上的右侧悬浮小卡片；必须在还原窗口尺寸之前拍）。
   await cdp.shot(join(ROOT, '.ui-shots', 'zoom', 'dock-inline.png'))
   setOsWindowSize(1280, 800)
   await sleep(800)
@@ -449,15 +471,18 @@ async function selectNotedLesson(cdp, { preferCover = false } = {}) {
   return clicked
 }
 
-/** 空库首启：侧栏引导卡 + 主区首启卡。 */
+/** 空库首启：侧栏引导卡 + 主区首启卡 + 笔记 tab 上的坞空态。 */
 async function probeFirstRun(cdp, out) {
   out.initial = await cdp.json(MEASURE)
   await clickTab(cdp, '笔记')
   await sleep(900)
   out.emptyNoteTab = await cdp.json(MEASURE)
-  await clickTab(cdp, '追问')
+  // P42 (plan 2026-09-22)：「追问」tab 已删（P36），坞只在笔记页渲染——显式点一次
+  // 「笔记」tab 后量坞空态（空库首启：未选择课时 + 近期追问；无笔记硬门禁只禁输入，
+  // 卡片本身照常挂载）。与上一行 emptyNoteTab 同页，本条专钉「空态也有坞」。
+  await clickTab(cdp, '笔记')
   await sleep(600)
-  out.emptyQaTab = await cdp.json(MEASURE)
+  out.emptyNoteDock = await cdp.json(MEASURE)
   if (!has('--shot')) return
   await clickTab(cdp, '任务')
   await sleep(700)
@@ -467,18 +492,29 @@ async function probeFirstRun(cdp, out) {
   await cdp.clearViewport()
 }
 
-/** 三个页面各量一次（笔记 / 追问 / 任务）。 */
+/** P42 (plan 2026-09-22): 三个页面各量一次（笔记带坞 / 任务 / 设置）。 */
 async function probeMainPages(cdp, out) {
   await selectNotedLesson(cdp, { preferCover: true })
   out.notePage = await cdp.json(MEASURE)
-  await clickTab(cdp, '追问')
+  // 「追问」tab 已删（P36）：坞只在笔记页渲染。selectNotedLesson 选中的课时带
+  // 笔记时内部已落到笔记 tab；这里显式再点一次（幂等）确认后量「笔记页带坞」。
+  await clickTab(cdp, '笔记')
   await sleep(700)
   out.qaPage = await cdp.json(MEASURE)
+  // 任务页/设置页必须无坞——折叠入口钮与卡片同位置同形制，同样只在笔记页出现，
+  // 两个选择器都查（App.tsx 的 tab==='notes' 守卫同时管它们）。
+  const dockPresent = () => cdp.json(`(() => ({ dock: document.querySelector('.qa-dock') != null, launcher: document.querySelector('.qa-dock-launcher') != null }))()`)
   await goHome(cdp)
   await sleep(500)
   await clickTab(cdp, '任务')
   await sleep(900)
   out.tasksPage = await cdp.json(MEASURE)
+  const tasksDock = await dockPresent()
+  out.tasksPageDockAbsent = !tasksDock.dock && !tasksDock.launcher
+  await clickTab(cdp, '设置')
+  await sleep(900)
+  const settingsDock = await dockPresent()
+  out.settingsPageDockAbsent = !settingsDock.dock && !settingsDock.launcher
 }
 
 /** 升级旧笔记弹层：列表是否顶出弹窗外框（批2 T5）。 */
@@ -687,6 +723,19 @@ async function probeNarrow(cdp, out) {
 }
 
 const one = (v) => (v == null ? '—' : String(v))
+const yesno = (v) => (v == null ? '—' : v ? '是' : '否')
+const tick = (v) => (v == null ? '—' : v ? '✓' : '✗')
+
+/** P42 (plan 2026-09-22): 追问坞摘要行——单一 fixed 小卡片的新判据：形态、宽×高、
+    右缘空白、是否压正文列、垂直居中偏差（centerOffset≈0 佐证「不在角落」）。 */
+const qaDockLine = (d) =>
+  `追问坞 ${d.position} · ${d.w}×${d.h} · 右缘空白 ${d.blankRight} CSS px · 压正文列 ${yesno(d.coversNote)} · 垂直居中偏差 ${d.centerOffset} CSS px（视口高 ${d.viewportH}）`
+
+/** P42 (plan 2026-09-22): 「不占一小半」的可执行版——坞宽 ≤ 380 CSS px 且坞高
+    ≤ 70vh。zoom 档里 getBoundingClientRect 与 innerHeight 同在缩放后的 CSS px
+    坐标系（1600 锚），判据不随物理档位漂移；坞缺失（未渲染）返回 null 记「—」。 */
+const dockFitsSmall = (t) =>
+  t.dockW == null || t.dockH == null || t.viewportH == null ? null : t.dockW <= 380 && t.dockH <= t.viewportH * 0.7
 
 /** 终端摘要：只打关键数字，完整 JSON 在 OUT_FILE。 */
 function summarize(out) {
@@ -699,8 +748,8 @@ function summarize(out) {
     if (page.noteTitleInfo != null) lines.push(`题头标题 ${page.noteTitleInfo.fs}（${page.noteTitleInfo.len} 字 · ${page.noteTitleInfo.cls}）`)
     /* P26 (plan 2026-09-21): 封面盒宽高比——16:9 盒下 B 站封面零裁切（旧 3.2:1 横幅盒裁 44% 图高）。 */
     if (page.noteCover != null) lines.push(`封面盒 ${page.noteCover.w}×${page.noteCover.h} · 宽高比 ${(page.noteCover.w / page.noteCover.h).toFixed(2)}`)
-    /* P36 (plan 2026-09-21): 追问右坞两形态——默认窗（1266 CSS）应为 fixed 悬浮窗。 */
-    if (page.qaDock != null) lines.push(`追问坞 ${page.qaDock.position} · ${page.qaDock.w}×${page.qaDock.h}${page.qaDock.position === 'static' ? ` · 右缘空白 ${page.qaDock.blankDock} CSS px` : ''}`)
+    /* P42 (plan 2026-09-22): 右侧悬浮小卡片（单一 fixed 形态、无断点）。 */
+    if (page.qaDock != null) lines.push(qaDockLine(page.qaDock))
     if (page.noteBtnCount > 0) lines.push(`工具行 ${page.noteBtnCount} 键 · ${page.actionsRows} 行 · 单键高 ${page.noteBtnBoxes[0]?.h} · 横向溢出 ${one(page.contentOverflowX)}`)
     if (page.countHeights?.length > 0) lines.push(`计数药丸高度 ${[...new Set(page.countHeights)].join('/')}`)
     if (page.subheadings?.length > 0) lines.push(`小标题 ${page.subheadings.join(' | ')}`)
@@ -730,6 +779,9 @@ function summarize(out) {
     lines.push(`任务行失败原因列（宽窗）${cols(out.tasksPage)}`)
     if (out.narrowTasks != null) lines.push(`任务行失败原因列（窄窗）${cols(out.narrowTasks)}`)
   }
+  if (out.tasksPageDockAbsent != null || out.settingsPageDockAbsent != null) {
+    lines.push(`坞只在笔记页：任务页无坞 ${tick(out.tasksPageDockAbsent)} · 设置页无坞 ${tick(out.settingsPageDockAbsent)}`)
+  }
   if (out.upgradeDialog != null && typeof out.upgradeDialog === 'object') {
     const u = out.upgradeDialog.upgradeList
     if (u != null) lines.push(`升级弹层 ${u.dialogW}×${u.dialogH} · 列表溢出 ${u.overflowPx}px · 视口内 ${u.fitsH}`)
@@ -747,7 +799,8 @@ function summarize(out) {
   if (out.zoomTiers != null) {
     for (const t of out.zoomTiers) {
       const ok = Math.abs(t.cssVW - t.expectedCssVW) <= 2
-      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}px 宽（右缘空白 ${t.blankDock}）`)
+      const small = dockFitsSmall(t)
+      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤380 且高 ≤70vh=${one(t.viewportH == null ? null : Math.round(t.viewportH * 0.7))}）`)
     }
   }
   if (out.zoomOverlay != null) {
