@@ -264,6 +264,18 @@ describe('长内容反截断合同（批4）', () => {
  * 滚动交给画布内部（元素盒随缩放），不再靠放宽正文列解决。
  */
 describe('正文列铁律（批6，P10/D6）', () => {
+  // P49-1 (2026-09-22): Chromium 里 flex 容器中的 <ol> 编号全部退化成「1.」
+  // （Playwright 最小对照页实证：flex=1.1.1.，block=1.2.3.）——列表容器必须 block 布局，
+  // 行间距走 li+li margin。这条正是「排版钉子只查 token 不查布局语义」漏出来的 bug。
+  it('有序列表编号：.md-lite .md-list 必须 block 布局（flex 会让 <ol> 编号全变 1.）', () => {
+    const list = bodyOf('.md-lite .md-list')
+    expect(list).toContain('display: block')
+    expect(list).not.toContain('display: flex')
+    expect(list).not.toContain('flex-direction')
+    // 行间距等价物：li+li margin（不是 gap）。
+    expect(bodyOf('.md-lite .md-list li + li')).toContain('margin-top: var(--space-1)')
+  })
+
   it('正文列是 640，且没有任何视图再破格到面板轴', () => {
     expect(bodyOf('.note-body')).toContain('max-width: 640px')
     // 导图视图的破格规则已删（P10）。批6 6.3 起该选择器用于**宿主高度**，所以这里
@@ -487,23 +499,30 @@ describe('追问坞窄长化与零重叠（P44）', () => {
     expect(bodyOf('.qa-dock-launcher')).toContain('position: absolute')
   })
 
-  it('P47「再长一点」：限高从 vh 封顶改为内容区 inset，并给最小高度（空对话不缩成 165px）', () => {
+  // P50-1 (2026-09-22 用户「高度也设定一个限制……输出之后对话框有点太大了，上下最好再
+  // 小一点」)：min 380→300、上限从内容区−32 改为 min(56vh, 560)——默认窗最高 413、
+  // 最大化最高约 500，对话长短不再撑大卡片（日志区照旧自滚）。
+  it('P50-1 高度上限：min-height: min(300px, …)、max-height: min(56vh, 560px)', () => {
     const dock = bodyOf('.qa-dock')
-    expect(dock).toContain('max-height: calc(100% - var(--space-4) * 2)')
-    expect(dock).toContain('min-height: min(380px, calc(100% - var(--space-4) * 2))')
+    expect(dock).toContain('min-height: min(300px, calc(100% - var(--space-4) * 2))')
+    expect(dock).toContain('max-height: min(56vh, 560px)')
   })
 
-  it('卡片宽 = 笔记右侧空白本身：封顶 260，且公式从阅读列 640 右缘算起（间距 --space-3）', () => {
+  // P49-2 (2026-09-22 用户「放大的时候对话窗大小好像被锁死了，导致还是有空白」)：封顶
+  // 260 → 400——卡片吃满笔记右侧空白，任何窗宽左缘贴笔记右缘、右缘贴窗缘，不留悬空 gap。
+  it('卡片宽 = 笔记右侧空白本身：封顶 400，且公式从阅读列 640 右缘算起（间距 --space-3）', () => {
     const dock = bodyOf('.qa-dock')
-    expect(dock).toContain('width: max(200px, min(260px')
+    expect(dock).toContain('width: max(200px, min(400px')
     expect(dock).toContain('calc(100vw')
     expect(dock).toContain('640px')
     expect(dock).toContain('var(--space-3)')
   })
 
-  it('「变长一点」：P47 起限高改为内容区 inset（旧 84vh/720 封顶被取代）', () => {
-    expect(bodyOf('.qa-dock')).toContain('max-height: calc(100% - var(--space-4) * 2)')
-    expect(bodyOf('.qa-dock')).not.toContain('84vh')
+  it('高度上限是 min(56vh, 560)——不回到 vh 无帽/内容区无帽两种旧形态', () => {
+    const dock = bodyOf('.qa-dock')
+    expect(dock).toContain('max-height: min(56vh, 560px)')
+    expect(dock).not.toContain('84vh')
+    expect(dock).not.toContain('max-height: calc(100%')
   })
 
   it('坞内不得再有课时切换 chip——用户明示「在笔记内部问当前笔记，不需要这个」', () => {

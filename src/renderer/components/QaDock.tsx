@@ -155,10 +155,14 @@ export function QaDock({ entries, busy, hasLesson, hasNote = true, onAsk, recent
           class="qa-input"
           rows={2}
           value={draft}
+          /* P49-3: placeholder 只留一行「针对当前课时提问…」——旧值把 Enter/Shift+Enter
+             说明也塞在里面，窄卡里折成 3 行、把输入区撑得又高又挤（Andiii 截图）。快捷键
+             说明移到 title（悬停可见），空态提示行「针对当前课时的笔记提问。」保留。 */
+          title="Enter 提问，Shift+Enter 换行"
           placeholder={
             hasLesson
               ? hasNote
-                ? '针对当前课时提问…（Enter 提问，Shift+Enter 换行）'
+                ? '针对当前课时提问…'
                 : '此课时尚无笔记——请先为此课时生成笔记'
               : '先选择一条笔记或课时'
           }

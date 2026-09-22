@@ -314,6 +314,9 @@ function setOsWindowSize(width, height) {
 
 async function probeZoomTiers(cdp, out) {
   const screen = screenWidth()
+  // 重新选一个带笔记的课时：主流程收尾的 goHome 清了课时选择，库列表态没有
+  // .note-masthead（P50-2 下卡片会正确地收成小球，但没有展开态卡片可量）。
+  await selectNotedLesson(cdp)
   // 自校准 Windows 隐形边框：默认窗 1280×800、zoom=1（1280<1600），此时
   // innerWidth = 客户区宽 → 边框 inset = 1280 − innerWidth。之后各档的期望
   // CSS 视口 = min(窗宽 − inset, 1600)（zoom = 客户区/1600）。
@@ -335,6 +338,9 @@ async function probeZoomTiers(cdp, out) {
     return { outerW: window.outerWidth, cssVW: innerWidth, panelRight: Math.round(pr.right), contentRight: Math.round(cr.right), blankCss: Math.round(cr.right - pr.right), overX: document.documentElement.scrollWidth - innerWidth, dockW: dr == null ? null : Math.round(dr.width), dockH: dr == null ? null : Math.round(dr.height), dockRight: dr == null ? null : Math.round(dr.right), blankDock: dr == null ? null : Math.round(innerWidth - dr.right), dockPosition: dock == null ? null : getComputedStyle(dock).position, dockCoversNote: dr == null || nvRight == null ? null : dr.left < nvRight, dockCenterOffset: dr == null ? null : +Math.abs((dr.top + dr.bottom) / 2 - innerHeight / 2).toFixed(1), viewportH: innerHeight }
   })()`
   for (const width of widths) {
+    // P50-2: 每档先滚进正文，保证量到的是展开态卡片（停在 hero 带时它自动收成球）。
+    await scrollIntoBody(cdp)
+    await sleep(300)
     // CSS 视口 = min(窗宽 − inset, 1600)。窗口可能以最小化态起来、SetWindowPos
     // 对其无效（PowerShell 侧已 SW_RESTORE + 500ms 兜底）；这里施加后轮询验证，
     // 不达标就重试——探针的结论必须来自「视口真的变了」，不是「我发过命令」。
@@ -348,6 +354,12 @@ async function probeZoomTiers(cdp, out) {
         if (m != null && Math.abs(m.cssVW - expected) <= 2) break
       }
     }
+    if (m == null) continue
+    // P50-2: 改窗口尺寸会把 .content 滚动位置重置回 0（hero 带）——此时追问卡自动收成
+    // 小球，dockW 会量成 null。量之前重新滚进正文，量到的才是展开态卡片。
+    await scrollIntoBody(cdp)
+    await sleep(250)
+    m = await cdp.json(measure)
     if (m == null) continue
     const zoom = +((width - inset) / m.cssVW).toFixed(3)
     out.zoomTiers.push({ width, inset, expectedCssVW: expected, zoom, ...m })
@@ -492,9 +504,35 @@ async function probeFirstRun(cdp, out) {
   await cdp.clearViewport()
 }
 
+/** P50-2 (plan 2026-09-22): 把 .content 滚进正文（题头 hero 带滚过容器顶）——
+    「跟正文一起出现」生效时卡片只在正文态显示，探针量卡片前必须先滚进去。 */
+const scrollIntoBody = (cdp) => cdp.eval(`(() => {
+  const c = document.querySelector('.content')
+  const m = document.querySelector('.note-masthead')
+  if (c == null) return false
+  c.scrollTop = m == null ? 400 : Math.round(m.getBoundingClientRect().height + c.getBoundingClientRect().top + 200)
+  return true
+})()`)
+
+/** P50-2: 顶部自动收起的双态实测——停在题头 hero 带应只见小球，滚进正文应见卡片。 */
+async function probeDockAutoHide(cdp, out) {
+  const state = () => cdp.json(`(() => ({ dock: document.querySelector('.qa-dock') != null, ball: document.querySelector('.qa-dock-launcher') != null }))()`)
+  await cdp.eval(`(() => { const c = document.querySelector('.content'); if (c != null) c.scrollTop = 0; return true })()`)
+  await sleep(700)
+  const atTop = await state()
+  await scrollIntoBody(cdp)
+  await sleep(700)
+  const inBody = await state()
+  out.dockAutoHide = { atTopHeroShowsBallOnly: atTop.dock === false && atTop.ball === true, inBodyShowsCard: inBody.dock === true && inBody.ball === false, atTop, inBody }
+}
+
 /** P42 (plan 2026-09-22): 三个页面各量一次（笔记带坞 / 任务 / 设置）。 */
 async function probeMainPages(cdp, out) {
   await selectNotedLesson(cdp, { preferCover: true })
+  // P50-2: 卡片默认跟着正文走——先滚进正文再量（否则停在 hero 带时它已自动收成球）。
+  await probeDockAutoHide(cdp, out)
+  await scrollIntoBody(cdp)
+  await sleep(600)
   out.notePage = await cdp.json(MEASURE)
   // 「追问」tab 已删（P36）：坞只在笔记页渲染。selectNotedLesson 选中的课时带
   // 笔记时内部已落到笔记 tab；这里显式再点一次（幂等）确认后量「笔记页带坞」。
@@ -736,7 +774,7 @@ const qaDockLine = (d) =>
     zoom 档里 getBoundingClientRect 与 innerHeight 同在缩放后的 CSS px 坐标系
     （1600 锚），判据不随物理档位漂移；坞缺失（未渲染）返回 null 记「—」。 */
 const dockFitsSmall = (t) =>
-  t.dockW == null || t.dockH == null || t.viewportH == null ? null : t.dockW <= 260 && t.dockH <= t.viewportH * 0.84
+  t.dockW == null || t.dockH == null || t.viewportH == null ? null : t.dockW <= 400 && t.dockH <= 560
 
 /** 终端摘要：只打关键数字，完整 JSON 在 OUT_FILE。 */
 function summarize(out) {
@@ -797,11 +835,15 @@ function summarize(out) {
     const m = out[key]
     if (m?.found === true) lines.push(`${label} scale ${m.scale.toFixed(3)} · 画布 ${m.scrollW}×${m.scrollH} · 宿主高 ${m.wrapH} · 内容 ${m.svgW}×${m.svgH} → 元素盒 ${m.drawnW}×${m.drawnH} · 溢出 ${m.overX}/${m.overY} · 工具栏顶 ${m.toolbarTop} vs 页滚 ${m.pageOverflow} · 装得下 ${m.fits}`)
   }
+  if (out.dockAutoHide != null) {
+    const a = out.dockAutoHide
+    lines.push(`坞跟正文走（P50-2）：顶部 hero 带只见小球 ${a.atTopHeroShowsBallOnly ? '✓' : '✗'} · 滚进正文见卡片 ${a.inBodyShowsCard ? '✓' : '✗'}`)
+  }
   if (out.zoomTiers != null) {
     for (const t of out.zoomTiers) {
       const ok = Math.abs(t.cssVW - t.expectedCssVW) <= 2
       const small = dockFitsSmall(t)
-      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤260 且高 ≤84vh=${one(t.viewportH == null ? null : Math.round(t.viewportH * 0.84))}）`)
+      lines.push(`zoom 档 窗宽 ${t.width}（边框 inset ${t.inset}）→ zoom ${t.zoom} · CSS 视口 ${t.cssVW}（期望 ${t.expectedCssVW} ${ok ? '✓' : '✗'}）· 面板右缘空白 ${t.blankCss} CSS px · 文档横溢 ${t.overX} · 坞 ${t.dockPosition} ${t.dockW}×${t.dockH}（右缘空白 ${t.blankDock} · 压正文列 ${yesno(t.dockCoversNote)} · 垂直居中偏差 ${one(t.dockCenterOffset)}）· 不占小半屏 ${tick(small)}（宽 ≤400 封顶且高 ≤560 封顶，P49-2/P50-1 规格）`)
     }
   }
   if (out.zoomOverlay != null) {

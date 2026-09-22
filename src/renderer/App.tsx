@@ -6,6 +6,7 @@ import type { Note } from '../shared/notes/schema'
 import { withSessionRetry } from '../shared/session-retry'
 import { orderMyCoursesFirst, orderTreeLessonsByNumber } from '../shared/course-order'
 import { courseMatchesQuery } from '../shared/course-search'
+import { useQaDockAtHero } from './hooks/use-qa-dock-at-hero'
 import type { ApiResult } from '../shared/api-result'
 import { CourseTree } from './components/CourseTree'
 import { CourseBrowser } from './components/CourseBrowser'
@@ -189,11 +190,14 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
   // （状态 / 快捷键 / 挂载点），快捷键 Ctrl+M（应用菜单未占用该组合）。
   const [myStudyOpen, setMyStudyOpen] = useState(false)
   const closeMyStudy = useCallback((): void => setMyStudyOpen(false), [])
-  // P36 (plan 2026-09-21): 追问右坞的折叠态。坞本身是全 tab 常驻的第三列
-  // （≥1400 CSS）/ 固定悬浮窗（<1400），折叠后只剩右缘一颗入口钮。不持久化：
-  // 与 courseBrowserOpen 同类，刷新回到展开态（用户要的是「提问在这」）。
-  const [qaDockOpen, setQaDockOpen] = useState(true)
-  const toggleQaDock = useCallback((): void => setQaDockOpen((prev) => !prev), [])
+  // P36→P50-2 (plan 2026-09-21 / 2026-09-22): 追问坞的显隐性。三态——
+  //   auto   默认：跟正文一起出现——滚到题头 hero 带自动收成小球，滚进正文自动展开；
+  //   open   用户手动展开过：始终显示（手动意志优先，滚动不抢）；
+  //   closed 用户手动收起过：只显示小球。
+  // 不持久化：与 courseBrowserOpen 同类，刷新回到 auto（用户要的是「提问跟着内容走」）。
+  const [qaDockMode, setQaDockMode] = useState<'auto' | 'open' | 'closed'>('auto')
+  const qaDockAtHero = useQaDockAtHero(tab === 'notes', state.currentLesson)
+  const qaDockVisible = tab === 'notes' && (qaDockMode === 'open' || (qaDockMode === 'auto' && !qaDockAtHero))
   const showWelcome = state.treeLoaded && state.tree.length === 0
 
   // 声明批2 (plan 2026-09-11): nothing renders before the 使用须知 gate is
@@ -730,10 +734,12 @@ prevLesson={state.lessonNeighbors.prev}
             不含坞（SKILL §5）。 */}
         {/* P46 (plan 2026-09-22): 折叠态 = 右缘一颗悬浮小球（图标钮，非文字药丸）——用户
             「我认为这个小窗口应该是可以折叠的，比如折叠成一个悬浮小球你看看你当前有没有
-            做到」。位置与展开态卡片同一组值（右缘、垂直居中），读作「卡片收了头」；只在
-            笔记页出现（tab === 'notes' 守卫同时管卡片与小球）。 */}
+            做到」。位置与展开态卡片同一组值（右缘、垂直居中），读作「卡片收了头」。P50-2
+            起它还多一种来路：滚到题头 hero 带时**自动**收成小球（跟正文一起出现），点小球
+            = 手动置 open——此后手动意志优先，滚动不再自动收起。只在笔记页出现
+            （tab === 'notes' 守卫同时管卡片与小球）。 */}
         {tab === 'notes' &&
-          (qaDockOpen ? (
+          (qaDockVisible ? (
             <QaDock
               entries={state.qaEntries}
               busy={state.qaBusy}
@@ -742,10 +748,10 @@ prevLesson={state.lessonNeighbors.prev}
               onAsk={state.ask}
               recent={state.qaRecent}
               onOpenLesson={state.selectLesson}
-              onCollapse={toggleQaDock}
+              onCollapse={() => setQaDockMode('closed')}
             />
           ) : (
-            <button class="qa-dock-launcher" onClick={toggleQaDock} title="打开追问" aria-label="打开追问">
+            <button class="qa-dock-launcher" onClick={() => setQaDockMode('open')} title="打开追问" aria-label="打开追问">
               <MessageCircleQuestionMark size={20} strokeWidth={1.75} aria-hidden="true" />
             </button>
           ))}

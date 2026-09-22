@@ -135,6 +135,17 @@ describe('QaDock', () => {
     expect(onCollapse).toHaveBeenCalled()
   })
 
+  // P49-3 (plan 2026-09-22): placeholder 只留单行「针对当前课时提问…」——旧值把
+  // Enter/Shift+Enter 也塞进去，窄卡里折成 3 行把输入区撑得又高又挤（Andiii 截图）。
+  it('P49-3: placeholder 单行，快捷键说明移到 title', () => {
+    const host = mount(<QaDock entries={[]} busy={false} hasLesson onAsk={() => undefined} />)
+    const field = host.querySelector<HTMLTextAreaElement>('textarea.qa-input')
+    expect(field?.placeholder).toBe('针对当前课时提问…')
+    expect(field?.placeholder).not.toContain('Enter')
+    expect(field?.title).toContain('Enter')
+    expect(field?.title).toContain('Shift+Enter')
+  })
+
   // P45 (plan 2026-09-22-qa-dock-float-window): 用户明示「我本身就在笔记内部针对当前
   // 笔记进行提问，不需要这个课程栏」——坞头只剩「追问 + 收起」，LessonChip 及其在窄卡
   // 里的溢出源一并删除；切课时在侧栏课程树/笔记题头 chip/顶栏面包屑三处都可做。

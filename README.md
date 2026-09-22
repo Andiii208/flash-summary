@@ -83,7 +83,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（1445 个用例，133 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（1451 个用例，134 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -93,7 +93,7 @@ src/
   preload/    类型化桥接（contextBridge）
   renderer/   Preact UI（课程树/任务/笔记/追问/设置，CSS 变量设计系统）
   shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
-tests/        133 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
+tests/        134 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
 docs/skills/   工艺规范（note-craft 笔记工艺 / ui-layout 排版规范——改对应链路的会话先读）
 scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）· ui-shots.mjs / ui-probe.mjs（排版实拍与几何探针）
 docs/
@@ -129,7 +129,7 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 ## ✅ 当前状态
 
 - **v0.2.1 + 可用性整改**：真实课时下载管线全通（播放页收割直链+课时目录；真实单课 810MB 双流→ASR→笔记已跑通）、主窗口内嵌登录与会话过期恢复活体验证通过；2026-09-03 用户实测反馈修复：dev/安装版数据隔离、会话三态（JWT 过期本地判定）、登录失败可见反馈、校园域名代理绕行 + Fake-IP 预检、课程分页拉取（含总量/进度边界明示）、星标「我的课程」置顶 + 同课程其他老师推荐 + 课程时间/教室展示。
-- **1445 个测试**（lint / typecheck / test / build / smoke 五道已全绿——2026-09-22 追问坞悬浮小卡片整改收口实测：smoke 40/40、探针默认窗坞 260×620 右缘空白 24 垂直居中偏差 0 不压正文列；CI 待 push 后由工作流验。含笔记体验整改 v4、批 D 与 UX 整改批1–批6 + 补批的全部用例，以及追问坞悬浮小卡片整改全部批次）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **1451 个测试**（lint / typecheck / test / build / smoke 五道已全绿——2026-09-22 追问坞悬浮小卡片整改收口实测：smoke 40/40、探针默认窗坞 260×620 右缘空白 24 垂直居中偏差 0 不压正文列；CI 待 push 后由工作流验。含笔记体验整改 v4、批 D 与 UX 整改批1–批6 + 补批的全部用例，以及追问坞悬浮小卡片整改全部批次）；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
 
@@ -148,7 +148,7 @@ npm install
 npm run dev          # 开发模式（热重载）
 npm run lint         # ESLint
 npm run typecheck    # TypeScript strict（node + web 双工程）
-npm test             # vitest（1445 用例 / 133 文件）
+npm test             # vitest（1451 用例 / 134 文件）
 npm run build        # electron-vite 构建到 out/
 npm run smoke        # 构建并运行 CDP 进程级烟测（40 项组合断言）
 npm run dist         # 构建 NSIS 安装包到 release/

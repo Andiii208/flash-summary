@@ -1610,12 +1610,14 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
      **absolute（挂 .app-main）**——top:50% 即内容区垂直居中，卡片的最高点不会伸进
      顶栏；max-height 从 vh 封顶改为 **calc(100% - 上下各 16px)**（= 内容区高 − 32），
      默认窗 694−32 = **662px**（比旧的 620 又长 42px），仍随对话内容收放（不是满高列）。 */
-  width: max(200px, min(260px, calc(100vw - var(--space-5) - 304px - var(--space-5) - 640px - var(--space-3))));
-  /* P47「再长一点」不只是放上限：空对话时卡片是内容驱动的（默认窗实测只有 165px），
-     喝口水就没了——给最小高度让它始终是一「扇」窗：最小 380、最大内容区−32（默认窗
-     662），随对话内容在两者之间生长。min() 防矮窗下最小高越过上限。 */
-  min-height: min(380px, calc(100% - var(--space-4) * 2));
-  max-height: calc(100% - var(--space-4) * 2);
+  width: max(200px, min(400px, calc(100vw - var(--space-5) - 304px - var(--space-5) - 640px - var(--space-3))));
+  /* P50-1 (plan 2026-09-22)「高度也设定一个限制…输出之后对话框有点太大了，上下最好再
+     小一点」：min 380→300、上限从「内容区−32」（最大化时 600+）改为 min(56vh, 560)——
+     默认窗最高 413、最大化最高约 500，对话长短不再撑大卡片（日志区照旧自滚）。min()
+     兜住矮窗：最小高也不越过内容区。P47 的「最小高」保留（空对话不缩成一条），只是
+     数值下调 + 上限真正封顶。 */
+  min-height: min(300px, calc(100% - var(--space-4) * 2));
+  max-height: min(56vh, 560px);
   display: flex;
   flex-direction: column;
   /* 批4 (P41): 兄弟间距——含「对话流 ↔ 输入行」——只在此处单点定义：
@@ -1918,8 +1920,14 @@ textarea.qa-input { resize: vertical; min-height: 44px; line-height: var(--leadi
 .md-lite .md-h1 { font-size: var(--font-size-lg); }
 .md-lite .md-h2 { font-size: 15px; }
 .md-lite .md-h3, .md-lite .md-h4 { font-size: var(--font-size-md); color: var(--text-secondary); }
-.md-lite .md-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: var(--space-1); }
+/* P49-1 (plan 2026-09-22): 有序列表编号修复——旧值用 display:flex + gap 排列表，
+   Chromium 里 flex 容器中的 <ol> 的 ::marker 编号全部退化成「1.」（Playwright 最小对照
+   页实证：flex=1.1.1.，block=1.2.3.；QA 回答与笔记正文的有序列表全中招）。改回 block，
+   行间距用 li+li margin（与旧 gap 等价、刻度不变）。**不要再改回 flex**（钉子见
+   tests/style-scale.test.ts「正文列铁律」段）。 */
+.md-lite .md-list { margin: 0; padding-left: 20px; display: block; }
 .md-lite .md-list li { font-size: var(--font-size-md); line-height: var(--leading-relaxed); color: var(--text); }
+.md-lite .md-list li + li { margin-top: var(--space-1); }
 .md-lite .md-list li::marker { color: var(--accent); }
 .md-lite .md-quote { margin: 4px 0; padding: 6px 12px; border-left: 2px solid var(--accent-soft-2); color: var(--text-muted); font-size: var(--font-size-sm); background: var(--surface-2); border-radius: 0 var(--radius) var(--radius) 0; }
 .md-lite code { font-family: var(--font-mono); font-size: 0.92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
