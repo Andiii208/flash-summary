@@ -186,6 +186,9 @@
 | 笔记演进 2.1 Quiz 自测题（2026-09-04） | ✅ 完成 | NoteSchema.quiz 契约（question/answer/source/term?，无锚题归一层过滤）六处同步：schema 归一/要点视图「自测题」块（空省略）/markdown 导出/PrintHandout 题答分栏/QuizCards 翻面组件（useState 集合翻转）/四层测试；summarize 同轮出题（5-8 题逐题锚定，JSON 末位）；**真实 1690625-L0 验证 6 题全锚定**，要点视图真实渲染+截图；途中修 provider 零超时缺陷（chat 10min/ASR 5min AbortSignal.timeout）与模型容错（kind 降级/字符串列表提取）；**现场实锤：ClashMI TUN 是大请求挂起根因，关闭后立即成功**。测试 381→391 | 提交 974a094 |
 | 笔记演进 1.3 证据引用命中率（2026-09-04） | ✅ 完成 | evidenceHitRate 纯函数（timeline 证据引用唯一 ref 去重、判定口径=实际发送素材）+ notes:regenerate 返回 hitRate + toast/工具栏「引用命中 N/M」徽标（无引用隐藏）；四门禁 381/381+smoke 19/19；真实库副本 e2e 注入 2 真 1 假 ref 徽标精确显示 2/3，旧笔记无引用徽标正确隐藏（真实笔记生成于证据 prompt 之前，引用遵循度待批次 2.1 真实重新生成同轮验证）。测试 376→381 | 提交（本批） |
 
+
+- **已发布 v0.7.11（2026-09-23，宽屏吃空白四批+补批 + P51 导图改版归位；仓库更名 Andiii208/seu-summary → Andiii208/flash-summary）**：按 scripts/release.md 走完。**范围**：本仓自 0.7.10 发布后新增 9 个提交——宽屏吃空白四批（80193b0/8c5f935/73e6a47/80d45d3）+ 补批（ea4a34a，D7 小窗提示/密度拆分记账/兜底订正）+ 方案回填（87e1430）+ 探针修正（dcf17cd）+ P51 导图改版（552d03d/bf39ccd，并行会话落地，**其 CHANGELOG 条目原误落 [0.7.9] 节，本版归位至 0.7.11 并附注说明**）。**门禁（实跑）**：lint 0 错 / typecheck 0 错 / test **1467 passed / 134 files** / build 成功 / verify-asar / smoke-cdp --packaged。**装机走查项（等 Andiii）**：四页签宽屏观感（浅+暗实拍 .ui-shots/wide、.ui-shots/study）、小窗轻提示一次性行为、坞 tab 目录跳转、导图全图弹层、装订线居中在最大化的实际观感。
+
 ## 遗留（诚实清单）
 - **文档标题仍写旧产品名（2026-09-11 发现，未改，列清单）**：改名 Flash Summary 时只扫了**用户可见品牌字符串与 README**，下面这些**现役文档的标题**还写着「SEU Summary」——`scripts/release.md:1`、`docs/plans/ROADMAP.md:1`、`AGENTS.md:1`、`docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md`（标题 + 正文首段）。
   与 D4 的「故意不改」**不是一回事**：D4 保的是 `appId`/包名/`LICENSE` 署名这类**标识符**（改了丢登录态与已加密密钥），文档标题属于展示层漂移。未擅自修改的原因是范围与一致性判断该由 Andiii 定（是全改、还是连 spec 标题一起动），且 AGENTS.md 明确警告过别「顺手统一」命名。
