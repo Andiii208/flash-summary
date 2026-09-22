@@ -159,7 +159,9 @@ describe('排版刻度（批0）', () => {
 
   it('--space-icon 是「图标↔文字」专用档，引用处必须能被点名（防止被当成通用 6px）', () => {
     // 只允许出现在明确的图标/标签容器上：按钮、复选框行、chip、树折叠头、例子标签、二维码。
-    const allowed = /\.(btn|lesson-chip-btn|dialog-check|tree-toggle|concept-example|bili-qr|capability-check|study-group-head)\b/
+    // 批3 (plan 2026-09-22, P40): .qa-time 是答案气泡内的元信息行，与答案之间的 6px
+    // 随本批归 --space-icon（原裸 6px）——点名允许；别处再引 --space-icon 仍要过审。
+    const allowed = /\.(btn|lesson-chip-btn|dialog-check|tree-toggle|concept-example|bili-qr|capability-check|study-group-head|qa-time)\b/
     const bad: string[] = []
     const blocks = stripped.split('}')
     let offset = 0
@@ -305,7 +307,6 @@ const KNOWN_PADDING_VIOLATIONS: Record<string, string> = {
   '0 9px 7px 27px': '存量：课程副标题（.course-sub）',
   '10px 6px 2px 0': '存量：声明正文（.consent-body）',
   '10px': '存量：反馈正文/B站预览（.feedback-body/.bili-preview）',
-  '12px 16px 12px 18px': '存量：追问回答（.qa-a）',
   '12px 2px 0': '存量：手动兜底（.manual-fallback）',
   '12px': '存量：反馈块（.feedback-block 的 padding-top）——批4 起覆盖层走 .fullscreen-overlay 基元',
   '14px': '存量：B站二维码（.bili-qr）',
@@ -340,9 +341,8 @@ const KNOWN_PADDING_VIOLATIONS: Record<string, string> = {
   '6px': '存量：课程卡空课时/追问答案（.course-card-lessons-empty/.quiz-answer）',
   '7px 10px': '存量：chip 菜单按钮（.lesson-chip-menu button）',
   '8px 10px': '存量：全部课程头/反馈输入（.all-courses-head/.feedback-text）',
-  '8px 11px': '存量：追问输入/任务错误（.qa-input/.task-error）',
+  '8px 11px': '存量：任务错误（.task-error）——追问输入 .qa-input 批3 已归 var(--space-2) var(--space-3)',
   '8px 12px': '存量：搜索框/设置加载错误（.search-input/.settings-load-error）',
-  '8px 14px': '存量：追问问题（.qa-q）',
   '8px': '存量：折叠侧栏等 5 处（.sidebar.collapsed 等）',
   '9px 18px 9px 14px': '存量：toast（.toast）'
 }
@@ -381,6 +381,47 @@ describe('padding 刻度基线（批8，allowlist 只减不增）', () => {
       stale,
       `这些 allowlist 条目在 style.css 里已不存在（修一条就删一条）：\n${stale.join('\n')}\n跑 \`node scripts/style-padding-baseline.mjs\` 可拿到当前清单。`
     ).toEqual([])
+  })
+})
+
+/**
+ * 批3 (plan 2026-09-22-qa-dock-float-window, P40): 坞内排版硬伤收口——
+ * 用户「排版有问题」的直接来源（近期行写死 220px、坞头无防挤爆、三条 padding 野值）。
+ * 钉住别再回潮：窄坞可用宽约 300px，任何写死宽度/上限都会把气泡或问题列挤爆。
+ */
+describe('追问坞内防挤爆（批3，P40）', () => {
+  it('三条 padding 归 token；.task-error 的 8px 11px 是有意保留的存量', () => {
+    expect(bodyOf('.qa-a')).toContain('padding: var(--space-3) var(--space-4)')
+    expect(bodyOf('.qa-q')).toContain('padding: var(--space-2) var(--space-3)')
+    expect(bodyOf('.qa-input')).toContain('padding: var(--space-2) var(--space-3)')
+    expect(bodyOf('.task-error')).toContain('padding: 8px 11px')
+  })
+
+  it('近期行不写死 220px——「在哪」可压缩带 45% 帽，「问什么」保持 flex:1 省略', () => {
+    const where = bodyOf('.qa-recent-where')
+    expect(where).toContain('flex: 0 1 auto')
+    expect(where).toContain('min-width: 0')
+    expect(where).toContain('max-width: 45%')
+    expect(where).toContain('text-overflow: ellipsis')
+    expect(stripped).not.toContain('flex: 0 0 220px')
+    const q = bodyOf('.qa-recent-q')
+    expect(q).toContain('flex: 1')
+    expect(q).toContain('min-width: 0')
+  })
+
+  it('坞头防挤爆：chip 可压缩且两个文本段省略，选择器带 .qa-dock-head 前缀', () => {
+    expect(bodyOf('.qa-dock-head')).toContain('min-width: 0')
+    const chip = bodyOf('.qa-dock-head .lesson-chip')
+    expect(chip).toContain('flex: 1 1 auto')
+    expect(chip).toContain('min-width: 0')
+    const spans = bodyOf('.qa-dock-head .lesson-chip-course, .qa-dock-head .lesson-chip-lesson')
+    expect(spans).toContain('overflow: hidden')
+    expect(spans).toContain('text-overflow: ellipsis')
+  })
+
+  it('气泡拉满坞内可用宽、输入框不顶着内容轴上限', () => {
+    expect(bodyOf('.qa-dock .qa-q, .qa-dock .qa-a')).toContain('max-width: 100%')
+    expect(bodyOf('.qa-dock .qa-input-row .qa-input')).toContain('min-width: 0')
   })
 })
 

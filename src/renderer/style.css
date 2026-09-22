@@ -738,7 +738,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 
 /* ---- inputs ---- */
 .qa-input {
-  padding: 8px 11px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -1303,7 +1303,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    .bili-title/.bili-chip）都补了，这里与 ErrorBoundary 是仅有的两处漏点。 */
 .qa-error-msg { margin: 0; color: var(--danger); overflow-wrap: anywhere; }
 .qa-error .btn { align-self: flex-start; }
-.qa-busy-hint { font-size: var(--font-size-xs); color: var(--text-muted); margin: 4px 0 0; }
+.qa-busy-hint { font-size: var(--font-size-xs); color: var(--text-muted); margin: var(--space-1) 0 0; }
 .settings-load-error {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   padding: 8px 12px; margin-bottom: 12px;
@@ -1432,7 +1432,10 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   white-space: nowrap;
   font-weight: 550;
 }
-.qa-recent-where { flex: 0 0 220px; color: var(--text-secondary); }
+/* 批3 (plan 2026-09-22 qa-dock-float-window, P40): 写死的 220px 是为已删除的 860
+   面板轴设计的；坞内可用宽约 300px，问题列会被挤成一条线。改「可压缩 + 45% 帽」，
+   省略号写法与 .qa-recent-q 一致。 */
+.qa-recent-where { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .qa-recent-q { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .note-library-meta, .qa-recent-time { flex-shrink: 0; display: flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font-size: var(--font-size-xs); }
 
@@ -1517,7 +1520,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .qa-log { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: 12px; max-width: var(--content-max); }
 .qa-pair { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
 /* 批C: per-exchange timestamp, bottom-right of the answer bubble. */
-.qa-time { display: block; margin-top: 6px; text-align: right; font-size: var(--font-size-xs); color: var(--text-muted); font-family: var(--font-ui); }
+.qa-time { display: block; margin-top: var(--space-icon); text-align: right; font-size: var(--font-size-xs); color: var(--text-muted); font-family: var(--font-ui); }
 .qa-input-row { display: flex; gap: var(--space-2); max-width: var(--content-max); align-items: flex-end; }
 .qa-input-row .qa-input { flex: 1; }
 
@@ -1550,8 +1553,17 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .qa-dock-title { font-size: var(--font-size-sm); font-weight: 600; color: var(--text); flex-shrink: 0; }
 .qa-dock-no-lesson { font-size: var(--font-size-xs); color: var(--text-muted); }
 .qa-dock-collapse { margin-left: auto; flex-shrink: 0; }
+/* 批3 (plan 2026-09-22 qa-dock-float-window, P40): 坞头一行要塞「标题 + 课时 chip +
+   收起键」，chip 必须可压缩——选择器带 .qa-dock-head 前缀，PageHeader/侧栏里的
+   chip 不受影响。 */
+.qa-dock-head .lesson-chip { flex: 1 1 auto; min-width: 0; }
+.qa-dock-head .lesson-chip-course, .qa-dock-head .lesson-chip-lesson { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qa-dock .qa-log { flex: 1; min-height: 0; overflow-y: auto; max-width: none; margin-bottom: 0; }
 .qa-dock .qa-input-row { max-width: none; }
+/* 批3 (plan 2026-09-22, P40): 气泡拉满坞内可用宽（Q 右对齐/A 左对齐、ai-tag、
+   ::before 3px 条纹语义不变），输入框不顶着内容轴上限。 */
+.qa-dock .qa-q, .qa-dock .qa-a { max-width: 100%; }
+.qa-dock .qa-input-row .qa-input { min-width: 0; }
 /* 折叠态：与卡片同一位置（右缘、垂直居中）同一形制——读作「卡片收了头」。 */
 .qa-dock-launcher {
   position: fixed;
@@ -2504,8 +2516,10 @@ button.concept-ref:hover { color: var(--accent); }
 /* ============ V5 出处着色 + 设置页铭 ============ */
 /* iA-style provenance: machine answers carry the green->brass edge and a
    faint green wash; user questions are plain paper notes. */
-.qa-q { font-weight: 500; margin: 0 0 2px; align-self: flex-end; max-width: 85%; padding: 8px 14px; border-radius: var(--radius) var(--radius) 3px var(--radius); font-size: var(--font-size-md); line-height: var(--leading-normal); background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-.qa-a { margin: 0; max-width: 92%; background: color-mix(in srgb, var(--accent) 4%, var(--surface)); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) var(--radius) 3px; padding: 12px 16px 12px 18px; white-space: pre-wrap; line-height: var(--leading-loose); box-shadow: var(--shadow-sm); position: relative; }
+.qa-q { font-weight: 500; margin: 0 0 2px; align-self: flex-end; max-width: 85%; padding: var(--space-2) var(--space-3); border-radius: var(--radius) var(--radius) 3px var(--radius); font-size: var(--font-size-md); line-height: var(--leading-normal); background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+/* 批3 (plan 2026-09-22, P40): 左 padding 18px → --space-4；::before 3px 条纹是
+   absolute 于 left:0 的独立层，不靠左 padding 让位。 */
+.qa-a { margin: 0; max-width: 92%; background: color-mix(in srgb, var(--accent) 4%, var(--surface)); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) var(--radius) 3px; padding: var(--space-3) var(--space-4); white-space: pre-wrap; line-height: var(--leading-loose); box-shadow: var(--shadow-sm); position: relative; }
 .qa-a::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: var(--radius) 0 0 var(--radius); background: linear-gradient(180deg, var(--accent), var(--brass)); }
 .qa-a.pending { color: var(--text-muted); background: var(--surface); }
 .qa-a.pending::before { display: none; }
