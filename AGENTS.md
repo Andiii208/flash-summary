@@ -31,7 +31,7 @@ npm run lint && npm run typecheck && npm test
 - busy 视觉：慢操作一律「文案加省略号 + disabled」（如「添加中…」），hook 侧做 in-flight 守卫防连点；不新增第三种 busy 形态。
 - 模态层统一用共享 `ui/Dialog`（含滚动锁/Esc/居中遮罩）；自绘弹层必须挂 `useModalScrollLock`。
 - 笔记字段里的用户可见文本一律经 `MdLite`/`InlineText` 渲染——模型会自由输出 `**加粗**`，纯文本插值会印出字面星号。
-- **排版（间距/行高/字距/断点/基元/主题色）的唯一事实源是 `docs/skills/ui-layout/SKILL.md`**（2026-09-18 排版整改八批沉淀）：刻度 token 只取那几档、同一角色只允许一处定义、宽度断点只有 1180/1024（窄窗）——宽屏方向不用 CSS 断点，用 main 侧窗口缩放（`src/main/window-zoom.ts`，CSS 视口钉 1600；2026-09-21 P28 落地、批6 的 1600 宽屏档已删）；追问坞档 1400 是唯一例外（P36，与缩放同批协调）——都有钉住测试（`tests/style-scale.test.ts` 等）。改 renderer 样式前先读它。
+- **排版（间距/行高/字距/断点/基元/主题色）的唯一事实源是 `docs/skills/ui-layout/SKILL.md`**（2026-09-18 排版整改八批沉淀 + 2026-09-22 宽屏吃空白四批）：刻度 token 只取那几档、同一角色只允许一处定义、宽度断点只有 1180/1024（窄窗）——宽屏方向不用 CSS 断点，用 main 侧窗口缩放（`src/main/window-zoom.ts`，`z=clamp(W/1600,1,2.5)`、W 为物理像素、CSS 视口钉 1600；2026-09-21 P28 落地、批6 的 1600 宽屏档已删）**加连续弹性函数**（面板轴 `min(var(--content-max-wide),100%)`、网格 `auto-fill minmax(600px,1fr)`、装订线居中公式、弹层 `clamp` 宽）——2026-09-22 起宽屏**弹性函数优先、CSS 断点是最后手段**（追问坞曾是唯一坞档 1400 例外，已废：现为各宽下均悬浮的右侧小卡片 + 折叠小球），**注意 cap 触顶（W>4000）后视口不再钉 1600**（window-zoom.ts 文件头订正②）——都有钉住测试（`tests/style-scale.test.ts` 等）。改 renderer 样式前先读它。
 
 ## 声明层纪律（2026-09-11 起，违反即「设计声明与实现漂移」复发）
 

@@ -802,9 +802,12 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
       .catch(() => toast('复制失败', 'error'))
   }, [note, tree, currentLesson, toast])
 
-  // 声明批4: 七个导出出口统一从这里出去——出口清单与 spec §9「每个导出路径都提示」
+  // 声明批4: 导出出口统一从这里出去——出口清单与 spec §9「每个导出路径都提示」
   // 一一对应：PDF 讲义 / Markdown / 剪贴板 / Anki / Obsidian 单课时 / Obsidian 整课 /
-  // 导图 SVG。**新增导出路径必须在这里包一层**，否则会绕过版权提醒。
+  // 导图 SVG / 导图 PNG（**八个**——2026-09-23 订正：PNG 出口（exportNotePng →
+  // rasterize-svg）早已被 guardExport 包着，但本注释与 README 的「七个」漏数了它，
+  // 属声明文字与实现漂移；下个会话按本清单核对，别照旧数字推导）。
+  // **新增导出路径必须在这里包一层**，否则会绕过版权提醒。
   const exportNote = useCallback((lessonId: string): void => guardExport(() => runExportNote(lessonId)), [guardExport, runExportNote])
   const exportNoteObsidian = useCallback((lessonId: string): void => guardExport(() => runExportNoteObsidian(lessonId)), [guardExport, runExportNoteObsidian])
   const exportCourseObsidian = useCallback(
