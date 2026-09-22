@@ -131,7 +131,7 @@ MVP supports questions about the current lesson only. The context is:
 The data model reserves course-level relationships so course-wide Q&A can be added later without redesigning storage.
 
 > **Revision (2026-09-21, plan 2026-09-21-ux-optimization-round2 P36/P37)：**
-> **① 追问从顶部 tab 改为右侧常驻对话坞（`.qa-dock`）**——读笔记时提问不再需要切换 tab；CSS 视口 ≥1400 时常驻并列在内容区右侧（吸收宽屏右侧空白，与窗口缩放 `z=clamp(W/1600,1,2.5)` 联合定档），<1400（含默认窗）退化为固定位置悬浮窗，可一键折叠成入口钮；顶部 tab 相应移除（Ctrl+3 顺移为设置）。
+> **① 追问坞（`.qa-dock`）改为「笔记页右侧悬浮小卡片」（2026-09-22 修订，见 docs/plans/2026-09-22-qa-dock-float-window.md）**——读笔记时提问不用切 tab 的收益保留；**坞只在笔记页渲染**（任务页/设置页不再显示——用户的使用逻辑是点开笔记才追问）。形态 = 笔记页右侧**悬浮小卡片**：**单一 `position: fixed` 形态，不依赖任何断点**——右缘与内容盒右缘对齐（`var(--space-5)`，24px）、**垂直居中**（`top: 50% + translateY(-50%)`，既不在右上角也不在右下角）；宽 `min(380px, calc(100vw - 2 * var(--space-5)))`（明显小于旧宽屏列的 340–520px）、高度随对话内容（`max-height: min(70vh, 620px)`，日志区自滚）；`z-index: 30`——低于四个自绘 overlay 的 40、高于内容；不是弹层——不加遮罩、不锁滚动。可一键折叠成**同位置**的入口钮（`.qa-dock-launcher`，与卡片同形制）。**宽屏方向没有任何 `min-width` 断点**——原「坞档 1400」随本方案取消，宽屏适配靠 main 侧窗口缩放（`window-zoom`）。**正文列 640 阅读铁律不变**。
 > **② 追问以「该课时已有笔记」为硬门禁**——没有笔记的课时不接受提问（输入不可用 + 主侧 `qa:ask` 直接返回「该课时尚无笔记，请先为此课时生成笔记后再追问」）。原实现允许无笔记时基于转写回答、甚至在不依赖课时材料的一般性问题上作答；用户明确「这没有必要，不如直接去问网页 AI」，只保留针对笔记内部的追问。门禁放在绑定检查之前（无笔记时不该先问模型绑定）。
 
 ## 7. Task Lifecycle and Resume
