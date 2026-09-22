@@ -1517,7 +1517,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 }
 
 /* ---- qa panel ---- */
-.qa-log { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: 12px; max-width: var(--content-max); }
+/* 批4 (P41): margin-bottom 已删——「对话流 ↔ 输入行」的间距在 .qa-dock 的 gap
+   里单点定义（该规则只被坞渲染，margin 只会与 gap 叠加）。 */
+.qa-log { display: flex; flex-direction: column; gap: var(--space-3); max-width: var(--content-max); }
 .qa-pair { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
 /* 批C: per-exchange timestamp, bottom-right of the answer bubble. */
 .qa-time { display: block; margin-top: var(--space-icon); text-align: right; font-size: var(--font-size-xs); color: var(--text-muted); font-family: var(--font-ui); }
@@ -1542,6 +1544,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   max-height: min(70vh, 620px);
   display: flex;
   flex-direction: column;
+  /* 批4 (P41): 兄弟间距——含「对话流 ↔ 输入行」——只在此处单点定义：
+     .qa-log 不写 margin-bottom（坞内那条 margin-bottom: 0 兜底覆盖同批删除），
+     改一处即全坞生效，不会再出现 gap 与 margin 叠加的双倍间距。 */
   gap: var(--space-2);
   background: var(--surface);
   border: 1px solid var(--border-strong);
@@ -1549,7 +1554,9 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
   box-shadow: var(--shadow-lg);
   padding: var(--space-3);
 }
-.qa-dock-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* 批4 (plan 2026-09-22 qa-dock-float-window, P41): 卡片窗口感——头部分隔线把
+   「标题 + 课时 chip + 收起键」与对话流分层；坞整体 padding 维持 --space-3。 */
+.qa-dock-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
 .qa-dock-title { font-size: var(--font-size-sm); font-weight: 600; color: var(--text); flex-shrink: 0; }
 .qa-dock-no-lesson { font-size: var(--font-size-xs); color: var(--text-muted); }
 .qa-dock-collapse { margin-left: auto; flex-shrink: 0; }
@@ -1558,8 +1565,14 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
    chip 不受影响。 */
 .qa-dock-head .lesson-chip { flex: 1 1 auto; min-width: 0; }
 .qa-dock-head .lesson-chip-course, .qa-dock-head .lesson-chip-lesson { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qa-dock .qa-log { flex: 1; min-height: 0; overflow-y: auto; max-width: none; margin-bottom: 0; }
-.qa-dock .qa-input-row { max-width: none; }
+/* 批4 (P41): margin-bottom: 0 兜底已删（base 规则也不再写 margin）——
+   「对话流 ↔ 输入行」间距单点定义在 .qa-dock 的 gap。 */
+.qa-dock .qa-log { flex: 1; min-height: 0; overflow-y: auto; max-width: none; }
+/* 批4 (P41): 输入行与输入框等高——此前基则是 align-items: flex-end，按钮比
+   textarea 矮一截（一大一小）。stretch 让按钮随输入框高度一起长；flex: none
+   防窄坞里按钮被 flex:1 的输入框挤缩。 */
+.qa-dock .qa-input-row { max-width: none; align-items: stretch; }
+.qa-dock .qa-input-row .btn { flex: none; }
 /* 批3 (plan 2026-09-22, P40): 气泡拉满坞内可用宽（Q 右对齐/A 左对齐、ai-tag、
    ::before 3px 条纹语义不变），输入框不顶着内容轴上限。 */
 .qa-dock .qa-q, .qa-dock .qa-a { max-width: 100%; }
