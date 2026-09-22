@@ -2,8 +2,8 @@
 
 > 把东南大学科达录播课程变成结构化学习笔记的 Windows 桌面应用。
 
-[![CI](https://github.com/Andiii208/seu-summary/actions/workflows/ci.yml/badge.svg)](https://github.com/Andiii208/seu-summary/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Andiii208/seu-summary)](https://github.com/Andiii208/seu-summary/releases)
+[![CI](https://github.com/Andiii208/flash-summary/actions/workflows/ci.yml/badge.svg)](https://github.com/Andiii208/flash-summary/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Andiii208/flash-summary)](https://github.com/Andiii208/flash-summary/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Electron](https://img.shields.io/badge/Electron-44-47848F)
@@ -34,7 +34,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 
 ## 🚀 安装
 
-从 [GitHub Releases](https://github.com/Andiii208/seu-summary/releases) 下载最新的安装包，双击安装即可。
+从 [GitHub Releases](https://github.com/Andiii208/flash-summary/releases) 下载最新的安装包，双击安装即可。
 
 - **文件名**：GitHub 会把资产名里的空格换成点，所以下到的是 `Flash.Summary.Setup.<version>.exe`；本地 `npm run dist` 产出的是 `release\Flash Summary Setup <version>.exe`——同一个包，只是分隔符不同。
 - 安装程序会先显示**使用须知与第三方许可**（含内置 ffmpeg 的 GPL-3.0 说明与源码获取途径），需点「我同意」才能继续；条款全文随包放在安装目录的 `resources\legal\`。

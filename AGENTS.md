@@ -8,7 +8,7 @@
 - 阶段计划：`docs/plans/ROADMAP.md`；进度台账：`PROGRESS.md`（新会话先读，不重做已完成阶段）。
 - 技术栈：Electron + TypeScript（strict），main/preload/renderer 三进程结构，代码在 `src/`，测试在 `tests/`。
 - 平台 Windows only。
-- **命名现状（故意保留，勿「顺手统一」）**：产品展示名 **Flash Summary**；npm 包名 / userData 目录 `seu-summary`（`%APPDATA%\seu-summary`）；仓库名 `Andiii208/seu-summary`；appId `edu.seu.summary`；`LICENSE` 署名为 "SEU Summary contributors"。改 `name`/`appId` 会丢登录态与已加密密钥（红线）；2026-09-11 D4 裁决 = **不改**，改由声明层写明「非官方、无隶属关系」。
+- **命名现状（故意保留，勿「顺手统一」）**：产品展示名 **Flash Summary**；npm 包名 / userData 目录 `seu-summary`（`%APPDATA%\seu-summary`）；仓库名 `Andiii208/flash-summary`（2026-09-23 经用户要求从 seu-summary 更名，旧地址由 GitHub 自动重定向）；appId `edu.seu.summary`；`LICENSE` 署名为 "SEU Summary contributors"。改 `name`/`appId` 会丢登录态与已加密密钥（红线）；2026-09-11 D4 裁决 = **不改**，改由声明层写明「非官方、无隶属关系」。
 
 ## 命令（提交前必须全过）
 
