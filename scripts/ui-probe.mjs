@@ -969,6 +969,12 @@ async function main() {
     const cdp = await connect(port)
     await passConsentGate(cdp)
     await sleep(1500)
+    // D7 (plan 2026-09-22-wide-screen-blank-space)：默认窗（1280×800 → 视口 1266
+    // <1300）会显示一次性轻提示条，它把 app-main 压低约 30px——坞的「内容区垂直
+    // 居中」偏差会从 22 涨到 40（app-main 变矮而视口中心参照不变）。提示条是一次性
+    // 交互元素（生命周期由 app-shell 单测覆盖），几何测量应量稳态：存在就先点掉。
+    await cdp.eval(`(() => { const b = [...document.querySelectorAll('[data-testid="window-hint"] button')].find((x) => x.textContent === '知道了'); if (b != null) { b.click(); return true } return false })()`)
+    await sleep(300)
     await cdp.eval(`document.documentElement.dataset.theme = 'light'`)
     if (has('--empty')) {
       await probeFirstRun(cdp, out)
