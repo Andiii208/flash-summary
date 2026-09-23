@@ -56,26 +56,26 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 ## 🏗️ 架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Renderer (src/renderer, Preact)                        │
-│  课程树·任务/笔记/设置页签·追问坞·引导卡·Toast          │
-└──────────────────────────┬──────────────────────────────┘
-                           │ IPC（contextBridge，类型化 SeuSummaryBridge）
-┌──────────────────────────┴──────────────────────────────┐
-│  Main (src/main)                                        │
-│  app-context —— 一次组装资料库/会话/Provider/ffmpeg/日志  │
-│  ipc —— 62 通道：school/providers/tasks/notes/qa/        │
-│         lessons/settings/log；任务经串行队列执行，可取消   │
-│  tasks/orchestrator —— 6 阶段流水线编排（ASR 分片/多模态）  │
-│  media —— ffmpeg 音频/关键帧/超时守卫 · phash 去重 ·       │
-│           下载重试+Range 续传                             │
-│  providers —— OpenAI 兼容客户端 · DPAPI 加密 Key          │
-│  school —— 播放页收割（视频直链+课时目录）· 课程 API 客户端 │
-│  auth —— 主窗口内嵌登录 · DPAPI 加密会话                  │
-│  notes —— schema 校验 · 五视图块投影 · 附件/重新生成/       │
-│           PDF 讲义 · 证据对齐 · 课时追问上下文               │
-│  db —— better-sqlite3 + 迁移（课程录播标识/课时回放引用等） │
-└─────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+| Renderer (src/renderer, Preact)                             |
+| 课程树 / 任务 / 笔记 / 设置三页签 / 追问坞 / 引导卡 / Toast |
++------------------------------+------------------------------+
+                               | IPC (contextBridge)
++------------------------------+------------------------------+
+| Main (src/main)                                             |
+| app-context      assemble library/session/Provider/ffmpeg   |
+| ipc              62 channels: school/providers/tasks/qa/    |
+|                  lessons/settings/log; serial, cancelable   |
+| tasks/orchestrator  6-stage pipeline (ASR/multimodal)       |
+| media           ffmpeg audio/keyframes/timeout; phash dedup |
+|                  retry + Range resume                       |
+| providers        OpenAI-compatible client; DPAPI key        |
+| school          play-page harvest (url+lessons); course API |
+| auth             in-window login; DPAPI session             |
+| notes            schema / 5 views / attachments / regen /   |
+|                  PDF handout / evidence align / QA context  |
+| db               better-sqlite3 + migrations                |
++-------------------------------------------------------------+
 ```
 
 ### 技术栈
