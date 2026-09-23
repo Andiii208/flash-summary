@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="assets/wenkai/lxgwwenkaigbscreen.css" />
+<title>Flash Summary — 宣发宣传动画分镜 v6</title>
+<!--
+  分镜舞台（1920×1080 CSS px；渲染时整体 ×4/3 到 2560×1440 采集，最后降回 1080p）。
+  所有画面状态都是时间 t 的纯函数：没有 CSS transition / animation / rAF，
+  由 scripts/promo-render.mjs 逐帧调用 __setTime(t) 后截图 —— 帧精确、可复现。
+  配色/字体 token 抄自 src/renderer/style.css，并 link 产品同款文楷子集。
+
+  v6（v4/v5 连续被否后的 recovery）：以 27 秒九拍那版为底——把真实课程库的画面
+  （彩色课程封面 / 12 条任务历史 / 全屏课程网格 / 26 页讲义）和内容的量拿回来，
+  只修 Andiii 明确点过的问题：
+    · 删「一节 72 分钟 → 一份 14 分钟」的时长对比（产品做的是重组不是压缩）
+    · 删「1656 门课程」这个私人库统计（不改数字，只改文案，场景保留）
+    · 五视图不出切换栏，只出结果 + 文字标签；每种 0.98s
+    · B站只拍「已粘贴链接」输入态，不出现第三方 MV 缩略图
+  保留 v3 以来验证过的工艺：品牌定场（墨滴+图标+文楷大标题）、纸叠纵深、暗场中段、
+  三条缓动曲线、线性交叉淡溶、字幕 ≥27px、标题安全区、内容提前起跑（不闪空帧）。
+  时长 27.0s / 30fps = 810 帧；改时长同步 promo-render.mjs 的 --dur 默认值。
+-->
+<style>
+  :root {
+    --bg: #f5f1e6;
+    --surface: #fbf9f3;
+    --surface-2: #efe9da;
+    --surface-3: #e6dfcb;
+    --text: #1c221c;
+    --text-secondary: #43503f;
+    --text-muted: #5a6655;
+    --accent: #00432b;
+    --brass: #6e5426;
+    --border: #e3dccc;
+    --border-strong: #cfc8b4;
+    --radius-lg: 10px;
+    --shadow: 0 2px 6px rgba(28, 34, 28, 0.05), 0 8px 20px rgba(28, 34, 28, 0.06);
+    --shadow-lg: 0 4px 10px rgba(28, 34, 28, 0.08), 0 16px 36px rgba(28, 34, 28, 0.12);
+    --font-ui: 'Segoe UI Variable Text', 'Noto Sans SC', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif;
+    --font-display: 'LXGW WenKai Screen', 'LXGW WenKai', 'KaiTi', 'STKaiti', serif;
+    --font-mono: 'JetBrains Mono', Consolas, 'Cascadia Mono', monospace;
+  }
+  #root.dark {
+    --text: #f2efe4;
+    --text-secondary: #cfd8c6;
+    --text-muted: #aab6a5;
+    --surface: #16241c;
+    --surface-2: #1c2b21;
+    --surface-3: #26382a;
+    --border: #2b3f2f;
+    --border-strong: #3d5a44;
+    --accent: #8ccfa9;
+    --brass: #dcbc7d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 2560px; height: 1440px; overflow: hidden; background: #f5f1e6; }
+  body { font-family: var(--font-ui); color: #1c221c; -webkit-font-smoothing: antialiased; }
+
+  #bg, #grain, #tint { position: absolute; inset: 0; pointer-events: none; }
+  #bg { background:
+      radial-gradient(130% 105% at 50% 36%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 55%),
+      radial-gradient(120% 100% at 50% 42%, rgba(28, 34, 28, 0) 52%, rgba(28, 34, 28, 0.1) 100%),
+      var(--bg); }
+  #tint { opacity: 0; background: radial-gradient(125% 105% at 50% 34%, #1b2e23 0%, #0d1611 76%); }
+  #grain { opacity: 0.05; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+  #root { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden;
+    transform: scale(1.3333333); transform-origin: 0 0; }
+  .scene { position: absolute; inset: 0; visibility: hidden; }
+  .scene img { display: block; }
+
+  .card { position: absolute; border-radius: 14px; overflow: hidden;
+    box-shadow: var(--shadow-lg); border: 1px solid rgba(28, 34, 28, 0.1); background: var(--surface); }
+  .card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .card::after { content: ''; position: absolute; inset: 0; border-radius: 14px; pointer-events: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45); }
+  .sheet { position: absolute; border-radius: 14px; background: var(--surface-2);
+    border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .bleed { position: absolute; inset: 0; overflow: hidden; }
+  .bleed img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+  /* 字阶：大标题 / 字幕 / 小字 */
+  .head { position: absolute; font-family: var(--font-display); color: var(--text); letter-spacing: 1px; }
+  .cap { position: absolute; font-size: 27px; letter-spacing: 1px; color: var(--text-secondary); }
+  .cap.hi { color: var(--text); font-family: var(--font-display); font-size: 32px; letter-spacing: 2px; }
+  .kicker { position: absolute; font-size: 16px; letter-spacing: 3px; color: var(--brass); }
+  .tick { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+    background: var(--brass); margin-right: 14px; vertical-align: 3px; }
+  .view-tag { position: absolute; font-size: 25px; letter-spacing: 4px; color: var(--text-muted); }
+  .rule { position: absolute; height: 1px; background: var(--border-strong); }
+
+  /* 定场 */
+  #s0 .drop { position: absolute; left: 960px; top: 386px; width: 1040px; height: 1040px;
+    margin: -520px 0 0 -520px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 67, 43, 0.11) 0%, rgba(0, 67, 43, 0.05) 42%, rgba(0, 67, 43, 0) 70%); }
+  #s0 .logo { position: absolute; left: 960px; top: 386px; width: 152px; height: 152px; margin: -76px 0 0 -76px;
+    border-radius: 34px; overflow: hidden; box-shadow: 0 18px 44px rgba(28, 34, 28, 0.22), 0 2px 6px rgba(28, 34, 28, 0.14); }
+  #s0 .logo img { width: 100%; height: 100%; }
+  #s0 .title { position: absolute; left: 0; right: 0; top: 534px; text-align: center;
+    font-family: var(--font-display); font-size: 80px; letter-spacing: 1px; color: var(--text); }
+  #s0 .title span { display: inline-block; }
+  #s0 .sub { position: absolute; left: 0; right: 0; top: 672px; text-align: center;
+    font-size: 31px; color: var(--text-secondary); letter-spacing: 2px; }
+  #s0 .os { position: absolute; left: 0; right: 0; top: 760px; text-align: center; }
+
+  /* 六阶段轨道（暗场）：阶段名与产品 labels.ts 一致 */
+  .rail-card { position: absolute; left: 210px; top: 680px; width: 1500px; height: 186px;
+    border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border);
+    box-shadow: var(--shadow); }
+  .rail-track { position: absolute; left: 125px; top: 62px; width: 1250px; height: 2px; background: var(--surface-3); }
+  .rail-fill { position: absolute; left: 0; top: 0; height: 2px; width: 0; background: var(--accent); }
+  .rail-sweep { position: absolute; left: 125px; top: 56px; width: 14px; height: 14px; margin-left: -7px;
+    border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 6px rgba(110, 84, 38, 0.16); }
+  .rail-nodes { position: absolute; inset: 0; display: flex; }
+  .node { flex: 1; position: relative; }
+  .node .dot { position: absolute; left: 50%; top: 62px; width: 18px; height: 18px; margin: -8px 0 0 -9px;
+    border-radius: 50%; background: var(--surface); border: 2px solid var(--border-strong); }
+  .node .nlabel { position: absolute; left: 0; right: 0; top: 96px; text-align: center;
+    font-size: 16px; color: var(--text-muted); letter-spacing: var(--tracking, 0.5px); }
+  .node.on .dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 7px rgba(0, 67, 43, 0.12); }
+  .node.on .nlabel { color: var(--text); font-weight: 600; }
+
+  .pill { display: inline-block; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--border-strong);
+    font-size: 21px; color: var(--text-secondary); letter-spacing: 1px; background: var(--surface); }
+  .endlink { font-family: var(--font-mono); font-size: 21px; letter-spacing: 1px; color: var(--brass); }
+
+  .book { position: absolute; width: 300px; height: 424px; perspective: 1700px; }
+  .page { position: absolute; inset: 0; border-radius: 3px; overflow: hidden;
+    transform-origin: left center; box-shadow: 0 10px 26px rgba(28, 34, 28, 0.18), 0 2px 6px rgba(28, 34, 28, 0.12); }
+  .page img { width: 100%; height: 100%; object-fit: cover; }
+  .page .shade { position: absolute; inset: 0; opacity: 0;
+    background: linear-gradient(to right, rgba(10, 16, 12, 0.5) 0%, rgba(10, 16, 12, 0.12) 55%, rgba(10, 16, 12, 0) 78%); }
+  .book .floor { position: absolute; left: 16px; top: 14px; width: 300px; height: 424px; border-radius: 6px;
+    background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="bg"></div>
+  <div id="tint"></div>
+
+  <!-- S0 定场：墨滴 → 图标 → 名称 → 口号 -->
+  <section class="scene" id="s0">
+    <div class="drop" id="s0-drop"></div>
+    <div class="logo" id="s0-logo"><img src="assets/icon.jpg" alt="" /></div>
+    <div class="title" id="s0-title"></div>
+    <div class="sub" id="s0-sub">把一节录播课，变成一册结构化笔记</div>
+    <div class="os" id="s0-os">
+      <span class="rule" style="left:620px;top:13px;width:130px"></span>
+      <span class="kicker" style="left:790px;top:6px">Windows 桌面应用</span>
+      <span class="rule" style="left:1170px;top:13px;width:130px"></span>
+    </div>
+  </section>
+
+  <!-- S1 可核验：真实课程封面满幅 → 同一帧在笔记里 → 时间线卡片近景 -->
+  <section class="scene" id="s1">
+    <div class="bleed" id="s1-cover"><img src="assets/cover-opening.jpg" alt="" /></div>
+    <div class="sheet" id="s1-sheet-a" style="left:342px;top:236px;width:1180px;height:634px"></div>
+    <div class="card" id="s1-note" style="left:350px;top:244px;width:1180px;height:634px">
+      <img src="assets/shot-note-hero.jpg" alt="" />
+    </div>
+    <div class="sheet" id="s1-sheet-b" style="left:322px;top:196px;width:1240px;height:668px"></div>
+    <div class="card" id="s1-cards" style="left:330px;top:204px;width:1240px;height:668px">
+      <img src="assets/body-detailed.jpg" alt="" />
+    </div>
+    <div class="cap hi" id="s1-cap" style="left:350px;top:912px">每一段，都能点回视频的那一秒</div>
+  </section>
+
+  <!-- S2 双入口 -->
+  <section class="scene" id="s2">
+    <div class="sheet" id="s2-sheet-a" style="left:262px;top:262px;width:1100px;height:592px"></div>
+    <div class="card" id="s2-tasks" style="left:270px;top:270px;width:1100px;height:592px">
+      <img src="assets/shot-tasks.jpg" alt="" />
+    </div>
+    <div class="tag" id="s2-tasks-tag" style="position:absolute;left:270px;top:896px;font-size:19px;color:#43503f;letter-spacing:.5px"><span class="tick"></span><b style="color:#1c221c;font-weight:600">东南大学 · 科达录播</b>　登录后课程树自动刷新</div>
+    <div class="sheet" id="s2-sheet-b" style="left:1174px;top:322px;width:760px;height:409px"></div>
+    <div class="card" id="s2-bili" style="left:1182px;top:330px;width:760px;height:409px">
+      <img src="assets/shot-bili.jpg" alt="" />
+    </div>
+    <div class="tag" id="s2-bili-tag" style="position:absolute;left:1182px;top:766px;font-size:19px;color:#43503f;letter-spacing:.5px"><span class="tick"></span><b style="color:#1c221c;font-weight:600">B站视频 · 字幕优先</b></div>
+  </section>
+
+  <!-- S3 全部课程：一屏浏览（不报私人库数量） -->
+  <section class="scene" id="s3">
+    <div class="sheet" id="s3-sheet" style="left:342px;top:206px;width:1180px;height:634px"></div>
+    <div class="card" id="s3-shot" style="left:350px;top:214px;width:1180px;height:634px">
+      <img src="assets/shot-browser.jpg" alt="" />
+    </div>
+    <div class="cap hi" id="s3-cap" style="left:0;right:0;top:912px;text-align:center">全部课程，一屏浏览</div>
+    <div class="cap" id="s3-sub" style="left:0;right:0;top:962px;text-align:center;font-size:23px">按学期 / 来源 / 状态筛选，搜索即达</div>
+  </section>
+
+  <!-- S4 六阶段（暗场） -->
+  <section class="scene" id="s4">
+    <div class="card" id="s4-shot" style="left:360px;top:170px;width:1080px;height:630px;filter:blur(8px)">
+      <img src="assets/shot-tasks.jpg" alt="" />
+    </div>
+    <div class="rail-card" id="s4-rail">
+      <div class="rail-track"><div class="rail-fill" id="s4-fill"></div></div>
+      <div class="rail-sweep" id="s4-sweep"></div>
+      <div class="rail-nodes" id="s4-nodes"></div>
+    </div>
+    <div class="cap hi" id="s4-cap" style="left:0;right:0;top:96px;text-align:center">断点续跑，失败从断点继续</div>
+    <div class="cap" id="s4-sub" style="left:210px;top:906px;width:1500px;text-align:center">
+      <span class="tick"></span>任意阶段 2 秒内可取消　·　已完成阶段不重复工作
+    </div>
+  </section>
+
+  <!-- S5 五种读法：只出结果，不出切换栏（卡片由 JS 装配） -->
+  <section class="scene" id="s5">
+    <div class="view-tag" id="s5-tag" style="left:0;right:0;top:150px;text-align:center">详细笔记</div>
+    <div class="cap hi" id="s5-cap" style="left:0;right:0;top:920px;text-align:center">同一份笔记，五种读法</div>
+    <div class="cap" id="s5-sub" style="left:0;right:0;top:966px;text-align:center;font-size:23px">公式 LaTeX 排版　·　时间线卡片自动绑定课堂关键帧</div>
+  </section>
+
+  <!-- S6 追问 -->
+  <section class="scene" id="s6">
+    <div class="card" id="s6-shot" style="left:370px;top:214px;width:1180px;height:634px">
+      <img src="assets/shot-qa.jpg" alt="" />
+    </div>
+    <div class="cap hi" id="s6-cap" style="left:0;right:0;top:912px;text-align:center">读到哪里，问哪里</div>
+    <div class="cap" id="s6-sub" style="left:0;right:0;top:962px;text-align:center;font-size:23px">上下文 = 本课时转写 + 笔记 + PPT + 关键帧</div>
+  </section>
+
+  <!-- S7 一册讲义：真实导出的 26 页讲义翻页 -->
+  <section class="scene" id="s7">
+    <div class="book" id="s7-book" style="left:810px;top:280px">
+      <div class="floor"></div>
+      <div class="page" id="s7-page3"><img src="assets/handout-p3.jpg" alt="" /></div>
+      <div class="page" id="s7-page2"><img src="assets/handout-p2.jpg" alt="" /><i class="shade"></i></div>
+      <div class="page" id="s7-page1"><img src="assets/handout-p1.jpg" alt="" /><i class="shade"></i></div>
+    </div>
+    <div class="cap hi" id="s7-cap" style="left:0;right:0;top:840px;text-align:center">一册讲义，直接带走</div>
+    <div class="cap" id="s7-sub" style="left:0;right:0;top:900px;text-align:center;font-size:23px">A4 · 矢量文本 · 封面 / 整页导图 / 图文正文 / 图集</div>
+    <div class="cap" id="s7-pages" style="left:0;right:0;top:944px;text-align:center;font-size:21px">这一课导出 26 页</div>
+  </section>
+
+  <!-- S8 收尾 -->
+  <section class="scene" id="s8">
+    <div class="book" id="s8-stack" style="left:300px;top:328px">
+      <div class="floor" style="left:16px;top:14px"></div>
+      <div class="page" style="transform:none"><img src="assets/handout-p1.jpg" alt="" /></div>
+    </div>
+    <div class="logo" id="s8-logo" style="position:absolute;left:760px;top:376px;width:96px;height:96px;
+      border-radius:22px;overflow:hidden;box-shadow:0 12px 30px rgba(28,34,28,.2)">
+      <img src="assets/icon.jpg" alt="" style="width:100%;height:100%" />
+    </div>
+    <div class="head" id="s8-title" style="left:892px;top:390px;font-size:56px;white-space:nowrap">Flash Summary</div>
+    <div class="cap hi" id="s8-sub" style="left:892px;top:482px;font-size:27px">把一节录播课，变成一册结构化笔记</div>
+    <div id="s8-pills" style="position:absolute;left:892px;top:546px;display:flex;gap:12px"></div>
+    <div class="rule" id="s8-rule" style="left:892px;top:640px;width:0"></div>
+    <div class="cap" id="s8-disclaimer" style="left:892px;top:664px;width:820px;font-size:19px;line-height:1.7">
+      非官方工具，与东南大学、哔哩哔哩无隶属关系<br />Windows 10/11 x64 · 安装包内置 ffmpeg
+    </div>
+    <div class="endlink" id="s8-link" style="position:absolute;left:892px;top:764px">github.com/Andiii208/flash-summary</div>
+  </section>
+
+  <div id="grain"></div>
+</div>
+
+<script>
+'use strict'
+/* ---------- 基础数学 ---------- */
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
+const lerp = (a, b, t) => a + (b - a) * t
+const seg = (t, a, b) => clamp((t - a) / (b - a), 0, 1)
+/* 三条曲线：入场 ease-out、出场 ease-in、位移 ease-in-out */
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
+const easeOutQuint = (t) => 1 - Math.pow(1 - t, 5)
+const easeInCubic = (t) => t * t * t
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+
+const $ = (id) => document.getElementById(id)
+const set = (el, props) => { for (const k in props) el.style[k] = props[k] }
+
+function motion(el, t, a, b, dx, dy, scaleFrom, scaleTo, opFrom, opTo) {
+  const p = easeOutQuint(seg(t, a, b))
+  set(el, {
+    opacity: String(lerp(opFrom, opTo, p)),
+    transform: `translate3d(${lerp(dx, 0, p)}px, ${lerp(dy, 0, p)}px, 0) scale(${lerp(scaleFrom, scaleTo, easeOutCubic(seg(t, a, b)))})`
+  })
+}
+function rise(el, t, a, b, dy) {
+  const p = easeOutCubic(seg(t, a, b))
+  set(el, { opacity: String(p), transform: `translate3d(0, ${lerp(dy, 0, p)}px, 0)` })
+}
+/** 幕显隐：线性交叉淡溶，两幕透明度之和恒为 1 */
+function sceneVis(el, t, from, to, fade) {
+  const inn = seg(t, from - fade, from)
+  const out = 1 - seg(t, to - fade, to)
+  const op = Math.min(inn, out)
+  const scale = lerp(1.006, 1, easeOutCubic(inn)) * lerp(1, 1.008, easeInCubic(1 - out))
+  const dy = lerp(-6, 0, easeOutCubic(inn)) + lerp(0, 6, easeInCubic(1 - out))
+  set(el, { opacity: String(op), transform: `translate3d(0, ${dy}px, 0) scale(${scale})` })
+  el.style.visibility = t >= from - fade - 0.02 && t <= to + 0.02 && op > 0 ? 'visible' : 'hidden'
+}
+function enterExit(t, a, b, inDur, outDur) {
+  return { inP: easeOutQuint(seg(t, a, a + inDur)), outP: 1 - easeInCubic(seg(t, b - outDur, b)) }
+}
+function sheetFollow(sheet, card, dx, dy) {
+  const op = card.style.opacity === '' ? '0' : card.style.opacity
+  set(sheet, { opacity: op, transform: `${card.style.transform} translate3d(${dx}px, ${dy}px, 0)` })
+}
+function drift(t, from, amount) {
+  return ` scale(${1 + amount * seg(t, from, 99)})`
+}
+
+/* ---------- 数据 ---------- */
+const STAGES = ['拉取课程信息', '下载视频', '提取音频', '转写音频', '提取 PPT·关键帧', '生成笔记']
+const VIEWS = ['详细笔记', '标准总结', '要点', '方法论', '思维导图']
+const VIEW_IMG = {
+  详细笔记: 'assets/body-detailed.jpg',
+  标准总结: 'assets/body-standard.jpg',
+  要点: 'assets/body-points.jpg',
+  方法论: 'assets/body-methodology.jpg',
+  思维导图: 'assets/body-mindmap.jpg'
+}
+/** 五种读法：各 0.98s，压轴整页导图 1.4s */
+const VIEW_SPANS = [[13.9, 14.88], [14.88, 15.86], [15.86, 16.84], [16.84, 17.82], [17.82, 18.8]]
+const T = {
+  s0: [0, 2.2], s1: [2.2, 5.6], s2: [5.6, 8.0], s3: [8.0, 10.2], s4: [10.2, 14.2],
+  s5: [14.2, 19.6], s6: [19.6, 22.2], s7: [22.2, 25.0], s8: [25.0, 27.0]
+}
+const DARK_IN = [10.1, 10.55]
+const DARK_OUT = [13.88, 14.2]
+
+/* ---------- 装配 ---------- */
+const nodeEls = STAGES.map((name) => {
+  const node = document.createElement('div')
+  node.className = 'node'
+  node.innerHTML = '<span class="dot"></span><span class="nlabel"></span>'
+  node.querySelector('.nlabel').textContent = name
+  $('s4-nodes').appendChild(node)
+  return node
+})
+const viewCards = VIEWS.map((name) => {
+  const card = document.createElement('div')
+  card.className = 'card'
+  card.style.left = '400px'
+  card.style.top = '248px'
+  card.style.width = '1120px'
+  card.style.height = '602px'
+  const img = document.createElement('img')
+  img.src = VIEW_IMG[name]
+  card.appendChild(img)
+  $('s5').appendChild(card)
+  return card
+})
+const mapCard = document.createElement('div')
+mapCard.className = 'card'
+mapCard.style.left = '340px'
+mapCard.style.top = '234px'
+mapCard.style.width = '1240px'
+mapCard.style.height = '667px'
+mapCard.innerHTML = '<img src="assets/shot-mindmap.jpg" alt="" />'
+$('s5').appendChild(mapCard)
+
+for (const p of ['本地优先', '自带模型密钥', '无遥测上报']) {
+  const el = document.createElement('span')
+  el.className = 'pill'
+  el.textContent = p
+  $('s8-pills').appendChild(el)
+}
+const titleEl = $('s0-title')
+for (const ch of 'Flash Summary') {
+  const span = document.createElement('span')
+  span.textContent = ch === ' ' ? '\u00A0' : ch
+  span.style.opacity = '0'
+  titleEl.appendChild(span)
+}
+
+/* ---------- 各幕 ---------- */
+function renderS0(t) {
+  sceneVis($('s0'), t, T.s0[0], T.s0[1], 0.3)
+  const dp = easeOutQuint(seg(t, 0.05, 0.6))
+  set($('s0-drop'), { opacity: String(0.9 * dp), transform: `scale(${lerp(0.62, 1.04, dp)})` })
+  motion($('s0-logo'), t, 0.16, 0.8, 0, 18, 0.74, 1, 0, 1)
+  const spans = titleEl.children
+  for (let i = 0; i < spans.length; i++) {
+    const p = easeOutCubic(seg(t, 0.5 + i * 0.022, 0.86 + i * 0.022))
+    spans[i].style.opacity = String(p)
+    spans[i].style.transform = `translate3d(0, ${lerp(26, 0, p)}px, 0)`
+  }
+  rise($('s0-sub'), t, 1.0, 1.4, 16)
+  rise($('s0-os'), t, 1.28, 1.62, 10)
+}
+
+/* S1 可核验：课程封面满幅 → 同一帧落进笔记页 → 时间线卡片近景 */
+function renderS1(t) {
+  sceneVis($('s1'), t, T.s1[0], T.s1[1], 0.42)
+  motion($('s1-cover'), t, 1.9, 2.85, 0, 0, 1.05, 1, 1, 1)
+  const noteIn = seg(t, 2.9, 3.4)
+  $('s1-cover').style.opacity = String(1 - noteIn)
+  motion($('s1-note'), t, 2.9, 3.45, 0, 0, 1.04, 1, 0, 1)
+  sheetFollow($('s1-sheet-a'), $('s1-note'), -8, -8)
+  rise($('s1-cap'), t, 3.45, 3.85, 10)
+  const cardsIn = seg(t, 4.2, 4.7)
+  $('s1-note').style.opacity = String(1 - cardsIn)
+  motion($('s1-cards'), t, 4.2, 4.85, 0, -70, 1.02, 1, 0, 1)
+  set($('s1-cards'), { transform: `${$('s1-cards').style.transform}${drift(t, 4.85, 0.025)}` })
+  sheetFollow($('s1-sheet-b'), $('s1-cards'), -8, -8)
+}
+
+/* S2 双入口 */
+function renderS2(t) {
+  sceneVis($('s2'), t, T.s2[0], T.s2[1], 0.42)
+  const tasks = $('s2-tasks')
+  motion(tasks, t, 5.3, 5.85, -70, 0, 1.03, 1, 0, 1)
+  set(tasks, { transform: `${tasks.style.transform}${drift(t, 5.85, 0.014)}` })
+  sheetFollow($('s2-sheet-a'), tasks, -8, -8)
+  rise($('s2-tasks-tag'), t, 5.85, 6.2, 8)
+  const bili = $('s2-bili')
+  motion(bili, t, 6.15, 6.7, 110, 0, 1.03, 1, 0, 1)
+  set(bili, { transform: `${bili.style.transform}${drift(t, 6.7, 0.014)}` })
+  sheetFollow($('s2-sheet-b'), bili, 8, -8)
+  rise($('s2-bili-tag'), t, 6.75, 7.08, 8)
+}
+
+/* S3 全部课程（不报私人库数量） */
+function renderS3(t) {
+  sceneVis($('s3'), t, T.s3[0], T.s3[1], 0.42)
+  const shot = $('s3-shot')
+  motion(shot, t, 7.7, 8.3, 140, 0, 1.04, 1, 0, 1)
+  set(shot, { transform: `${shot.style.transform}${drift(t, 8.3, 0.02)}` })
+  sheetFollow($('s3-sheet'), shot, -10, -10)
+  rise($('s3-cap'), t, 8.15, 8.5, 10)
+  rise($('s3-sub'), t, 8.3, 8.66, 8)
+}
+
+/* S4 六阶段（暗场） */
+function renderS4(t) {
+  sceneVis($('s4'), t, T.s4[0], T.s4[1], 0.44)
+  rise($('s4-cap'), t, 9.9, 10.26, 12)
+  motion($('s4-shot'), t, 9.9, 10.5, 0, 26, 1.06, 1, 0, 0.2)
+  motion($('s4-rail'), t, 10.15, 10.6, 0, 40, 1, 1, 0, 1)
+  const first = 10.75
+  const step = 0.45
+  const lit = seg(t, first, first + step * (STAGES.length - 1))
+  $('s4-fill').style.width = `${lit * 1250}px`
+  const sweep = $('s4-sweep')
+  sweep.style.left = `${125 + lit * 1250}px`
+  sweep.style.opacity = String(t > first - 0.05 && t < first + step * 6 + 0.2 ? 1 : 0)
+  nodeEls.forEach((node, i) => {
+    const at = first + i * step
+    const p = easeOutQuint(seg(t, at, at + 0.34))
+    node.classList.toggle('on', p > 0.5)
+    const dot = node.querySelector('.dot')
+    dot.style.transform = `scale(${lerp(1, 1.26, p)})`
+    dot.style.opacity = String(p)
+    node.querySelector('.nlabel').style.opacity = String(seg(t, at + 0.1, at + 0.38))
+  })
+  rise($('s4-sub'), t, 11.0, 11.4, 8)
+}
+
+/* S5 五种读法：只出结果，不出切换栏 */
+function renderS5(t) {
+  sceneVis($('s5'), t, T.s5[0], T.s5[1], 0.44)
+  let active = 0
+  for (let i = VIEW_SPANS.length - 1; i >= 0; i--) if (t >= VIEW_SPANS[i][0]) { active = i; break }
+  viewCards.forEach((card, i) => {
+    const [a, b] = VIEW_SPANS[i]
+    const { inP, outP } = enterExit(t, a, b, 0.24, 0.24)
+    set(card, {
+      opacity: String(Math.min(inP, outP)),
+      transform: `translate3d(${lerp(50, 0, inP) - lerp(0, -40, 1 - outP)}px, 0, 0)`
+    })
+  })
+  const mapIn = 18.8
+  const mapOut = 19.6
+  const flight = enterExit(t, mapIn, mapOut, 0.5, 0.24)
+  set(mapCard, {
+    opacity: String(Math.min(flight.inP, flight.outP)),
+    transform: `translate3d(${lerp(70, 0, flight.inP) - lerp(0, -60, 1 - flight.outP)}px, 0, 0) scale(${lerp(1.02, 1.05, easeInOutCubic(seg(t, mapIn, mapOut)))})`
+  })
+  const tag = $('s5-tag')
+  const [a, b] = VIEW_SPANS[active]
+  const tagIn = easeOutCubic(seg(t, a + 0.05, a + 0.45))
+  const tagOut = 1 - easeInCubic(seg(t, b - 0.32, b))
+  const tagShow = t < mapIn ? 1 : 0
+  set(tag, { opacity: String(tagIn * tagOut * tagShow), transform: `translate3d(0, ${lerp(8, 0, tagIn)}px, 0)` })
+  tag.textContent = VIEWS[active]
+  rise($('s5-cap'), t, 13.9, 14.3, 10)
+  rise($('s5-sub'), t, 14.08, 14.46, 8)
+}
+
+/* S6 追问 */
+function renderS6(t) {
+  sceneVis($('s6'), t, T.s6[0], T.s6[1], 0.42)
+  const shot = $('s6-shot')
+  motion(shot, t, 19.3, 19.85, 130, 0, 1.03, 1, 0, 1)
+  set(shot, { transform: `${shot.style.transform}${drift(t, 19.85, 0.025)}` })
+  rise($('s6-cap'), t, 19.6, 20.0, 10)
+  rise($('s6-sub'), t, 19.78, 20.16, 8)
+}
+
+/** 翻页：p1 先翻、p2 后翻，露出 p3 */
+function flipPage(el, t, a, b, baseZ) {
+  const p = easeInOutCubic(seg(t, a, b))
+  set(el, {
+    transform: `rotateY(${-168 * p}deg)`,
+    zIndex: String(p > 0.5 ? 0 : baseZ),
+    opacity: String(p > 0.86 ? lerp(1, 0, (p - 0.86) / 0.14) : 1)
+  })
+  const shade = el.querySelector('.shade')
+  if (shade != null) shade.style.opacity = String(Math.sin(Math.PI * clamp(p, 0, 1)) * 0.9)
+}
+
+/* S7 一册讲义 */
+function renderS7(t) {
+  sceneVis($('s7'), t, T.s7[0], T.s7[1], 0.42)
+  motion($('s7-book'), t, 21.9, 22.45, 0, 40, 0.97, 1, 0, 1)
+  flipPage($('s7-page1'), t, 22.55, 23.2, 5)
+  flipPage($('s7-page2'), t, 23.5, 24.15, 4)
+  set($('s7-page3'), { zIndex: '3' })
+  rise($('s7-cap'), t, 22.3, 22.7, 10)
+  rise($('s7-sub'), t, 22.48, 22.86, 8)
+  rise($('s7-pages'), t, 22.62, 23.0, 8)
+}
+
+/* S8 收尾（单一 CTA） */
+function renderS8(t) {
+  sceneVis($('s8'), t, T.s8[0], T.s8[1], 0.4)
+  motion($('s8-stack'), t, 24.7, 25.2, 0, 46, 0.96, 1, 0, 1)
+  motion($('s8-logo'), t, 24.82, 25.2, 0, 6, 0.9, 1, 0, 1)
+  rise($('s8-title'), t, 24.9, 25.26, 10)
+  rise($('s8-sub'), t, 25.02, 25.36, 8)
+  const pills = $('s8-pills').children
+  for (let i = 0; i < pills.length; i++) rise(pills[i], t, 25.16 + i * 0.08, 25.42 + i * 0.08, 10)
+  set($('s8-rule'), { opacity: String(seg(t, 25.3, 25.58)), width: `${seg(t, 25.3, 25.68) * 700}px` })
+  rise($('s8-disclaimer'), t, 25.38, 25.74, 6)
+  rise($('s8-link'), t, 25.5, 25.84, 6)
+}
+
+/* ---------- 入口 ---------- */
+const RENDERERS = [renderS0, renderS1, renderS2, renderS3, renderS4, renderS5, renderS6, renderS7, renderS8]
+const SCENE_IDS = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']
+
+function setTime(t) {
+  const clamped = clamp(t, 0, 27)
+  for (let i = 0; i < RENDERERS.length; i++) {
+    const scene = $(SCENE_IDS[i])
+    const [from, to] = T[SCENE_IDS[i]]
+    if (clamped < from - 0.45 || clamped > to + 0.05) {
+      if (scene.style.visibility !== 'hidden') {
+        scene.style.visibility = 'hidden'
+        scene.style.opacity = '0'
+      }
+      continue
+    }
+    RENDERERS[i](clamped)
+  }
+  const darkOn = clamp(seg(t, DARK_IN[0], DARK_IN[1]) - seg(t, DARK_OUT[0], DARK_OUT[1]), 0, 1)
+  $('tint').style.opacity = String(darkOn)
+  $('root').classList.toggle('dark', darkOn > 0.5)
+}
+window.__setTime = (t) => setTime(t)
+
+setTime(0)
+Promise.all([
+  document.fonts.ready,
+  ...[...document.images].map((im) => im.decode().catch(() => undefined))
+]).then(() => {
+  setTime(0)
+  window.__promoReady = true
+})
+</script>
+</body>
+</html>

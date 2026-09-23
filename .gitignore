@@ -38,6 +38,14 @@ tmp-chunk-*
 .playwright-mcp/
 .tmp-audit-shots/
 
+# 宣发宣传动画：源文件入库（promo/*.html|*.mjs|*.cjs、scripts/promo-render.mjs），
+# 实拍位图与渲染产物不入库——截图来自真实课程资料与登录态，产物可一键重建
+promo/assets/
+promo/out/
+.tmp-promo-slides/
+.tmp-promo-check/
+.tmp-handout-check/
+
 # 真机验收临时产物（2026-09-20 批 D + v4 验收）
 .tmp-accept-shots/
 .regen-e2e-report.json
