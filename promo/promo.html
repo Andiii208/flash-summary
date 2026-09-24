@@ -296,9 +296,6 @@ function sceneVis(el, t, from, to, fade) {
   set(el, { opacity: String(op), transform: `translate3d(0, ${dy}px, 0) scale(${scale})` })
   el.style.visibility = t >= from - fade - 0.02 && t <= to + 0.02 && op > 0 ? 'visible' : 'hidden'
 }
-function enterExit(t, a, b, inDur, outDur) {
-  return { inP: easeOutQuint(seg(t, a, a + inDur)), outP: 1 - easeInCubic(seg(t, b - outDur, b)) }
-}
 function sheetFollow(sheet, card, dx, dy) {
   const op = card.style.opacity === '' ? '0' : card.style.opacity
   set(sheet, { opacity: op, transform: `${card.style.transform} translate3d(${dx}px, ${dy}px, 0)` })
@@ -325,6 +322,9 @@ const T = {
 }
 const DARK_IN = [10.1, 10.55]
 const DARK_OUT = [13.88, 14.2]
+/** 幕间淡溶统一窗：相邻两幕用同一个 fade，线性交叉淡溶两幕之和才恒为 1
+ *  （各幕各写各的会出现相加 >1 的奶白重叠或 <1 的凹陷） */
+const SCENE_FADE = 0.42
 
 /* ---------- 装配 ---------- */
 const nodeEls = STAGES.map((name) => {
@@ -373,7 +373,7 @@ for (const ch of 'Flash Summary') {
 
 /* ---------- 各幕 ---------- */
 function renderS0(t) {
-  sceneVis($('s0'), t, T.s0[0], T.s0[1], 0.3)
+  sceneVis($('s0'), t, T.s0[0], T.s0[1], SCENE_FADE)
   const dp = easeOutQuint(seg(t, 0.05, 0.6))
   set($('s0-drop'), { opacity: String(0.9 * dp), transform: `scale(${lerp(0.62, 1.04, dp)})` })
   motion($('s0-logo'), t, 0.16, 0.8, 0, 18, 0.74, 1, 0, 1)
@@ -389,41 +389,45 @@ function renderS0(t) {
 
 /* S1 可核验：课程封面满幅 → 同一帧落进笔记页 → 时间线卡片近景 */
 function renderS1(t) {
-  sceneVis($('s1'), t, T.s1[0], T.s1[1], 0.42)
+  sceneVis($('s1'), t, T.s1[0], T.s1[1], SCENE_FADE)
   motion($('s1-cover'), t, 1.9, 2.85, 0, 0, 1.05, 1, 1, 1)
-  const noteIn = seg(t, 2.9, 3.4)
+  // 封面与笔记卡同窗线性交叉淡溶：封面出、笔记卡进，两窗重合时和恒为 1。
+  // note 的不透明度必须整体乘上 noteIn 再赋值——曾经这里被 `1 - cardsIn`
+  // 无条件覆盖（t<4.2 时恒为 1），motion 写的淡入曲线被整个冲掉，卡片从
+  // 幕起始就死坐在封面上，一次入场变成两段式。
+  const noteIn = seg(t, 2.95, 3.35)
   $('s1-cover').style.opacity = String(1 - noteIn)
-  motion($('s1-note'), t, 2.9, 3.45, 0, 0, 1.04, 1, 0, 1)
+  motion($('s1-note'), t, 2.95, 3.35, 0, 0, 1.04, 1, 0, 1)
+  const cardsIn = seg(t, 4.2, 4.7)
+  $('s1-note').style.opacity = String(noteIn * (1 - cardsIn))
   sheetFollow($('s1-sheet-a'), $('s1-note'), -8, -8)
   rise($('s1-cap'), t, 3.45, 3.85, 10)
-  const cardsIn = seg(t, 4.2, 4.7)
-  $('s1-note').style.opacity = String(1 - cardsIn)
   motion($('s1-cards'), t, 4.2, 4.85, 0, -70, 1.02, 1, 0, 1)
-  set($('s1-cards'), { transform: `${$('s1-cards').style.transform}${drift(t, 4.85, 0.025)}` })
+  set($('s1-cards'), { transform: `${$('s1-cards').style.transform}${drift(t, 4.85, 0.03)}` })
   sheetFollow($('s1-sheet-b'), $('s1-cards'), -8, -8)
 }
 
 /* S2 双入口 */
 function renderS2(t) {
-  sceneVis($('s2'), t, T.s2[0], T.s2[1], 0.42)
+  sceneVis($('s2'), t, T.s2[0], T.s2[1], SCENE_FADE)
   const tasks = $('s2-tasks')
   motion(tasks, t, 5.3, 5.85, -70, 0, 1.03, 1, 0, 1)
-  set(tasks, { transform: `${tasks.style.transform}${drift(t, 5.85, 0.014)}` })
+  set(tasks, { transform: `${tasks.style.transform}${drift(t, 5.85, 0.02)}` })
   sheetFollow($('s2-sheet-a'), tasks, -8, -8)
   rise($('s2-tasks-tag'), t, 5.85, 6.2, 8)
   const bili = $('s2-bili')
   motion(bili, t, 6.15, 6.7, 110, 0, 1.03, 1, 0, 1)
-  set(bili, { transform: `${bili.style.transform}${drift(t, 6.7, 0.014)}` })
+  set(bili, { transform: `${bili.style.transform}${drift(t, 6.7, 0.02)}` })
   sheetFollow($('s2-sheet-b'), bili, 8, -8)
   rise($('s2-bili-tag'), t, 6.75, 7.08, 8)
 }
 
 /* S3 全部课程（不报私人库数量） */
 function renderS3(t) {
-  sceneVis($('s3'), t, T.s3[0], T.s3[1], 0.42)
+  sceneVis($('s3'), t, T.s3[0], T.s3[1], SCENE_FADE)
   const shot = $('s3-shot')
   motion(shot, t, 7.7, 8.3, 140, 0, 1.04, 1, 0, 1)
-  set(shot, { transform: `${shot.style.transform}${drift(t, 8.3, 0.02)}` })
+  set(shot, { transform: `${shot.style.transform}${drift(t, 8.3, 0.028)}` })
   sheetFollow($('s3-sheet'), shot, -10, -10)
   rise($('s3-cap'), t, 8.15, 8.5, 10)
   rise($('s3-sub'), t, 8.3, 8.66, 8)
@@ -431,7 +435,7 @@ function renderS3(t) {
 
 /* S4 六阶段（暗场） */
 function renderS4(t) {
-  sceneVis($('s4'), t, T.s4[0], T.s4[1], 0.44)
+  sceneVis($('s4'), t, T.s4[0], T.s4[1], SCENE_FADE)
   rise($('s4-cap'), t, 9.9, 10.26, 12)
   motion($('s4-shot'), t, 9.9, 10.5, 0, 26, 1.06, 1, 0, 0.2)
   motion($('s4-rail'), t, 10.15, 10.6, 0, 40, 1, 1, 0, 1)
@@ -441,7 +445,9 @@ function renderS4(t) {
   $('s4-fill').style.width = `${lit * 1250}px`
   const sweep = $('s4-sweep')
   sweep.style.left = `${125 + lit * 1250}px`
-  sweep.style.opacity = String(t > first - 0.05 && t < first + step * 6 + 0.2 ? 1 : 0)
+  // 扫点收官要淡出：写死 1/0 会在轨道尽头闪一下
+  const sweepEnd = first + step * 6 + 0.2
+  sweep.style.opacity = String(clamp(Math.min(seg(t, first - 0.05, first + 0.05), 1 - seg(t, sweepEnd - 0.3, sweepEnd)), 0, 1))
   nodeEls.forEach((node, i) => {
     const at = first + i * step
     const p = easeOutQuint(seg(t, at, at + 0.34))
@@ -456,23 +462,28 @@ function renderS4(t) {
 
 /* S5 五种读法：只出结果，不出切换栏 */
 function renderS5(t) {
-  sceneVis($('s5'), t, T.s5[0], T.s5[1], 0.44)
+  sceneVis($('s5'), t, T.s5[0], T.s5[1], SCENE_FADE)
   let active = 0
   for (let i = VIEW_SPANS.length - 1; i >= 0; i--) if (t >= VIEW_SPANS[i][0]) { active = i; break }
   viewCards.forEach((card, i) => {
     const [a, b] = VIEW_SPANS[i]
-    const { inP, outP } = enterExit(t, a, b, 0.24, 0.24)
+    // 换卡同窗线性交叉淡溶：出幕与入幕用同一个 [a-0.24, a+0.24] 窗，
+    // 两张卡透明度之和恒为 1。eased 出入会在交界处双双归零、闪一拍背景，
+    // 那是「先一暗再亮」凹陷的来源（和幕间淡溶同一条纪律）。
+    const inP = seg(t, a - 0.24, a + 0.24)
+    const outP = 1 - seg(t, b - 0.24, b + 0.24)
     set(card, {
       opacity: String(Math.min(inP, outP)),
       transform: `translate3d(${lerp(50, 0, inP) - lerp(0, -40, 1 - outP)}px, 0, 0)`
     })
   })
+  // 压轴整页导图：与第五张卡同窗淡入（和恒 1），入幕后缓推
   const mapIn = 18.8
   const mapOut = 19.6
-  const flight = enterExit(t, mapIn, mapOut, 0.5, 0.24)
+  const mapOp = Math.min(seg(t, mapIn - 0.24, mapIn + 0.24), 1 - seg(t, mapOut - 0.24, mapOut))
   set(mapCard, {
-    opacity: String(Math.min(flight.inP, flight.outP)),
-    transform: `translate3d(${lerp(70, 0, flight.inP) - lerp(0, -60, 1 - flight.outP)}px, 0, 0) scale(${lerp(1.02, 1.05, easeInOutCubic(seg(t, mapIn, mapOut)))})`
+    opacity: String(mapOp),
+    transform: `translate3d(${lerp(70, 0, seg(t, mapIn - 0.24, mapIn + 0.5)) - lerp(0, -60, seg(t, mapOut - 0.24, mapOut))}px, 0, 0) scale(${lerp(1.02, 1.05, easeInOutCubic(seg(t, mapIn - 0.24, mapOut)))})`
   })
   const tag = $('s5-tag')
   const [a, b] = VIEW_SPANS[active]
@@ -487,10 +498,10 @@ function renderS5(t) {
 
 /* S6 追问 */
 function renderS6(t) {
-  sceneVis($('s6'), t, T.s6[0], T.s6[1], 0.42)
+  sceneVis($('s6'), t, T.s6[0], T.s6[1], SCENE_FADE)
   const shot = $('s6-shot')
   motion(shot, t, 19.3, 19.85, 130, 0, 1.03, 1, 0, 1)
-  set(shot, { transform: `${shot.style.transform}${drift(t, 19.85, 0.025)}` })
+  set(shot, { transform: `${shot.style.transform}${drift(t, 19.85, 0.03)}` })
   rise($('s6-cap'), t, 19.6, 20.0, 10)
   rise($('s6-sub'), t, 19.78, 20.16, 8)
 }
@@ -509,8 +520,10 @@ function flipPage(el, t, a, b, baseZ) {
 
 /* S7 一册讲义 */
 function renderS7(t) {
-  sceneVis($('s7'), t, T.s7[0], T.s7[1], 0.42)
+  sceneVis($('s7'), t, T.s7[0], T.s7[1], SCENE_FADE)
   motion($('s7-book'), t, 21.9, 22.45, 0, 40, 0.97, 1, 0, 1)
+  // 翻完落定后极缓前推，末段不坐死
+  set($('s7-book'), { transform: `${$('s7-book').style.transform} scale(${1 + 0.012 * seg(t, 24.2, 25)})` })
   flipPage($('s7-page1'), t, 22.55, 23.2, 5)
   flipPage($('s7-page2'), t, 23.5, 24.15, 4)
   set($('s7-page3'), { zIndex: '3' })
@@ -521,7 +534,7 @@ function renderS7(t) {
 
 /* S8 收尾（单一 CTA） */
 function renderS8(t) {
-  sceneVis($('s8'), t, T.s8[0], T.s8[1], 0.4)
+  sceneVis($('s8'), t, T.s8[0], T.s8[1], SCENE_FADE)
   motion($('s8-stack'), t, 24.7, 25.2, 0, 46, 0.96, 1, 0, 1)
   motion($('s8-logo'), t, 24.82, 25.2, 0, 6, 0.9, 1, 0, 1)
   rise($('s8-title'), t, 24.9, 25.26, 10)
@@ -536,6 +549,8 @@ function renderS8(t) {
 /* ---------- 入口 ---------- */
 const RENDERERS = [renderS0, renderS1, renderS2, renderS3, renderS4, renderS5, renderS6, renderS7, renderS8]
 const SCENE_IDS = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']
+/** 暗场翻板状态（滞回，见 setTime 尾部） */
+let darkState = false
 
 function setTime(t) {
   const clamped = clamp(t, 0, 27)
@@ -553,7 +568,13 @@ function setTime(t) {
   }
   const darkOn = clamp(seg(t, DARK_IN[0], DARK_IN[1]) - seg(t, DARK_OUT[0], DARK_OUT[1]), 0, 1)
   $('tint').style.opacity = String(darkOn)
-  $('root').classList.toggle('dark', darkOn > 0.5)
+  // 暗场换色带滞回：盖层全黑时才翻深色（淡入），盖层揭完才翻回浅色（淡出）——
+  // 在 50% 半遮状态下翻板会闪一拍。spot 渲染是非单调跳序，标志位随调用收敛。
+  const wantDark = darkOn >= 0.999 || (darkState && darkOn > 0.001)
+  if (wantDark !== darkState) {
+    darkState = wantDark
+    $('root').classList.toggle('dark', darkState)
+  }
 }
 window.__setTime = (t) => setTime(t)
 
