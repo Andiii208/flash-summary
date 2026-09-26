@@ -469,7 +469,13 @@ function renderS3(t) {
 /* S4 六阶段（暗场） */
 function renderS4(t) {
   sceneVis($('s4'), t, T.s4[0], T.s4[1], SCENE_FADE)
+  // 字幕比场景早退场 0.4s：S5 的主/副标语在 y≈920/966，与 S4 副标(906)几乎
+  // 同高——同窗交叉淡溶时两条字幕在同一横带上帧间互怼（实测 14.10s 一帧里
+  // 三行字幕叠一条带），读作「闪」。字幕先在 13.47–13.82 撤干净，轨道卡再
+  // 随幕淡溶，退场就成了「字先走、暗场再让位」。
+  const capOut = 1 - seg(t, 13.47, 13.82)
   rise($('s4-cap'), t, 9.9, 10.26, 12)
+  $('s4-cap').style.opacity = String(seg(t, 9.9, 10.26) * capOut)
   motion($('s4-shot'), t, 9.9, 10.5, 0, 26, 1, 1, 0, 0.2)
   motion($('s4-rail'), t, 10.15, 10.6, 0, 40, 1, 1, 0, 1)
   const first = 10.75
@@ -493,6 +499,7 @@ function renderS4(t) {
     node.querySelector('.nlabel').style.opacity = String(seg(t, at + 0.1, at + 0.38))
   })
   rise($('s4-sub'), t, 11.0, 11.4, 8)
+  $('s4-sub').style.opacity = String(seg(t, 11.0, 11.4) * capOut)
 }
 
 /* S5 五种读法：只出结果，不出切换栏 */
