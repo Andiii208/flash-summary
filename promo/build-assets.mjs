@@ -84,14 +84,16 @@ function fromShot(name, src, cssWidth, trim = true) {
   console.log(`asset ${name}.jpg <- .ui-shots/promo/${src} (${cssWidth} css${trim ? '' : ', no-trim'})`)
 }
 
-// 真实课程封面：满幅开场（v4 那张 960×540 放大 2.7 倍的合成幻灯片就是「丑」的直接原因）
+// 真实课程封面：S1 第一拍以「封面卡」呈现（845 CSS = 源 1126px 的 1:1 清晰宽）。
+// 曾经这里是 scale=2560 满幅开场——1126×717 的源放大 1.7 倍，大字发虚边缘发糊，
+// 正是「位图放大=丑陋」的实证；v7 起封面绝不大于源分辨率。
 if (!existsSync(COVER)) { missing.push(COVER) } else {
   execFileSync(FFMPEG, [
     '-y', '-hide_banner', '-loglevel', 'error', '-i', COVER,
-    '-vf', 'scale=2560:1626:flags=lanczos,crop=2560:1440', '-q:v', '3', join(OUT, 'cover-opening.jpg')
+    '-vf', 'scale=1127:-1:flags=lanczos', '-q:v', '3', join(OUT, 'cover-opening.jpg')
   ])
-  manifest['cover-opening.jpg'] = { source: '真实课程封面（1126×717，裁成 16:9）', cssWidth: 1920 }
-  console.log('asset cover-opening.jpg <- 真实课程封面')
+  manifest['cover-opening.jpg'] = { source: '真实课程封面（1126×717，1:1 不放大）', cssWidth: 845 }
+  console.log('asset cover-opening.jpg <- 真实课程封面（845 css，1:1）')
 }
 
 // ③ 图标：直接解 ico
