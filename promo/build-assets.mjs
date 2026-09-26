@@ -29,9 +29,10 @@ const SHOT_SRC = join(ROOT, '.ui-shots', 'promo')
 const PDF = join(SHOT_SRC, 'handout.pdf')
 
 /**
- * [产出名, 源位图, 舞台显示宽(CSS px)] —— 高度按原图比例；统一裁掉 y<86 的标题栏。
- * v6 起素材全部回到**真实课程库**（v4/v5 的合成演示案例被否：画面素、没看头）。
- * 真实库截图在 .ui-shots/promo/（v3 轮 reshot 留下，标题栏那一行同时有登录态药丸）。
+ * [产出名, 源位图, 舞台显示宽(CSS px), 是否裁顶栏] —— 高度按原图比例；
+ * 默认统一裁掉 y<86 的标题栏；第 4 参 false 表示源图已裁好（如对话框本体）。
+ * v6 起素材全部来自**真实课程库**（v4/v5 的合成演示案例被否：画面素、没看头）。
+ * 真实库截图在 .ui-shots/promo/（标题栏那一行同时有登录态药丸）。
  */
 const SHOTS = [
   ['shot-note-hero', '03-note-detailed.png', 1180],
@@ -40,10 +41,10 @@ const SHOTS = [
   ['body-points', '04b-note-要点-1800.png', 1120],
   ['body-methodology', '04b-note-方法论-1800.png', 1120],
   ['body-mindmap', '04b-note-思维导图-1800.png', 1120],
-  ['shot-mindmap', '05-mindmap-fullmap.png', 1240],
+  ['shot-mindmap', '05-mindmap-panel.png', 1240, false],
   ['shot-qa', '06-qa-dock.png', 1180],
   ['shot-tasks', '01-tasks-initial.png', 1100],
-  ['shot-bili', '08-bili-input.png', 760],
+  ['shot-bili', '08-bili-dialog.png', 760, false],
   ['shot-browser', '08-course-browser.png', 1180]
 ]
 
@@ -70,17 +71,17 @@ if (!existsSync(join(FONT_SRC, 'lxgwwenkaigbscreen.css'))) throw new Error(`${FO
 cpSync(FONT_SRC, join(OUT, 'wenkai'), { recursive: true })
 console.log(`font  ${FONT_PKG} -> assets/wenkai/`)
 
-function fromShot(name, src, cssWidth) {
+function fromShot(name, src, cssWidth, trim = true) {
   const source = join(SHOT_SRC, src)
   if (!existsSync(source)) { missing.push(source); return }
   const px = Math.round(cssWidth * SUPER)
   execFileSync(FFMPEG, [
     '-y', '-hide_banner', '-loglevel', 'error', '-i', source,
-    '-vf', `crop=iw:ih-86:0:86,scale=${px}:-1:flags=lanczos`,
+    '-vf', trim ? `crop=iw:ih-86:0:86,scale=${px}:-1:flags=lanczos` : `scale=${px}:-1:flags=lanczos`,
     '-q:v', '3', join(OUT, `${name}.jpg`)
   ])
-  manifest[name] = { source: `.ui-shots/promo/${src}`, cssWidth, trimTopPx: 86 }
-  console.log(`asset ${name}.jpg <- .ui-shots/promo/${src} (${cssWidth} css)`)
+  manifest[name] = { source: `.ui-shots/promo/${src}`, cssWidth, trimTopPx: trim ? 86 : 0 }
+  console.log(`asset ${name}.jpg <- .ui-shots/promo/${src} (${cssWidth} css${trim ? '' : ', no-trim'})`)
 }
 
 // 真实课程封面：满幅开场（v4 那张 960×540 放大 2.7 倍的合成幻灯片就是「丑」的直接原因）

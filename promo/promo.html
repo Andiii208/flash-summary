@@ -174,12 +174,12 @@
     <div class="card" id="s2-tasks" style="left:270px;top:270px;width:1100px;height:592px">
       <img src="assets/shot-tasks.jpg" alt="" />
     </div>
-    <div class="tag" id="s2-tasks-tag" style="position:absolute;left:270px;top:896px;font-size:19px;color:#43503f;letter-spacing:.5px"><span class="tick"></span><b style="color:#1c221c;font-weight:600">东南大学 · 科达录播</b>　登录后课程树自动刷新</div>
+    <div class="tag" id="s2-tasks-tag" style="position:absolute;left:270px;top:896px;font-size:21px;color:#43503f;letter-spacing:.5px"><span class="tick"></span><b style="color:#1c221c;font-weight:600">东南大学 · 科达录播</b>　登录后课程树自动刷新</div>
     <div class="sheet" id="s2-sheet-b" style="left:1174px;top:322px;width:760px;height:409px"></div>
     <div class="card" id="s2-bili" style="left:1182px;top:330px;width:760px;height:409px">
       <img src="assets/shot-bili.jpg" alt="" />
     </div>
-    <div class="tag" id="s2-bili-tag" style="position:absolute;left:1182px;top:766px;font-size:19px;color:#43503f;letter-spacing:.5px"><span class="tick"></span><b style="color:#1c221c;font-weight:600">B站视频 · 字幕优先</b></div>
+    <div class="tag" id="s2-bili-tag" style="position:absolute;left:1182px;top:766px;font-size:21px;color:#43503f;letter-spacing:.5px"><span class="tick"></span><b style="color:#1c221c;font-weight:600">B站视频 · 字幕优先</b></div>
   </section>
 
   <!-- S3 全部课程：一屏浏览（不报私人库数量） -->
@@ -300,6 +300,21 @@ function sheetFollow(sheet, card, dx, dy) {
   const op = card.style.opacity === '' ? '0' : card.style.opacity
   set(sheet, { opacity: op, transform: `${card.style.transform} translate3d(${dx}px, ${dy}px, 0)` })
 }
+/** Ken Burns：卡片内截图的内部运镜。整段静止的截图是「PPT 感」的主要来源——
+ *  每张卡的画面在可见窗内持续缓推/平移，镜头永不坐死。平移档用 scale(1.06)
+ *  常驻留出 3% 溢出余量，位移 ≤2.2% 不会露边；进度 easeInOutCubic 免匀速机械感。 */
+function kb(img, t, a, b, mode) {
+  const p = easeInOutCubic(seg(t, a, b))
+  let tr
+  if (mode === 'push') tr = `scale(${lerp(1, 1.05, p)})`
+  else if (mode === 'push-soft') tr = `scale(${lerp(1, 1.03, p)})`
+  else if (mode === 'pan-down') tr = `scale(1.06) translate3d(0, ${lerp(-2.2, 1.4, p)}%, 0)`
+  else if (mode === 'pan-right') tr = `scale(1.06) translate3d(${lerp(-2.2, 1.4, p)}%, 0, 0)`
+  else if (mode === 'pan-left') tr = `scale(1.06) translate3d(${lerp(2.2, -1.4, p)}%, 0, 0)`
+  else tr = `scale(${lerp(1.06, 1, p)})`
+  img.style.transform = tr
+}
+function cardImg(id) { return $(id).querySelector('img') }
 function drift(t, from, amount) {
   return ` scale(${1 + amount * seg(t, from, 99)})`
 }
@@ -323,8 +338,9 @@ const T = {
 const DARK_IN = [10.1, 10.55]
 const DARK_OUT = [13.88, 14.2]
 /** 幕间淡溶统一窗：相邻两幕用同一个 fade，线性交叉淡溶两幕之和才恒为 1
- *  （各幕各写各的会出现相加 >1 的奶白重叠或 <1 的凹陷） */
-const SCENE_FADE = 0.42
+ *  （各幕各写各的会出现相加 >1 的奶白重叠或 <1 的凹陷）。0.38s 比初版 0.42
+ *  略紧——节奏快半拍，但每幕首个元素仍有 ≥0.25s 提前起跑量 */
+const SCENE_FADE = 0.38
 
 /* ---------- 装配 ---------- */
 const nodeEls = STAGES.map((name) => {
@@ -400,9 +416,11 @@ function renderS1(t) {
   motion($('s1-note'), t, 2.95, 3.35, 0, 0, 1.04, 1, 0, 1)
   const cardsIn = seg(t, 4.2, 4.7)
   $('s1-note').style.opacity = String(noteIn * (1 - cardsIn))
+  kb(cardImg('s1-note'), t, 3.35, 4.2, 'push-soft')
   sheetFollow($('s1-sheet-a'), $('s1-note'), -8, -8)
   rise($('s1-cap'), t, 3.45, 3.85, 10)
   motion($('s1-cards'), t, 4.2, 4.85, 0, -70, 1.02, 1, 0, 1)
+  kb(cardImg('s1-cards'), t, 4.85, 5.6, 'push')
   set($('s1-cards'), { transform: `${$('s1-cards').style.transform}${drift(t, 4.85, 0.03)}` })
   sheetFollow($('s1-sheet-b'), $('s1-cards'), -8, -8)
 }
@@ -412,11 +430,13 @@ function renderS2(t) {
   sceneVis($('s2'), t, T.s2[0], T.s2[1], SCENE_FADE)
   const tasks = $('s2-tasks')
   motion(tasks, t, 5.3, 5.85, -70, 0, 1.03, 1, 0, 1)
+  kb(cardImg('s2-tasks'), t, 5.85, 8.0, 'pan-down')
   set(tasks, { transform: `${tasks.style.transform}${drift(t, 5.85, 0.02)}` })
   sheetFollow($('s2-sheet-a'), tasks, -8, -8)
   rise($('s2-tasks-tag'), t, 5.85, 6.2, 8)
   const bili = $('s2-bili')
   motion(bili, t, 6.15, 6.7, 110, 0, 1.03, 1, 0, 1)
+  kb(bili.querySelector('img'), t, 6.7, 8.0, 'push')
   set(bili, { transform: `${bili.style.transform}${drift(t, 6.7, 0.02)}` })
   sheetFollow($('s2-sheet-b'), bili, 8, -8)
   rise($('s2-bili-tag'), t, 6.75, 7.08, 8)
@@ -427,6 +447,7 @@ function renderS3(t) {
   sceneVis($('s3'), t, T.s3[0], T.s3[1], SCENE_FADE)
   const shot = $('s3-shot')
   motion(shot, t, 7.7, 8.3, 140, 0, 1.04, 1, 0, 1)
+  kb(shot.querySelector('img'), t, 8.3, 10.2, 'pan-down')
   set(shot, { transform: `${shot.style.transform}${drift(t, 8.3, 0.028)}` })
   sheetFollow($('s3-sheet'), shot, -10, -10)
   rise($('s3-cap'), t, 8.15, 8.5, 10)
@@ -438,6 +459,7 @@ function renderS4(t) {
   sceneVis($('s4'), t, T.s4[0], T.s4[1], SCENE_FADE)
   rise($('s4-cap'), t, 9.9, 10.26, 12)
   motion($('s4-shot'), t, 9.9, 10.5, 0, 26, 1.06, 1, 0, 0.2)
+  kb($('s4-shot').querySelector('img'), t, 10.5, 14.2, 'push')
   motion($('s4-rail'), t, 10.15, 10.6, 0, 40, 1, 1, 0, 1)
   const first = 10.75
   const step = 0.45
@@ -476,11 +498,13 @@ function renderS5(t) {
       opacity: String(Math.min(inP, outP)),
       transform: `translate3d(${lerp(50, 0, inP) - lerp(0, -40, 1 - outP)}px, 0, 0)`
     })
+    kb(card.querySelector('img'), t, a, b, 'push-soft')
   })
   // 压轴整页导图：与第五张卡同窗淡入（和恒 1），入幕后缓推
   const mapIn = 18.8
   const mapOut = 19.6
   const mapOp = Math.min(seg(t, mapIn - 0.24, mapIn + 0.24), 1 - seg(t, mapOut - 0.24, mapOut))
+  kb(mapCard.querySelector('img'), t, mapIn, mapOut, 'push-soft')
   set(mapCard, {
     opacity: String(mapOp),
     transform: `translate3d(${lerp(70, 0, seg(t, mapIn - 0.24, mapIn + 0.5)) - lerp(0, -60, seg(t, mapOut - 0.24, mapOut))}px, 0, 0) scale(${lerp(1.02, 1.05, easeInOutCubic(seg(t, mapIn - 0.24, mapOut)))})`
@@ -501,6 +525,7 @@ function renderS6(t) {
   sceneVis($('s6'), t, T.s6[0], T.s6[1], SCENE_FADE)
   const shot = $('s6-shot')
   motion(shot, t, 19.3, 19.85, 130, 0, 1.03, 1, 0, 1)
+  kb(shot.querySelector('img'), t, 19.85, 22.2, 'pan-left')
   set(shot, { transform: `${shot.style.transform}${drift(t, 19.85, 0.03)}` })
   rise($('s6-cap'), t, 19.6, 20.0, 10)
   rise($('s6-sub'), t, 19.78, 20.16, 8)
@@ -525,7 +550,8 @@ function renderS7(t) {
   // 翻完落定后极缓前推，末段不坐死
   set($('s7-book'), { transform: `${$('s7-book').style.transform} scale(${1 + 0.012 * seg(t, 24.2, 25)})` })
   flipPage($('s7-page1'), t, 22.55, 23.2, 5)
-  flipPage($('s7-page2'), t, 23.5, 24.15, 4)
+  flipPage($('s7-page2'), t, 23.35, 24.0, 4)
+  kb($('s7-page3').querySelector('img'), t, 24.0, 25.0, 'push-soft')
   set($('s7-page3'), { zIndex: '3' })
   rise($('s7-cap'), t, 22.3, 22.7, 10)
   rise($('s7-sub'), t, 22.48, 22.86, 8)
