@@ -116,7 +116,7 @@ for (const [name, page, note] of PAGES) {
   console.log(`asset ${name}.jpg <- handout.pdf p.${page + 1}（${note}）`)
 }
 
-for (const [name, src, cssWidth] of SHOTS) fromShot(name, src, cssWidth)
+for (const [name, src, cssWidth, trim = true] of SHOTS) fromShot(name, src, cssWidth, trim)
 
 writeFileSync(join(OUT, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 if (missing.length > 0) {
