@@ -185,7 +185,9 @@
     <div class="card" id="s1-cards" style="left:330px;top:204px;width:1240px;height:668px">
       <img src="assets/body-detailed.jpg" alt="" />
     </div>
-    <div class="cap hi" id="s1-cap" style="left:350px;top:912px">每一段，都能点回视频的那一秒</div>
+    <!-- 文案纪律：不说「点回」——原片跳转只对 B 站课时存在（SEU 来源 lessons:openSource
+         直接报错「没有可跳转的原片页面」），时间锚(at)才是全来源都成立的事实 -->
+    <div class="cap hi" id="s1-cap" style="left:350px;top:912px">每一段，都标着原片的那一秒</div>
   </section>
 
   <!-- S2 双入口 -->
@@ -334,7 +336,9 @@ function driftXY(t, a, b, ax, ay) {
 }
 
 /* ---------- 数据 ---------- */
-const STAGES = ['拉取课程信息', '下载视频', '提取音频', '转写音频', '提取 PPT·关键帧', '生成笔记']
+// 阶段名逐字对齐 src/renderer/labels.ts（六级）——曾把「/」写成「·」，注释声称
+// 一致实际不一致；改这里先对 labels.ts
+const STAGES = ['拉取课程信息', '下载视频', '提取音频', '转写音频', '提取 PPT/关键帧', '生成笔记']
 const VIEWS = ['详细笔记', '标准总结', '要点', '方法论', '思维导图']
 const VIEW_IMG = {
   详细笔记: 'assets/body-detailed.jpg',
