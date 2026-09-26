@@ -52,7 +52,11 @@
     --font-display: 'LXGW WenKai Screen', 'LXGW WenKai', 'KaiTi', 'STKaiti', serif;
     --font-mono: 'JetBrains Mono', Consolas, 'Cascadia Mono', monospace;
   }
-  #root.dark {
+  /* S4 暗场自带深色主题（静态，不翻板）：曾经用 #root.dark 在 t=10.55 整树
+     翻色，实测翻瞬间轨道卡均值从米黄 (247,245,240) 一跳成墨绿 (23,36,27)
+     ——卡片已 96% 不透明、标题字同时反色，那就是「闪烁」。改为 S4 子树静态
+     深色变量后：卡片随淡入在压暗的舞台上自然浮现，退出侧 S5 也不再翻回。 */
+  #s4 {
     --text: #f2efe4;
     --text-secondary: #cfd8c6;
     --text-muted: #aab6a5;
@@ -580,9 +584,7 @@ function renderS8(t) {
 
 /* ---------- 入口 ---------- */
 const RENDERERS = [renderS0, renderS1, renderS2, renderS3, renderS4, renderS5, renderS6, renderS7, renderS8]
-const SCENE_IDS = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']
-/** 暗场翻板状态（滞回，见 setTime 尾部） */
-let darkState = false
+const SCENE_IDS = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', ]
 
 function setTime(t) {
   const clamped = clamp(t, 0, 27)
@@ -598,15 +600,10 @@ function setTime(t) {
     }
     RENDERERS[i](clamped)
   }
-  const darkOn = clamp(seg(t, DARK_IN[0], DARK_IN[1]) - seg(t, DARK_OUT[0], DARK_OUT[1]), 0, 1)
-  $('tint').style.opacity = String(darkOn)
-  // 暗场换色带滞回：盖层全黑时才翻深色（淡入），盖层揭完才翻回浅色（淡出）——
-  // 在 50% 半遮状态下翻板会闪一拍。spot 渲染是非单调跳序，标志位随调用收敛。
-  const wantDark = darkOn >= 0.999 || (darkState && darkOn > 0.001)
-  if (wantDark !== darkState) {
-    darkState = wantDark
-    $('root').classList.toggle('dark', darkState)
-  }
+  // 暗场：盖层 #tint 整体压暗（radial 墨绿渐变，见 DARK_IN/DARK_OUT）。
+  // S4 的深色主题是 CSS 里 #s4 的静态变量——v7.1 前用 root.dark 翻板，
+  // 翻瞬间轨道卡整卡反色（米黄→墨绿）、标题字同时反色，即「闪烁」根因。
+  $('tint').style.opacity = String(clamp(seg(t, DARK_IN[0], DARK_IN[1]) - seg(t, DARK_OUT[0], DARK_OUT[1]), 0, 1))
 }
 window.__setTime = (t) => setTime(t)
 
