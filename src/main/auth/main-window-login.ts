@@ -20,6 +20,10 @@
  */
 import { isCasLoginRedirect, mergeCookieStrings } from '../school/api-parse'
 import { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH, probeSaysLoggedIn } from './cas-login'
+// H2 (audit 2026-09-28): 探活走 Chromium 网络栈（session 代理）——裸
+// globalThis.fetch 不读 Chromium 代理，混合端口代理用户下探活与窗口内可达性
+// 不一致，登录会被自己的 precheck 判死。
+import { sessionAwareFetch } from '../net-fetch'
 
 /** Wall-clock budget for reaching the platform page (user typing time is not limited). */
 export const LOGIN_LOAD_TIMEOUT_MS = 25_000
@@ -142,7 +146,8 @@ async function probeTabSession(win: LoginWindowLike, serviceOrigin: string, jwt:
     const headers: Record<string, string> = {}
     if (cookieHeader !== '') headers.Cookie = cookieHeader
     if (jwt !== '') headers['jwt-token'] = jwt
-    const res = await fetch(`${serviceOrigin}${PLATFORM_API_BASE_PATH}${SESSION_PROBE_PATH}`, {
+    // H2: 会话感知 fetch（见文件头导入注释）——探活必须与 window 内同一条网络路。
+    const res = await sessionAwareFetch(`${serviceOrigin}${PLATFORM_API_BASE_PATH}${SESSION_PROBE_PATH}`, {
       headers,
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
     })

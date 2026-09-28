@@ -16,7 +16,6 @@ import type { AppContext } from './app-context'
 import type { Db } from './db/open'
 import { isFakeIpResolution } from './net-diagnostics'
 import { TaskRepository, runTask, type TaskProgress } from './tasks/queue'
-import { SerialTaskQueue } from './tasks/serial-queue'
 import { createExecutors } from './tasks/orchestrator'
 import { resolveResumeStage, type ResumeDecision } from './tasks/resume'
 import { PIPELINE_STAGES, stagePercent, type Stage } from './tasks/stages'
@@ -242,23 +241,18 @@ export interface IpcHandle {
 }
 
 export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions = {}): IpcHandle {
-  // Serial task executor + cancellation registry (U4): one task at a time,
-  // cancellable via AbortController keyed by task id.
-  const queue = new SerialTaskQueue()
-  const abortControllers = new Map<string, AbortController>()
+  // H7 (audit 2026-09-28): 队列/取消控制器/PDF 令牌/排空监听都来自 ctx（见
+  // app-context.ts 的 IpcTaskRuntime）。以前它们是本函数的闭包状态，而
+  // index.ts 的 app 'activate' 会再次 registerIpc——二次注册换一套新状态后，
+  // 旧任务的 isTaskRunning() 返回 false（关窗确认失灵）、cancelRunning() 遍历
+  // 空队列（取消无效）、setCacheDir 在跑守卫误判放行（半途换缓存根）。
+  const queue = ctx.taskRuntime.queue
+  const abortControllers = ctx.taskRuntime.abortControllers
+  const pendingPdfExports = ctx.taskRuntime.pendingPdfExports
+  const idleListeners = ctx.taskRuntime.idleListeners
   // D1: queue cap, mirroring the renderer's B1 guard (main is the authority).
   const MAX_QUEUED_TASKS = 3
-  // D1: ids cancelled (or otherwise killed) while waiting in the queue —
-  // the dequeue recheck must skip THESE, but not a legitimate failed-task
-  // retry whose row is also 'failed' at dequeue time.
-  const cancelledWhileQueued = new Set<string>()
   // D4: notified when the queue drains (tray restores the window).
-  const idleListeners = new Set<() => void>()
-
-  // E3 (review): PDF export step 1 (dialog) hands out a one-shot token;
-  // step 2 (write) only honors a live token — the renderer can no longer
-  // ask printToPDF to write ANY path it names.
-  const pendingPdfExports = new Map<string, { filePath: string; expiresAt: number }>()
   const notifyIdle = (): void => {
     if (queue.members().length === 0) {
       for (const cb of idleListeners) {
@@ -377,9 +371,16 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+  // 批3 (audit 2026-09-28, H6 同族): 66 个 handler 里最后一个裸奔的——
+  // clearBilibiliSession 的 rmSync 撞上 EPERM/EBUSY（文件被占用）时会 reject 成
+  // 裸异常跨桥，渲染层拿到的是异常而不是 ApiResult 信封。与其它 handler 对齐。
   handle(ipc, 'bilibili:logout', () => {
-    ctx.bilibiliLogout()
-    return ok({ state: ctx.bilibiliSessionState() })
+    try {
+      ctx.bilibiliLogout()
+      return ok({ state: ctx.bilibiliSessionState() })
+    } catch (e) {
+      return err(e)
+    }
   })
   handle(ipc, 'bilibili:session', () => {
     return ok({ state: ctx.bilibiliSessionState(), savedAt: ctx.bilibiliSessionMeta().savedAt })
@@ -1212,12 +1213,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   const launchTask = (id: string, controller: AbortController, repo: TaskRepository): void => {
     void queue
       .enqueue(id, async () => {
-        // D1: out-of-dequeue recheck — a task cancelled while queued
-        // must not run. A row that was already failed at ENQUEUE time is
-        // a legitimate retry and proceeds (its state is also 'failed').
-        if (cancelledWhileQueued.delete(id)) {
-          return 'failed' as const
-        }
+        // 出队复检：排队期间被取消的任务不执行。cancelById 对在跑/排队任务都是
+        // 先 abort 控制器（排队任务的控制器在建 task 时就已注册），所以这里的
+        // 真正兜底是 runTask 首轮的 signal.aborted 复检（tasks/queue.ts:134）——
+        // 旧代码另有一个 cancelledWhileQueued 集合做前置短路，但 cancelById 永远
+        // 先拿到控制器就 return，那个集合从来进不了值（死代码，audit 2026-09-28
+        // 批3c 删除，此处注释即钉子）。
         const current = repo.get(id)
         if (current == null) throw new Error(`task ${id} not found`)
         // Decide at DEQUEUE time, not enqueue: a queued wait can outlive
@@ -1323,7 +1324,6 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       // 免得一条仍有生命的 auth_key 因为「取消」这个终态留在库里。
       repo.clearFetchHandoff(id)
       sendProgress({ taskId: id, state: 'failed', stage: failedStage, message: '任务已取消', percent: 0, kind: 'cancelled' })
-      if (queue.members().includes(id)) cancelledWhileQueued.add(id)
     }
   }
   handle(ipc, 'tasks:cancel', (_e, taskId: unknown) => {

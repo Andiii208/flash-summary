@@ -18,6 +18,7 @@ import { BrowserWindow, session, app, type Session, type Event, type OnBeforeReq
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
 import { isAppOrSchoolUrl } from '../nav-guard'
 import { directNetRequested } from '../net-diagnostics'
+import { sessionAwareFetch } from '../net-fetch'
 import { redact } from '../logger'
 
 export interface CasLoginOptions {
@@ -77,7 +78,9 @@ export function casLoadErrorMessage(kind: 'timeout' | 'load' | 'precheck', detai
 /** Quick reachability check so a dead network fails fast instead of a white window. */
 async function precheck(casUrl: string): Promise<void> {
   try {
-    await fetch(casUrl, { method: 'HEAD', signal: AbortSignal.timeout(CAS_PRECHECK_TIMEOUT_MS) })
+    // H2 (audit 2026-09-28): 会话感知 fetch——Chromium 代理对 window 里的网页生效，
+    // 对裸 globalThis.fetch 不生效；登录前的探活必须和用户浏览器看到的是同一条路。
+    await sessionAwareFetch(casUrl, { method: 'HEAD', signal: AbortSignal.timeout(CAS_PRECHECK_TIMEOUT_MS) })
   } catch (err) {
     throw new Error(casLoadErrorMessage('precheck', (err as Error).message))
   }
@@ -186,7 +189,9 @@ async function tracePostLoginProbes(cookieHeader: string, serviceOrigin: string,
   ]
   for (const candidate of candidates) {
     try {
-      const res = await fetch(`${apiBase}${candidate.path}`, {
+      // H2: 会话感知 fetch（Chromium 网络栈）。原来这里是裸 globalThis.fetch——
+      // 代理用户下探活结果与 window 内的真实可达性不一致，诊断日志反而误导。
+      const res = await sessionAwareFetch(`${apiBase}${candidate.path}`, {
         method: candidate.method,
         headers: {
           Cookie: cookieHeader,
@@ -340,27 +345,52 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
       reject(new Error(message))
     }
 
-    const finish = async (code: 'ok' | 'closed'): Promise<void> => {
+    /**
+     * 收尾关窗：--seu-trace-keep-window（现场诊断）下保留窗口，让人能自己走进
+     * 课程页看 trace；否则正常关闭。fail() 走 destroy()（硬失败），这里走
+     * close()（用户已完成该做的事，只是不再需要这个窗口）。
+     */
+    const closeLoginWindow = (): void => {
+      if (!win.isDestroyed() && !process.argv.includes('--seu-trace-keep-window')) win.close()
+    }
+
+    /**
+     * H6 (audit 2026-09-28): 登录收尾——**先持久化、后 resolve**。
+     *
+     * 旧写法把 `resolve()` 放 finally：cookies.get / saveSession / DPAPI 任一抛错
+     * 时，finally 照常 resolve、异常顺着 `void finish('ok')`（导航回落）或轮询
+     * IIFE 的 catch 逃逸成 unhandledRejection。调用方于是记 success 并写
+     * 「login succeeded (session encrypted at rest)」，而磁盘上什么都没有——
+     * 用户以为自己登录了，下一次请求又把他弹回登录页。现在失败同样走 reject，
+     * 两条触发路径（轮询探活 / 导航回落）共用这一个收尾，行为天然统一。（窗口
+     * 在中途被关是另一条路：win.on('closed') 自己 reject，互不抢占。）
+     */
+    const finish = async (): Promise<void> => {
       if (settled) return
       settled = true
       if (pollTimer != null) clearInterval(pollTimer)
+      if (firstPaintTimer != null) {
+        clearTimeout(firstPaintTimer)
+        firstPaintTimer = undefined
+      }
       try {
-        if (code === 'ok') {
-          // The landing page writes its JWT to sessionStorage shortly after
-          // the redirect completes; give it a moment before harvesting.
-          await new Promise((r) => setTimeout(r, 1500))
-          const cookies = await ses.cookies.get({ url: options.serviceOrigin })
-          const merged = mergeCookieStrings('', cookies.map((c) => `${c.name}=${c.value}`).join('; '))
-          const jwt = await readWindowJwt(win)
-          options.onSession({ cookieString: merged, jwt })
-          void tracePostLoginProbes(merged, options.serviceOrigin, jwt)
-        }
-      } finally {
-        // --seu-trace-keep-window (field diagnosis): keep the window open so
-        // the user can walk into course pages while every request is traced.
-        if (!win.isDestroyed() && !process.argv.includes('--seu-trace-keep-window')) win.close()
-        if (code === 'ok') resolve()
-        else reject(new Error('CAS login window closed before login completed'))
+        // The landing page writes its JWT to sessionStorage shortly after
+        // the redirect completes; give it a moment before harvesting.
+        await new Promise((r) => setTimeout(r, 1500))
+        const cookies = await ses.cookies.get({ url: options.serviceOrigin })
+        const merged = mergeCookieStrings('', cookies.map((c) => `${c.name}=${c.value}`).join('; '))
+        const jwt = await readWindowJwt(win)
+        // 持久化（onSession → saveSession → DPAPI 加密落盘）在这一步：它抛错
+        // 就是登录失败，绝不带一个「成功」的幻象返回给调用方。
+        options.onSession({ cookieString: merged, jwt })
+        void tracePostLoginProbes(merged, options.serviceOrigin, jwt)
+        closeLoginWindow()
+        resolve()
+      } catch (err) {
+        const detail = (err as Error).message
+        traceLine(`FAIL harvest: ${detail.slice(0, 200)}`)
+        closeLoginWindow()
+        reject(new Error(`登录成功但会话保存失败，请重试登录（${detail.slice(0, 120)}）`))
       }
     }
 
@@ -373,6 +403,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
           return
         }
         void (async () => {
+          let loggedIn = false
           try {
             // The API is jwt-token authenticated; send it when the SPA has
             // already written one to sessionStorage.
@@ -384,10 +415,16 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
               { headers }
             )
             const body = await res.text()
-            if (probeSaysLoggedIn(res.status, body)) await finish('ok')
+            loggedIn = probeSaysLoggedIn(res.status, body)
           } catch {
             // Not logged in yet (or probe failed) — keep polling.
+            return
           }
+          if (!loggedIn) return
+          // H6: finish 自己负责把失败原因传播给 openCasLoginWindow 的调用方；
+          // 这里显式消费 IIFE 层的重复 rejection——旧写法让它逃逸成
+          // unhandledRejection，而外层 promise 早已被 finally resolve 成假成功。
+          await finish().catch(() => undefined)
         })()
       }, CAS_POLL_INTERVAL_MS)
     }
@@ -413,7 +450,7 @@ export async function openCasLoginWindow(options: CasLoginOptions): Promise<void
         leftOrigin = true
         return
       }
-      if (leftOrigin && !isCasLoginRedirect(url)) void finish('ok')
+      if (leftOrigin && !isCasLoginRedirect(url)) void finish().catch(() => undefined)
     })
 
     // ERR_ABORTED (-3) happens when a navigation is interrupted by another

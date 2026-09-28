@@ -18,7 +18,9 @@ import type { SessionStateValue } from '../shared/types'
 import { openCasLoginWindow } from './auth/cas-login'
 import { loginViaMainWindow, loginWindowFallbackRequested } from './auth/main-window-login'
 import { loadMainRenderer } from './nav-guard'
+import { sessionAwareFetch } from './net-fetch'
 import { SchoolClient } from './school/client'
+import { SerialTaskQueue } from './tasks/serial-queue'
 import { BilibiliClient, type FetchLike } from './bilibili/client'
 import { harvestPlayPage, type PlayHarvestResult, type PlayPageTarget } from './school/play-harvest'
 import { loadProviderSettings, upsertProvider, deleteProvider, setBinding, clearBinding } from './providers/store'
@@ -33,6 +35,28 @@ import { readLibraryPointer } from './library/pointer'
 import { Logger } from './logger'
 
 export const CAS_BASE_URL = 'https://cvs.seu.edu.cn'
+
+/**
+ * H7 (audit 2026-09-28): main 侧任务运行时状态。
+ *
+ * 为什么它在 context 上而不是 registerIpc 的闭包里：index.ts 的 app 'activate'
+ * 会在窗口重建后**再次** registerIpc（removeHandler 兜住重复注册）。闭包状态的
+ * 旧实现下，第二次注册拿到一套全新的 queue/abortControllers/idleListeners——
+ * 旧任务的新 `isTaskRunning()` 返回 false（关窗确认失灵）、`cancelRunning()`
+ * 遍历空队列（取消无效）、`settings:setCacheDir` 的在跑守卫误判「无任务在跑」
+ * 从而允许半途换缓存根。提升到这里后：同一个 ctx 的队列/控制器在二次注册后
+ * 继续有效，registerIpc 只做 handler 绑定。
+ */
+export interface IpcTaskRuntime {
+  /** Serial task executor: at most one task runs at a time (U4). */
+  queue: SerialTaskQueue
+  /** AbortController per running/queued task, keyed by task id (U4). */
+  abortControllers: Map<string, AbortController>
+  /** E3: PDF export one-shot tokens (dialog → write), expiring in 5 minutes. */
+  pendingPdfExports: Map<string, { filePath: string; expiresAt: number }>
+  /** D4: fired when the queue transitions to empty (tray restores the window). */
+  idleListeners: Set<() => void>
+}
 
 export interface AppContext {
   libraryRoot: string
@@ -131,6 +155,8 @@ export interface AppContext {
       outcome: { seq: number; courseId: string; ok: boolean; lessons: number; error?: string } | null
     }
   }
+  /** H7: 任务运行时状态（队列/取消控制器/PDF 令牌/排空监听）——跨 registerIpc 重用。 */
+  taskRuntime: IpcTaskRuntime
 }
 
 /**
@@ -162,6 +188,16 @@ export function createContext(overrides: Partial<{
 
   const cryptor = overrides.cryptor ?? dpapiCryptor
   const logger = new Logger(join(userDataDir, 'logs'))
+
+  // H7 (audit 2026-09-28): 任务运行时状态挂在 context 上——registerIpc 可能被
+  // 调用多次（activate 重建窗口），队列与取消控制器必须跨注册保持同一份，
+  // 否则旧任务的 isTaskRunning/cancelRunning/缓存根守卫全会失灵。
+  const taskRuntime: IpcTaskRuntime = {
+    queue: new SerialTaskQueue(),
+    abortControllers: new Map(),
+    pendingPdfExports: new Map(),
+    idleListeners: new Set()
+  }
 
   // Startup cleanup: remove cache entries older than 24h (spec §9) and
   // enforce the cache quota (review B5: default 20GB, setting cacheQuotaGb;
@@ -225,7 +261,10 @@ export function createContext(overrides: Partial<{
         return ''
       }
     },
-    (url, init) => globalThis.fetch(url, init as RequestInit),
+    // H2 (audit 2026-09-28): 会话感知 fetch——Chromium 网络栈走 session 代理，
+    // 否则 Clash 混合端口用户「窗口内正常、任务全挂」。原来这里是裸
+    // globalThis.fetch：Node/undici 不读 Chromium 代理设置。
+    sessionAwareFetch,
     jwtOf
   )
 
@@ -241,7 +280,8 @@ export function createContext(overrides: Partial<{
         return ''
       }
     },
-    overrides.bilibiliFetch ?? ((url, init) => globalThis.fetch(url, init as RequestInit))
+    // H2: 同上，默认走会话感知 fetch（测试注入的 bilibiliFetch 优先）。
+    overrides.bilibiliFetch ?? sessionAwareFetch
   )
 
   const providers = (): ProviderSettings => {
@@ -597,6 +637,7 @@ export function createContext(overrides: Partial<{
         },
         state: () => ({ inflight: [...inflight], outcome })
       }
-    })()
+    })(),
+    taskRuntime
   }
 }

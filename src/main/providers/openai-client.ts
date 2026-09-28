@@ -8,6 +8,10 @@
  * - network:         transport failure
  * - bad_response:    anything else unexpected
  */
+// H2 (audit 2026-09-28): provider HTTP 也走 Chromium 网络栈（复用 session 代理），
+// 与 school/bilibili 同口径——裸 globalThis.fetch 在混合端口代理用户下全挂。
+import { sessionAwareFetch } from '../net-fetch'
+
 export type ProviderErrorKind =
   | 'auth'
   | 'unsupported_visual'
@@ -50,9 +54,14 @@ export interface ProviderFetch {
   }>
 }
 
+/**
+ * H2 (audit 2026-09-28): 默认 fetch 走 net-fetch（Chromium 网络栈，复用 session
+ * 代理）——裸 globalThis.fetch 不读 Chromium 代理，Clash 混合端口用户的 provider
+ * 请求会全挂。测试注入的 fetchImpl 不受影响。
+ */
 const defaultFetch: ProviderFetch = async (url, init) => {
   try {
-    return await fetch(url, {
+    return await sessionAwareFetch(url, {
       method: init.method,
       headers: init.headers,
       body: init.body as BodyInit,
@@ -177,7 +186,9 @@ export class OpenAiCompatibleClient {
 
     let res
     try {
-      res = await fetch(`${this.baseUrl}/audio/transcriptions`, {
+      // H2: 与 defaultFetch 同一口径——会话感知 fetch（Chromium 网络栈走 session
+      // 代理）。这条多part 路径原来绕过注入位直连裸 fetch，一并切过来。
+      res = await sessionAwareFetch(`${this.baseUrl}/audio/transcriptions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.apiKey}` },
         body: form,
