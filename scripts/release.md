@@ -44,7 +44,7 @@ node scripts/verify-asar.mjs "release/win-unpacked/resources/app.asar" out
 node scripts/smoke-cdp.mjs --packaged
 ```
 
-- [ ] 输出 `SMOKE PASSED: 32/32`。这一步与 `npm run smoke` 的区别：它启动的是
+- [ ] 输出 `SMOKE PASSED: 40/40`（2026-09-28 v0.7.12 实测；计数随断言集增长，以实跑输出为准）。这一步与 `npm run smoke` 的区别：它启动的是
   `release/win-unpacked/Flash Summary.exe`（安装版的加载路径，better-sqlite3 来自
   `app.asar.unpacked`），而不是开发构建。0.7.5 起列为发布前必跑。
 
