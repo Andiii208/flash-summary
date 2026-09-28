@@ -61,6 +61,13 @@ export type BiliApiErrorKind =
   | 'forbidden'
   | 'not_found'
   | 'risk_control'
+  /**
+   * H1 (audit 2026-09-28): 出站白名单拒绝。单独一个 kind 而不复用
+   * forbidden/bad_response——那两个的语义是「B 站服务器回了 -403/坏响应」，
+   * 本地的安全拒绝写成服务器的响应是在日志里撒谎；调用方（pipeline 的降级
+   * 分流、错误归类）也从此能区分「服务器拒绝」与「我们拒绝」。
+   */
+  | 'blocked_host'
 
 export class BilibiliApiError extends Error {
   readonly kind: BiliApiErrorKind
@@ -70,6 +77,115 @@ export class BilibiliApiError extends Error {
     this.name = 'BilibiliApiError'
     this.kind = kind
   }
+}
+
+/**
+ * H1 (audit 2026-09-28): 出站主机白名单。
+ *
+ * 为什么要它：这个 client 的 URL 不全是自己拼的——subtitle_url 来自 player
+ * 接口响应体、封面 pic 来自 view 接口响应体、短链则是渲染层原样透传的输入。
+ * 响应体能指定任意主机时，带着 SESSDATA 的请求就会把登录态送到那个主机
+ * （SSRF + 会话外带，导入一个字幕轨指向外部主机的视频即触发）。所以所有
+ * 出站 URL 都在这里钉死在 B 站自己的域名上。
+ *
+ * D1（plan 2026-09-28 决策项，已裁「含」）：CDN 主机现场取证（tests/ 里的录制
+ * 夹具）就是 cover/subtitle 的落点，*.hdslb.com / *.bilivideo.{com,cn} /
+ * *.akamaized.net 一并收进来——宁可写明文放行，不要为了让导入「碰巧能用」而
+ * 放松 host 判定。
+ *
+ * 条目写法：裸 host = 只放行 https（默认集合的安全面）；显式写 scheme 的
+ * 条目（`http://127.0.0.1`）= 只放行该 scheme，给注入 localhost fake server
+ * 的单测/e2e 留缝（真实 B 站端点不会也不需要 http）。
+ */
+export const BILIBILI_ALLOWED_HOSTS: readonly string[] = [
+  'www.bilibili.com',
+  'api.bilibili.com',
+  'passport.bilibili.com',
+  'b23.tv',
+  '.hdslb.com',
+  '.bilivideo.com',
+  // 现场取证（Recorded fixtures in tests/bilibili-client.test.ts）显示 B 站媒体
+  // CDN 同时出现在 .com 与 .cn 两个后缀下（upos-sz-mirrorcos.bilivideo.com /
+  // xy.mcdn.bilivideo.cn），两个都收——漏一个就是真实导入被自己人拒掉。
+  '.bilivideo.cn',
+  '.akamaized.net'
+]
+
+/** 拒绝原因分类：调用方据此给人话文案（scheme 与 host 是两种不同的误操作）。 */
+type UrlRejection = 'unparsable' | 'scheme' | 'host'
+
+/** 条目 → (scheme, hostPattern)；裸 host 条目的 scheme 为 null（隐含 https）。 */
+function splitHostEntry(entry: string): { scheme: string | null; host: string } {
+  const match = /^(https?):\/\/(.+)$/i.exec(entry.trim())
+  if (match != null) return { scheme: `${match[1]!.toLowerCase()}:`, host: match[2]!.trim() }
+  return { scheme: null, host: entry.trim() }
+}
+
+/**
+ * host 命中判定：条目带前导点时按「.后缀」匹配（`.hdslb.com` 匹配
+ * `i0.hdslb.com`），否则精确匹配。前导点是安全边界本身——少了它，
+ * `evilb23.tv` 这种相邻租用域名就能 endsWith 骗过 `b23.tv`；
+ * 带上前导点后，`hdslb.com.evil.com` 结尾是 `.evil.com`，永远命中不了
+ * `.hdslb.com`。
+ */
+function hostMatches(hostPattern: string, hostname: string): boolean {
+  const pattern = hostPattern.toLowerCase()
+  return pattern.startsWith('.') ? hostname.endsWith(pattern) : hostname === pattern
+}
+
+/** null = 放行；否则是拒绝原因（不可解析 / scheme 不符 / host 不在白名单）。 */
+function rejectUrl(url: string, allowedHosts: readonly string[]): UrlRejection | null {
+  const parsed = parseUrlLoose(url)
+  if (parsed == null) return 'unparsable'
+  const hostname = parsed.hostname.toLowerCase()
+  // host 先判：主机都不在白名单里时，说「host 不被允许」比说「scheme」准确。
+  const hostListed = allowedHosts.some((entry) => hostMatches(splitHostEntry(entry).host, hostname))
+  if (!hostListed) return 'host'
+  const schemeOk = allowedHosts.some((entry) => {
+    const { scheme, host } = splitHostEntry(entry)
+    return parsed.protocol === (scheme ?? 'https:') && hostMatches(host, hostname)
+  })
+  return schemeOk ? null : 'scheme'
+}
+
+/** new URL 的宽容版：缺 scheme 的输入按 https 补一个再解析（用户粘贴常被聊天软件砍掉协议头）。 */
+function parseUrlLoose(input: string): URL | null {
+  try {
+    return new URL(input)
+  } catch {
+    try {
+      return new URL(`https://${input}`)
+    } catch {
+      return null
+    }
+  }
+}
+
+/** H1: 出站 URL 是否放行（scheme + host 双查）。不可解析的输入一律不放行。 */
+export function isAllowedBilibiliUrl(url: string, allowedHosts: readonly string[]): boolean {
+  return rejectUrl(url, allowedHosts) === null
+}
+
+/**
+ * H1: requestEnvelope / fetchImageAsDataUrl / resolveShortLink 的统一入口校验。
+ * 拒绝时抛 `blocked_host`——不复用 forbidden/bad_response：那两个 kind 的语义是
+ * 「B 站服务器这么回」，把本地安全拒绝写成服务器的响应等于在日志里撒谎。
+ *
+ * 为什么不是「剥 cookie 放行」：不带 cookie 的盲 SSRF 仍然是 SSRF（内网探测 /
+ * 端口扫描 / 借道请求），白名单要是一道边界，不是一个 cookie 过滤器。
+ */
+export function assertAllowedBilibiliUrl(url: string, allowedHosts: readonly string[]): void {
+  const reason = rejectUrl(url, allowedHosts)
+  if (reason === null) return
+  const parsed = parseUrlLoose(url)
+  if (reason === 'unparsable' || parsed == null) {
+    throw new BilibiliApiError('blocked_host', '请求地址无法解析，已拒绝')
+  }
+  const host = parsed.hostname.toLowerCase()
+  if (reason === 'host') {
+    throw new BilibiliApiError('blocked_host', `请求主机不在 B 站域名白名单内，已拒绝（${host}）`)
+  }
+  throw new BilibiliApiError('blocked_host', `只允许 https 的 B 站点请求，已拒绝（${parsed.protocol}${host}）`)
 }
 
 export interface FetchLike {
@@ -104,7 +220,13 @@ export class BilibiliClient {
     private readonly timeoutMs: number = BILI_TIMEOUT_MS,
     /** Host injectables (e2e tests point them at a local fake server). */
     private readonly apiHost: string = DEFAULT_API_HOST,
-    private readonly passportHost: string = DEFAULT_PASSPORT_HOST
+    private readonly passportHost: string = DEFAULT_PASSPORT_HOST,
+    /**
+     * H1: 出站主机白名单。注入 localhost fake server 的测试传
+     * `['http://127.0.0.1']`（scheme 显式写，见 BILIBILI_ALLOWED_HOSTS 注释）；
+     * 不传 = 默认 B 站集合。
+     */
+    private readonly allowHosts: readonly string[] = BILIBILI_ALLOWED_HOSTS
   ) {}
 
   /** One JSON API call with the envelope code mapped onto the error taxonomy. */
@@ -113,6 +235,11 @@ export class BilibiliClient {
     withCookie: boolean,
     options: { tolerateCodes?: number[]; referer?: string } = {}
   ): Promise<Envelope> {
+    // H1 (audit 2026-09-28): 入口即校验——subtitle_url / playurl 这类来自响应体
+    // 的 URL 不能带着 SESSDATA 出白名单；自己的 apiHost/passportHost 拼出来的
+    // URL 天然在集合内，这一步对正常路径零成本。校验在读 cookie 之前，被拒时
+    // 连凭据都不去取。
+    assertAllowedBilibiliUrl(url, this.allowHosts)
     const headers: Record<string, string> = {
       'User-Agent': USER_AGENT,
       Referer: options.referer ?? 'https://www.bilibili.com/'
@@ -192,6 +319,10 @@ export class BilibiliClient {
    * and the preview falls back to a monogram block.
    */
   async fetchImageAsDataUrl(url: string, maxBytes = 1024 * 1024): Promise<string | null> {
+    // H1: 封面 pic 同样来自 B 站响应体，入参先过白名单。与这个方法的既有语义
+    // 一致——任何失败（网络/非图片/超限/主机不在白名单）都返回 null，预览回退
+    // monogram 块，导入日志记 cover=fetched-failed。
+    if (!isAllowedBilibiliUrl(url, this.allowHosts)) return null
     let res
     try {
       res = await this.fetchImpl(url, {
@@ -250,16 +381,29 @@ export class BilibiliClient {
     throw new BilibiliApiError('risk_control', `bilibili risk control (HTTP 412) for ${bvid}`)
   }
 
-  /** b23.tv short links answer with a redirect to the full /video/BV… URL. */
+  /**
+   * b23.tv short links answer with a redirect to the full /video/BV… URL.
+   *
+   * H1 (audit 2026-09-28): 这条通道在 ipc.ts 是把渲染层输入的 URL 原样交给
+   * 这里——旧实现只做 `/b23.tv/` 子串匹配，`https://b23.tv.evil.com/x`、
+   * `https://evil.com/b23.tv/x` 都能过，等于给任意主机开了一个带 UA/Referer 的
+   * 盲请求口子。现在从输入里解析出 b23.tv 的短码、自己规范化成官方短链再请求，
+   * 其它主机一律拒绝（SSRF 不带 cookie 也是 SSRF）。
+   */
   async resolveShortLink(shortUrl: string): Promise<string> {
+    const code = b23ShortCode(shortUrl)
+    if (code === null) {
+      throw new BilibiliApiError('blocked_host', '仅支持 b23.tv 短链，已拒绝其它地址')
+    }
+    const url = `https://b23.tv/${code}`
     const headers = { 'User-Agent': USER_AGENT, Referer: 'https://www.bilibili.com/' }
     let res
     let timer: NodeJS.Timeout | undefined
     try {
       res = await Promise.race([
-        this.fetchImpl(shortUrl, { headers, redirect: 'manual' }),
+        this.fetchImpl(url, { headers, redirect: 'manual' }),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new BilibiliApiError('network', `bilibili short-link timeout for ${shortUrl}`)), this.timeoutMs)
+          timer = setTimeout(() => reject(new BilibiliApiError('network', `bilibili short-link timeout for ${url}`)), this.timeoutMs)
         })
       ])
     } catch (err) {
@@ -270,7 +414,9 @@ export class BilibiliClient {
     }
     const location = res.headers.get('location') ?? ''
     if (res.status >= 300 && res.status < 400 && location !== '') return location
-    return res.url
+    // 没有 Location 时返回我们请求的那个规范化短链本身——不读 res.url：manual
+    // redirect 下它没有信息量，且 Electron net.fetch 的 Response.url 文档明示不正确。
+    return url
   }
 
   /** Signed params for an arbitrary WBI endpoint (qr-login does not need this). */
@@ -362,6 +508,21 @@ export class BilibiliClient {
     }
     return { status, cookies }
   }
+}
+
+/**
+ * 从渲染层原样透传的输入里解析 b23.tv 短码：host 必须精确等于 b23.tv（子域、
+ * 后缀拼接、路径里带 `b23.tv/` 都不算），短码 = 第一段非空路径。解析不出返回
+ * null，调用方拒绝。scheme 不限也缺省容忍——我们总是自己规范化成 https 再请求，
+ * 输入是什么协议无关紧要（用户粘贴的常是 http 或被聊天软件砍掉协议头的短链）；
+ * 真正被请求的地址恒为 `https://b23.tv/<code>`，凭据/UA/Referer 只去官方主机。
+ */
+function b23ShortCode(input: string): string | null {
+  const parsed = parseUrlLoose(input)
+  if (parsed == null) return null
+  if (parsed.hostname.toLowerCase() !== 'b23.tv') return null
+  const code = parsed.pathname.split('/').find((segment) => segment !== '') ?? ''
+  return code === '' ? null : code
 }
 
 function readEnvelope(payload: unknown, tolerateCodes: number[]): Envelope {

@@ -313,7 +313,10 @@ describe('bilibili source end to end (plan 2026-09-06 M4)', () => {
       (url, init) => globalThis.fetch(url, init as RequestInit),
       30_000,
       `http://127.0.0.1:${port}/bapi`,
-      `http://127.0.0.1:${port}/bapi`
+      `http://127.0.0.1:${port}/bapi`,
+      // H1 (audit 2026-09-28): 本地 fake server 的 scheme 是 http——白名单条目
+      // 显式带 scheme 才放行（默认集合是 https-only 的 B 站域名）。
+      ['http://127.0.0.1']
     )
     const chat = (): OpenAiCompatibleClient => new OpenAiCompatibleClient(`http://127.0.0.1:${port}`, 'sk-e2e')
     const executors = createExecutors({
@@ -387,7 +390,10 @@ describe('bilibili source end to end (plan 2026-09-06 M4)', () => {
       (url, init) => globalThis.fetch(url, init as RequestInit),
       30_000,
       `http://127.0.0.1:${port}/bapi`,
-      `http://127.0.0.1:${port}/bapi`
+      `http://127.0.0.1:${port}/bapi`,
+      // H1 (audit 2026-09-28): 本地 fake server 的 scheme 是 http——白名单条目
+      // 显式带 scheme 才放行（默认集合是 https-only 的 B 站域名）。
+      ['http://127.0.0.1']
     )
     const chat = (): OpenAiCompatibleClient => new OpenAiCompatibleClient(`http://127.0.0.1:${port}`, 'sk-e2e')
     const executors = createExecutors({

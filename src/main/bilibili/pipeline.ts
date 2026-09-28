@@ -69,6 +69,11 @@ async function tryFetchSubtitleSegments(client: BilibiliClient, bvid: string, ci
     const kind = (err as BilibiliApiError).kind
     if (kind === 'auth_required') return { segments: [], note: 'B站未登录或登录已过期，无字幕可用，将走语音转写' }
     if (kind === 'risk_control' || kind === 'forbidden') return { segments: [], note: '字幕接口被风控拒绝，将走语音转写' }
+    // H1 (audit 2026-09-28): 字幕主机不在白名单（player 接口响应体指定的外部
+    // 主机）——与其它取不到字幕的原因同口径降级到语音转写，但 note 如实写「被
+    // 安全策略拒绝」：全部记成「风控」会让排查方向跑偏（这是响应体被篡改/劫持
+    // 的信号，不是 B 站限流）。
+    if (kind === 'blocked_host') return { segments: [], note: '字幕地址非 B 站域名，已被安全策略拒绝，将走语音转写' }
     throw err
   }
 }
