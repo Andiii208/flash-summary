@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { groupTimelineByChapters } from '../src/shared/notes/chapters'
-import { parseNote } from '../src/main/notes/schema'
+import { parseNote } from '../src/shared/notes/schema'
 import type { Chapter, TimelineEntry } from '../src/shared/notes/schema'
 
 const entry = (at: number, title = `t${at}`): TimelineEntry => ({ at, title, detail: 'd', refs: [], evidence: [] })

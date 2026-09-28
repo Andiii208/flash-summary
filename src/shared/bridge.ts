@@ -5,7 +5,8 @@
  */
 import type { ApiResult } from './api-result'
 import type { SessionStateValue } from './types'
-import type { Note, TreeNode } from './notes/schema'
+import type { NormalizationDropCounts, Note, TreeNode } from './notes/schema'
+import type { RefVerifyStats } from './notes/ref-verify'
 
 export interface CourseSummaryInfo {
   id: string
@@ -229,6 +230,55 @@ export interface LatestNoteResult {
   transcriptHitRate: { hits: number; total: number } | null
 }
 
+/**
+ * 批8 (audit 2026-09-28, H16): 三条笔记生成 IPC 的返回提成**命名 interface**。
+ *
+ * 此前它们是 preload 里手抄的内联窄版（regenerate 少 7 个字段、polish 少 1 个），
+ * 注解与真信封漂移时没有任何东西会响——「渲染层实读这些字段，preload 注解纯装饰」。
+ * 提成命名类型后 preload 只 import 名字，字段增减一处定义、漂移即 TS2322。
+ * 各字段口径见 summarize.ts / polish.ts 的产出处。
+ */
+export interface RegenerateResult {
+  version: number
+  images: number
+  hitRate: { hits: number; total: number }
+  /** A1 (2026-09-19): false = 绑定模型无视觉能力，本次未发图（画面靠时间就近对齐）。 */
+  visionCapable?: boolean
+  /** A3 (2026-09-19): 本课时真实画面素材数（keyframes=0 = 断供）。 */
+  visualAssets?: { keyframes: number; ppt: number }
+  /** 批1 (2026-09-17): 转写摘引可核验率；null/缺省 = 没有可判的摘引。 */
+  transcriptHitRate?: { hits: number; total: number } | null
+  /** 批1 (2026-09-17): 转写锚核验明细（被丢/被清空/命中/离邻域）。 */
+  refStats?: RefVerifyStats
+  /** B2 (2026-09-19): 金句核验（可核验/总数；无金句时 0/0）。 */
+  quotesVerified?: { total: number; verified: number }
+  droppedRefs?: number
+  /** 批3 (2026-09-17): 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
+  normalizationDropped?: NormalizationDropCounts
+  /** B4 (plan 2026-09-19): at 超出转写范围被钳到上界的时间字段数（0 = 没外推）。 */
+  clampedTimes?: number
+  /** P35 (plan 2026-09-21): 转写超出预算被全域抽稀（首中尾覆盖，不是只留开头）——
+   *  「截断可见」纪律：抽过稀必须让用户知道，不静默。 */
+  transcriptSampled?: boolean
+  /** 批3: 生成闭环结果（返修后体检 + 是否真返修过 + 返修前的 warn 数）。 */
+  health?: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean; warnCountBeforeRepair: number | null }
+}
+
+export interface PolishResult {
+  version: number
+  hitRate: { hits: number; total: number }
+  /** 批1 (2026-09-17): 转写摘引可核验率；null/缺省 = 没有可判的摘引。 */
+  transcriptHitRate?: { hits: number; total: number } | null
+  droppedRefs?: number
+}
+
+export interface RepairResult {
+  version: number
+  repaired: boolean
+  health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; warnCountBeforeRepair: number | null }
+  transcriptHitRate?: { hits: number; total: number } | null
+}
+
 export interface NotesBridge {
   /**
    * 批2 (plan 2026-09-20, P7): 取到笔记时**带上转写摘引命中率**——这条指标只有
@@ -272,57 +322,15 @@ export interface NotesBridge {
    */
   backfillCover(lessonId: string): Promise<ApiResult<{ coverPath: string }>>
   /** 2026-09-04: regenerate the note from stored transcripts/keyframes (no re-download). */
-  regenerate(
-    lessonId: string
-  ): Promise<
-    ApiResult<{
-      version: number
-      images: number
-      hitRate: { hits: number; total: number }
-      /** A1 (2026-09-19): false = 绑定模型无视觉能力，本次未发图（画面靠时间就近对齐）。 */
-      visionCapable?: boolean
-      /** A3 (2026-09-19): 本课时真实画面素材数（keyframes=0 = 断供）。 */
-      visualAssets?: { keyframes: number; ppt: number }
-      /** 批1 (2026-09-17): 转写摘引可核验率；null/缺省 = 没有可判的摘引。 */
-      transcriptHitRate?: { hits: number; total: number } | null
-      droppedRefs?: number
-      /** 批3 (2026-09-17): 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
-      normalizationDropped?: Record<string, number>
-      /** B4 (plan 2026-09-19): at 超出转写范围被钳到上界的时间字段数（0 = 没外推）。 */
-      clampedTimes?: number
-      /** P35 (plan 2026-09-21): 转写超出预算被全域抽稀（首中尾覆盖，不是只留开头）——
-       *  「截断可见」纪律：抽过稀必须让用户知道，不静默。 */
-      transcriptSampled?: boolean
-      /** 批3: 生成闭环结果（返修后体检 + 是否真返修过 + 返修前的 warn 数）。 */
-      health?: { warnCount: number; grade: 'good' | 'fair' | 'weak'; repaired: boolean; warnCountBeforeRepair: number | null }
-    }>
-  >
+  regenerate(lessonId: string): Promise<ApiResult<RegenerateResult>>
   /** 批5 (plan 2026-09-07 v07): feedback-driven polish — revises the latest note into version N+1. */
-  polish(
-    lessonId: string,
-    feedback: { tags: string[]; text: string }
-  ): Promise<
-    ApiResult<{
-      version: number
-      hitRate: { hits: number; total: number }
-      /** 批1 (2026-09-17): 转写摘引可核验率；null/缺省 = 没有可判的摘引。 */
-      transcriptHitRate?: { hits: number; total: number } | null
-      droppedRefs?: number
-    }>
-  >
+  polish(lessonId: string, feedback: { tags: string[]; text: string }): Promise<ApiResult<PolishResult>>
   /**
    * 批2 (plan 2026-09-20, P2): 按体检结果定向补全**已存盘**的笔记——不发图片
    * （只带转写，多模态费用不翻倍）、只跑一次、warn 数没下降就保留原稿
    * （`repaired: false` 且版本号不变）。判据与生成路径同一口径（含证据/转写命中率）。
    */
-  repair(lessonId: string): Promise<
-    ApiResult<{
-      version: number
-      repaired: boolean
-      health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; warnCountBeforeRepair: number | null }
-      transcriptHitRate?: { hits: number; total: number } | null
-    }>
-  >
+  repair(lessonId: string): Promise<ApiResult<RepairResult>>
   /** 2026-09-04: PDF handout step 1 — system save dialog for the target file. */
   exportPdfDialog(lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>>
   /** 2026-09-04: PDF handout step 2 — print the main window (handout already

@@ -15,6 +15,11 @@ on:
       - 'src/main/index.ts'
       - 'scripts/smoke-cdp.mjs'
       - '.github/workflows/smoke.yml'
+      # 批7 (audit 2026-09-28, H15): notes 的返回形状由这两个目录的 schema/归一化
+      # 决定——它们改了不动桥面字面量，却能改 smoke 探针断言的那条信封内容
+      # （2026-09-18 批C1 的残留缺口：只盯 bridge.ts/preload 会漏掉真源头）。
+      - 'src/shared/notes/**'
+      - 'src/main/notes/**'
       # 终审修复波: 依赖清单变了同样能动桥面形状（electron/preload 依赖升级），
       # 且 workflow 自身改触发条件后要能手动放行验证。
       - 'package.json'

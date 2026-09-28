@@ -1,3 +1,6 @@
+// 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
+import { FakeIpc } from './helpers/fake-ipc'
+import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -6,6 +9,7 @@ import type { Db } from '../src/main/db/open'
 import { createContext, type AppContext } from '../src/main/app-context'
 import { registerIpc, setAppRendererOrigin } from '../src/main/ipc'
 import type { Cryptor } from '../src/main/auth/session-crypto'
+
 
 /**
  * 批 D (plan 2026-09-19-note-experience-overhaul): `lessons:openSource` 的 IPC 边界。
@@ -17,30 +21,18 @@ import type { Cryptor } from '../src/main/auth/session-crypto'
  *   · 桥面只有 openSource 一个方法。
  */
 
+// 批8 (audit 2026-09-28, H25): electron 桩提到共享 helper——14 份拷贝收成一份。
+// openExternal 调用参数是本测试的红线断言对象，在共享桩上就地覆写。
 const openExternal = vi.hoisted(() => vi.fn(async (_url: string) => undefined))
 
-vi.mock('electron', () => ({
-  ipcMain: undefined,
-  dialog: { showSaveDialog: vi.fn(async () => ({ canceled: true })), showOpenDialog: vi.fn(async () => ({ canceled: true })) },
-  shell: { openPath: vi.fn(async () => ''), openExternal },
-  BrowserWindow: { getFocusedWindow: () => null },
-  app: { getVersion: () => '0.0.0-test' },
-  WebContents: undefined
-}))
+vi.mock('electron', () => {
+  const electron = stubElectron()
+  electron.shell.openExternal = openExternal
+  return electron
+})
 
 setAppRendererOrigin('file:///app/index.html')
 
-class FakeIpc {
-  readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
-  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
-    this.handlers.set(channel, fn)
-  }
-  async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
-  }
-}
 
 const stubCryptor: Cryptor = {
   isAvailable: () => true,

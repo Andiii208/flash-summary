@@ -325,3 +325,120 @@ describe('B2 quotes（plan 2026-09-19）', () => {
     expect(note.quotes).toEqual([{ at: 90, text: '金句一' }])
   })
 })
+
+/**
+ * 批8 (audit 2026-09-28, H24): 归一层丢弃计数的口径补齐 + 时间戳显式拒绝。
+ *
+ * 原口径只统计 quiz/conceptLinks/transcriptRefs/evidence/treeTerms/
+ * timelineEvidence 六项，而归一层实际还会丢掉 concepts[].refs 与
+ * formulasAndSteps[].refs 的无时间戳字符串、以及 examCues / questionsAndGaps
+ * 的不可转项——于是界面说「0 项格式不合法已丢弃」而内容明明少了。这里把四项
+ * 钉住，顺带钉住 `at: ''` 不再被静默变成 0 秒。
+ */
+describe('批8 (H24): parseNoteWithDiagnostics 报得出被格式层悄悄丢掉的项', () => {
+  it('concepts[].refs / formulasAndSteps[].refs 的无时间戳字符串计入 dropped', async () => {
+    const { parseNoteWithDiagnostics } = await import('../src/shared/notes/schema')
+    const parsed = parseNoteWithDiagnostics(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        concepts: [
+          { term: '承诺', definition: '定义。', refs: ['01:15 有时间锚', '没有任何时间锚的引用'] },
+          { term: '极限', definition: '定义。', refs: ['也只有一句话'] }
+        ],
+        formulasAndSteps: [{ kind: 'formula', content: 'E=mc^2', explanation: '', refs: ['没锚'] }]
+      })
+    )
+    // 两条 concept refs + 一条 formula refs 被丢，条目本身保留。
+    expect(parsed.dropped.conceptRefs).toBe(2)
+    expect(parsed.dropped.formulaRefs).toBe(1)
+    expect(parsed.note.concepts.map((c) => c.term)).toEqual(['承诺', '极限'])
+    expect(parsed.note.concepts[0]?.refs).toEqual([{ at: 75, text: '有时间锚' }])
+    expect(parsed.note.formulasAndSteps[0]?.content).toBe('E=mc^2')
+  })
+
+  it('examCues / questionsAndGaps 的不可转项计入 dropped', async () => {
+    const { parseNoteWithDiagnostics } = await import('../src/shared/notes/schema')
+    const parsed = parseNoteWithDiagnostics(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        examCues: ['必考', '也必考', { title: '', detail: '' }, 42],
+        questionsAndGaps: ['疑问一', { title: '可转对象' }, null]
+      })
+    )
+    expect(parsed.dropped.examCues).toBe(2)
+    expect(parsed.dropped.questionsAndGaps).toBe(1)
+    expect(parsed.note.examCues).toEqual(['必考', '也必考'])
+    expect(parsed.note.questionsAndGaps).toEqual(['疑问一', '可转对象'])
+  })
+
+  it('全合法时新四项都是 0（不制造假警报）', async () => {
+    const { parseNoteWithDiagnostics } = await import('../src/shared/notes/schema')
+    const parsed = parseNoteWithDiagnostics(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        concepts: [{ term: '极限', definition: '定义。', refs: [{ at: 10, text: '引文' }, '01:00 也有锚'] }],
+        formulasAndSteps: [{ kind: 'code', content: 'x=1', explanation: '', refs: [{ at: 5, text: '锚' }] }],
+        examCues: ['必考'],
+        questionsAndGaps: ['疑问']
+      })
+    )
+    expect(parsed.dropped).toEqual({})
+    expect(parsed.note.concepts[0]?.refs).toHaveLength(2)
+  })
+})
+
+describe('批8 (H24): 时间戳空串/不可转值显式拒绝（不再静默变 0 秒）', () => {
+  it('timeline 的 at:"" 让整份解析失败', () => {
+    expect(() =>
+      parseNote(
+        JSON.stringify({
+          overview: 'o',
+          knowledgeTree: { title: 'r', children: [] },
+          methodology: 'm',
+          timeline: [{ at: '', title: '空时间', detail: 'd', refs: [], evidence: [] }]
+        })
+      )
+    ).toThrow()
+  })
+
+  it('transcriptRefs 的 at:"" 同样被拒', () => {
+    expect(() =>
+      parseNote(
+        JSON.stringify({
+          overview: 'o',
+          knowledgeTree: { title: 'r', children: [] },
+          methodology: 'm',
+          transcriptRefs: [{ at: '', text: '引文' }]
+        })
+      )
+    ).toThrow()
+  })
+
+  it('quotes/chapters 的 at:"" 同样被拒', () => {
+    const payload = JSON.stringify({ overview: 'o', knowledgeTree: { title: 'r', children: [] }, methodology: 'm' })
+    expect(() => parseNote(JSON.stringify({ ...JSON.parse(payload), quotes: [{ at: '', text: '金句' }] }))).toThrow()
+    expect(() => parseNote(JSON.stringify({ ...JSON.parse(payload), chapters: [{ at: '', title: '章', summary: 's' }] }))).toThrow()
+  })
+
+  it('合法时间形态照旧通过（数字 / "mm:ss" / 纯数字串，含 0）', () => {
+    const note = parseNote(
+      JSON.stringify({
+        overview: 'o',
+        knowledgeTree: { title: 'r', children: [] },
+        methodology: 'm',
+        timeline: [
+          { at: 0, title: '零秒', detail: 'd', refs: [], evidence: [] },
+          { at: '01:30', title: '一分半', detail: 'd', refs: [], evidence: [] },
+          { at: '42', title: '数字串', detail: 'd', refs: [], evidence: [] }
+        ]
+      })
+    )
+    expect(note.timeline.map((t) => t.at)).toEqual([0, 90, 42])
+  })
+})

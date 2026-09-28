@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { NoteSchema, parseNote } from '../src/main/notes/schema'
+import { NoteSchema, parseNote } from '../src/shared/notes/schema'
 import { projectNote, projectNoteBlocks, VIEW_IDS, looksLikeMarkdown } from '../src/main/notes/views'
-import type { Note } from '../src/main/notes/schema'
+import type { Note } from '../src/shared/notes/schema'
 
 const sampleNote: Note = {
   chapters: [],

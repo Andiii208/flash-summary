@@ -1,3 +1,6 @@
+// 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
+import { FakeIpc } from './helpers/fake-ipc'
+import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -13,44 +16,24 @@ import { DISCLAIMER_TEXT_VERSION } from '../src/shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../src/shared/copyright-notice'
 import { AUTHOR_GITHUB_URL } from '../src/shared/author'
 
+
+// 批8 (audit 2026-09-28, H25): electron 桩提到共享 helper——14 份拷贝收成一份。
 // Electron dialogs are user-facing; tests stub them and assert the wiring.
+// 对话框返回值沿用原有夹具对象（测试按 beforeEach 复位、按用例改写）。
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
 const openDialog = vi.hoisted(() => ({ canceled: false, filePaths: [] as string[] }))
 
-vi.mock('electron', () => ({
-  ipcMain: undefined,
-  dialog: {
-    showSaveDialog: vi.fn(async () => saveDialog),
-    showOpenDialog: vi.fn(async () => openDialog)
-  },
-  shell: { openPath: vi.fn(async () => ''), openExternal: vi.fn(async () => undefined) },
-  BrowserWindow: { getFocusedWindow: () => null },
-  app: { getVersion: () => '0.0.0-test' },
-  WebContents: undefined
-}))
+vi.mock('electron', () => {
+  const electron = stubElectron()
+  electron.dialog.showSaveDialog = vi.fn(async () => saveDialog)
+  electron.dialog.showOpenDialog = vi.fn(async () => openDialog)
+  return electron
+})
 
 // 批1（契约有意变更）：E1 校验从「任意 file:// 放行」改为「只认启动时注入的
 // 应用 renderer URL」——FakeIpc 伪装的调用方 URL 现在必须显式注入。
 setAppRendererOrigin('file:///app/index.html')
 
-class FakeIpc {
-  readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
-  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
-    this.handlers.set(channel, fn)
-  }
-  async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    // E1 (review): handlers verify the sender frame - pose as the app UI.
-    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
-  }
-
-  async invokeFrom(url: string, channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({ senderFrame: { url } }, ...args)
-  }
-}
 
 const stubCryptor: Cryptor = {
   isAvailable: () => true,
@@ -217,6 +200,37 @@ describe('settings IPC (U3)', () => {
     openDialog.canceled = true
     const res = await invoke(ctx, 'settings:chooseLibrary') as { ok: true; value: { canceled: boolean } }
     expect(res.value.canceled).toBe(true)
+  })
+
+  // C10: 缓存目录选择器。此前这个 handler 单测 smoke 双零（批7 H14）——用户点
+  // 「选择目录」拿到什么全凭 IPC 信封说话，而测试一句都没验证过。
+  it('settings:chooseCacheDir returns the picked path (C10)', async () => {
+    const ctx = makeCtx()
+    const dest = join(dir, 'picked-cache')
+    openDialog.filePaths = [dest]
+    const res = await invoke(ctx, 'settings:chooseCacheDir') as { ok: true; value: { canceled: boolean; path?: string } }
+    expect(res.ok).toBe(true)
+    expect(res.value).toEqual({ canceled: false, path: dest })
+    // 只把路径带回草稿输入，不落设置（setCacheDir 才是持久化入口）。
+    const settings = await invoke(ctx, 'settings:get') as { ok: true; value: { cacheDir: string } }
+    expect(settings.value.cacheDir).toBe(join(dir, 'cache'))
+  })
+
+  it('settings:chooseCacheDir reports canceled without a path', async () => {
+    const ctx = makeCtx()
+    openDialog.canceled = true
+    const res = await invoke(ctx, 'settings:chooseCacheDir') as { ok: true; value: { canceled: boolean; path?: string } }
+    expect(res.value.canceled).toBe(true)
+    expect(res.value.path).toBeUndefined()
+  })
+
+  it('settings:chooseCacheDir surfaces a dialog failure as an err envelope', async () => {
+    const ctx = makeCtx()
+    const { dialog } = await import('electron')
+    ;(dialog.showOpenDialog as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('dialog blew up'))
+    const res = await invoke(ctx, 'settings:chooseCacheDir') as { ok: boolean; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('dialog blew up')
   })
 
   it('settings:openPath reports the failure instead of swallowing it (health audit 2026-09-12)', async () => {

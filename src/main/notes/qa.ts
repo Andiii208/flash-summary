@@ -11,7 +11,7 @@
  * （buildQaMessages 的 else-if 分支），用户明确这没有必要，已删。
  */
 import type { Db } from '../db/open'
-import type { Note } from './schema'
+import type { Note } from '../../shared/notes/schema'
 import { cleanTranscriptTimed, sampleTranscriptLines } from '../../shared/notes/transcript-clean'
 import { MAX_TRANSCRIPT_CHARS as SHARED_MAX_TRANSCRIPT_CHARS } from '../../shared/notes/limits'
 

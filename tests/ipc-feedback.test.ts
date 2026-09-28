@@ -1,3 +1,6 @@
+// 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
+import { FakeIpc } from './helpers/fake-ipc'
+import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -8,6 +11,7 @@ import { registerIpc, setAppRendererOrigin } from '../src/main/ipc'
 import type { Cryptor } from '../src/main/auth/session-crypto'
 import { FEEDBACK_FORM_URL } from '../src/shared/feedback'
 
+
 /**
  * 声明批6（plan 2026-09-11 compliance-disclosure）: 反馈通道的 IPC 边界。
  *
@@ -17,32 +21,20 @@ import { FEEDBACK_FORM_URL } from '../src/shared/feedback'
  *  · 任务不存在时诚实说明，而不是抛错或印 null。
  */
 
+// 批8 (audit 2026-09-28, H25): electron 桩提到共享 helper——14 份拷贝收成一份。
+// 反馈通道的断言要摸到 openExternal 这个具体桩，故在共享桩上就地覆写。
 const openExternal = vi.hoisted(() => vi.fn(async (_url: string) => undefined))
 
-vi.mock('electron', () => ({
-  ipcMain: undefined,
-  dialog: { showSaveDialog: vi.fn(async () => ({ canceled: true })), showOpenDialog: vi.fn(async () => ({ canceled: true })) },
-  shell: { openPath: vi.fn(async () => ''), openExternal },
-  BrowserWindow: { getFocusedWindow: () => null },
-  app: { getVersion: () => '0.0.0-test' },
-  WebContents: undefined
-}))
+vi.mock('electron', () => {
+  const electron = stubElectron()
+  electron.shell.openExternal = openExternal
+  return electron
+})
 
 // 批1（契约有意变更）：E1 校验从「任意 file:// 放行」改为「只认启动时注入的
 // 应用 renderer URL」——FakeIpc 伪装的调用方 URL 现在必须显式注入。
 setAppRendererOrigin('file:///app/index.html')
 
-class FakeIpc {
-  readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
-  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
-    this.handlers.set(channel, fn)
-  }
-  async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
-  }
-}
 
 const stubCryptor: Cryptor = {
   isAvailable: () => true,

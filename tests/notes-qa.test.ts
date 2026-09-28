@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { openDatabase, type Db } from '../src/main/db/open'
 import { assembleContext, buildQaMessages, recordQa } from '../src/main/notes/qa'
-import { parseNote } from '../src/main/notes/schema'
+import { parseNote } from '../src/shared/notes/schema'
 
 let db: Db
 let dir: string

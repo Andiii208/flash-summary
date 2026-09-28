@@ -1,3 +1,6 @@
+// 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
+import { FakeIpc } from './helpers/fake-ipc'
+import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -7,36 +10,13 @@ import { createContext, type AppContext } from '../src/main/app-context'
 import { registerIpc, setAppRendererOrigin } from '../src/main/ipc'
 import type { Cryptor } from '../src/main/auth/session-crypto'
 
-vi.mock('electron', () => ({
-  ipcMain: undefined,
-  dialog: { showSaveDialog: vi.fn(), showOpenDialog: vi.fn() },
-  shell: { openPath: vi.fn(async () => '') },
-  BrowserWindow: { getFocusedWindow: () => null },
-  WebContents: undefined
-}))
+// 批8 (audit 2026-09-28, H25): electron 桩提到共享 helper——14 份拷贝收成一份。
+vi.mock('electron', () => stubElectron())
 
 // 批1（契约有意变更）：E1 校验从「任意 file:// 放行」改为「只认启动时注入的
 // 应用 renderer URL」——FakeIpc 伪装的调用方 URL 现在必须显式注入。
 setAppRendererOrigin('file:///app/index.html')
 
-class FakeIpc {
-  readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
-  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
-    this.handlers.set(channel, fn)
-  }
-  async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    // E1 (review): handlers verify the sender frame — pose as the app UI.
-    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
-  }
-
-  async invokeFrom(url: string, channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({ senderFrame: { url } }, ...args)
-  }
-}
 
 const stubCryptor: Cryptor = {
   isAvailable: () => true,

@@ -1,3 +1,6 @@
+// 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
+import { FakeIpc } from './helpers/fake-ipc'
+import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -13,44 +16,23 @@ import type { StageExecutor } from '../src/main/tasks/queue'
 import type { Cryptor } from '../src/main/auth/session-crypto'
 import { waitFor } from './helpers/wait-for'
 
+
 // 批1（契约有意变更）：assertAppSender 从「任意 file:// 放行」收窄为「只认
 // 启动时注入的应用 renderer URL」。这里 mock electron 平台层（与
 // ipc-settings/ipc-feedback 同款）；app 做成可变对象，供「dev 前缀仅未打包
 // 放行」用例翻转 isPackaged。
+// 批8 (audit 2026-09-28, H25): electron 桩提到共享 helper——14 份拷贝收成一份。
 const electronApp = vi.hoisted(() => ({ isPackaged: false, getVersion: () => '0.0.0-test' }))
-vi.mock('electron', () => ({
-  ipcMain: undefined,
-  dialog: { showSaveDialog: vi.fn(async () => ({ canceled: true })), showOpenDialog: vi.fn(async () => ({ canceled: true })) },
-  shell: { openPath: vi.fn(async () => '') },
-  BrowserWindow: { getFocusedWindow: () => null },
-  app: electronApp,
-  WebContents: undefined
-}))
+
+vi.mock('electron', () => {
+  const electron = stubElectron()
+  electron.app = electronApp
+  return electron
+})
 
 // FakeIpc 伪装的调用方 URL 必须经注入才算数（与 tests/ipc-settings 等同一契约）。
 setAppRendererOrigin('file:///app/index.html')
 
-/** In-memory ipc stub mimicking electron ipcMain handle/invoke. */
-class FakeIpc {
-  readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
-  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
-    this.handlers.set(channel, fn)
-  }
-  async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    // E1 (review): handlers verify the sender frame — pose as the app UI.
-    // 批1（契约有意变更）：这个 URL 现在必须与 setAppRendererOrigin 注入的
-    // 应用 renderer URL 完全相等，不再因为是 file:// 就放行。
-    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
-  }
-
-  async invokeFrom(url: string, channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({ senderFrame: { url } }, ...args)
-  }
-}
 
 const stubCryptor: Cryptor = {
   isAvailable: () => true,

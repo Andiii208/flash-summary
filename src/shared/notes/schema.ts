@@ -5,9 +5,24 @@
  */
 import { z } from 'zod'
 
+/**
+ * 批8 (audit 2026-09-28, H24): 时间字段显式拒绝空串/不可转值。
+ *
+ * 此前四处都是 `z.coerce.number().nonnegative()`——模型吐一个 `at: ''`，
+ * `Number('')` 静默变成 0 秒，一条指向 00:00 的时间线/金句就这么进了笔记，
+ * 用户看到「从 0 秒开始的一条」，没有任何提示。现在先过 `coerceAt`
+ * （数字、mm:ss、纯数字串都在那里处理，函数声明会提升），剩下的空串与垃圾值
+ * 原样交给 `z.number()` 报错：宁可整篇解析失败让生成路径重试，也不把假时间
+ * 写进用户要读的内容。
+ */
+const AtSecondsSchema = z.preprocess(
+  coerceAt,
+  z.number({ error: '时间戳必须是秒数（数字或 mm:ss），空值/不可解析值一律拒绝' }).nonnegative()
+)
+
 export const TranscriptRefSchema = z.object({
   /** Seconds from lesson start (coerced: models emit numeric strings). */
-  at: z.coerce.number().nonnegative(),
+  at: AtSecondsSchema,
   /** Quoted snippet from the transcript. */
   text: z.string()
 })
@@ -23,7 +38,7 @@ export const EvidenceRefSchema = z.object({
 export type EvidenceRef = z.infer<typeof EvidenceRefSchema>
 
 export const TimelineEntrySchema = z.object({
-  at: z.coerce.number().nonnegative(),
+  at: AtSecondsSchema,
   title: z.string(),
   detail: z.string(),
   refs: z.array(TranscriptRefSchema).default([]),
@@ -124,7 +139,7 @@ export const CURRENT_SCHEMA_VERSION = 2
  * 时间线条目在阅读层按 at 归章（不要求模型显式挂靠）。默认 []：旧笔记零迁移。
  */
 export const ChapterSchema = z.object({
-  at: z.coerce.number().nonnegative(),
+  at: AtSecondsSchema,
   title: z.string(),
   summary: z.string()
 })
@@ -137,7 +152,7 @@ export type Chapter = z.infer<typeof ChapterSchema>
  * 宁空勿编；at/text 过与 transcriptRefs 同一套核验（越界钳制、摘引匹配不上清空）。
  */
 export const QuoteSchema = z.object({
-  at: z.coerce.number().nonnegative(),
+  at: AtSecondsSchema,
   text: z.string()
 })
 
@@ -353,6 +368,27 @@ function normalizeConceptLinks(raw: unknown, conceptTerms: ReadonlySet<string>, 
   return links
 }
 
+/**
+ * refs 归一：字符串 ref 先试 `coerceStringRef`（提不出时间锚就整条丢，与
+ * coerceStringRef 的注释同一口径），对象 ref 只修 `at`。
+ *
+ * 抽成具名函数是为了**判定谓词只有一份**：归一层（withNormalizedTimestamps）与
+ * 丢弃计数（diffNormalization）调同一个函数——复制一份就会漂移，「报给用户的
+ * N 项」会与真正被丢的项数不一致（批8 H24 的病因正是两处口径）。
+ */
+function normalizeRefs(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw
+  return raw
+    .map((r) =>
+      typeof r === 'string'
+        ? coerceStringRef(r)
+        : r != null && typeof r === 'object'
+          ? { ...(r as Record<string, unknown>), at: coerceAt((r as Record<string, unknown>).at) }
+          : r
+    )
+    .filter((r) => r != null)
+}
+
 function withNormalizedTimestamps(raw: unknown): unknown {
   if (raw == null || typeof raw !== 'object') return raw
   const obj = raw as Record<string, unknown>
@@ -364,19 +400,7 @@ function withNormalizedTimestamps(raw: unknown): unknown {
           return {
             ...e,
             at: coerceAt(e.at),
-            ...(Array.isArray(e.refs)
-              ? {
-                  refs: (e.refs as unknown[])
-                    .map((r) =>
-                      typeof r === 'string'
-                        ? coerceStringRef(r)
-                        : r != null && typeof r === 'object'
-                          ? { ...(r as Record<string, unknown>), at: coerceAt((r as Record<string, unknown>).at) }
-                          : r
-                    )
-                    .filter((r) => r != null)
-                }
-              : {}),
+            ...(Array.isArray(e.refs) ? { refs: normalizeRefs(e.refs) } : {}),
             ...(e.evidence != null ? { evidence: normalizeEvidence(e.evidence) } : {})
           }
         })
@@ -485,6 +509,23 @@ function diffNormalization(rawNote: unknown, note: Note): NormalizationDropCount
   put('transcriptRefs', countIfArray(raw.transcriptRefs) - note.transcriptRefs.length)
   put('evidence', countIfArray(raw.evidence) - note.evidence.length)
   put('treeTerms', countRawTerms(raw.knowledgeTree) - countKeptTerms(note.knowledgeTree))
+  // 批8 (audit 2026-09-28, H24): 此前只统计六项，而归一层还会静默丢掉
+  // concepts[].refs / formulasAndSteps[].refs 的无时间戳字符串（coerceStringRef
+  // 返回 null 被 filter 掉）与 examCues / questionsAndGaps 的不可转项
+  // （normalizeStringList 的 map 产出 null）。用户于是看到「内容有点少」而界面
+  // 报「0 项格式不合法已丢弃」——少报比不报更难排查。这四项的判定谓词与归一
+  // 层同一份：概念/公式侧过 normalizeRefs，字符串列表侧过 normalizeStringList。
+  const rawRefsIn = (list: unknown): number =>
+    Array.isArray(list)
+      ? list.reduce<number>((acc, entry) => {
+          if (entry == null || typeof entry !== 'object') return acc
+          return acc + countIfArray((entry as { refs?: unknown }).refs)
+        }, 0)
+      : 0
+  put('conceptRefs', rawRefsIn(raw.concepts) - note.concepts.reduce((acc, c) => acc + c.refs.length, 0))
+  put('formulaRefs', rawRefsIn(raw.formulasAndSteps) - note.formulasAndSteps.reduce((acc, f) => acc + f.refs.length, 0))
+  put('examCues', countIfArray(raw.examCues) - note.examCues.length)
+  put('questionsAndGaps', countIfArray(raw.questionsAndGaps) - note.questionsAndGaps.length)
   const rawTimelineEvidence = Array.isArray(raw.timeline)
     ? (raw.timeline as unknown[]).reduce<number>((acc, entry) => {
         if (entry == null || typeof entry !== 'object') return acc

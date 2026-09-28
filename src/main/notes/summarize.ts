@@ -14,7 +14,7 @@ import {
   type Note,
   type NormalizationDropCounts,
   type ParsedNote
-} from './schema'
+} from '../../shared/notes/schema'
 import { evidenceHitRate, dropUnknownEvidence } from '../../shared/notes/evidence'
 import { cleanSegments, formatTimedTranscript, sampleTranscriptLines } from '../../shared/notes/transcript-clean'
 import { MAX_TRANSCRIPT_CHARS } from '../../shared/notes/limits'

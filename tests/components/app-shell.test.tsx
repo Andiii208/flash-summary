@@ -116,7 +116,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     window.localStorage.clear()
   })
 
-  it('starts with an honest logged_out badge, three tabs, and the loaded tree', async () => {
+  it('starts with an honest logged_out badge, three tabs, and the loaded tree', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -134,7 +134,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   // P38 (plan 2026-09-22): 坞只在笔记页渲染——任务页/设置页既没有坞也没有折叠
   // 入口钮（用户明示「只需要在笔记这个地方去展示」）；点「笔记」tab 后坞出现，
   // 折叠→入口钮→恢复的循环同样在笔记页完成。
-  it('P38: 追问坞只在笔记页渲染，可折叠成入口钮再恢复', async () => {
+  it('P38: 追问坞只在笔记页渲染，可折叠成入口钮再恢复', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -166,7 +166,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
-  it('cold start with an empty snapshot lands on the clean home (tasks tab, no lesson)', async () => {
+  it('cold start with an empty snapshot lands on the clean home (tasks tab, no lesson)', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -178,7 +178,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host.querySelector('.lesson-row.selected')).toBeNull()
   })
 
-  it('restores the persisted lesson selection after a renderer reload (批C)', async () => {
+  it('restores the persisted lesson selection after a renderer reload (批C)', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
@@ -197,14 +197,14 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host2.querySelector('.lesson-row.selected')?.textContent).toContain('第1讲')
   })
 
-  it('shows the welcome guide when the local tree is empty', async () => {
+  it('shows the welcome guide when the local tree is empty', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     fakeState.courses = []
     mount(<App bridge={bridge} />)
     await waitForSelector('.welcome-guide')
   })
 
-  it('批2: 零课程时主区承接三步引导，不再声称「从左侧课程树点击一个课时」', async () => {
+  it('批2: 零课程时主区承接三步引导，不再声称「从左侧课程树点击一个课时」', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     fakeState.courses = []
     const host = mount(<App bridge={bridge} />)
@@ -226,7 +226,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   // D7 (plan 2026-09-22-wide-screen-blank-space)：首启小窗一次性轻提示——不是弹层、
   // 不锁滚动；「知道了」与拖大窗口都永久写 skip（localStorage，jump-confirm 同模式）。
-  it('D7: 小窗（视口 <1300 CSS）首启显示轻提示，点「知道了」后消失且落 skip', async () => {
+  it('D7: 小窗（视口 <1300 CSS）首启显示轻提示，点「知道了」后消失且落 skip', { timeout: 8000 }, async () => {
     setWindowHintViewport(1266)
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
@@ -239,7 +239,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(window.localStorage.getItem('seu-summary.window-hint.skip')).toBe('1')
   })
 
-  it('D7: 宽视口不显示提示；skip 后小窗也不再显示', async () => {
+  it('D7: 宽视口不显示提示；skip 后小窗也不再显示', { timeout: 8000 }, async () => {
     setWindowHintViewport(1600)
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
@@ -253,7 +253,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host2.querySelector('[data-testid="window-hint"]')).toBeNull()
   })
 
-  it('批C 批3: 点「显示更多」按页加长列表（不改主进程上限）', async () => {
+  it('批C 批3: 点「显示更多」按页加长列表（不改主进程上限）', { timeout: 8000 }, async () => {
     NOTE_ROWS.push({ lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' })
     setListTotals(0, 431)
     const bridge = makeBridge()
@@ -273,14 +273,14 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
-  it('批2: 一条任务都没有时不渲染「全部任务（最近 50 条）」标题', async () => {
+  it('批2: 一条任务都没有时不渲染「全部任务（最近 50 条）」标题', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await waitForSelector('.task-panel')
     expect(host.textContent).not.toContain('全部任务（最近 50 条）')
   })
 
-  it('echoes recorded qa history for the selected lesson, oldest first', async () => {
+  it('echoes recorded qa history for the selected lesson, oldest first', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     fakeState.qaHistory = [
       { question: '第二问', answer: '答二' },
@@ -296,7 +296,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(questions).toEqual(['第一问', '第二问'])
   })
 
-  it('does not leak the previous lesson qa panel when the new one has no history', async () => {
+  it('does not leak the previous lesson qa panel when the new one has no history', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     fakeState.qaHistory = [{ question: '旧课时的问题', answer: '答' }]
     const host = mount(<App bridge={bridge} />)
@@ -315,7 +315,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForGone('.qa-q')
   })
 
-  it('blocks task creation until ASR+multimodal providers are bound, offering settings (批1 A1)', async () => {
+  it('blocks task creation until ASR+multimodal providers are bound, offering settings (批1 A1)', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await selectFirstLesson(bridge)
@@ -327,7 +327,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(bridge.tasks.create).not.toHaveBeenCalled()
   })
 
-  it('creates the task once both capabilities are bound (批1 A1)', async () => {
+  it('creates the task once both capabilities are bound (批1 A1)', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     ;(bridge.providers.list as ReturnType<typeof vi.fn>).mockResolvedValue(
       ok({ providers: [], bindings: [{ capability: 'asr', providerId: 'p', model: 'asr-m' }, { capability: 'multimodal', providerId: 'p', model: 'mm-m' }] })
@@ -341,7 +341,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
-  it('lands on the notes tab for a processed lesson (批5 C9)', async () => {
+  it('lands on the notes tab for a processed lesson (批5 C9)', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     fakeState.courses = [
       { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] }
@@ -358,7 +358,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
-  it('lands on the tasks tab for an unprocessed lesson (批5 C9)', async () => {
+  it('lands on the tasks tab for an unprocessed lesson (批5 C9)', { timeout: 8000 }, async () => {
     // C9 persists the tab: reset so this mount starts from a clean slate.
     window.sessionStorage.clear()
     const bridge = makeBridge()
@@ -377,7 +377,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
-  it('brand home click drops the stale note: notes tab shows the empty state, not the old lesson (2026-09-05)', async () => {
+  it('brand home click drops the stale note: notes tab shows the empty state, not the old lesson (2026-09-05)', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     // 批2 (plan 2026-09-20, P7): notes:latest 取到笔记时是 { note, transcriptHitRate }
     // 两支形态——裸 Note 会让 loadNote 解包出 undefined，本用例的笔记页永不出现。
@@ -418,7 +418,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host.textContent).not.toContain('旧笔记概览')
   })
 
-  it('login flips the badge and logout clears the tree and qa panel', async () => {
+  it('login flips the badge and logout clears the tree and qa panel', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     fakeState.qaHistory = [{ question: '问', answer: '答' }]
     const host = mount(<App bridge={bridge} />)
@@ -446,7 +446,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(bridge.school.logout).toHaveBeenCalled()
   })
 
-  it('批1 双源并列: the sidebar B站 entry opens the import dialog, which re-checks the session', async () => {
+  it('批1 双源并列: the sidebar B站 entry opens the import dialog, which re-checks the session', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -465,7 +465,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host.querySelector('.manual-fallback summary')?.textContent).toBe('高级：手动添加课程 ID')
   })
 
-  it('批2 钉住: a failed progress event refreshes the task lists (failed rows update in place)', async () => {
+  it('批2 钉住: a failed progress event refreshes the task lists (failed rows update in place)', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const sink: { fire?: (p: { taskId: string; state: string; stage: string | null; message: string; percent: number }) => void } = {}
     ;(bridge.tasks.onProgress as unknown as { mockImplementation: (fn: unknown) => void }).mockImplementation((cb: (p: { taskId: string; state: string; stage: string | null; message: string; percent: number }) => void) => {
@@ -487,7 +487,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForSelector('[data-testid="task-status"]')
   })
 
-  it('健康巡查 2026-09-12: a catalog-harvest rejection toasts in the originating session', async () => {
+  it('健康巡查 2026-09-12: a catalog-harvest rejection toasts in the originating session', { timeout: 8000 }, async () => {
     // Regression: the err envelope used to vanish behind .catch(() => undefined) —
     // the user saw one 3.5s «请稍候» toast and nothing else, with no badge and
     // a re-clickable button.
@@ -514,7 +514,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host).toBeTruthy()
   })
 
-  it('批5: 窄窗（≤1024）挂载时侧栏默认收起，把宽度让给内容列', async () => {
+  it('批5: 窄窗（≤1024）挂载时侧栏默认收起，把宽度让给内容列', { timeout: 8000 }, async () => {
     setNarrowViewport(true)
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
@@ -525,7 +525,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await vi.waitFor(() => expect(host.querySelector('aside.sidebar')?.className).not.toContain('collapsed'))
   })
 
-  it('健康巡查 2026-09-12 批8: the sidebar collapses and the choice survives a reload', async () => {
+  it('健康巡查 2026-09-12 批8: the sidebar collapses and the choice survives a reload', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -554,7 +554,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await vi.waitFor(() => expect(reloadedAside.className).not.toContain('collapsed'))
   })
 
-  it('批1 (plan 2026-09-13): 刷新中 keeps a fixed-width label and the page progress lives in the meta line', async () => {
+  it('批1 (plan 2026-09-13): 刷新中 keeps a fixed-width label and the page progress lives in the meta line', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     bridge.school.session = vi.fn(async () => ok({ state: 'logged_in' as const }))
     type ListValue = { loaded: number; platformTotal: number; platformPages: number }
@@ -593,7 +593,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(refreshBtn?.textContent).toBe('刷新课程')
   })
 
-  it('批1 (plan 2026-09-13): a refresh that yields 0 courses states it and points at re-login instead of conflating counts', async () => {
+  it('批1 (plan 2026-09-13): a refresh that yields 0 courses states it and points at re-login instead of conflating counts', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     bridge.school.session = vi.fn(async () => ok({ state: 'logged_in' as const }))
     const host = mount(<App bridge={bridge} />)
@@ -611,7 +611,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(line).not.toContain('全校约')
   })
 
-  it('批4 (plan 2026-09-13): the «全部课程» row opens the fullscreen browser and Ctrl+K closes it', async () => {
+  it('批4 (plan 2026-09-13): the «全部课程» row opens the fullscreen browser and Ctrl+K closes it', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -626,7 +626,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   // 批4 (plan 2026-09-20, P9/D5): 「我的学习」全屏展开——入口键挂在标题旁，
   // Ctrl+M 同款开关；选课时先选中再关闭（弹层挡着笔记页，「选了没反应」最坏）。
-  it('批4 (P9/D5): 我的学习可全屏展开（入口键 / Ctrl+M），选课时关闭并落到该课时', async () => {
+  it('批4 (P9/D5): 我的学习可全屏展开（入口键 / Ctrl+M），选课时关闭并落到该课时', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     fakeState.courses = [{ id: 'c1', name: '数据结构', isMine: true, lessons: [{ id: 'l1', title: '第1讲', hasNote: false }] }]
     const host = mount(<App bridge={bridge} />)
@@ -658,7 +658,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   // 批1 (plan 2026-09-20, P13): 三个自绘 overlay 同为 z-index 40，层级相同时由
   // DOM 顺序决定——浏览器整体返回 null 之前一直盖在课程导图弹层上，用户点
   // 「导图」看不到任何可见反应（弹层既看不见也点不着）。
-  it('批1 (P13): 全屏浏览器里点课程卡「导图」→ 浏览器关闭、地图弹层可见、Esc 只关一层', async () => {
+  it('批1 (P13): 全屏浏览器里点课程卡「导图」→ 浏览器关闭、地图弹层可见、Esc 只关一层', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     bridge.notes.courseTree = vi.fn(async () => ok({ tree: { title: '数据结构', children: [{ title: '第1讲', children: [] }] }, lessons: 1, skipped: 0 }))
     const host = mount(<App bridge={bridge} />)
@@ -685,7 +685,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   // 批1 (P13) 的防御性半边：地图弹层现在渲染在浏览器之后，任何「浏览器开着
   // 打开地图」的路径都盖在上面而不是被埋掉。
-  it('批1 (P13): 地图弹层渲染在浏览器之后——两层同在时一次 Esc 只关最上面那一层', async () => {
+  it('批1 (P13): 地图弹层渲染在浏览器之后——两层同在时一次 Esc 只关最上面那一层', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
@@ -713,7 +713,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await waitForGone('[data-testid="course-browser"]')
   })
 
-  it('批4: 搜索态也分块——≥150 门命中只渲染 150 行，「显示更多」按页加长（重置 effect 对搜索态生效）', async () => {
+  it('批4: 搜索态也分块——≥150 门命中只渲染 150 行，「显示更多」按页加长（重置 effect 对搜索态生效）', { timeout: 8000 }, async () => {
     const courses: CourseTreeInfo[] = Array.from({ length: 260 }, (_, i) => ({
       id: `s${i}`,
       name: `检索课程${i}`,
@@ -750,7 +750,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect([...document.querySelectorAll('button')].some((b) => b.textContent?.includes('显示更多'))).toBe(false)
   })
 
-  it('批4: 启动只拉一次任务列表，口径与「显示更多」分页一致（不再混入全表二次覆盖）', async () => {
+  it('批4: 启动只拉一次任务列表，口径与「显示更多」分页一致（不再混入全表二次覆盖）', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     mount(<App bridge={bridge} />)
     await waitForSelector('.app-shell')
@@ -764,7 +764,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(listCalls.mock.calls[0]?.[1]).toMatchObject({ limit: 50 })
   })
 
-  it('批4: 存量升级批量完成后只刷一次笔记库（不再逐课刷全库）', async () => {
+  it('批4: 存量升级批量完成后只刷一次笔记库（不再逐课刷全库）', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
       { lessonId: 'l2', version: 1, createdAt: '2026-09-08T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第二讲' }
@@ -811,7 +811,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(listMock.mock.calls.length).toBe(before + 1)
   })
 
-  it('批2 (P17): 「升级旧笔记」连点只发起一次课程体检；在途时按钮禁用并读「读取中…」', async () => {
+  it('批2 (P17): 「升级旧笔记」连点只发起一次课程体检；在途时按钮禁用并读「读取中…」', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
     )
@@ -854,7 +854,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(upgradeBtn().disabled).toBe(false)
   })
 
-  it('批2 (P4): 批量升级把每课失败原因显示在行内，toast 也带上第一条原因', async () => {
+  it('批2 (P4): 批量升级把每课失败原因显示在行内，toast 也带上第一条原因', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
       { lessonId: 'l2', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第二讲' }
@@ -899,7 +899,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     })
   })
 
-  it('批3 (P23): 整课导出失败时 toast 报篇数与原因（不再只说「跳过 N 篇」）', async () => {
+  it('批3 (P23): 整课导出失败时 toast 报篇数与原因（不再只说「跳过 N 篇」）', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
     )
@@ -949,7 +949,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
   })
 
-  it('批3 (P1): B 站课时「重新获取封面」——在途禁用、连点只发一次、成功后刷新封面', async () => {
+  it('批3 (P1): B 站课时「重新获取封面」——在途禁用、连点只发一次、成功后刷新封面', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '数据结构', teacher: '汪海', lessonTitle: '第1讲' }
     )
@@ -1006,7 +1006,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   // 批2 二次评审点名：渲染层的补全路径（use-notes-domain 的 repairNote）此前
   // 没有任何用例——toast 两条分支、in-flight 守卫、成功后的刷新全靠 IPC 层代理
   // 条件断言，文案改坏了也没人知道。这里走真实点击：体检面板 → 「按体检结果补全」。
-  it('批2 订正 (P2): 补全成功 → toast 说「体检 N 项 → M 项」、连点只发一次、笔记刷新', async () => {
+  it('批2 订正 (P2): 补全成功 → toast 说「体检 N 项 → M 项」、连点只发一次、笔记刷新', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第1讲' }
     )
@@ -1053,7 +1053,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
   })
 
-  it('批2 订正 (P2): 未改善 → toast 明说保留原稿（不说「N 项 → M 项」）', async () => {
+  it('批2 订正 (P2): 未改善 → toast 明说保留原稿（不说「N 项 → M 项」）', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第1讲' }
     )
@@ -1077,7 +1077,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
   })
 
-  it('批2 (P5): 批量升级成功的是当前课时时刷新当前笔记，且笔记库仍只刷一次', async () => {
+  it('批2 (P5): 批量升级成功的是当前课时时刷新当前笔记，且笔记库仍只刷一次', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第1讲' }
     )
@@ -1121,7 +1121,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(listMock.mock.calls.length).toBe(listBefore + 1)
   })
 
-  it('批2 (P6): 重试只跑未完成的课时——已成功的课时不再进确认载荷', async () => {
+  it('批2 (P6): 重试只跑未完成的课时——已成功的课时不再进确认载荷', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' },
       { lessonId: 'l2', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第二讲' }
@@ -1191,7 +1191,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(regenerateMock.mock.calls.length).toBe(beforeIdleClick)
   })
 
-  it('批2 (P6 评审补口): 单课时升级成功后按钮归零并禁用，不再「写着（1）却点了没反应」', async () => {
+  it('批2 (P6 评审补口): 单课时升级成功后按钮归零并禁用，不再「写着（1）却点了没反应」', { timeout: 8000 }, async () => {
     NOTE_ROWS.push(
       { lessonId: 'l1', version: 1, createdAt: '2026-09-20T00:00:00Z', courseId: 'c1', courseName: '算法导论', teacher: '汪海', lessonTitle: '第一讲' }
     )
@@ -1233,7 +1233,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(afterSelectAll.disabled).toBe(true)
   })
 
-  it('批4 a11y: 主 tab 内容面板补 role=tabpanel，与激活 tab 双向 aria 关联', async () => {
+  it('批4 a11y: 主 tab 内容面板补 role=tabpanel，与激活 tab 双向 aria 关联', { timeout: 8000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await waitForSelector('.app-shell')

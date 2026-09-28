@@ -9,7 +9,7 @@
  * so all five views/exports render it with zero changes.
  */
 import type { Db } from '../db/open'
-import { parseNote, type Note } from './schema'
+import { parseNote, type Note } from '../../shared/notes/schema'
 import { dropUnknownEvidence, evidenceHitRate } from '../../shared/notes/evidence'
 import type { OpenAiCompatibleClient } from '../providers/openai-client'
 import { saveNoteVersion, stripFences, loadCleanSegments, loadSummarizeInputs, buildUserParts, loadValidRefs } from './summarize'

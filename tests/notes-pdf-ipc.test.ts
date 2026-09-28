@@ -1,3 +1,6 @@
+// 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
+import { FakeIpc } from './helpers/fake-ipc'
+import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
@@ -7,6 +10,7 @@ import { createContext, type AppContext } from '../src/main/app-context'
 import { registerIpc, setAppRendererOrigin } from '../src/main/ipc'
 import type { Cryptor } from '../src/main/auth/session-crypto'
 
+
 // printToPDF is stubbed at the BrowserWindow.webContents level — the handler
 // must pass printBackground + A4 and write the returned bytes verbatim.
 // P28 (plan 2026-09-21): 窗口缩放档也在这层 stub——导出前必须钉回 1.0、结束后恢复。
@@ -15,43 +19,21 @@ const setZoomFactor = vi.hoisted(() => vi.fn())
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
 const showItemInFolder = vi.hoisted(() => vi.fn())
 
-vi.mock('electron', () => ({
-  ipcMain: undefined,
-  dialog: {
-    showSaveDialog: vi.fn(async () => saveDialog),
-    showOpenDialog: vi.fn()
-  },
-  shell: { openPath: vi.fn(async () => ''), showItemInFolder },
-  BrowserWindow: {
-    // 当前窗口缩放 1.6（2560 宽窗的档）——printToPdfFile 应当先 setZoomFactor(1)
-    // 再打印、finally 里 setZoomFactor(1.6) 恢复。
-    getFocusedWindow: () => ({ webContents: { printToPDF: printToPdf, getZoomFactor: () => 1.6, setZoomFactor } })
-  },
-  WebContents: undefined
-}))
+// 批8 (H25): electron 桩共享；showSaveDialog/showItemInFolder/窗口缩放档是本文件的
+// 取证对象，在共享桩上就地覆写（不另抄整块）。
+vi.mock('electron', () => {
+  const electron = stubElectron()
+  electron.dialog.showSaveDialog = vi.fn(async () => saveDialog)
+  electron.shell.showItemInFolder = showItemInFolder
+  // 当前窗口缩放 1.6（2560 宽窗的档）——printToPdfFile 应当先 setZoomFactor(1)
+  // 再打印、finally 里 setZoomFactor(1.6) 恢复。
+  electron.BrowserWindow.getFocusedWindow = () => ({ webContents: { printToPDF: printToPdf, getZoomFactor: () => 1.6, setZoomFactor } })
+  return electron
+})
 
 // 批1（契约有意变更）：E1 校验从「任意 file:// 放行」改为「只认启动时注入的
 // 应用 renderer URL」——FakeIpc 伪装的调用方 URL 现在必须显式注入。
 setAppRendererOrigin('file:///app/index.html')
-
-class FakeIpc {
-  readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
-  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
-    this.handlers.set(channel, fn)
-  }
-  async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    // E1 (review): handlers verify the sender frame — pose as the app UI.
-    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
-  }
-
-  async invokeFrom(url: string, channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({ senderFrame: { url } }, ...args)
-  }
-}
 
 const stubCryptor: Cryptor = {
   isAvailable: () => true,

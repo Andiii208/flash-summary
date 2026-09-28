@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiResult } from '../shared/api-result'
-import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, LatestNoteResult, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, LatestNoteResult, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, PolishResult, ProvidersListResult, QaRecentInfo, RegenerateResult, RepairResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
 import type { TreeNode } from '../shared/notes/schema'
 import type { SessionStateValue } from '../shared/types'
 
@@ -108,14 +108,16 @@ const api: SeuSummaryBridge = {
     cover: (lessonId: string): Promise<ApiResult<string | null>> => ipcRenderer.invoke('notes:cover', lessonId),
     // 批3 (plan 2026-09-20, P1): B 站封面回填（导入时抓失败/012 之前导入的课时）。
     backfillCover: (lessonId: string): Promise<ApiResult<{ coverPath: string }>> => ipcRenderer.invoke('notes:backfillCover', lessonId),
-    regenerate: (lessonId: string): Promise<ApiResult<{ version: number; images: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>> =>
-      ipcRenderer.invoke('notes:regenerate', lessonId),
-    polish: (lessonId: string, feedback: { tags: string[]; text: string }): Promise<ApiResult<{ version: number; hitRate: { hits: number; total: number }; droppedRefs?: number }>> =>
+    // 批8 (audit 2026-09-28, H16): 返回类型用 bridge.ts 的命名 interface——此前是
+    // 这里手抄的内联窄版（少 visionCapable/transcriptHitRate/normalizationDropped/
+    // clampedTimes/transcriptSampled/health/refStats），字段漂移无声。
+    regenerate: (lessonId: string): Promise<ApiResult<RegenerateResult>> => ipcRenderer.invoke('notes:regenerate', lessonId),
+    polish: (lessonId: string, feedback: { tags: string[]; text: string }): Promise<ApiResult<PolishResult>> =>
       ipcRenderer.invoke('notes:polish', lessonId, feedback),
-    // 批2 (plan 2026-09-20, P2): 定向补全。返回类型必须与 bridge.ts 一致——
-    // ApiResult<T> 的 value 是可变可选属性，unknown 不可赋给收窄后的联合。
-    repair: (lessonId: string): Promise<ApiResult<{ version: number; repaired: boolean; health: { warnCount: number; grade: 'good' | 'fair' | 'weak'; warnCountBeforeRepair: number | null }; transcriptHitRate?: { hits: number; total: number } | null }>> =>
-      ipcRenderer.invoke('notes:repair', lessonId),
+    // 批2 (plan 2026-09-20, P2): 定向补全。返回类型是命名 interface（批8 H16：
+    // 此前是这里手抄的内联窄版，与真信封漂移无声）——ApiResult<T> 的 value 是
+    // 可变可选属性，unknown 不可赋给收窄后的联合。
+    repair: (lessonId: string): Promise<ApiResult<RepairResult>> => ipcRenderer.invoke('notes:repair', lessonId),
     exportPdfDialog: (lessonId: string): Promise<ApiResult<{ canceled: boolean; path?: string; token?: string }>> =>
       ipcRenderer.invoke('notes:exportPdfDialog', lessonId),
     exportPdfWrite: (token: string): Promise<ApiResult<{ path: string; bytes: number }>> =>

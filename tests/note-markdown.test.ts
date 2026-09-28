@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { noteToMarkdown } from '../src/shared/notes/markdown'
-import { parseNote } from '../src/main/notes/schema'
+import { parseNote } from '../src/shared/notes/schema'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 

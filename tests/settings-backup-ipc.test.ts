@@ -1,3 +1,6 @@
+// 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
+import { FakeIpc } from './helpers/fake-ipc'
+import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
@@ -9,33 +12,20 @@ import type { Cryptor } from '../src/main/auth/session-crypto'
 import type { Db } from '../src/main/db/open'
 import type { AppContext } from '../src/main/app-context'
 
+
 // 批6 (plan 2026-09-19, D4 推荐侧): settings:exportLibraryBackup — the save
 // dialog is mocked at the electron layer (same seam as notes-pdf-ipc).
+// showSaveDialog 是本文件的断言对象，故在共享桩上就地覆写（不另抄整块）。
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
 const showSaveDialog = vi.hoisted(() => vi.fn(async (_options: unknown) => saveDialog))
 
-vi.mock('electron', () => ({
-  ipcMain: undefined,
-  dialog: { showSaveDialog, showOpenDialog: vi.fn(async () => ({ canceled: true })) },
-  shell: { openPath: vi.fn(async () => ''), showItemInFolder: vi.fn() },
-  BrowserWindow: { getFocusedWindow: () => null },
-  app: { isPackaged: false, getVersion: () => '0.0.0-test' },
-  WebContents: undefined
-}))
+vi.mock('electron', () => {
+  const electron = stubElectron()
+  electron.dialog.showSaveDialog = showSaveDialog
+  return electron
+})
 
 setAppRendererOrigin('file:///app/index.html')
-
-class FakeIpc {
-  readonly handlers = new Map<string, (e: unknown, ...args: unknown[]) => unknown>()
-  handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void {
-    this.handlers.set(channel, fn)
-  }
-  async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
-    const fn = this.handlers.get(channel)
-    if (fn == null) throw new Error(`no handler for ${channel}`)
-    return fn({ senderFrame: { url: 'file:///app/index.html' } }, ...args)
-  }
-}
 
 const stubCryptor: Cryptor = {
   isAvailable: () => true,

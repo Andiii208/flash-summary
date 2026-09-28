@@ -1,5 +1,5 @@
-import { describe, expect, it, afterEach } from 'vitest'
-import { writeFileSync, rmSync } from 'fs'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
+import { writeFileSync, rmSync, mkdtempSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { decodeGrid8x8, thumbPathFor, decodeGridPreferThumb } from '../src/main/media/grid'
@@ -8,7 +8,20 @@ import { averageHash, hammingDistance } from '../src/shared/phash'
 /**
  * The 8x8 luminance decoder (extracted from app-context in the combined
  * audit) over real jpeg-js encode/decode round-trips.
+ *
+ * 批8 (audit 2026-09-28, H25): 夹具落**每次测试一个的临时目录**——此前用
+ * tmpdir() 下的固定名（grid-test.jpg 等），并行会话/并行 worker 会互相删掉对方
+ * 刚写的文件，表现为与本测试无关的 flaky。
  */
+let fixtureDir = ''
+
+beforeEach(() => {
+  fixtureDir = mkdtempSync(join(tmpdir(), 'seu-summary-grid-'))
+})
+
+afterEach(() => {
+  rmSync(fixtureDir, { recursive: true, force: true })
+})
 
 /** Encode a 64x64 jpeg whose left half is black and right half is white. */
 function encodeSplitJpeg(): Buffer {
@@ -32,17 +45,9 @@ function encodeSplitJpeg(): Buffer {
   return jpeg.encode({ data, width, height }, 90).data
 }
 
-afterEach(() => {
-  rmSync(join(tmpdir(), 'grid-test.jpg'), { force: true })
-  rmSync(join(tmpdir(), 'grid-test.png'), { force: true })
-  rmSync(join(tmpdir(), 'grid-test-broken.bin'), { force: true })
-  rmSync(join(tmpdir(), 'thumb-grid-test.jpg'), { force: true })
-  rmSync(join(tmpdir(), 'thumb-grid-test.png'), { force: true })
-})
-
 /** Materialize the encoded jpeg on disk: decodeGrid8x8 reads a file path. */
 function writeSplitJpeg(): string {
-  const file = join(tmpdir(), 'grid-test.jpg')
+  const file = join(fixtureDir, 'grid-test.jpg')
   writeFileSync(file, encodeSplitJpeg())
   return file
 }
@@ -66,7 +71,7 @@ function writeSplitPng(): string {
       data[idx + 3] = 255
     }
   }
-  const file = join(tmpdir(), 'grid-test.png')
+  const file = join(fixtureDir, 'grid-test.png')
   writeFileSync(file, PNG.sync.write({ data, width, height }))
   return file
 }
@@ -108,7 +113,7 @@ describe('decodeGrid8x8 (block-mean luminance for phash)', () => {
   })
 
   it('批1b: 坏文件抛错而不是返回垃圾网格（调用方据此降级为 null 哈希）', () => {
-    const broken = join(tmpdir(), 'grid-test-broken.bin')
+    const broken = join(fixtureDir, 'grid-test-broken.bin')
     writeFileSync(broken, Buffer.from([0x00, 0x01, 0x02, 0x03]))
     expect(() => decodeGrid8x8(broken)).toThrow()
   })

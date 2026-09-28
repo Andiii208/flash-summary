@@ -11,6 +11,7 @@
  */
 import { vi } from 'vitest'
 import type { AppSettingsInfo, CourseTreeInfo, ListPage, NoteIndexInfo, ProvidersListResult, SeuSummaryBridge, TaskRowInfo } from '../../src/shared/bridge'
+import type { SessionStateValue } from '../../src/shared/types'
 import type { ApiResult } from '../../src/shared/api-result'
 import { DISCLAIMER_TEXT_VERSION } from '../../src/shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../../src/shared/copyright-notice'
@@ -87,11 +88,14 @@ function resetFakeState(): void {
 
 export function makeBridge(): SeuSummaryBridge {
   resetFakeState()
-  return {
+  // 批7 (audit 2026-09-28, H13): 单次类型标注——此前 `as unknown as` 把整个
+  // 对象伪装成桥面，fake 缺方法、多方法都编译通过（2026-09-18 批C1 的同类
+  // 残留）。现在少一个键/多一个键/签名漂移都是这里的 TS 报错，与 preload 同纪律。
+  const bridge: SeuSummaryBridge = {
     school: {
       login: vi.fn(async () => ok({ state: 'logged_in' })),
       logout: vi.fn(async () => ok({ state: 'logged_out' })),
-      session: vi.fn(async () => ok({ state: 'logged_out' })),
+      session: vi.fn(async (): Promise<ApiResult<{ state: SessionStateValue }>> => ok({ state: 'logged_out' })),
       listCourses: vi.fn(async () => ok({ loaded: 0, platformTotal: 0, platformPages: 1 })),
       addManualCourse: vi.fn(async () => ok({ courseId: 'c', lessonId: 'l' })),
       courseTree: vi.fn(async () => ok(fakeState.courses)),
@@ -99,13 +103,19 @@ export function makeBridge(): SeuSummaryBridge {
       harvestState: vi.fn(async () => ok({ inflight: [], outcome: null })),
       netCheck: vi.fn(async () => ok({ intercepted: false, resolved: [] })),
       setMine: vi.fn(async () => ok(true)),
+      // C6: 删除空课程——默认拒绝（false），真实语义由 ipc 测试覆盖。
+      removeCourse: vi.fn(async () => ok(false)),
       onRefreshProgress: vi.fn(() => () => undefined)
     },
     bilibili: {
       login: vi.fn(async () => ok({ qrUrl: 'https://passport.bilibili.com/qr' })),
-      loginStatus: vi.fn(async () => ok({ status: 'inactive' })),
-      logout: vi.fn(async () => ok({ state: 'logged_out' })),
-      session: vi.fn(async () => ok({ state: 'logged_out', savedAt: null })),
+      loginStatus: vi.fn(
+        async (): Promise<ApiResult<{ status: 'inactive' | 'waiting' | 'scanned' | 'confirmed' | 'expired' }>> => ok({ status: 'inactive' })
+      ),
+      logout: vi.fn(async (): Promise<ApiResult<{ state: 'logged_in' | 'logged_out' }>> => ok({ state: 'logged_out' })),
+      session: vi.fn(async (): Promise<ApiResult<{ state: 'logged_in' | 'logged_out'; savedAt?: string | null }>> =>
+        ok({ state: 'logged_out', savedAt: null })
+      ),
       resolve: vi.fn(async () => ok({ bvid: 'BV1X', requestedPage: null, title: 't', coverUrl: '', upMid: 1, pages: [] })),
       import: vi.fn(async () => ok({ courseId: 'b', lessonIds: [] }))
     },
@@ -122,7 +132,6 @@ export function makeBridge(): SeuSummaryBridge {
       create: vi.fn(async () => ok({ id: 't1' })),
       // 批C: 分页结构 { items, total, limit }——total 默认等于 items 长度（未截断）。
       list: vi.fn(async (): Promise<ApiResult<ListPage<TaskRowInfo>>> => ok(pageOf(TASK_ROWS))),
-      run: vi.fn(async () => ok({})),
       runAsync: vi.fn(async () => ok({ id: 't1', state: 'running' })),
       cancel: vi.fn(async () => ok({ cancelled: true })),
       remove: vi.fn(async () => ok(true)),
@@ -138,6 +147,8 @@ export function makeBridge(): SeuSummaryBridge {
       exportCourseObsidian: vi.fn(async () => ok({ canceled: true, exported: 0, skipped: 0 })),
       exportAnki: vi.fn(async () => ok({ canceled: true, paths: [] })),
       exportSvg: vi.fn(async () => ok({ canceled: true, path: 'x.svg' })),
+      // 批5 (2026-09-17): 位图导出——光栅化在渲染层，main 只写字节。默认取消。
+      exportPng: vi.fn(async () => ok({ canceled: true })),
       courseTree: vi.fn(async () => ok({ tree: { title: 't', children: [] }, lessons: 0, skipped: 0 })),
       attachments: vi.fn(async () => ok([])),
       attachmentData: vi.fn(async () => ok(null)),
@@ -155,8 +166,16 @@ export function makeBridge(): SeuSummaryBridge {
     },
     qa: {
       ask: vi.fn(async () => ok({ id: 'q1', answer: '回答' })),
-      history: vi.fn(async () => ok(fakeState.qaHistory)),
+      // 真实返回带 created_at（库里读出来的）；夹具只存问答本身，时间戳在这里补齐。
+      history: vi.fn(
+        async (): Promise<ApiResult<Array<{ question: string; answer: string; created_at: string }>>> =>
+          ok(fakeState.qaHistory.map((row) => ({ ...row, created_at: '2026-09-29T00:00:00Z' })))
+      ),
       recent: vi.fn(async () => ok([]))
+    },
+    // 批 D (plan 2026-09-19): 原片跳转——URL 在 main 侧拼，fake 只回成功。
+    lessons: {
+      openSource: vi.fn(async () => ok(true as const))
     },
     settings: {
       get: vi.fn(async (): Promise<ApiResult<AppSettingsInfo>> => {
@@ -173,6 +192,8 @@ export function makeBridge(): SeuSummaryBridge {
         })
       }),
       setCacheDir: vi.fn(async () => ok({ cacheDir: 'C' })),
+      // C10: 缓存目录选择器——默认取消（path 缺省）。
+      chooseCacheDir: vi.fn(async () => ok({ canceled: true })),
       setTheme: vi.fn(async () => ok({ theme: 'dark' })),
       chooseLibrary: vi.fn(async () => ok({ canceled: true })),
       openPath: vi.fn(async () => ok(true)),
@@ -189,7 +210,9 @@ export function makeBridge(): SeuSummaryBridge {
         fakeState.copyrightNoticeOptOut = true
         return ok({ version: COPYRIGHT_NOTICE_VERSION })
       }),
-      onMigrateProgress: vi.fn(() => () => undefined)
+      onMigrateProgress: vi.fn(() => () => undefined),
+      // 批6 (D4): 资料库备份导出——只含数据库文件，默认取消。
+      exportLibraryBackup: vi.fn(async () => ok({ canceled: true }))
     },
     log: {
       rendererError: vi.fn(async () => ok(true))
@@ -200,5 +223,6 @@ export function makeBridge(): SeuSummaryBridge {
       openForm: vi.fn(async () => ok(true)),
       diagnostics: vi.fn(async () => ok({ text: '—— Flash Summary 诊断信息 ——\n应用版本：0.0.0-test' }))
     }
-  } as unknown as SeuSummaryBridge
+  }
+  return bridge
 }
