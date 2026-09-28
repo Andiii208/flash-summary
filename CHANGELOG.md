@@ -2,6 +2,34 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.12] — 2026-09-28 · 全项目体检整改（安全红线 + 文本纪律 + 契约防漂移）
+
+> 方案：docs/plans/2026-09-28-full-project-health-audit.md（Andiii 要求发版宣发前做一次全方位体检：找屎山、汇总、出优化计划）。四路并行审计（main / renderer / shared+tests / 构建依赖文档）+ 全量门禁实测，30 项问题分九批修复，测试 1467→1572、smoke 40/40。
+
+### 安全
+
+- **B 站出站 URL 白名单（SSRF + 凭据外带）**：字幕轨 URL 此前来自 B站接口响应体、封面来自 view 响应体、短链是输入框透传，三者均可指向任意主机——带 SESSDATA 登录态的请求会把会话送到响应体指定的主机。现在 requestEnvelope / fetchImageAsDataUrl / resolveShortLink 入口统一过白名单（scheme 限 https、host 精确或前导点后缀匹配），短链改为解析 b23.tv 短码后自行规范化。
+- **主进程 fetch 会话感知**：provider 总结/ASR 与登录探活改走 Electron net.fetch（跟随系统代理）。如实记账：Electron net.fetch 不支持 redirect:'manual'（electron#43715），而 school/bilibili 全链路带 manual，二者暂留 globalThis.fetch，待上游支持后收口。
+- **CAS 登录假成功修复**：会话保存失败时不再记为登录成功（此前异常被吞、还写「session encrypted at rest」日志）。
+- **测试缝隙打包门**：SEU_ANKI_PATH / SEU_PNG_PATH / SEU_SVG_PATH / SEU_PDF_PATH 加 app.isPackaged 门（注释自称 dev-only 实则打包后仍生效）。
+
+### 修正
+
+- **笔记文本渲染纪律（28 处）**：时间线条目、金句、章节标题/摘要、导图边标签与节点、PDF 讲义等模型自由文本此前直接插值，**加粗** / ==高亮== 会把字面符号印给用户；全部改经 MdLite/InlineText，SVG 内改走新 SvgInline（tspan 分段，跨行样式连续）。
+- **切课残留笔记**：任务完成但新课无笔记时，笔记区不再显示上一课的内容。
+- **PDF 不再可能永久卡死**：waitForImages 加 8s 超时兜底；PDF 与其它导出串行化（不再弹两个原生保存框）。
+- **暗色主题荧光笔错色**：浅色系统上手动选深色时，==高亮== 不再用亮黄底铺暗色正文。
+- **会话过期误判收紧**：普通 /login 平台跳转不再误报「会话过期」触发重登录。
+- **九处按钮补在途态**：取消任务/取消排队/显示更多/B站退出/设置重试/缓存浏览/复制 Markdown/抓取课时目录/收藏，一律「文案加省略号 + disabled」。
+
+### 工程与契约
+
+- **假桥防漂移复位**：测试假桥的 as unknown as 降级为单次类型标注，补齐 5 个缺失方法、删幽灵方法；新增契约测试把 makeBridge ⇄ bridge.ts ⇄ smoke EXPECTED_BRIDGE 三方钉成一份。
+- **两个零验证 handler 补测**（providers:test / settings:chooseCacheDir）；smoke CI 的 paths 过滤补上 notes 模块（改返回值形状必触发）。
+- **schema 卫生**：at 空串不再静默降级为 0 秒；丢弃计数补 concept/formula/examCue/questionsAndGaps 四项口径（「被格式层悄悄丢了 N 项」不再少报）。
+- **声明层如实化**：删除早已零引用的 Tailwind 许可残留行；ffprobe 许可由 MIT 订正为 GPL-3.0-or-later（实测二进制 --enable-gpl）；README IPC 62→66；测试计数 1467→1572。
+- **main 进程卫生**：registerIpc 二次注册的状态分裂修复（任务取消/在跑守卫跨重注册有效）；日志 rotate 由每行一次改为每分钟至多一次；PPT 页附件 MIME 按魔数推断；四处静默降级补日志；下载流加写背压。
+
 ## [0.7.11] — 2026-09-23 · 宽屏吃空白整改 + 导图改版 + 仓库更名
 
 > 方案：`docs/plans/2026-09-22-wide-screen-blank-space.md`（Andiii 试用反馈「未全屏和全屏显示效果纠结、放大后一半空白非常别扭」，深挖 + 业界调研 + 四批实施）。动因不是 bug：P28 缩放把内容等比放大的同时把右侧空白等量放大——最大化（视口 1600）下笔记页右侧空白 632 CSS px ≈ 1011 物理 px，占窗宽 40%；而窗口化时填充率反而更高（76% vs 60.5%）。
