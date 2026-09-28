@@ -1,6 +1,9 @@
 // 批8 (audit 2026-09-28, H25): FakeIpc / electron 桩提到共享 helper（12 份拷贝收成一份）。
 import { FakeIpc } from './helpers/fake-ipc'
 import { stubElectron } from './helpers/electron-mock'
+// H23: dialog 取的是 electron mock 上的桩（本文件 vi.mock 里替换过）——打包门
+// 用例要覆写 showSaveDialog 的返回值来取证「缝隙无视后走的是对话框」。
+import { dialog } from 'electron'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -1636,5 +1639,130 @@ describe('assertSafeId — 批2 id 入盘校验', () => {
       expect(rejected.ok, hostile).toBe(false)
       expect(rejected.error, hostile).toContain('格式')
     }
+  })
+})
+
+/**
+ * H23 (audit 2026-09-28): SEU_*_PATH 导出缝隙是 e2e 测试缝，注释一直写着
+ * dev-only 却没有打包门——装机用户的机器上残留 `SEU_PDF_PATH` 之类变量，
+ * 导出就会静默写去那个路径、保存对话框再也不出现。现在与 nav-guard 的
+ * rendererDevUrl 同款门：`app.isPackaged === true` 时一律无视这些变量。
+ * （本文件的 electronApp 是可变对象，翻转 isPackaged 即可驱动打包态。）
+ */
+describe('H23: 打包后 SEU_*_PATH 缝隙失效，导出走保存对话框', () => {
+  const PNG_BASE64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9]).toString('base64')
+
+  afterEach(() => {
+    electronApp.isPackaged = false
+    delete process.env.SEU_ANKI_PATH
+    delete process.env.SEU_PNG_PATH
+    delete process.env.SEU_SVG_PATH
+  })
+
+  /** 一条带概念卡的知识树笔记（anki/svg 两个导出都吃它）。 */
+  function seedNote(): void {
+    db.prepare(
+      "INSERT INTO notes (id, lesson_id, version, note_json, provider, model, created_at) VALUES ('n1', 'l1', 1, ?, 'p', 'm', '2026-09-28T00:00:00Z')"
+    ).run(
+      JSON.stringify({
+        overview: '概览',
+        knowledgeTree: { title: '根', children: [{ title: '分支', children: [] }] },
+        timeline: [],
+        methodology: '方法',
+        concepts: [{ term: '大O', definition: '渐进上界' }]
+      })
+    )
+  }
+
+  it('anki/png/svg 三个缝隙在打包后都被无视（对话框选中的路径才是落点）', async () => {
+    const ctx = makeCtx()
+    db.prepare("INSERT INTO courses (id, name, teacher, fetched_at) VALUES ('c1', '课程', '老师', '2026-09-28T00:00:00Z')").run()
+    db.prepare("INSERT INTO lessons (id, course_id, title, fetched_at) VALUES ('l1', 'c1', '课时', '2026-09-28T00:00:00Z')").run()
+    seedNote()
+    // 环境里残留三个 env（模拟装机用户机器上的误设）。
+    const envAnki = join(dir, 'env-anki.txt')
+    const envPng = join(dir, 'env-tree.png')
+    const envSvg = join(dir, 'env-tree.svg')
+    process.env.SEU_ANKI_PATH = envAnki
+    process.env.SEU_PNG_PATH = envPng
+    process.env.SEU_SVG_PATH = envSvg
+    // 对话框选中的目标（与 env 路径不同）。
+    const dialogAnki = join(dir, 'dialog-anki.txt')
+    const dialogPng = join(dir, 'dialog-tree.png')
+    const dialogSvg = join(dir, 'dialog-tree.svg')
+    const showSaveDialog = vi.mocked(dialog.showSaveDialog)
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: dialogAnki })
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: dialogPng })
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: dialogSvg })
+
+    registerIpc(ctx, ipc as never)
+    electronApp.isPackaged = true
+    const anki = (await ipc.invoke('notes:exportAnki', 'l1')) as { ok: boolean; value?: { paths: string[] } }
+    expect(anki.ok).toBe(true)
+    expect(anki.value?.paths[0]).toBe(dialogAnki)
+    expect(existsSync(envAnki)).toBe(false)
+
+    const png = (await ipc.invoke('notes:exportPng', 'l1', PNG_BASE64)) as { ok: boolean; value?: { path: string } }
+    expect(png.ok).toBe(true)
+    expect(png.value?.path).toBe(dialogPng)
+    expect(existsSync(envPng)).toBe(false)
+
+    const svg = (await ipc.invoke('notes:exportSvg', 'l1')) as { ok: boolean; value?: { path: string } }
+    expect(svg.ok).toBe(true)
+    expect(svg.value?.path).toBe(dialogSvg)
+    expect(existsSync(envSvg)).toBe(false)
+  })
+})
+
+/**
+ * H27 (audit 2026-09-28): providers() 曾把 loadProviderSettings 的一切异常
+ * 吞掉、静默返回空列表——DPAPI 解不开（换机器/恢复备份）时界面只说「未配置
+ * Provider」，日志零线索，用户与开发者都无从判断是没配还是读不出。降级行为
+ * 不变，但必须留一条 error（只记原因、截断，不记任何 key 值）。
+ */
+describe('H27: providers() 解密失败降级为空列表并落 error 日志', () => {
+  const brokenCryptor: Cryptor = {
+    isAvailable: () => true,
+    encryptString: (plain) => Buffer.from(plain, 'utf8'),
+    decryptString: () => {
+      throw new Error('DPAPI 解密失败：密钥不可用（换机器/恢复备份后的典型形态）')
+    }
+  }
+
+  afterEach(() => {
+    db?.close()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('解不开时返回空列表，日志里有 error 与原因', () => {
+    const ctx = createContext({ libraryRoot: dir, userDataDir: join(dir, 'userdata'), cryptor: brokenCryptor })
+    db = ctx.db
+    // 库里得真有一行 sealed key——空表根本不解密，走不到降级路径（本用例要
+    // 覆盖的正是：行在、但当前机器的 DPAPI 解不开）。
+    db.prepare(
+      "INSERT INTO providers (id, name, base_url, api_key, created_at) VALUES ('p1', '旧机器上的 Provider', 'http://x', 'enc:v1:QUJD', '2026-09-28T00:00:00Z')"
+    ).run()
+    expect(ctx.providers()).toEqual({ providers: [], bindings: [] })
+
+    const logsDir = join(dir, 'userdata', 'logs')
+    const text = readdirSync(logsDir)
+      .filter((f) => f.endsWith('.log'))
+      .map((f) => readFileSync(join(logsDir, f), 'utf8'))
+      .join('\n')
+    expect(text).toContain('[ERROR]')
+    expect(text).toContain('providers load failed')
+    expect(text).toContain('DPAPI 解密失败')
+  })
+
+  it('正常 cryptor 下不落 error（不留噪声日志）', () => {
+    const ctx = createContext({ libraryRoot: dir, userDataDir: join(dir, 'userdata'), cryptor: stubCryptor })
+    db = ctx.db
+    expect(ctx.providers()).toEqual({ providers: [], bindings: [] })
+    const logsDir = join(dir, 'userdata', 'logs')
+    const text = readdirSync(logsDir)
+      .filter((f) => f.endsWith('.log'))
+      .map((f) => readFileSync(join(logsDir, f), 'utf8'))
+      .join('\n')
+    expect(text).not.toContain('providers load failed')
   })
 })

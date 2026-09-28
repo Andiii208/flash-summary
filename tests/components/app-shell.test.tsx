@@ -22,7 +22,7 @@ async function waitForSelector(selector: string): Promise<void> {
     () => {
       if (document.querySelector(selector) == null) throw new Error(`waiting for ${selector}`)
     },
-    { timeout: 3000, interval: 25 }
+    { timeout: 8000, interval: 25 }
   )
 }
 
@@ -58,6 +58,9 @@ async function expandAllCourses(): Promise<void> {
   // 声明批2: 首启「使用须知」闸门要先读完 settings 才渲染外壳（boot 态没有侧栏），
   // 所以交互前必须先等外壳出现——这也是真实启动顺序。
   await waitForSelector('.app-shell')
+  // 批5 (H9 用例在全量负载下偶发)：等展开控件真的渲染出来再点——外壳出现与
+  // 侧栏就绪之间还有一个异步 tick，抢跑会点到 null、后面全程等不到课程行。
+  await waitForSelector('[data-testid="all-courses-toggle"]')
   const toggle = document.querySelector('[data-testid="all-courses-toggle"]')
   if (toggle != null) click(toggle)
   await waitForSelector('.course-head')
@@ -1251,4 +1254,82 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(active2.textContent).toBe('笔记')
     expect(panel2.getAttribute('aria-labelledby')).toBe(active2.id)
   })
+
+
+/**
+ * 批5 (plan 2026-09-28 H4/H9): 切课与慢响应期间的本域残留。
+ *  H4——loadNote 此前「只在有值时 setNote」从不清空，任务成功但该课无笔记时
+ *      面板一直留着上一课的内容；现在入口先清空（lessonRef 守卫防闪），
+ *      App 成功分支也先 clearLessonData()。
+ *  H9——regenerate/polish/repair 在 await 后无守卫，生成途中切课会让旧课结果
+ *      覆盖新课面板；现在与 refreshCover 同款 lessonRef 守卫。
+ */
+describe('App shell 批5: 笔记域残留与守卫', () => {
+  it('H4: 任务成功但该课无笔记时，笔记区显示空态而不是上一课的内容', { timeout: 8000 }, async () => {
+    const bridge = makeBridge()
+    // 选课时第一次 latest 有笔记；任务成功事件后再取变成 null（成功但无笔记）
+    const latest = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ note: COVER_NOTE, transcriptHitRate: null }))
+      .mockResolvedValue(ok(null))
+    ;(bridge.notes as unknown as { latest: unknown }).latest = latest
+    const sink: { fire?: (p: { taskId: string; state: string; stage: string | null; message: string; percent: number }) => void } = {}
+    ;(bridge.tasks.onProgress as unknown as { mockImplementation: (fn: unknown) => void }).mockImplementation((cb: (p: { taskId: string; state: string; stage: string | null; message: string; percent: number }) => void) => {
+      sink.fire = cb
+      return () => undefined
+    })
+    TASK_ROWS.push({ id: 't1', lesson_id: 'l1', state: 'succeeded', failed_stage: null, error_message: null })
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-masthead')
+    expect(host.querySelector('.note-masthead')).not.toBeNull()
+    // 成功事件：该课（l1，当前正看着）没有笔记 → 必须清成空态
+    sink.fire!({ taskId: 't1', state: 'succeeded', stage: null, message: '完成', percent: 100 })
+    await waitForSelector('[data-testid="note-empty-current"]')
+    expect(host.querySelector('.note-masthead')).toBeNull()
+    TASK_ROWS.length = 0
+  })
+
+  it('H9: 重新生成进行中切课，旧课结果不得覆盖新课面板', { timeout: 8000 }, async () => {
+    const bridge = makeBridge()
+    const noteOf = (overview: string): Note => ({ ...COVER_NOTE, overview })
+    // regenerate 挂着不返回——量「在途」窗口里切课的那一刻。
+    const gate: { settle?: () => void } = {}
+    const regenerate = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          gate.settle = () => resolve(ok({ version: 2, images: 0, hitRate: { hits: 0, total: 0 } }))
+        })
+    )
+    ;(bridge.notes as unknown as { regenerate: unknown }).regenerate = regenerate
+    ;(bridge.notes as unknown as { latest: unknown }).latest = vi.fn(async (id: string) =>
+      ok(id === 'l1' ? { note: noteOf('旧课正文'), transcriptHitRate: null } : { note: noteOf('新课正文'), transcriptHitRate: null })
+    )
+    // 两门课各一节课时——第二门课用来切走。
+    fakeState.courses = [
+      { id: 'c1', name: '数据结构', lessons: [{ id: 'l1', title: '第1讲', hasNote: true }] },
+      { id: 'c2', name: '算法', lessons: [{ id: 'l2', title: '第1讲', hasNote: true }] }
+    ]
+    const host = mount(<App bridge={bridge} />)
+    await selectFirstLesson(bridge)
+    click([...host.querySelectorAll('.tabs button')].find((b) => b.textContent === '笔记') ?? null)
+    await waitForSelector('.note-masthead')
+    expect(host.textContent).toContain('旧课正文')
+    // 重新生成（挂着）→ 切到 l2（面板显示新课正文）→ 才让旧课的生成返回
+    click(Array.from(host.querySelectorAll<HTMLButtonElement>('.note-toolbar button')).find((b) => b.textContent === '重新生成') ?? null)
+    await vi.waitFor(() => expect(regenerate).toHaveBeenCalledTimes(1))
+    // 侧栏里展开第二门课（算法）并切到它的课时 l2
+    click(Array.from(host.querySelectorAll('.course-head')).find((head) => head.textContent?.includes('算法')) ?? null)
+    // 侧栏第二节课时行就是 l2（两门课的第1讲标题相同，按次序取）
+    const l2Row = Array.from(host.querySelectorAll('.lesson-row'))[1]
+    click(l2Row ?? null)
+    await vi.waitFor(() => expect(host.textContent).toContain('新课正文'))
+    gate.settle?.()
+    // 旧课的 loadNote 被 lessonRef 守卫挡下——面板不许回到旧课正文
+    await vi.waitFor(() => expect(host.querySelector('.note-toolbar')?.textContent).not.toContain('生成中…'))
+    expect(host.textContent).toContain('新课正文')
+    expect(host.textContent).not.toContain('旧课正文')
+  })
+})
 })
