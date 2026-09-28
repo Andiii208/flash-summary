@@ -19,7 +19,10 @@
  * never logged.
  */
 import { isCasLoginRedirect, mergeCookieStrings } from '../school/api-parse'
-import { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH, probeSaysLoggedIn } from './cas-login'
+import { probeSaysLoggedIn } from './cas-login'
+// H30 (audit 2026-09-28): 平台路径常量族随 cas-login 上移到 school/platform-paths
+// （school/play-harvest 不再反向 import auth 域）。
+import { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH } from '../school/platform-paths'
 // H2 (audit 2026-09-28): 探活走 Chromium 网络栈（session 代理）——裸
 // globalThis.fetch 不读 Chromium 代理，混合端口代理用户下探活与窗口内可达性
 // 不一致，登录会被自己的 precheck 判死。

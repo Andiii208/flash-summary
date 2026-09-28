@@ -75,6 +75,12 @@ export interface OrchestratorDeps {
    * 改写」时被冻结的漂移条目——main 侧接日志（orchestrator 自己没有 logger）。
    */
   onCatalogDrift?: (courseId: string, drifted: ReadonlyArray<CatalogDrift>) => void
+  /**
+   * H27 (audit 2026-09-28): 静默降级的日志通道——orchestrator 自己没有
+   * logger，几处「不毁任务但要留痕」的降级（PPT 抓取失败归零、缩略图 spawn
+   * 失败回落原图、生成前图片读失败）经这里交回 main 侧落 warn。
+   */
+  onSilentDegrade?: (message: string) => void
   /** Per-chunk ASR progress (U4): index and total let the UI show chunk-level progress. */
   onChunkProgress?: (ctx: StageContext, index: number, total: number) => void
   /** M1-3: download byte/speed polling so the UI shows «已下载 x · y/s». */
@@ -792,12 +798,22 @@ export function makeExtractVisuals(deps: OrchestratorDeps): StageExecutor {
                 ],
                 { signal: ctx.signal, timeoutMs: 10 * 60 * 1000 }
               )
-            } catch {
+            } catch (err) {
               // 缩略图是哈希加速件，不是证据本身；缺失即回落原图解码。
+              // H27: 降级照旧，但不再无声——回落原图会让哈希阶段多跑全分辨率
+              // 解码，日志里要能看出「这次为什么回落」。
+              if (!isCancelled(ctx, err)) {
+                deps.onSilentDegrade?.(`lesson=${ctx.lessonId} ppt thumbnail spawn failed (fallback to full-res decode): ${(err as Error).message}`)
+              }
             }
           }
-        } catch {
+        } catch (err) {
           // PPT is supplementary; keep keyframes as the visual evidence.
+          // H27: 抓取失败（风控/404/网络）时界面只看到 ppt=0 而无从判断原因，
+          // 降级的当口必须留一条 warn。
+          if (!isCancelled(ctx, err)) {
+            deps.onSilentDegrade?.(`lesson=${ctx.lessonId} ppt capture failed (visual evidence stays keyframes-only): ${(err as Error).message}`)
+          }
         }
       }
 
@@ -832,6 +848,11 @@ export function makeSummarize(deps: OrchestratorDeps): StageExecutor {
         // generic error result, so re-check the signal here.
         if (isCancelled(ctx)) return cancelResult()
         return { status: 'failed', error: result.error }
+      }
+      // H27: 生成前有图片读不出来（被丢掉的 ref）——模型少看了画面，阶段
+      // 产物带上计数，日志侧也要有这条 warn。
+      if (result.droppedImages > 0) {
+        deps.onSilentDegrade?.(`lesson=${ctx.lessonId} summarize read failed for ${result.droppedImages} image(s) — model saw less visual evidence`)
       }
       recordStage(deps, ctx.taskId, ctx.stage, result)
       return { status: 'ok' }

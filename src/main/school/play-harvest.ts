@@ -16,7 +16,9 @@
  */
 import { SchoolApiError } from './client'
 import { isCasLoginRedirect } from './api-parse'
-import { PLATFORM_API_BASE_PATH } from '../auth/cas-login'
+// H30 (audit 2026-09-28): 平台路径常量从 school 域自己的 platform-paths 导入——
+// 旧写法反向 import ../auth/cas-login（school 域依赖 auth 域，分层倒置）。
+import { PLATFORM_API_BASE_PATH } from './platform-paths'
 
 export interface PlayPageTarget {
   courseId: string

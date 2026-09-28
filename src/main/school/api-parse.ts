@@ -5,9 +5,51 @@
  * without any network access.
  */
 
-/** True when the app was redirected to the CAS login page (session expired). */
+/**
+ * H30 (audit 2026-09-28): 已知 CAS/SSO 主机清单——这些主机上出现的任何 URL
+ * 都是登录流程的一跳（平台未登录时会 302 去 ids.seu.edu.cn 的 authserver）。
+ * **不含 auth.seu.edu.cn**：那是 OAuth 授权中转站，登录轮询的正常路径就会
+ * 经过它（main-window-login 的 away-and-back、play 收割的静默 SSO），整站判
+ * 「会话过期」会把正常跳转误报成掉登录。
+ */
+const CAS_LOGIN_HOST_SUFFIXES = ['ids.seu.edu.cn']
+
+/**
+ * 登录页路径段：整段相等才算（路径段级匹配）。旧实现是 `/cas|login|sso` 子串
+ * 扫描，`/login-page`、`/api/login-history` 这类正常路由都会被误杀。
+ */
+const CAS_LOGIN_PATH_SEGMENTS = ['cas', 'login', 'sso', 'authserver']
+
+/**
+ * 非 URL 原文（client.ts 会把 2xx 的 HTML 登录页正文喂进来）的降级判定：
+ * 只认路径形态（`/authserver/…`、`/cas/login`）与 authserver 字样。
+ */
+const LOGIN_MARKER_IN_TEXT = /\/(?:cas|login|sso|authserver)\b|\bauthserver\b/i
+
+/**
+ * True when the app was redirected to the CAS login page (session expired).
+ *
+ * H30: 收紧前这条正则是 `/\/(cas|login|sso)\b|ids\.seu\.edu\.cn|authserver/i`
+ * 全串扫描——任何含 login 的查询串（`?redirect=…`）、任何路径里出现
+ * authserver 的 URL 都被判「会话过期」，触发无谓重登录。现在：
+ *   1. 能解析成 URL 的：命中已知 CAS 主机 → true；否则只看**路径与 hash 段**
+ *      （平台 SPA 是 hash 路由），查询串不算，除非里面嵌了完整登录 URL
+ *      （字符串含已知 CAS 主机）；
+ *   2. 解析不成 URL 的（HTML 正文）：退化为路径形态与 authserver 字样匹配。
+ */
 export function isCasLoginRedirect(url: string): boolean {
-  return /\/(cas|login|sso)\b|ids\.seu\.edu\.cn|authserver/i.test(url)
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return LOGIN_MARKER_IN_TEXT.test(url)
+  }
+  // 已知 CAS 主机（含子域）上任何路径都是登录流程。
+  if (CAS_LOGIN_HOST_SUFFIXES.some((suffix) => parsed.hostname === suffix || parsed.hostname.endsWith(`.${suffix}`))) return true
+  // 查询里嵌了完整的登录 URL（SSO 回跳常带 redirect=/authserver/…）也算。
+  if (CAS_LOGIN_HOST_SUFFIXES.some((host) => url.includes(host))) return true
+  const segments = `${parsed.pathname}${parsed.hash}`.toLowerCase().split(/[/?#]+/)
+  return segments.some((segment) => CAS_LOGIN_PATH_SEGMENTS.includes(segment))
 }
 
 export interface CourseSummary {

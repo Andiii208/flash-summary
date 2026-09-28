@@ -218,4 +218,40 @@ describe('批3 修复轮 I1: PPT 缩略图 spawn（listPpt 真返回 2 页本地
     const stage = db.prepare('SELECT output_json FROM task_stage_outputs WHERE task_id = ? AND stage = ?').get('t-ppt-fail', 'extracting_visuals') as { output_json: string }
     expect(JSON.parse(stage.output_json)).toMatchObject({ ppt: 2 })
   })
+
+  // H27 (audit 2026-09-28): 缩略图 spawn 失败与 PPT 抓取失败都被静默吞过——
+  // 界面只看到 ppt=0 或哈希变慢，日志零线索。orchestrator 没有 logger，降级
+  // 经 onSilentDegrade 回调交回 main 侧落 warn（createExecutors 在 ipc.ts 接线）。
+  it('H27: PPT 抓取失败归零经 onSilentDegrade 上报（降级不再静默）', async () => {
+    const degrade: string[] = []
+    const deps: OrchestratorDeps = {
+      ...makeDeps(),
+      school: {
+        lessonDetail: async () => ({ id: LESSON, courseId: 'c-ppt', title: '课时' }),
+        listPpt: async () => {
+          throw new Error('ppt api HTTP 412 (risk control)')
+        }
+      } as unknown as SchoolClient,
+      onSilentDegrade: (message: string) => degrade.push(message)
+    }
+    const taskId = 't-ppt-gone'
+    const repo = new TaskRepository(db)
+    repo.create(taskId, LESSON)
+    const taskDir = join(dir, 'cache', taskId)
+    const screen = writeScreenVideo(taskDir)
+    db.prepare("INSERT OR REPLACE INTO task_stage_outputs (task_id, stage, output_json) VALUES (?, 'downloading_video', ?)").run(
+      taskId,
+      JSON.stringify({ teacherPath: screen, screenPath: screen })
+    )
+    const executors = createExecutors(deps)
+    const result = await executors.extracting_visuals({ taskId, lessonId: LESSON, stage: 'extracting_visuals' })
+
+    // 降级不毁阶段：PPT 归零、关键帧照常、阶段记账如实。
+    expect(result).toEqual({ status: 'ok' })
+    expect(seededPptRows()).toHaveLength(0)
+    expect(degrade).toHaveLength(1)
+    expect(degrade[0]).toContain(`lesson=${LESSON}`)
+    expect(degrade[0]).toContain('ppt capture failed')
+    expect(degrade[0]).toContain('412')
+  })
 })

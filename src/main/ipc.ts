@@ -113,6 +113,20 @@ function str(v: unknown, name: string): string {
 }
 
 /**
+ * H23 (audit 2026-09-28): 导出缝隙 SEU_*_PATH 的打包门。
+ *
+ * 这四个 env 本是 e2e 测试缝（绕开原生保存对话框、直写夹具路径），注释一直
+ * 写着 dev-only，却没有 `app.isPackaged` 门——装机用户的机器上残留一个
+ * `SEU_PDF_PATH` 之类变量，导出就会静默写去那个路径、对话框再也不出现。
+ * 门形态与 nav-guard.ts 的 rendererDevUrl 一致：打包后一律无视这些变量。
+ */
+function devExportOverridePath(envName: string): string | null {
+  if (app.isPackaged) return null
+  const value = process.env[envName]
+  return value != null && value !== '' ? value : null
+}
+
+/**
  * 批4 (plan 2026-09-20, P14): 能力白名单——providers:bind 与 providers:unbind
  * 共用同一份判定（两处各写一份就是新的漂移：绑得进、解不掉，或者反之）。
  * 2026-09-21 (P25): 能力面收敛为两项，`'text'` 从此也进拒绝集——老库里残留的
@@ -295,6 +309,9 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       onCatalogDrift: (courseId, drifted) => {
         for (const drift of drifted) ctx.logger.info(`task catalog drift (kept): course=${courseId} ${describeCatalogDrift(drift)}`)
       },
+      // H27 (audit 2026-09-28): orchestrator 自己没有 logger，静默降级
+      // （PPT 抓取失败归零 / 缩略图 spawn 回落 / 生成前丢图）经这里落 warn。
+      onSilentDegrade: (message) => ctx.logger.warn(message),
       onChunkProgress: (taskCtx, index, total) => {
         const base = stagePercent('transcribing')
         const span = stagePercent('extracting_visuals') - base
@@ -1438,7 +1455,12 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
             grade: health.grade,
             promptVersion: row.promptVersion
           }
-        } catch {
+        } catch (err) {
+          // H27 (audit 2026-09-28): 坏 note_json 降级成 weak 报告是对的（不能让
+          // 一门课的整体体检崩掉），但不能一声不吭——界面只显示「3 项待改进」，
+          // 日志里必须有这一课时的降级记录与原因，否则「是笔记坏了还是归一层
+          // 坏了」永远查不到。
+          ctx.logger.warn(`courseHealth degraded lesson=${row.lessonId}: ${(err as Error).message}`)
           return {
             lessonId: row.lessonId,
             lessonTitle: row.lessonTitle,
@@ -1533,7 +1555,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // 2026-09-04 roadmap 2.2: export Anki TSV decks (concept cards + quiz) via
   // the save dialog; the first deck lands on the chosen path, additional
   // decks sit beside it with derived names. SEU_ANKI_PATH bypasses the
-  // native dialog (e2e seam, same pattern as SEU_PDF_PATH).
+  // native dialog (e2e seam, same pattern as SEU_PDF_PATH; 打包后不生效，
+  // 见 devExportOverridePath).
   handle(ipc, 'notes:exportAnki', async (_e, lessonId: unknown) => {
     try {
       const id = assertSafeId(lessonId, 'lessonId')
@@ -1557,7 +1580,7 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       })
       const decks = ankiDecks(parseNote(row.note_json), title)
       if (decks.length === 0) throw new Error('本笔记没有概念卡或自测题可导出')
-      const overridePath = process.env.SEU_ANKI_PATH
+      const overridePath = devExportOverridePath('SEU_ANKI_PATH')
       let firstPath: string
       if (overridePath != null && overridePath !== '') {
         firstPath = overridePath
@@ -1610,8 +1633,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         lessonTitle: lesson?.title,
         lessonId: id
       })
-      const overridePath = process.env.SEU_PNG_PATH
-      if (overridePath != null && overridePath !== '') {
+      const overridePath = devExportOverridePath('SEU_PNG_PATH')
+      if (overridePath != null) {
         writeFileSync(overridePath, bytes)
         return ok({ canceled: false, path: overridePath })
       }
@@ -1632,7 +1655,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
 
   // M3.3 (map expansion 2026-09-05): export the knowledge tree as a
   // standalone paper-white SVG via the save dialog. SEU_SVG_PATH bypasses
-  // the native dialog (e2e seam, same pattern as SEU_PDF_PATH/SEU_ANKI_PATH).
+  // the native dialog (e2e seam, same pattern as SEU_PDF_PATH/SEU_ANKI_PATH;
+  // 打包后不生效，见 devExportOverridePath).
   handle(ipc, 'notes:exportSvg', async (_e, lessonId: unknown) => {
     try {
       const id = assertSafeId(lessonId, 'lessonId')
@@ -1654,8 +1678,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       })
       const note = parseNote(row.note_json)
       const svg = treeToSvg(note.knowledgeTree, note.conceptLinks, fullName)
-      const overridePath = process.env.SEU_SVG_PATH
-      if (overridePath != null && overridePath !== '') {
+      const overridePath = devExportOverridePath('SEU_SVG_PATH')
+      if (overridePath != null) {
         writeFileSync(overridePath, svg, 'utf8')
         return ok({ canceled: false, path: overridePath })
       }
@@ -1821,6 +1845,11 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         const client = ctx.chatFor('multimodal')
         const result = await summarizeLesson(ctx.db, client, id, ctx.libraryRoot)
         if ('error' in result) return err(new Error(result.error))
+        // H27: 生成前读不出来的图——模型少看了画面，结果里带了 droppedImages
+        // 计数，日志侧同步一条 warn（否则界面只显示「发了 N 张」这个更小的数）。
+        if (result.droppedImages > 0) {
+          ctx.logger.warn(`notes:regenerate lesson=${id} read failed for ${result.droppedImages} image(s)`)
+        }
         return ok(result)
       } finally {
         releaseNoteInflight(id)
@@ -1907,7 +1936,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   })
 
   // 2026-09-04: PDF handout export — step 1, pick the target file.
-  // SEU_PDF_PATH bypasses the native dialog (e2e/test seam; dev-only env).
+  // SEU_PDF_PATH bypasses the native dialog (e2e/test seam; 仅开发期生效——
+  // app.isPackaged 为 true 时无视该变量，见 devExportOverridePath)。
   handle(ipc, 'notes:exportPdfDialog', async (_e, lessonId: unknown) => {
     try {
       const id = assertSafeId(lessonId, 'lessonId')
@@ -1929,8 +1959,8 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
         lessonTitle: lesson?.title,
         lessonId: id
       })
-      const overridePath = process.env.SEU_PDF_PATH
-      if (overridePath != null && overridePath !== '') {
+      const overridePath = devExportOverridePath('SEU_PDF_PATH')
+      if (overridePath != null) {
         const token = randomUUID()
         pendingPdfExports.set(token, { filePath: overridePath, expiresAt: Date.now() + 5 * 60 * 1000 })
         return ok({ canceled: false, path: overridePath, token })

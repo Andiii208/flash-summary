@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readdirSync, readFileSync } from 'fs'
+import { join } from 'path'
 import {
   buildPlayPageUrl,
   clickLessonScript,
@@ -7,6 +9,7 @@ import {
   pickStreamUrls,
   sanitizeStreamUrl
 } from '../src/main/school/play-harvest'
+import { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH } from '../src/main/school/platform-paths'
 
 describe('buildPlayPageUrl', () => {
   it('builds the hash route with encoded query params', () => {
@@ -114,5 +117,40 @@ describe('clickLessonScript', () => {
     expect(script).toContain('"2"')
     expect(script).toContain('cands[i].click()')
     expect(script).toContain('i >= cands.length')
+  })
+})
+
+/**
+ * H30 (audit 2026-09-28): 分层倒置修复——play-harvest 曾从 ../auth/cas-login
+ * import 平台路径常量（school 域依赖 auth 域）。平台路径常量族现在住在
+ * school/platform-paths.ts，school 域的任何文件都不许再 import auth 域。
+ */
+describe('H30: school 域不 import auth 域（平台路径常量的事实源在 school/platform-paths.ts）', () => {
+  it('school/ 下没有指向 auth/ 的 import', () => {
+    const dir = join(__dirname, '..', 'src', 'main', 'school')
+    const files = readdirSync(dir).filter((f) => f.endsWith('.ts'))
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) {
+      const text = readFileSync(join(dir, file), 'utf8')
+      expect(text, `${file} 不得 import auth 域`).not.toMatch(/from '(?:\.\.\/)+auth\//)
+      expect(text, `${file} 不得 import auth 域`).not.toMatch(/from '\.\/auth\//)
+    }
+  })
+
+  it('play-harvest 与两个 auth 消费方都从 school/platform-paths 拿平台路径常量', () => {
+    const harvest = readFileSync(join(__dirname, '..', 'src', 'main', 'school', 'play-harvest.ts'), 'utf8')
+    expect(harvest).toContain("from './platform-paths'")
+    for (const authFile of ['cas-login.ts', 'main-window-login.ts']) {
+      const text = readFileSync(join(__dirname, '..', 'src', 'main', 'auth', authFile), 'utf8')
+      expect(text, `${authFile} 应从 school/platform-paths 导入`).toContain("from '../school/platform-paths'")
+    }
+  })
+
+  it('常量值不变（行为回归：播放页 URL 与会话探针路径照旧）', () => {
+    expect(PLATFORM_API_BASE_PATH).toBe('/jy-application-resourcemanage')
+    expect(SESSION_PROBE_PATH).toContain('/v1/group_subject_vod_list/t-1')
+    expect(buildPlayPageUrl('https://cvs.seu.edu.cn', { courseId: '1', teclId: '2', teclCode: '3' })).toBe(
+      'https://cvs.seu.edu.cn/jy-application-resourcemanage-ui/#/play-video?courseId=1&teclId=2&teclCode=3'
+    )
   })
 })

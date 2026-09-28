@@ -157,4 +157,33 @@ describe('Logger (U5)', () => {
     expect(files).toHaveLength(MAX_LOG_FILES)
     expect(files[files.length - 1]).toMatch(/app-\d{4}-\d{2}-\d{2}\.log$/)
   })
+
+  // H27 (audit 2026-09-28): 旧实现每条日志都跑一次 rotate（readdirSync + 排序），
+  // 下载/转写阶段每秒数行时关键路径被反复扫目录。改成「换日必做、同一天内每分钟
+  // 最多一次」后，同一分钟内的后续日志不得再触发清理——这里用「先写一条让首次
+  // rotate 跑掉，再堆超出上限的历史文件，然后连写几条」来取证。
+  it('H27: 同一分钟内多次 log 只 rotate 一次（超量文件在第二条日志后仍在）', () => {
+    const logger = new Logger(dir)
+    logger.info('first line of today')
+    // 首条日志已触发过一次 rotate（rotateDay 从 null 变为今天）。
+    for (let i = 1; i <= MAX_LOG_FILES + 2; i++) {
+      const name = `app-2026-08-${String(10 + i).padStart(2, '0')}.log`
+      writeFileSync(join(dir, name), 'old\n')
+    }
+    logger.warn('second line')
+    logger.error('third line')
+    logger.info('fourth line')
+    // 若每条日志都 rotate，这里会被清理到 MAX_LOG_FILES(7)；节流后一个都没删。
+    expect(readdirSync(dir)).toHaveLength(MAX_LOG_FILES + 3)
+  })
+
+  it('H27: 新实例的首条日志仍然 rotate（跨天/久未运行的语义不变）', () => {
+    for (let i = 1; i <= MAX_LOG_FILES + 2; i++) {
+      const name = `app-2026-08-${String(10 + i).padStart(2, '0')}.log`
+      writeFileSync(join(dir, name), 'old\n')
+    }
+    const logger = new Logger(dir)
+    logger.info('fresh instance, first line')
+    expect(readdirSync(dir)).toHaveLength(MAX_LOG_FILES)
+  })
 })

@@ -2,7 +2,7 @@
 import { FakeIpc } from './helpers/fake-ipc'
 import { stubElectron } from './helpers/electron-mock'
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Db } from '../src/main/db/open'
@@ -18,11 +18,14 @@ const printToPdf = vi.hoisted(() => vi.fn(async () => Buffer.from('%PDF-1.7 fake
 const setZoomFactor = vi.hoisted(() => vi.fn())
 const saveDialog = vi.hoisted(() => ({ canceled: false, filePath: '' }))
 const showItemInFolder = vi.hoisted(() => vi.fn())
+// H23 (audit 2026-09-28): 可变 app 桩——SEU_*_PATH 打包门用例翻转 isPackaged。
+const electronApp = vi.hoisted(() => ({ isPackaged: false, getVersion: () => '0.0.0-test' }))
 
 // 批8 (H25): electron 桩共享；showSaveDialog/showItemInFolder/窗口缩放档是本文件的
 // 取证对象，在共享桩上就地覆写（不另抄整块）。
 vi.mock('electron', () => {
   const electron = stubElectron()
+  electron.app = electronApp
   electron.dialog.showSaveDialog = vi.fn(async () => saveDialog)
   electron.shell.showItemInFolder = showItemInFolder
   // 当前窗口缩放 1.6（2560 宽窗的档）——printToPdfFile 应当先 setZoomFactor(1)
@@ -90,6 +93,27 @@ describe('notes:exportPdfDialog (2026-09-04)', () => {
     registerIpc(ctx, ipc as never)
     const res = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as { ok: boolean; value?: { canceled: boolean } }
     expect(res.value).toEqual({ canceled: true })
+  })
+
+  // H23 (audit 2026-09-28): SEU_PDF_PATH 是 e2e 测试缝，以前没有 app.isPackaged
+  // 门——装机用户机器上残留这个 env，导出就静默写去那个路径、对话框不出现。
+  it('H23: 打包后 SEU_PDF_PATH 被无视，仍走保存对话框', async () => {
+    const ctx = makeCtx()
+    const envPath = join(dir, 'env-handout.pdf')
+    const dialogPath = join(dir, 'dialog-handout.pdf')
+    process.env.SEU_PDF_PATH = envPath
+    saveDialog.filePath = dialogPath
+    electronApp.isPackaged = true
+    try {
+      registerIpc(ctx, ipc as never)
+      const res = (await ipc.invoke('notes:exportPdfDialog', 'l1')) as { ok: boolean; value?: { path?: string } }
+      expect(res.ok).toBe(true)
+      expect(res.value?.path).toBe(dialogPath)
+      expect(existsSync(envPath)).toBe(false)
+    } finally {
+      electronApp.isPackaged = false
+      delete process.env.SEU_PDF_PATH
+    }
   })
 })
 

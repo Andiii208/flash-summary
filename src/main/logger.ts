@@ -15,13 +15,21 @@ export type LogLevel = 'info' | 'warn' | 'error'
 export class Logger {
   constructor(private readonly dir: string) {}
 
+  /**
+   * 最近一次 rotate 时写入的日期键（`yyyy-mm-dd`）——跨天必须重新扫描。
+   */
+  private rotateDay: string | null = null
+  /** 同一天内最近一次 rotate 的时刻（epoch ms）——每分钟最多扫一次目录。 */
+  private rotateAt = 0
+
   log(level: LogLevel, message: string): void {
     try {
       mkdirSync(this.dir, { recursive: true })
-      const file = join(this.dir, `app-${new Date().toISOString().slice(0, 10)}.log`)
-      const line = `${new Date().toISOString()} [${level.toUpperCase()}] ${redact(message).slice(0, MAX_LINE_CHARS)}\n`
+      const now = new Date()
+      const file = join(this.dir, `app-${now.toISOString().slice(0, 10)}.log`)
+      const line = `${now.toISOString()} [${level.toUpperCase()}] ${redact(message).slice(0, MAX_LINE_CHARS)}\n`
       appendFileSync(file, line)
-      this.rotate()
+      this.rotateIfDue(now)
     } catch {
       // Logging must never crash the app.
     }
@@ -37,6 +45,26 @@ export class Logger {
 
   error(message: string): void {
     this.log('error', message)
+  }
+
+  /**
+   * H27 (audit 2026-09-28): 旧实现每条日志都跑一次 rotate（readdirSync +
+   * 排序，关键路径上是 O(行数) 次目录扫描——下载/转写阶段每秒数行时主进程
+   * 被反复扫目录）。语义不变（跨天换文件、超 MAX_LOG_FILES 清理照旧），
+   * 只把扫描收敛成：换日必做，同一天内每分钟最多一次。
+   */
+  private rotateIfDue(now: Date): void {
+    const day = now.toISOString().slice(0, 10)
+    if (this.rotateDay !== day) {
+      this.rotateDay = day
+      this.rotateAt = now.getTime()
+      this.rotate()
+      return
+    }
+    if (now.getTime() - this.rotateAt >= 60_000) {
+      this.rotateAt = now.getTime()
+      this.rotate()
+    }
   }
 
   private rotate(): void {

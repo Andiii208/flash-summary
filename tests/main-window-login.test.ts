@@ -83,8 +83,17 @@ describe('advanceLoginNav — did-navigate signal', () => {
   })
 
   it('keeps waiting while the return still carries login-page markers', () => {
-    const state = advanceLoginNav(true, `${ORIGIN}/?redirect=authserver`, ORIGIN)
-    expect(state.backOnOrigin).toBe(false)
+    // H30 (audit 2026-09-28): 收紧前 `isCasLoginRedirect` 扫全串，查询里带
+    // authserver/login 字样也算「登录页标记」——那是误报源（SSO 回跳的
+    // redirect 参数再正常不过）。现在查询串不算，只有**嵌完整登录 URL**或
+    // 路径段命中才算。这里钉住收紧后的行为：回 origin 且不带登录页标记 → poke
+    // 探活；探活才是唯一权威完成信号（probeTabSession），poke 一下不会误判
+    // 登录成功。
+    expect(advanceLoginNav(true, `${ORIGIN}/?redirect=authserver`, ORIGIN).backOnOrigin).toBe(true)
+    // 嵌了完整的登录 URL（ids.seu.edu.cn/authserver/…）仍然算登录页。
+    expect(advanceLoginNav(true, `${ORIGIN}/?redirect=https://ids.seu.edu.cn/authserver/login`, ORIGIN).backOnOrigin).toBe(false)
+    // 路径段命中的登录页同样算。
+    expect(advanceLoginNav(true, `${ORIGIN}/cas/login`, ORIGIN).backOnOrigin).toBe(false)
   })
 
   it('in-window platform navigation alone never pokes', () => {

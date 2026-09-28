@@ -189,6 +189,39 @@ describe('notes:attachments (2026-09-04)', () => {
     expect(res.ok).toBe(true)
     expect(res.value).toEqual([])
   })
+
+  // H27 (audit 2026-09-28): data URL 的 MIME 一律 image/jpeg 是错标——PPT 页
+  // 本来就是 PNG（orchestrator 落盘的 page-%03d.png）。现在按文件头魔数推断。
+  it('H27: 真 PNG 附件的 data URL 标 image/png，JPEG 仍标 image/jpeg', async () => {
+    const ctx = makeCtx()
+    const pngFile = join(dir, 'page-000.png')
+    writeFileSync(pngFile, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]))
+    db.prepare('INSERT INTO ppt_pages (id, lesson_id, page_index, file_path, created_at) VALUES (?, ?, ?, ?, ?)').run(
+      'ppt-0',
+      'l1',
+      0,
+      pngFile,
+      '2026-09-04T00:00:00Z'
+    )
+    registerIpc(ctx, ipc as never)
+    const png = (await invoke('notes:attachmentData', 'l1', 'ppt:0')) as { ok: boolean; value?: { dataUrl: string } | null }
+    expect(png.ok).toBe(true)
+    expect(png.value?.dataUrl.startsWith('data:image/png;base64,')).toBe(true)
+
+    // 魔数对不上时回退 image/jpeg（既有夹具就是 FF D8 FF 的 JPEG 字节）。
+    const jpegFile = join(dir, 'kf-legacy.jpg')
+    writeFileSync(jpegFile, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]))
+    db.prepare('INSERT INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+      'kf-legacy',
+      'l1',
+      10,
+      jpegFile,
+      'hash',
+      '2026-09-04T00:00:00Z'
+    )
+    const jpeg = (await invoke('notes:attachmentData', 'l1', 'kf:kf-legacy')) as { ok: boolean; value?: { dataUrl: string } | null }
+    expect(jpeg.value?.dataUrl.startsWith('data:image/jpeg;base64,')).toBe(true)
+  })
 })
 
 describe('notes:exportAnki (roadmap 2.2, 2026-09-04)', () => {
@@ -289,6 +322,8 @@ describe('notes:regenerate (2026-09-04)', () => {
       transcriptHitRate: null,
       refStats: { total: 0, droppedAt: 0, clearedText: 0, quoted: 0, quotedVerified: 0, offNeighborhood: 0 },
       droppedRefs: 0,
+      // H27: 生成前读不出来的图片数——这份夹具的 keyframe 文件真实存在，0 张被丢。
+      droppedImages: 0,
       // B4: ���6�p��9w�l���z��z � ���$ � 0
       clampedTimes: 0,
       // B2: 金句核验。这份具件没有金句 → 0/0。
@@ -305,6 +340,42 @@ describe('notes:regenerate (2026-09-04)', () => {
     })
     const row = db.prepare('SELECT version, model FROM notes WHERE lesson_id = ?').get('l1') as { version: number; model: string }
     expect(row).toEqual({ version: 1, model: 'deepseek-chat' })
+  })
+
+  // H27 (audit 2026-09-28): 生成前读不出来的图曾被静默丢掉——模型少看了画面，
+  // 结果里只显示「发了 N 张」这个更小的数，日志零线索。现在返回带 droppedImages
+  // 计数、handler 落一条 warn。
+  it('H27: 图片读失败计入 droppedImages 并落 warn 日志（丢图不再静默）', async () => {
+    const ctx = makeCtx()
+    // keyframe 的 DB 行在、文件不在：融合层照发该帧（hash=null 当独有信息），
+    // buildUserParts 读盘时才失败——正是被丢图的那条路径。
+    const ghost = join(dir, 'gone.jpg')
+    db.prepare('INSERT INTO keyframes (id, lesson_id, timestamp_seconds, file_path, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+      'kf-ghost',
+      'l1',
+      30,
+      ghost,
+      'hash',
+      '2026-09-04T00:00:00Z'
+    )
+    db.prepare(
+      "INSERT INTO transcripts (lesson_id, segments_json, provider, model, created_at) VALUES ('l1', ?, 'p', 'm', '2026-09-04T00:00:00Z')"
+    ).run(JSON.stringify([{ at: 0, text: '转写' }]))
+    // gpt-4o = 已知有视觉 → 会真的发图（无视觉模型根本不发，路径不同）。
+    db.prepare("INSERT INTO capability_bindings (capability, provider_id, model) VALUES ('multimodal', 'p1', 'gpt-4o')").run()
+
+    const chatJson = vi.fn(async () => VALID_NOTE)
+    const chatFor = vi.spyOn(ctx, 'chatFor')
+    chatFor.mockImplementation(() => ({ chatJson, transcribe: async () => '' }) as never)
+
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:regenerate', 'l1')) as { ok: boolean; value?: { images: number; droppedImages: number } }
+    expect(res.ok).toBe(true)
+    // 尝试发了 1 张（唯一候选被融合层照发），但它在读盘时失败——模型实际一张没看到。
+    expect(res.value?.images).toBe(1)
+    expect(res.value?.droppedImages).toBe(1)
+    // 日志里留下这条 warn（读日志文件，与 obsidian 逐条落日志的取证同法）。
+    expect(readLogs()).toContain('read failed for 1 image')
   })
 
   it('批1: 转写带时间锚喂给模型，编造的摘引被清空、越界时间被丢弃', async () => {
@@ -1155,6 +1226,22 @@ describe('notes:courseHealth (质量批4, plan 2026-09-08 note-quality-overhaul)
     const res = (await invoke('notes:courseHealth', 'nope')) as { ok: boolean; error?: string }
     expect(res.ok).toBe(false)
     expect(res.error).toContain('课程不存在')
+  })
+
+  // H27 (audit 2026-09-28): 坏 note_json 降级成 weak 是对的（不能让整门课的
+  // 体检崩掉），但不能一声不吭——界面只显示「3 项待改进」，日志里必须有这一
+  // 课时的降级记录与原因。
+  it('H27: 坏 note_json 降级为 weak 时落 warn 日志（不再无声）', async () => {
+    const ctx = makeCtx()
+    seedNote('l1', 1, '{broken json')
+    registerIpc(ctx, ipc as never)
+    const res = (await invoke('notes:courseHealth', 'c1')) as {
+      ok: boolean
+      value?: Array<{ lessonId: string; grade: string; warnCount: number }>
+    }
+    expect(res.ok).toBe(true)
+    expect(res.value?.[0]).toMatchObject({ lessonId: 'l1', grade: 'weak', warnCount: 3 })
+    expect(readLogs()).toContain('courseHealth degraded lesson=l1')
   })
 })
 

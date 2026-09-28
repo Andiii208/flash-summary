@@ -287,7 +287,13 @@ export function createContext(overrides: Partial<{
   const providers = (): ProviderSettings => {
     try {
       return loadProviderSettings(db, cryptor)
-    } catch {
+    } catch (err) {
+      // H27 (audit 2026-09-28): DPAPI 解不开（换机器/换用户恢复备份）或
+      // providers 行损坏时，界面只会显示「未配置 Provider」——用户以为没配、
+      // 开发者查不到线索，因为这里曾经把一切异常吞掉。降级为空列表的行为
+      // 不变（不能让它 brick 启动），但必须留一条 error：只记原因（截断），
+      // 不记任何 key 值；原文再过 Logger 的 redact。
+      logger.error(`providers load failed (degraded to empty list): ${String((err as Error).message).slice(0, 300)}`)
       // A plaintext/corrupt key row must not brick the app; surface empty.
       return { providers: [], bindings: [] }
     }

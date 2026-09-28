@@ -16,6 +16,9 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { BrowserWindow, session, app, type Session, type Event, type OnBeforeRequestListenerDetails, type RenderProcessGoneDetails, type WebContents, type WebContentsDidStartNavigationEventParams } from 'electron'
 import { mergeCookieStrings, isCasLoginRedirect } from '../school/api-parse'
+// H30 (audit 2026-09-28): 平台路径常量族的事实源在 school 域（见 platform-paths.ts
+// 文件头）。auth → school 是许可的依赖方向；反向（school → auth）已消除。
+import { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH } from '../school/platform-paths'
 import { isAppOrSchoolUrl } from '../nav-guard'
 import { directNetRequested } from '../net-diagnostics'
 import { sessionAwareFetch } from '../net-fetch'
@@ -50,10 +53,10 @@ export const CAS_LOAD_TIMEOUT_MS = 25_000
 export const CAS_PRECHECK_TIMEOUT_MS = 10_000
 /** How often the session probe hits the school API while the user logs in. */
 export const CAS_POLL_INTERVAL_MS = 3_000
-/** API base path on the platform origin (only static UI assets carry the -ui suffix). */
-export const PLATFORM_API_BASE_PATH = '/jy-application-resourcemanage'
-/** API path used to detect that the session works (course list pagination, jwt-token authenticated). */
-export const SESSION_PROBE_PATH = '/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=1'
+// H30 (audit 2026-09-28): 平台路径常量族上移 school/platform-paths（play-harvest
+// 也曾反向来本模块 import 它，分层倒置）。这里再导出一次，兼容既有测试与调用方
+// 的 import 路径；唯一事实源是 school/platform-paths.ts。
+export { PLATFORM_API_BASE_PATH, SESSION_PROBE_PATH } from '../school/platform-paths'
 
 const LOADING_HTML =
   '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +

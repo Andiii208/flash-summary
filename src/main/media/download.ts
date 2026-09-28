@@ -6,7 +6,7 @@
  * over. Only the target path and byte counts are logged upstream; never
  * URLs with auth_key query parameters.
  */
-import { createWriteStream, existsSync, statSync } from 'fs'
+import { createWriteStream, existsSync, statSync, type WriteStream } from 'fs'
 import { unlink } from 'fs/promises'
 
 export const MAX_ATTEMPTS = 20
@@ -14,6 +14,41 @@ export const MAX_ATTEMPTS = 20
 export interface DownloadStats {
   bytes: number
   attempts: number
+}
+
+/**
+ * H26 (audit 2026-09-28): 背压——`write()` 返回 false 表示内核缓冲已满，
+ * 继续无脑写只会让内存里的待写队列越堆越高（课堂直链是 GB 级）。等一次
+ * 'drain' 再写下一块；取消时不再等待（立即 reject，attempt 的 finally 会
+ * 收拾流），写出错同样 reject 并销毁流。drain 一定会在 write() 返回 false
+ * 之后的某个 tick 触发，而本函数在**同步**紧接着挂监听，不会错过。
+ */
+function waitForDrain(writer: WriteStream, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const detach = (): void => {
+      writer.removeListener('drain', onDrain)
+      writer.removeListener('error', onError)
+      signal?.removeEventListener('abort', onAbort)
+    }
+    const onDrain = (): void => {
+      detach()
+      resolve()
+    }
+    const onError = (err: Error): void => {
+      detach()
+      // 流已坏：销毁它释放文件句柄，finally 不能再 end/close。
+      writer.destroy()
+      reject(err)
+    }
+    const onAbort = (): void => {
+      detach()
+      writer.destroy()
+      reject(new Error('任务已取消'))
+    }
+    writer.once('drain', onDrain)
+    writer.once('error', onError)
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 async function attempt(url: string, target: string, signalTimeoutMs: number, signal?: AbortSignal): Promise<number> {
@@ -41,12 +76,19 @@ async function attempt(url: string, target: string, signalTimeoutMs: number, sig
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
-      writer.write(Buffer.from(value))
+      const flushed = writer.write(Buffer.from(value))
       bytes += value.byteLength
+      // H26: 背压——write() 返回 false 时等 drain 再继续（取消/出错由
+      // waitForDrain 抛错，且它已把流销毁，finally 不再动它）。
+      if (!flushed) await waitForDrain(writer, signal)
     }
   } finally {
-    writer.end()
-    await new Promise<void>((resolve) => writer.close(() => resolve()))
+    // 取消/出错路径上流已被 destroy（句柄已释放）；正常路径照旧 end+close，
+    // 把已写入的字节留给下一轮 Range 续传。
+    if (!writer.destroyed) {
+      writer.end()
+      await new Promise<void>((resolve) => writer.close(() => resolve()))
+    }
   }
   return bytes
 }

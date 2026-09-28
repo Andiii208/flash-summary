@@ -216,8 +216,17 @@ function imageCaption(image: SummarizeImage, position: number, total: number): s
   return `[图片 ${position}/${total}] 类型：${kind} | 证据ID：${image.ref}${time}`
 }
 
-/** User message content: transcript text + captioned embedded images (U4 + 对齐修复 2026-09-04). */
-export function buildUserParts(transcriptText: string, images: SummarizeImage[]): ChatPart[] {
+/** User message content: transcript text + captioned embedded images (U4 + 对齐修复 2026-09-04).
+ *
+ * H27 (audit 2026-09-28): 图片读失败仍然静默跳过（一张坏图不该毁掉整轮生成），
+ * 但调用方可经 `onImageDrop` 拿到被丢掉的 ref——上层据此 warn 落日志并计入
+ * 阶段产物（summarizeLesson 的 `droppedImages`），「图发没发出去」不再不可见。
+ */
+export function buildUserParts(
+  transcriptText: string,
+  images: SummarizeImage[],
+  onImageDrop?: (image: SummarizeImage) => void
+): ChatPart[] {
   const parts: ChatPart[] = [{ type: 'text', text: `转写内容：\n${transcriptText}` }]
   const total = images.length
   images.forEach((image, index) => {
@@ -227,6 +236,7 @@ export function buildUserParts(transcriptText: string, images: SummarizeImage[])
       parts.push({ type: 'image_url', imageUrl: `data:image/jpeg;base64,${base64}` })
     } catch {
       // A missing image file must not fail the whole summarize stage.
+      onImageDrop?.(image)
     }
   })
   if (total > 0) parts.push({ type: 'text', text: evidenceInstruction(total) })
@@ -238,13 +248,17 @@ export function stripFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
 }
 
-/** Call the multimodal client (with text-only fallback) and parse the note JSON. */
+/** Call the multimodal client (with text-only fallback) and parse the note JSON.
+ *
+ * `onImageDrop` 一路透传给 buildUserParts（H27）：读不出来的图在这里报上来，
+ * 由 summarizeLesson 汇总成 droppedImages。 */
 export async function generateNote(
   client: OpenAiCompatibleClient,
   model: string,
   transcriptText: string,
   images: SummarizeImage[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onImageDrop?: (image: SummarizeImage) => void
 ): Promise<ParsedNote> {
   const system = { role: 'system', content: SYSTEM_PROMPT } as const
   let answer: string
@@ -252,7 +266,7 @@ export async function generateNote(
     answer = await client.chatJson(
       [
         system,
-        { role: 'user', content: buildUserParts(transcriptText, images) }
+        { role: 'user', content: buildUserParts(transcriptText, images, onImageDrop) }
       ],
       model,
       undefined,
@@ -492,6 +506,8 @@ export async function summarizeLesson(
       transcriptHitRate: { hits: number; total: number } | null
       refStats: RefVerifyStats
       droppedRefs: number
+      /** H27: 生成前读不出来、被静默丢掉的图片数（0 = 全部读到了）。 */
+      droppedImages: number
       /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped: NormalizationDropCounts
       /** B4: at 超出转写范围被钳到上界的时间字段数。 */
@@ -524,8 +540,18 @@ export async function summarizeLesson(
   // 超时）。未知模型保守发图——猜错的代价比白烧 token 更伤（丢画面）。
   const visionCapable = modelHasVision(binding.model) !== false
   const sentImages = visionCapable ? inputs.images : []
+  // H27: 读不出来的图在这里留痕——阶段产物带上计数（orchestrator 的 summarizing
+  // stage 与 notes:regenerate 两条调用路都会落 warn 日志），「图发没发出去」可查。
+  const droppedImages: string[] = []
   try {
-    const generated = await generateNote(client, binding.model, sourceHeader(db, lessonId) + inputs.transcriptText, sentImages, signal)
+    const generated = await generateNote(
+      client,
+      binding.model,
+      sourceHeader(db, lessonId) + inputs.transcriptText,
+      sentImages,
+      signal,
+      (image) => droppedImages.push(image.ref)
+    )
     // 批3: 归一层静默丢弃了哪些项——「模型没写」与「写了但被拦下」是两种问题。
     const normalizationDropped = generated.dropped
     // F2 (review) + batch 1: refs are validated against EVERY real attachment,
@@ -599,6 +625,8 @@ export async function summarizeLesson(
       transcriptHitRate: transcriptRefHitRate(stats),
       refStats: stats,
       droppedRefs: dropped,
+      /** H27: 生成前读不出来、被静默丢掉的图片 ref 数（0 = 全部读到了）。 */
+      droppedImages: droppedImages.length,
       /** 批3: 归一层各字段的丢弃计数（空对象 = 一项没丢）。 */
       normalizationDropped,
       /** B4: 被钳到转写范围上界的时间字段数（0 = 模型没有外推时间）。 */

@@ -17,6 +17,22 @@ export interface AttachmentManifestInfo {
   at: number | null
 }
 
+/** PNG 文件头（8 字节签名）。 */
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/**
+ * H27 (audit 2026-09-28): data URL 的 MIME 按文件头魔数推断。
+ *
+ * 旧代码一律标 `image/jpeg`，浏览器靠 sniff 才显示得出来——但 PPT 页本来就是
+ * PNG（orchestrator 落盘的 `page-%03d.png`），任何认 MIME 的下游（导出的
+ * HTML、将来的预览服务）都会错标。魔数对不上时回退 image/jpeg（保持现状：
+ * 老库里的 JPEG 关键帧与历史数据不受影响，无法识别也不改标）。
+ */
+function imageMimeOf(buffer: Buffer): 'image/png' | 'image/jpeg' {
+  if (buffer.subarray(0, PNG_MAGIC.length).compare(PNG_MAGIC) === 0) return 'image/png'
+  return 'image/jpeg'
+}
+
 /** Every stored attachment identity for the lesson — no bytes, tiny IPC. */
 export function listAttachmentManifest(db: Db, lessonId: string): AttachmentManifestInfo[] {
   const keyframes = db
@@ -60,7 +76,7 @@ function toAttachment(
   try {
     const buffer = readFileSync(filePath)
     if (buffer.byteLength === 0 || buffer.byteLength > MAX_ATTACHMENT_BYTES) return null
-    return { ref, kind, at, dataUrl: `data:image/jpeg;base64,${buffer.toString('base64')}` }
+    return { ref, kind, at, dataUrl: `data:${imageMimeOf(buffer)};base64,${buffer.toString('base64')}` }
   } catch {
     // A missing or unreadable file must not break the whole list.
     return null
