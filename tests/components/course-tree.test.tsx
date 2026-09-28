@@ -45,7 +45,11 @@ describe('CourseTree', () => {
     expect(selected?.textContent).toContain('第2讲 线性表')
   })
 
-  it('shows the in-flight harvest state and hides the harvest button (批C)', () => {
+  // 批C 最初把在途时的按钮整颗卸载；批6 (H21, plan 2026-09-28) 按 AGENTS busy
+  // 纪律改回 disabled + 省略号（「卸载控件」是约定之外的第三种 busy 形态——用户
+  // 看不到正在发生什么，也理解不了按钮为什么不见了）。这条用例跟着改钉新形态。
+  it('shows the in-flight harvest state with the button disabled (批C + 批6 H21)', () => {
+    const onHarvest = vi.fn()
     const host = mount(
       <CourseTree
         tree={TREE}
@@ -55,13 +59,38 @@ describe('CourseTree', () => {
         harvestInflight={new Set(['c2'])}
         onToggle={() => undefined}
         onSelect={() => undefined}
-        onHarvestLessons={() => undefined}
+        onHarvestLessons={onHarvest}
         {...mineDefaults()}
       />
     )
     const emptyRow = host.querySelector('.lesson-row.empty')
     expect(emptyRow?.textContent).toContain('正在抓取课时目录')
-    expect(emptyRow?.querySelector('button')).toBeNull()
+    const button = emptyRow?.querySelector<HTMLButtonElement>('button')
+    expect(button?.textContent).toBe('抓取中…')
+    expect(button?.disabled).toBe(true)
+    click(button ?? null)
+    expect(onHarvest).not.toHaveBeenCalled()
+  })
+
+  it('批6 (H21): 空闲时抓取按钮可点，文案如常', () => {
+    const onHarvest = vi.fn()
+    const host = mount(
+      <CourseTree
+        tree={TREE}
+        selectedLesson=""
+        searching={false}
+        expanded={new Set(['c2'])}
+        onToggle={() => undefined}
+        onSelect={() => undefined}
+        onHarvestLessons={onHarvest}
+        {...mineDefaults()}
+      />
+    )
+    const button = host.querySelector<HTMLButtonElement>('.lesson-row.empty button')
+    expect(button?.textContent).toBe('抓取课时目录')
+    expect(button?.disabled).toBe(false)
+    click(button ?? null)
+    expect(onHarvest).toHaveBeenCalledWith('c2')
   })
 
   it('fires onSelect with the lesson id', () => {
@@ -128,5 +157,39 @@ describe('CourseTree', () => {
     expect(pin?.querySelector('svg')).not.toBeNull()
     click(pin)
     expect(onToggleMine).toHaveBeenCalledWith('c1', false)
+  })
+})
+
+// 批6 (H21, plan 2026-09-28): 收藏星标连点发两次 school.setMine。现在按钮在
+// onToggleMine 返回的 Promise 落定前禁用 + hook 侧 in-flight 守卫。
+describe('CourseTree 批6 H21: 收藏星标的在途态', () => {
+  it('星标在途时禁用，同 tick 连点只发一次 IPC', async () => {
+    const gate: { settle?: () => void } = {}
+    const onToggleMine = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          gate.settle = resolve
+        })
+    )
+    const host = mount(
+      <CourseTree
+        tree={TREE}
+        selectedLesson=""
+        searching={false}
+        expanded={new Set(['c1'])}
+        onToggle={() => undefined}
+        onSelect={() => undefined}
+        onHarvestLessons={() => undefined}
+        {...mineDefaults({ onToggleMine })}
+      />
+    )
+    const star = host.querySelector<HTMLButtonElement>('.pin-btn')
+    click(star)
+    click(star)
+    await vi.waitFor(() => expect(onToggleMine).toHaveBeenCalledTimes(1))
+    expect(onToggleMine).toHaveBeenCalledWith('c1', true)
+    expect(star?.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(star?.disabled).toBe(false))
   })
 })

@@ -778,3 +778,99 @@ describe('SettingsPanel 批5 细节', () => {
     expect(host.querySelector('[data-testid="export-library-backup-hint"]')).toBeNull()
   })
 })
+
+/**
+ * 批6 (H21, plan 2026-09-28): 设置页三个慢操作按钮补 busy 三件套（文案省略号 +
+ * disabled + hook 侧 in-flight 守卫）。「重试」连点会打两轮 providers.list +
+ * settings.get；「退出登录」（B站）连点会打两次 bilibili.logout；「浏览…」连点
+ * 会弹两个原生文件夹选择框。
+ */
+describe('SettingsPanel 批6 H21: 重试 / B站退出 / 浏览的在途态', () => {
+  const baseProps = {
+    session: 'logged_out' as const,
+    sessionInfo: { savedAt: null, expiresAt: null },
+    sessionBusy: false,
+    onLogin: () => undefined,
+    onLogout: () => undefined,
+    providers: null,
+    providerBusy: false,
+    onSaveProvider: async () => true,
+    onRemoveProvider: () => undefined,
+    onSetCacheDir: () => undefined,
+    onSetTheme: () => undefined,
+    onChooseLibrary: () => undefined,
+    onOpenPath: () => undefined
+  }
+
+  it('B站「退出登录」在途时读「退出中…」并禁用，连点只发一次 IPC', async () => {
+    const gate: { settle?: () => void } = {}
+    const onBiliLogout = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          gate.settle = resolve
+        })
+    )
+    const host = mount(<SettingsPanel {...baseProps} settings={null} biliSession="logged_in" onBiliLogout={onBiliLogout} />)
+    const button = (): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('[data-testid="bili-account-settings"] button')).find(
+        (b) => b.textContent === '退出登录' || b.textContent === '退出中…'
+      ) ?? null
+    click(button())
+    click(button())
+    await vi.waitFor(() => expect(onBiliLogout).toHaveBeenCalledTimes(1))
+    expect(button()?.textContent).toBe('退出中…')
+    expect(button()?.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(button()?.textContent).toBe('退出登录'))
+    expect(button()?.disabled).toBe(false)
+  })
+
+  it('加载失败「重试」在途时读「重试中…」并禁用，连点只发一次', async () => {
+    const gate: { settle?: () => void } = {}
+    const onRetryLoad = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          gate.settle = resolve
+        })
+    )
+    const host = mount(
+      <SettingsPanel {...baseProps} settings={null} loadError={{ providers: '连接失败', settings: null }} onRetryLoad={onRetryLoad} />
+    )
+    const button = (): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('[data-testid="settings-load-error"] button')).find(
+        (b) => b.textContent === '重试' || b.textContent === '重试中…'
+      ) ?? null
+    click(button())
+    click(button())
+    await vi.waitFor(() => expect(onRetryLoad).toHaveBeenCalledTimes(1))
+    expect(button()?.textContent).toBe('重试中…')
+    expect(button()?.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(button()?.disabled).toBe(false))
+  })
+
+  it('任务缓存「浏览…」在途时读「浏览中…」并禁用，连点只发一次', async () => {
+    const gate: { settle?: () => void } = {}
+    const onChooseCacheDir = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          gate.settle = resolve
+        })
+    )
+    const host = mount(<SettingsPanel {...baseProps} settings={null} onChooseCacheDir={onChooseCacheDir} />)
+    // 「任务缓存」行与「资料库」行各有一颗「浏览…」——必须按行定位，别点到资料库那颗
+    const cacheRow = (): Element | null =>
+      Array.from(host.querySelectorAll('.settings-row')).find((r) => r.textContent?.includes('任务缓存')) ?? null
+    const button = (): HTMLButtonElement | null =>
+      Array.from(cacheRow()?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(
+        (b) => b.textContent === '浏览…' || b.textContent === '浏览中…'
+      ) ?? null
+    click(button())
+    click(button())
+    await vi.waitFor(() => expect(onChooseCacheDir).toHaveBeenCalledTimes(1))
+    expect(button()?.textContent).toBe('浏览中…')
+    expect(button()?.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(button()?.textContent).toBe('浏览…'))
+  })
+})

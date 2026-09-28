@@ -282,3 +282,43 @@ describe('CourseBrowser', () => {
     expect(document.activeElement).toBe(inputEl)
   })
 })
+
+/**
+ * 批6 (H21, plan 2026-09-28): 课程卡与侧栏同一把尺——星标连点发两次 setMine；
+ * 「抓取课时目录」在途时按钮不再整颗卸载（第三种 busy 形态），改为 disabled +
+ * 「抓取中…」。
+ */
+describe('CourseBrowser 批6 H21: 星标与抓取按钮的在途态', () => {
+  it('星标在途时禁用，同 tick 连点只发一次 IPC', async () => {
+    const gate: { settle?: () => void } = {}
+    const props = makeProps()
+    ;(props as unknown as { onToggleMine: unknown }).onToggleMine = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          gate.settle = resolve
+        })
+    )
+    const host = mount(<CourseBrowser {...props} />)
+    const card = host.querySelector('.course-card')!
+    const star = card.querySelector<HTMLButtonElement>('.pin-btn')!
+    click(star)
+    click(star)
+    await vi.waitFor(() => expect(props.onToggleMine).toHaveBeenCalledTimes(1))
+    expect(star.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(star.disabled).toBe(false))
+  })
+
+  it('抓取在途时按钮读「抓取中…」并禁用（不再整颗卸载）', () => {
+    const props = makeProps()
+    const host = mount(<CourseBrowser {...props} harvestInflight={new Set(['c2'])} />)
+    // 默认排序把收藏课（c3）置顶，所以别按下标找——按名字定位 c2
+    const emptyCard = [...host.querySelectorAll('.course-card')].find((card) => card.textContent.includes('网络信息编程'))
+    click(emptyCard?.querySelector('.course-card-main') ?? null)
+    const empty = host.querySelector('.course-card-lessons-empty')!
+    expect(empty?.textContent).toContain('正在抓取课时目录')
+    const button = empty?.querySelector<HTMLButtonElement>('button')
+    expect(button?.textContent).toBe('抓取中…')
+    expect(button?.disabled).toBe(true)
+  })
+})

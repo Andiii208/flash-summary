@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import type { AppSettingsInfo } from '../../shared/bridge'
 import { formatStamp } from '../../shared/format'
@@ -18,11 +18,12 @@ export interface SettingsPanelProps {
   sessionBusy: boolean
   /** 批4: per-domain load failure — surfaced with a retry instead of eternal blank. */
   loadError?: { providers: string | null; settings: string | null }
-  /** 批4: retry both config loads. */
-  onRetryLoad?: () => void
+  /** 批4: retry both config loads. 批6 (H21): 可返回 Promise——按钮据此在途禁用。 */
+  onRetryLoad?: () => void | Promise<void>
   /** B站 session for the parallel account row (null = not read yet). */
   biliSession?: 'logged_in' | 'logged_out' | null
-  onBiliLogout?: () => void
+  /** 批6 (H21): 可返回 Promise——按钮据此置灰 + 省略号（连点打两次 logout IPC）。 */
+  onBiliLogout?: () => void | Promise<void>
   onLogin: () => void
   onLogout: () => void
   providers: ProviderPanelProps['providers']
@@ -34,8 +35,9 @@ export interface SettingsPanelProps {
   /** 批6: connection probe in flight — the test button disables. */
   providerTestBusy?: boolean
   onSetCacheDir: (dir: string) => void
-  /** C10: open the folder picker; result arrives via chosenCacheDir. */
-  onChooseCacheDir?: () => void
+  /** C10: open the folder picker; result arrives via chosenCacheDir.
+      批6 (H21): 可返回 Promise——按钮据此置灰 + 省略号（连点弹两个原生选择框）。 */
+  onChooseCacheDir?: () => void | Promise<void>
   /** C10: path picked in the folder dialog, for the draft input. */
   chosenCacheDir?: string | null
   onSetTheme: (theme: 'auto' | 'light' | 'dark') => void
@@ -95,6 +97,52 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
   }, [props.settings?.cacheDir])
   // C4: logout needs a confirmation — it clears the whole working context.
   const [pendingLogout, setPendingLogout] = useState(false)
+  // 批6 (H21, plan 2026-09-28): 三个慢操作按钮补 busy 三件套（文案省略号 +
+  // disabled + hook 侧 in-flight 守卫——ref 守同 tick 连点，state 只管视觉）。
+  // 「重试」连点会打两轮 providers.list + settings.get；「退出登录」连点会打两次
+  // bilibili.logout；「浏览…」连点会弹两个原生文件夹选择框。
+  const [retryBusy, setRetryBusy] = useState(false)
+  const retryBusyRef = useRef(false)
+  const [biliLogoutBusy, setBiliLogoutBusy] = useState(false)
+  const biliLogoutBusyRef = useRef(false)
+  const [cacheDirBusy, setCacheDirBusy] = useState(false)
+  const cacheDirBusyRef = useRef(false)
+  const runBusy = (run: () => void | Promise<void>, done: () => void): void => {
+    void (async () => {
+      try {
+        await run()
+      } finally {
+        done()
+      }
+    })()
+  }
+  const onRetryLoad = (): void => {
+    if (props.onRetryLoad == null || retryBusyRef.current) return
+    retryBusyRef.current = true
+    setRetryBusy(true)
+    runBusy(props.onRetryLoad, () => {
+      retryBusyRef.current = false
+      setRetryBusy(false)
+    })
+  }
+  const onBiliLogout = (): void => {
+    if (props.onBiliLogout == null || biliLogoutBusyRef.current) return
+    biliLogoutBusyRef.current = true
+    setBiliLogoutBusy(true)
+    runBusy(props.onBiliLogout, () => {
+      biliLogoutBusyRef.current = false
+      setBiliLogoutBusy(false)
+    })
+  }
+  const onChooseCacheDir = (): void => {
+    if (props.onChooseCacheDir == null || cacheDirBusyRef.current) return
+    cacheDirBusyRef.current = true
+    setCacheDirBusy(true)
+    runBusy(props.onChooseCacheDir, () => {
+      cacheDirBusyRef.current = false
+      setCacheDirBusy(false)
+    })
+  }
   return (
     <section class="settings-panel">
       <PageHeader title="设置" />
@@ -105,8 +153,8 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
           <span>
             部分设置加载失败：{[props.loadError.providers, props.loadError.settings].filter((s): s is string => s != null).join('；')}
           </span>
-          <button class="btn small" onClick={props.onRetryLoad}>
-            重试
+          <button class="btn small" onClick={onRetryLoad} disabled={retryBusy}>
+            {retryBusy ? '重试中…' : '重试'}
           </button>
         </div>
       )}
@@ -149,8 +197,8 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
             B站·{props.biliSession === 'logged_in' ? '已登录' : '未登录'}
           </span>
           {props.biliSession === 'logged_in' && props.onBiliLogout != null && (
-            <button class="btn" onClick={props.onBiliLogout}>
-              退出登录
+            <button class="btn" onClick={onBiliLogout} disabled={biliLogoutBusy}>
+              {biliLogoutBusy ? '退出中…' : '退出登录'}
             </button>
           )}
         </div>
@@ -216,8 +264,8 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
           <span class="settings-label">任务缓存</span>
           <input class="qa-input" value={cacheDraft} placeholder="留空使用默认（资料库\\cache）" onInput={(e) => setCacheDraft((e.target as HTMLInputElement).value)} />
           {props.onChooseCacheDir != null && (
-            <button class="btn small" onClick={props.onChooseCacheDir}>
-              浏览…
+            <button class="btn small" onClick={onChooseCacheDir} disabled={cacheDirBusy}>
+              {cacheDirBusy ? '浏览中…' : '浏览…'}
             </button>
           )}
           {/* 批5: dirty 检查——值未变时禁用保存，按钮自身即是「已保存」的确认。 */}

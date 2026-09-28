@@ -321,3 +321,95 @@ describe('TaskPanel', () => {
     expect(cancel.disabled).toBe(false)
   })
 })
+
+/**
+ * 批6 (H21, plan 2026-09-28): 任务面板剩下的 busy 纪律缺口——TaskStatusCard 的
+ * 「取消任务 / 取消排队」此前没有任何在途态（连点会打第二次 tasks.cancel），
+ * 全局历史的「显示更多」同 tick 连点会让 limit 一次跳两页（打两次 IPC）。
+ */
+describe('TaskPanel 批6 H21: 取消与显示更多的在途态', () => {
+  // 模块级 describe 拿不到上面嵌套 describe 里的 ROW，这里自备一份同形夹具。
+  const ROW: TaskRowInfo = {
+    id: 't9',
+    lesson_id: 'l1',
+    state: 'succeeded',
+    failed_stage: null,
+    error_message: null,
+    created_at: '2026-09-04T00:00:00Z',
+    updated_at: '2026-09-04T00:10:00Z',
+    course_name: '数据结构',
+    lesson_title: '第1讲'
+  }
+  const baseProps = {
+    currentLesson: '',
+    running: false,
+    busy: false,
+    progress: null,
+    history: [],
+    globalHistory: [],
+    onCreateRun: () => undefined,
+    onRetry: () => undefined,
+    onCancel: () => undefined,
+    onDelete: () => undefined,
+    onClearFinished: () => undefined
+  }
+
+  it('取消任务在途时按钮读「取消中…」并禁用，同 tick 连点只发一次 IPC', async () => {
+    const gate: { settle?: () => void } = {}
+    const onCancel = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          gate.settle = resolve
+        })
+    )
+    const progress: TaskProgressInfo = { taskId: 't1', state: 'transcribing', stage: 'transcribing', message: '转写中', percent: 10 }
+    const row: TaskRowInfo = { ...ROW, id: 't1', state: 'transcribing' }
+    const host = mount(<TaskPanel {...baseProps} running progress={progress} globalHistory={[row]} onCancel={onCancel} />)
+    const cancelBtn = (): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === '取消任务' || b.textContent === '取消中…') ?? null
+    click(cancelBtn())
+    click(cancelBtn())
+    await vi.waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1))
+    expect(cancelBtn()?.textContent).toBe('取消中…')
+    expect(cancelBtn()?.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(cancelBtn()?.textContent).toBe('取消任务'))
+    expect(cancelBtn()?.disabled).toBe(false)
+  })
+
+  it('取消排队在途时同样禁用，只发一次 IPC', async () => {
+    const gate: { settle?: () => void } = {}
+    const onCancel = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          gate.settle = resolve
+        })
+    )
+    const progress: TaskProgressInfo = { taskId: 't2', state: 'pending', stage: null, message: '排队中', percent: 0 }
+    const host = mount(<TaskPanel {...baseProps} running progress={progress} onCancel={onCancel} />)
+    const cancelQueue = (): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === '取消排队' || b.textContent === '取消中…') ?? null
+    click(cancelQueue())
+    click(cancelQueue())
+    await vi.waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1))
+    expect(cancelQueue()?.textContent).toBe('取消中…')
+    expect(cancelQueue()?.disabled).toBe(true)
+    gate.settle?.()
+    await vi.waitFor(() => expect(cancelQueue()?.disabled).toBe(false))
+  })
+
+  it('「显示更多」同 tick 连点只回调一次（limit 不跳两页）', () => {
+    const onMore = vi.fn()
+    const history: TaskRowInfo[] = Array.from({ length: 3 }, (_, i) => ({ ...ROW, id: `t${i}`, state: 'succeeded' }))
+    const host = mount(
+      <TaskPanel {...baseProps} globalHistory={history} globalHistoryTotal={88} onMoreHistory={onMore} />
+    )
+    const more = (): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('显示更多') || b.textContent === '加载中…') ?? null
+    click(more())
+    click(more())
+    expect(onMore).toHaveBeenCalledTimes(1)
+    expect(more()?.textContent).toBe('加载中…')
+    expect(more()?.disabled).toBe(true)
+  })
+})

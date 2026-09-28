@@ -307,3 +307,108 @@ describe('BiliImportDialog (批1 双源并列: first-class import dialog)', () =
     })
   })
 })
+
+/**
+ * 批6 (H21/H30, plan 2026-09-28): B站导入对话框的两个洞口。
+ *  ① resolve/doImport 的 setBusy(false) 没有 try/finally——IPC reject 时 busy
+ *     永真（按钮永远「解析中…」+disabled，只能关掉对话框重开）；
+ *  ② overlay 背衬点击在在途时也会关窗——导入/登录半途而废（pendingPages 与轮询
+ *     effect 一起没），且 open 复位不含 busy，重开时主按钮停在「登录中…」。
+ */
+describe('BiliImportDialog 批6 H21: busy 兜底与背衬守卫', () => {
+  it('resolve 被 reject 后按钮恢复可点（不再「解析中…」锁死）', async () => {
+    const bridge = makeBridge({ resolve: vi.fn(async () => ({ ok: false, error: '解析失败：网络错误' })) })
+    const toast = vi.fn()
+    const props = makeProps(bridge, { toast })
+    const host = mount(<BiliImportDialog {...props} />)
+    const parseBtn = (): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === '解析' || b.textContent === '解析中…') ?? null
+    input(host.querySelector('.bili-row .qa-input'), 'BV1GJ411x7h7')
+    click(parseBtn())
+    await flush()
+    await waitFor(() => expect(toast).toHaveBeenCalled())
+    // 拒绝之后 finally 解锁：文案回到「解析」、按钮可点，用户能重试
+    expect(parseBtn()?.textContent).toBe('解析')
+    expect(parseBtn()?.disabled).toBe(false)
+  })
+
+  it('import 被 reject 后主按钮恢复可点（不锁死）', async () => {
+    const bridge = makeBridge({ import: vi.fn(async () => ({ ok: false, error: '导入失败' })) })
+    const toast = vi.fn()
+    const props = makeProps(bridge, { sessionState: 'logged_in', toast })
+    const host = await resolveTo(props)
+    const mainBtn = (): HTMLButtonElement | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === '导入并生成笔记' || b.textContent === '导入中…') ?? null
+    click(mainBtn())
+    await flush()
+    await waitFor(() => expect(toast).toHaveBeenCalled())
+    expect(mainBtn()?.textContent).toBe('导入并生成笔记')
+    expect(mainBtn()?.disabled).toBe(false)
+  })
+
+  it('扫码登录在途中关闭再重开：busy 复位，主按钮不停在「登录中…」', async () => {
+    const gate: { settle?: () => void } = {}
+    const bridge = makeBridge({
+      login: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            gate.settle = () => resolve({ ok: true, value: { qrUrl: 'https://passport.bilibili.com/qr?qrcode_key=K1' } })
+          })
+      )
+    })
+    const props = makeProps(bridge)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    act(() => {
+      render(<BiliImportDialog {...props} open />, host)
+    })
+    input(host.querySelector('.bili-row .qa-input'), 'https://www.bilibili.com/video/BV1GJ411x7h7')
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '解析') ?? null)
+    await flush()
+    // 主按钮进入登录在途（挂着）
+    click([...host.querySelectorAll('button')].find((b) => b.textContent === '扫码登录后导入') ?? null)
+    await flush()
+    const busyLabel = (): string | null =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.classList.contains('bili-import-btn'))?.textContent ?? null
+    expect(busyLabel()).toBe('登录中…')
+    // 关闭（卸载内容）再重开——open 复位把 busy 三件套一起清掉
+    await act(async () => {
+      render(<BiliImportDialog {...props} open={false} />, host)
+    })
+    await act(async () => {
+      render(<BiliImportDialog {...props} open />, host)
+    })
+    // 重开后是全新解析面：主按钮回到可点的「扫码登录后导入」（没有 preview 时它本就
+    // disabled——这里断言的是文案不再是「登录中…」，即 busy 没有跨开合残留）
+    expect(busyLabel()).toBe('扫码登录后导入')
+    gate.settle?.()
+    await flush()
+  })
+
+  it('导入在途时点 overlay 背衬不关窗', async () => {
+    const gate: { settle?: () => void } = {}
+    const bridge = makeBridge({
+      import: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            gate.settle = () => resolve({ ok: true, value: { courseId: 'bili-x', lessonIds: ['bili-x-P1'] } })
+          })
+      )
+    })
+    const onClose = vi.fn()
+    const props = makeProps(bridge, { sessionState: 'logged_in', onClose })
+    const host = await resolveTo(props)
+    click(Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === '导入并生成笔记') ?? null)
+    await flush()
+    // 背衬（overlay 自身）被点中——在途时必须挡住
+    const overlay = host.querySelector('.bili-dialog-overlay')!
+    await act(async () => {
+      overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(onClose).not.toHaveBeenCalled()
+    gate.settle?.()
+    await flush()
+    // 落定后对话框自己关（onImported 的正常收尾），背衬守卫随之解除
+    expect(onClose).toHaveBeenCalled()
+  })
+})

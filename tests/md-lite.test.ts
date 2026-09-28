@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseInline, parseMdLite } from '../src/shared/notes/md-lite'
+import { parseInline, parseMdLite, toPlainText } from '../src/shared/notes/md-lite'
 
 describe('parseInline', () => {
   it('splits plain text, bold, and code spans', () => {
@@ -119,5 +119,18 @@ describe('parseMdLite', () => {
       { t: 'text', v: ' 与 ' },
       { t: 'code', v: '符号' }
     ])
+  })
+})
+
+// 批4 (plan 2026-09-28 H3): tooltip / aria-label / alt 等放不了元素的属性上下文
+// 用的纯文本入口——复用 parseInline 的 token 序列，不另写一套正则。
+describe('toPlainText', () => {
+  it('strips **bold** / ==mark== / `code` markers, keeps the text', () => {
+    expect(toPlainText('概念 **大O** 与 ==重点== 及 `code`')).toBe('概念 大O 与 重点 及 code')
+  })
+
+  it('plain text and unpaired markers pass through untouched', () => {
+    // 未闭合的 == 与正文里的裸字符同纪律：原样保留（与渲染路径一致）
+    expect(toPlainText('a == b 与 f(x)= 的定义')).toBe('a == b 与 f(x)= 的定义')
   })
 })

@@ -19,7 +19,8 @@ export interface CourseBrowserProps {
   selectedLessonId?: string
   /** 批5: the same handlers the sidebar rows use. */
   onSelectLesson: (lessonId: string) => void
-  onToggleMine: (courseId: string, mine: boolean) => void
+  /** 批6 (H21): 可返回 Promise——星标据此在途禁用（连点发两次 setMine）。 */
+  onToggleMine: (courseId: string, mine: boolean) => void | Promise<void>
   onHarvestLessons?: (courseId: string) => void
   onRemoveCourse?: (courseId: string) => void
   onCourseMap?: (courseId: string) => void
@@ -304,7 +305,8 @@ interface CourseCardProps {
   selectedLessonId?: string
   onSelectLesson: (lessonId: string) => void
   onClose: () => void
-  onToggleMine: (courseId: string, mine: boolean) => void
+  /** 批6 (H21): 可返回 Promise——星标据此在途禁用（连点发两次 setMine）。 */
+  onToggleMine: (courseId: string, mine: boolean) => void | Promise<void>
   onHarvestLessons?: (courseId: string) => void
   onRemoveCourse?: (courseId: string) => void
   onCourseMap?: (courseId: string) => void
@@ -323,6 +325,22 @@ function CourseCard({ course, selectedLessonId, onSelectLesson, onClose, onToggl
   // same rule the sidebar row uses.
   const deletable = course.lessons.length === 0 && course.noteCount === 0 && onRemoveCourse != null
   const [pendingDelete, setPendingDelete] = useState(false)
+  // 批6 (H21): 与侧栏同一把尺——星标在途禁用（连点发两次 setMine）
+  const [pinBusy, setPinBusy] = useState(false)
+  const pinBusyRef = useRef(false)
+  const onPin = (): void => {
+    if (pinBusyRef.current) return
+    pinBusyRef.current = true
+    setPinBusy(true)
+    void (async () => {
+      try {
+        await onToggleMine(course.id, course.isMine !== true)
+      } finally {
+        pinBusyRef.current = false
+        setPinBusy(false)
+      }
+    })()
+  }
   const parts = courseSubParts(course)
   const rest = course.teacher != null && course.teacher !== '' ? parts.slice(1) : parts
   return (
@@ -342,7 +360,8 @@ function CourseCard({ course, selectedLessonId, onSelectLesson, onClose, onToggl
           title={course.isMine === true ? '取消收藏标记' : '收藏这门课（排序置顶）'}
           aria-label={course.isMine === true ? `取消收藏 ${course.name}` : `收藏课程 ${course.name}`}
           aria-pressed={course.isMine === true}
-          onClick={() => onToggleMine(course.id, course.isMine !== true)}
+          disabled={pinBusy}
+          onClick={onPin}
         >
           <Star size={14} strokeWidth={1.75} fill={course.isMine === true ? 'currentColor' : 'none'} />
         </button>
@@ -381,10 +400,12 @@ function CourseCard({ course, selectedLessonId, onSelectLesson, onClose, onToggl
       {expanded &&
         (course.lessons.length === 0 ? (
           <div class="course-card-lessons-empty">
+            {/* 批6 (H21): 与侧栏同改——在途时按钮不再整颗卸载（第三种 busy 形态），
+                改为 disabled + 「抓取中…」 */}
             {inflight ? '正在抓取课时目录…' : '还没有课时目录'}
-            {!inflight && onHarvestLessons != null && (
-              <button class="btn small" onClick={() => onHarvestLessons(course.id)}>
-                抓取课时目录
+            {onHarvestLessons != null && (
+              <button class="btn small" onClick={() => onHarvestLessons(course.id)} disabled={inflight}>
+                {inflight ? '抓取中…' : '抓取课时目录'}
               </button>
             )}
           </div>

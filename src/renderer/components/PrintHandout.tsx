@@ -5,9 +5,11 @@ import type { AttachmentLike, TimelineImage } from '../../shared/notes/evidence'
 import { allocateTimelineImages, quoteForEntry, resolveEvidenceGallery, formatTime } from '../../shared/notes/evidence'
 import { groupTimelineByChapters } from '../../shared/notes/chapters'
 import { computeMindMapLayout, sublineFirstBaseline, sublineLinesOf, titleBaseline } from '../../shared/notes/mindmap-layout'
+import { toPlainText } from '../../shared/notes/md-lite'
 import { MdLite } from './MdLite'
 import { InlineText } from './InlineText'
 import { CodeBlock } from './CodeBlock'
+import { SvgLineTspans, SvgTspans } from './SvgInline'
 
 export interface PrintHandoutData {
   note: Note
@@ -40,7 +42,12 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
           生成时间：{generatedAt}
         </div>
         {note.tldr != null && note.tldr.trim() !== '' && (
-          <p class="ph-cover-tldr">{note.tldr.trim()}</p>
+          /* 批4 (H3): tldr 是模型文本——讲义渲染进真实 DOM 后 printToPDF，
+             直接用 MdLite（与屏幕端同一套解析）。外层由 p 改 div：MdLite 自产
+             div，块级元素嵌在 p 里是非法嵌套。 */
+          <div class="ph-cover-tldr">
+            <MdLite text={note.tldr.trim()} />
+          </div>
         )}
         <div class="ph-cover-summary">
           <MdLite text={firstParagraph(note.overview)} />
@@ -76,8 +83,13 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
                   {chapter != null && (
                     <div class="ph-chapter">
                       <span class="ph-chapter-at">{formatTime(chapter.at)}</span>
-                      <h3>{chapter.title}</h3>
-                      <p>{chapter.summary}</p>
+                      {/* 批4 (H3): 章标题/章摘要是模型文本 */}
+                      <h3>
+                        <InlineText text={chapter.title} />
+                      </h3>
+                      <p>
+                        <InlineText text={chapter.summary} />
+                      </p>
                     </div>
                   )}
                   <PrintTimelineCard entry={entry} images={allocated[i] ?? []} />
@@ -94,7 +106,8 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
           {(note.quotes ?? []).map((q) => (
             <blockquote key={`${q.at}:${q.text.slice(0, 12)}`} class="ph-quote">
               <span class="ph-quote-at">{formatTime(q.at)}</span>
-              <p>「{q.text}」</p>
+              {/* 批4 (H3): 讲者原话也可能被模型加 ** 强调 */}
+              <p>「<InlineText text={q.text} />」</p>
             </blockquote>
           ))}
         </section>
@@ -106,7 +119,10 @@ export function PrintHandout(data: PrintHandoutData): JSX.Element {
           <div class="ph-concept-grid">
             {note.concepts.map((c) => (
               <div key={c.term} class="ph-concept">
-                <span class="ph-concept-term">{c.term}</span>
+                {/* 批4 (H3): 术语名与定义同为模型文本——都过 InlineText */}
+                <span class="ph-concept-term">
+                  <InlineText text={c.term} />
+                </span>
                 {/* 批4: definition 解析内联 markdown（旧笔记的 ** 不再印成字面量） */}
                 <span class="ph-concept-def">
                   <InlineText text={c.definition} />
@@ -232,20 +248,24 @@ function PrintTimelineCard({ entry, images }: { entry: Note['timeline'][number];
     <article class="ph-timeline-card">
       <div class="ph-timeline-head">
         <span class="ph-timeline-stamp">{formatTime(entry.at)}</span>
-        <h3>{entry.title}</h3>
+        {/* 批4 (H3): 时间线条目标题是模型文本（与屏幕端时间线同待遇） */}
+        <h3>
+          <InlineText text={entry.title} />
+        </h3>
       </div>
       <p class="ph-timeline-detail">
         <InlineText text={entry.detail} />
       </p>
       {quote != null && (
         <blockquote class="ph-timeline-quote">
-          「{quote.text}」（{formatTime(quote.at)}）
+          「<InlineText text={quote.text} />」（{formatTime(quote.at)}）
         </blockquote>
       )}
       {images.length > 0 && (
         <div class="ph-timeline-images">
           {images.map((img) => (
-            <img key={img.ref} src={img.dataUrl} alt={`${entry.title}的课堂画面`} />
+            /* 批4 (H3): alt 面向用户——模型标题里的 ** 不进 alt */
+            <img key={img.ref} src={img.dataUrl} alt={`${toPlainText(entry.title)}的课堂画面`} />
           ))}
         </div>
       )}
@@ -268,7 +288,7 @@ function StaticMindMap({ tree, links = [] }: { tree: TreeNode; links?: ConceptLi
       height={Math.round(layout.height * scale)}
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       role="img"
-      aria-label={`知识导图：${tree.title}`}
+      aria-label={`知识导图：${toPlainText(tree.title)}`}
     >
       {layout.edges.map((edge) => (
         <path key={`${edge.from}-${edge.to}`} d={edge.d} fill="none" stroke="#b9c4ea" stroke-width={1.8} />
@@ -279,9 +299,11 @@ function StaticMindMap({ tree, links = [] }: { tree: TreeNode; links?: ConceptLi
           <path d={link.d} fill="none" stroke="#9aa6d8" stroke-width={1.4} stroke-dasharray="5 4" />
           {link.label !== '' && (
             <g transform={`translate(${link.lx}, ${link.ly})`}>
-              <rect x={-(link.label.length * 6.5 + 10) / 2} y={-9} width={link.label.length * 6.5 + 10} height={18} rx={9} fill="#f4f5fa" stroke="#dfe3ee" />
+              {/* 批4 (H3): 胶囊宽按纯文本算（去掉加粗与荧光笔的定界符后的可见
+                  宽度），标签正文走 SvgTspans 分段（SVG text 里放不了 HTML 元素）。 */}
+              <rect x={-(toPlainText(link.label).length * 6.5 + 10) / 2} y={-9} width={toPlainText(link.label).length * 6.5 + 10} height={18} rx={9} fill="#f4f5fa" stroke="#dfe3ee" />
               <text text-anchor="middle" y={3.5} font-size={10} fill="#6a7286">
-                {link.label}
+                <SvgTspans text={link.label} x={0} />
               </text>
             </g>
           )}
@@ -296,22 +318,16 @@ function StaticMindMap({ tree, links = [] }: { tree: TreeNode; links?: ConceptLi
             fill={node.depth === 0 ? '#e0e6ff' : '#f4f5fa'}
             stroke={node.depth === 0 ? 'none' : '#e3e6ee'}
           />
-          {/* 批E: wrapped tspans — titles print in full, never truncated. */}
+          {/* 批E: wrapped tspans — titles print in full, never truncated.
+              批4 (H3): 每行再按 md-lite token 分段（SvgLineTspans：x 只落在每行
+              首段，未配对记号跨行延续样式，换行位置与 x 基准都不变）。 */}
           <text x={12} y={titleBaseline(node)} font-size={13} fill="#1f2430" font-weight={node.depth === 0 ? 700 : 400}>
-            {node.lines.map((line, i) => (
-              <tspan key={i} x={12} dy={i === 0 ? 0 : 18}>
-                {line}
-              </tspan>
-            ))}
+            <SvgLineTspans lines={node.lines} x={12} lineStep={18} />
           </text>
           {/* M2.1: anchored concept terms as a muted sub-line. */}
           {node.subline !== '' && (
             <text x={12} y={sublineFirstBaseline(node)} font-size={11} fill="#6a7286">
-              {sublineLinesOf(node).map((line, i) => (
-                <tspan key={i} x={12} dy={i === 0 ? 0 : 14}>
-                  {line}
-                </tspan>
-              ))}
+              <SvgLineTspans lines={sublineLinesOf(node)} x={12} lineStep={14} />
             </text>
           )}
         </g>

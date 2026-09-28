@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useRef, useState } from 'preact/hooks'
 import { ChevronDown, ChevronRight, GitBranch, Star, Trash2 } from 'lucide-preact'
 import type { JSX } from 'preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
@@ -27,7 +27,8 @@ export interface CourseTreeProps {
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
-  onToggleMine: (courseId: string, mine: boolean) => void
+  /** 批6 (H21): 可返回 Promise——星标据此在途禁用（连点发两次 setMine）。 */
+  onToggleMine: (courseId: string, mine: boolean) => void | Promise<void>
 }
 
 /** Sidebar course → lesson tree with search, count chips, and note badges. */
@@ -87,7 +88,8 @@ interface CourseRowProps {
   onToggle: (courseId: string) => void
   onSelect: (lessonId: string) => void
   onHarvestLessons: (courseId: string) => void
-  onToggleMine: (courseId: string, mine: boolean) => void
+  /** 批6 (H21): 可返回 Promise——星标据此在途禁用（连点发两次 setMine）。 */
+  onToggleMine: (courseId: string, mine: boolean) => void | Promise<void>
 }
 
 function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, mapBusy, onRemoveCourse, onCourseMap, onToggle, onSelect, onHarvestLessons, onToggleMine }: CourseRowProps): JSX.Element {
@@ -95,6 +97,24 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, map
   // C6: only never-processed courses are deletable (cascade protection).
   const deletable = course.lessons.length === 0 && course.noteCount === 0 && onRemoveCourse != null
   const [pendingDelete, setPendingDelete] = useState(false)
+  // 批6 (H21): 星标在途态——连点此前会发两次 school.setMine（收藏状态未定时按钮
+  // 必须置灰）。ref 守同 tick 连点，state 只管视觉；onToggleMine 返回 Promise，
+  // 落定（成功或失败）即解除禁用。
+  const [pinBusy, setPinBusy] = useState(false)
+  const pinBusyRef = useRef(false)
+  const onPin = (): void => {
+    if (pinBusyRef.current) return
+    pinBusyRef.current = true
+    setPinBusy(true)
+    void (async () => {
+      try {
+        await onToggleMine(course.id, course.isMine !== true)
+      } finally {
+        pinBusyRef.current = false
+        setPinBusy(false)
+      }
+    })()
+  }
   return (
     <div class="item course-item" style={`--course-ink:${subjectInkVar(course.id)}`}>
       <div class="course-row-head">
@@ -115,7 +135,8 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, map
           title={course.isMine === true ? '取消收藏标记' : '收藏这门课（排序置顶）'}
           aria-label={course.isMine === true ? `取消收藏 ${course.name}` : `收藏课程 ${course.name}`}
           aria-pressed={course.isMine === true}
-          onClick={() => onToggleMine(course.id, course.isMine !== true)}
+          disabled={pinBusy}
+          onClick={onPin}
         >
           <Star size={14} strokeWidth={1.75} fill={course.isMine === true ? 'currentColor' : 'none'} />
         </button>
@@ -152,12 +173,14 @@ function CourseRow({ course, expanded, selectedLesson, sameCourse, inflight, map
       {expanded &&
         (course.lessons.length === 0 ? (
           <div class="lesson-row empty">
+            {/* 批6 (H21): 抓取按钮回到 disabled 形态——此前整颗按钮在在途时直接
+                卸载（AGENTS 禁用的第三种 busy 形态：控件消失，用户看不到"正在做
+                什么"也无法理解为什么按钮不见了）。in-flight 守卫由 App 侧
+                harvestInflight 提供（play-harvest 的既有机制），这里只做视觉。 */}
             {inflight ? '正在抓取课时目录…' : '还没有课时目录'}
-            {!inflight && (
-              <button class="btn small" onClick={() => onHarvestLessons(course.id)}>
-                抓取课时目录
-              </button>
-            )}
+            <button class="btn small" onClick={() => onHarvestLessons(course.id)} disabled={inflight}>
+              {inflight ? '抓取中…' : '抓取课时目录'}
+            </button>
           </div>
         ) : (
           course.lessons.map((lesson) => (

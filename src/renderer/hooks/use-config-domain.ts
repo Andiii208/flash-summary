@@ -4,7 +4,7 @@
  * toasts; the app shell consumes refreshProviders/refreshSettings on mount
  * and passes the rest straight to SettingsPanel.
  */
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { AppSettingsInfo, ProvidersListResult, SeuSummaryBridge } from '../../shared/bridge'
 import type { ToastKind } from '../components/ToastArea'
 
@@ -38,7 +38,8 @@ export interface ConfigDomain {
   removeProvider: (id: string) => void
   testProvider: (input: { baseUrl: string; apiKey: string; model: string }) => void
   setCacheDir: (dir: string) => void
-  chooseCacheDir: () => void
+  /** 批6 (H21): 返回 Promise——设置页「浏览…」按钮据此置灰（防连点弹两个选择框）。 */
+  chooseCacheDir: () => Promise<void>
   setTheme: (theme: 'auto' | 'light' | 'dark') => void
   chooseLibrary: () => void
   openPath: (kind: 'library' | 'cache' | 'exports' | 'logs') => void
@@ -73,7 +74,16 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   /** 批6 (D4): 备份进行中——按钮禁用 + 文案省略号，防连点重复写盘。 */
   const [libraryBackupBusy, setLibraryBackupBusy] = useState(false)
 
-  const refreshProviders = useCallback(async (): Promise<ProvidersListResult | null> => {
+  /** 批6 (H21, plan 2026-09-28): 两个刷新入口各自的连点守卫——设置页「重试」
+   *  连点两次此前会打两轮 providers.list + settings.get，两轮都写 loadError，用户
+   *  看到哪一版全看网络时序。**两把尺必须分开**：挂载与保存路径都是两个刷新并发
+   *  触发（void refreshProviders(); void refreshSettings()），共用一个 ref 会让
+   *  后到的那次直接变成 no-op——会话就永远停在「正在加载设置…」。按钮的视觉
+   *  （禁用 + 省略号）由 SettingsPanel 的在途态负责，这里只守 IPC 不重复发起。 */
+  const providersRefreshBusyRef = useRef(false)
+  const settingsRefreshBusyRef = useRef(false)
+
+  const refreshProvidersOnce = useCallback(async (): Promise<ProvidersListResult | null> => {
     const res = await bridge.providers.list()
     // 批4: a silent failure here left the settings page eternally blank.
     if (res.ok && res.value != null) {
@@ -85,7 +95,7 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     return null
   }, [bridge])
 
-  const refreshSettings = useCallback(async (): Promise<void> => {
+  const refreshSettingsOnce = useCallback(async (): Promise<void> => {
     const res = await bridge.settings.get()
     if (res.ok && res.value != null) {
       setSettings(res.value)
@@ -94,6 +104,32 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
       setLoadError((e) => ({ ...e, settings: res.error ?? '加载失败' }))
     }
   }, [bridge])
+
+  const refreshProviders = useCallback(
+    async (): Promise<ProvidersListResult | null> => {
+      if (providersRefreshBusyRef.current) return null
+      providersRefreshBusyRef.current = true
+      try {
+        return await refreshProvidersOnce()
+      } finally {
+        providersRefreshBusyRef.current = false
+      }
+    },
+    [refreshProvidersOnce]
+  )
+
+  const refreshSettings = useCallback(
+    async (): Promise<void> => {
+      if (settingsRefreshBusyRef.current) return
+      settingsRefreshBusyRef.current = true
+      try {
+        await refreshSettingsOnce()
+      } finally {
+        settingsRefreshBusyRef.current = false
+      }
+    },
+    [refreshSettingsOnce]
+  )
 
   // P33 (plan 2026-09-21): 返回保存是否成功——ProviderPanel 据此决定要不要清空
   // 表单（保存失败时保留全部输入；Key 是用户最贵的重打部分）。
@@ -205,16 +241,16 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     [bridge, toast, refreshSettings]
   )
 
-  const chooseCacheDir = useCallback((): void => {
-    void (async () => {
-      const res = await bridge.settings.chooseCacheDir()
-      if (!res.ok) {
-        toast(res.error ?? '选择失败', 'error')
-        return
-      }
-      if (res.value?.canceled || res.value?.path == null) return
-      setChosenCacheDir(res.value.path)
-    })()
+  // 批6 (H21)：返回 Promise——设置页「浏览…」据此置灰 + 省略号（连点会弹两个
+  // 原生文件夹选择框）。
+  const chooseCacheDir = useCallback(async (): Promise<void> => {
+    const res = await bridge.settings.chooseCacheDir()
+    if (!res.ok) {
+      toast(res.error ?? '选择失败', 'error')
+      return
+    }
+    if (res.value?.canceled || res.value?.path == null) return
+    setChosenCacheDir(res.value.path)
   }, [bridge, toast])
 
   const setTheme = useCallback(

@@ -4,6 +4,7 @@ import type { JSX } from 'preact'
 import type { ProvidersListResult } from '../../shared/bridge'
 import { EmptyState } from './EmptyState'
 import { modelHasVision } from '../../shared/model-vision'
+import { InlineText } from './InlineText'
 import { Dialog } from '../ui/Dialog'
 
 const CAPABILITY_LABELS: Record<string, string> = { asr: 'ASR 转写', multimodal: '多模态总结' }
@@ -215,7 +216,9 @@ function ProviderForm(p: ProviderFormProps): JSX.Element {
       </div>
       {p.testResult != null && (
         <p class={`provider-test ${p.testResult.ok ? 'ok' : 'fail'}`} role="status">
-          {p.testResult.text}
+          {/* 批4 (H3): 测试回显是服务商 API 的原文（模型/端点可能回带 markdown
+              记号）——与笔记字段同纪律，不过 InlineText 就把星号印给用户 */}
+          <InlineText text={p.testResult.text} />
         </p>
       )}
     </div>

@@ -17,10 +17,19 @@ import type { CourseMapInfo } from '../components/CourseMapDialog'
 import type { Toast } from './use-config-domain'
 
 /** 2026-09-04: wait for every <img> in the print handout to decode before
- * printing — printToPDF snapshots the live DOM, undecoded images come out blank. */
-function waitForImages(root: HTMLElement): Promise<void> {
+ * printing — printToPDF snapshots the live DOM, undecoded images come out blank.
+ *
+ * 批5 (plan 2026-09-28 H10): 兜底超时。极端 <img>（src 指向一个既不 resolve 也
+ * 不 error 的地址）永远不触发 load/error → Promise 永不 settle → pdfBusy 永真、
+ * PDF 按钮永久「生成 PDF 中…」+disabled，用户只能重启应用。宁可少一张图（打印
+ * 出来是空白占位）也不能把按钮锁死——8s 后继续打印。
+ *
+ * 导出只为 H10 的回归测试提供接缝（「永不 settle 的 img 也能在超时后继续」）。 */
+const IMAGE_WAIT_TIMEOUT_MS = 8000
+
+export function waitForImages(root: HTMLElement): Promise<void> {
   const images = [...root.querySelectorAll('img')]
-  return Promise.all(
+  const settled = Promise.all(
     images.map((img) =>
       img.complete
         ? Promise.resolve()
@@ -30,6 +39,15 @@ function waitForImages(root: HTMLElement): Promise<void> {
           })
     )
   ).then(() => undefined)
+  if (images.length === 0) return settled
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, IMAGE_WAIT_TIMEOUT_MS)
+    const done = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    settled.then(done, done)
+  })
 }
 
 /** 批C 批3: 分页步长（「显示更多」每次加一页）。与主进程默认上限的关系：
@@ -102,6 +120,8 @@ export interface NotesDomain {
     notePolishBusy: boolean
     polishNote: (lessonId: string, feedback: { tags: string[]; text: string }) => void
     pdfBusy: boolean
+    /** 批6 (H21): 复制 Markdown 在途——导出家族里唯一没有 busy 态的按钮补上。 */
+    copyBusy: boolean
     /** 健康巡查 2026-09-12 批5: the in-flight export kind (null = idle). */
     exportBusy: string | null
     /** 健康巡查 2026-09-12 批5: course-map aggregation in flight. */
@@ -127,6 +147,9 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   const [note, setNote] = useState<Note | null>(null)
   /** 批2 (P7): 与笔记一起到达的转写命中率（渲染层自己算不出来——没有转写）。 */
   const [noteTranscriptHitRate, setNoteTranscriptHitRate] = useState<{ hits: number; total: number } | null>(null)
+  /** 批5 (H4): 面板上的笔记（或空态）属于哪一课时——loadNote 的入口清空只对
+   *  「换课」生效，同课刷新不清（理由见 loadNote 内注释）。 */
+  const noteLessonRef = useRef('')
   /** 批B: cross-lesson note library + recent Q&A (tab empty states). */
   const [noteIndex, setNoteIndex] = useState<NoteIndexInfo[]>([])
   /** 批C: 列表的**总数**（不受 LIMIT 影响）——界面据此如实说明是否被截断。 */
@@ -172,6 +195,9 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   // 批5: feedback polish busy state (independent of regenerate).
   const [notePolishBusy, setNotePolishBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
+  /** 批6 (H21): 复制到剪贴板在途（busy 三件套 + 同 tick 连点守卫）。 */
+  const [copyBusy, setCopyBusy] = useState(false)
+  const copyBusyRef = useRef(false)
   // 健康巡查 2026-09-12 批5: one export in flight at a time — double-clicking
   // an export button used to open two native save dialogs. The kind names the
   // running export so its own button can read «导出中…»; the ref guard closes
@@ -198,13 +224,28 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   // All three lesson-scoped loaders guard on lessonRef: a slow response for
   // a previously selected lesson must not overwrite the current one's panel.
   const loadNote = useCallback(async (lessonId: string): Promise<void> => {
+    // 批5 (plan 2026-09-28 H4): 切课残留——「只在有值时 setNote 从不清空」会让
+    // 没有笔记的课时一直显示上一课的内容（用户以为那是本课笔记）。两处收口：
+    //   ① 入口：**换课**时先清空（noteLessonRef 记住面板上的笔记属于哪一课）；
+    //      只按 lessonRef 守卫防闪——慢响应到达前用户又切走就不清。
+    //      同课刷新（regenerate/repair/polish 成功后重新加载）刻意不清：那一闪
+    //      空态会把体检面板震掉（note 身份变化即收），生成中的旧版也没法读了。
+    //   ② 响应：取不到笔记（该课没有/取失败）时显式清空——「任务成功但该课无
+    //      笔记」走的是同课刷新这条路，光靠入口清空覆盖不到。
+    if (noteLessonRef.current !== lessonId && lessonRef.current === lessonId) setNote(null)
     setCoverDataUrl(null)
     // 批2 (P7): 换课时先清掉上一课的转写命中率——否则徽标会拿旧课的指标算。
     setNoteTranscriptHitRate(null)
     const res = (await bridge.notes.latest(lessonId)) as ApiResult<LatestNoteResult | null>
-    if (res.ok && res.value != null && lessonRef.current === lessonId) {
-      setNote(res.value.note)
-      setNoteTranscriptHitRate(res.value.transcriptHitRate ?? null)
+    if (lessonRef.current === lessonId) {
+      noteLessonRef.current = lessonId
+      if (res.ok && res.value != null) {
+        setNote(res.value.note)
+        setNoteTranscriptHitRate(res.value.transcriptHitRate ?? null)
+      } else {
+        setNote(null)
+        setNoteTranscriptHitRate(null)
+      }
     }
     // 批 A2: 封面与笔记并行取（best-effort——拿不到就 null，首屏退回无图）。
     void refreshCover(lessonId)
@@ -315,9 +356,9 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   }, [noteQuery, noteLimit, loadNoteIndex])
 
   /** 健康巡查 2026-09-12 批5: serialize the export family (markdown /
-   *  obsidian / anki / course-obsidian / svg) — native save dialogs must not
-   *  stack. While busy, every export button disables and the triggering one
-   *  reads «导出中…». PDF keeps its own pdfBusy (in-page render, pre-existing). */
+   *  obsidian / anki / course-obsidian / svg / **pdf** — 批5 H11 起 PDF 也走
+   *  这里) — native save dialogs must not stack. While busy, every export
+   *  button disables and the triggering one reads «导出中…». */
   const withExportBusy = useCallback((kind: string, run: () => Promise<void>): void => {
     if (exportBusyRef.current != null) return
     exportBusyRef.current = kind
@@ -558,7 +599,9 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
               ? `，体检 ${result.health.warnCountBeforeRepair} 项 → ${result.health.warnCount} 项`
               : ''
           toast(`已生成第 ${result.version} 版笔记${hitSuffix}${quoteSuffix}${dropSuffix}${normalSuffix}${clampSuffix}${sampledSuffix}${visionSuffix}${assetSuffix}${repairSuffix}`, 'success')
-          await loadNote(lessonId)
+          // 批5 (plan 2026-09-28 H9): 生成可跑数分钟——期间用户切到别的课时，
+          // 旧课的结果不得覆盖新课面板（与 refreshCover 同款 lessonRef 守卫）。
+          if (lessonRef.current === lessonId) await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
           setNoteRegenBusy(false)
@@ -593,7 +636,8 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
               : ''
           const dropSuffix = (result.droppedRefs ?? 0) > 0 ? `，剔除 ${result.droppedRefs} 条无效引用` : ''
           toast(`已生成第 ${result.version} 版润色笔记${hitSuffix}${quoteSuffix}${dropSuffix}`, 'success')
-          await loadNote(lessonId)
+          // 批5 (H9): 同上——润色进行中切课，旧课结果不得覆盖新课面板。
+          if (lessonRef.current === lessonId) await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
           setNotePolishBusy(false)
@@ -633,7 +677,8 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
           } else {
             toast('补完没有改善，已保留原稿', 'info')
           }
-          await loadNote(lessonId)
+          // 批5 (H9): 同上——补全进行中切课，旧课结果不得覆盖新课面板。
+          if (lessonRef.current === lessonId) await loadNote(lessonId)
           await loadNoteIndex()
         } finally {
           noteRepairBusyRef.current = false
@@ -732,7 +777,12 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   /** 2026-09-04: full-lesson PDF handout (cover → mind map → body → gallery). */
   const runExportNotePdf = useCallback(
     (lessonId: string): void => {
-      void (async () => {
+      // 批5 (plan 2026-09-28 H11): PDF 入口也走 withExportBusy('pdf')。此前它只
+      // 用自己的 pdfBusy，与 markdown/obsidian/anki/svg/png 五个导出互不串行化——
+      // 两边同时在途就会弹出两个原生保存框，正是上面 withExportBusy 声称要消灭的
+      // 形态（注释写的不变式被 PDF 自己破了）。按钮侧同步读两个在途态
+      // （NoteViewer: disabled={pdfBusy || exportBusy != null}）。
+      withExportBusy('pdf', async () => {
         if (note == null) return
         setPdfBusy(true)
         const printRoot = document.getElementById('print-root')
@@ -789,17 +839,25 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
           render(null, printRoot!)
           setPdfBusy(false)
         }
-      })()
+      })
     },
-    [bridge, toast, note, attachmentManifest, loadAllAttachments, tree]
+    [bridge, toast, note, attachmentManifest, loadAllAttachments, tree, withExportBusy]
   )
 
+  // 批6 (H21): busy 三件套 + hook 侧 in-flight 守卫——此前整个导出家族只有它没有
+  // 在途态，连点会并发写剪贴板、toast 也叠两三条。ref 守同 tick 的连点 race。
   const runCopyNote = useCallback((): void => {
-    if (note == null) return
-    void navigator.clipboard
+    if (note == null || copyBusyRef.current) return
+    copyBusyRef.current = true
+    setCopyBusy(true)
+    navigator.clipboard
       .writeText(noteToMarkdown(note, '课程笔记'))
       .then(() => toast('已复制 Markdown 到剪贴板', 'success'))
       .catch(() => toast('复制失败', 'error'))
+      .finally(() => {
+        copyBusyRef.current = false
+        setCopyBusy(false)
+      })
   }, [note, tree, currentLesson, toast])
 
   // 声明批4: 导出出口统一从这里出去——出口清单与 spec §9「每个导出路径都提示」
@@ -824,6 +882,7 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
   /** 批A: 换课/退出登录时清掉本域残留（note + manifest + 解析缓存）。 */
   const clearLessonData = useCallback((): void => {
     setNote(null)
+    noteLessonRef.current = ''
     setNoteTranscriptHitRate(null)
     setAttachmentManifest([])
     attachmentCache.current.clear()
@@ -859,6 +918,7 @@ export function useNotesDomain(bridge: SeuSummaryBridge, toast: Toast, deps: Not
     notePolishBusy,
     polishNote,
     pdfBusy,
+    copyBusy,
     exportBusy,
     courseMapBusy,
     exportNotePdf,

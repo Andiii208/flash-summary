@@ -301,12 +301,35 @@ describe('正文列铁律（批6，P10/D6）', () => {
 
 // P29 (plan 2026-09-21): 荧光笔底色走 token（浅/暗各一份定义在 :root），
 // 屏幕与 PDF 两份规则体同值——「同一角色只允许一处定义」的纪律。
-describe('荧光笔底色（P29）', () => {
-  it('.md-lite mark 用 --mark-bg token，且浅/暗两套主题都定义了它', () => {
+// 批6 (H5, plan 2026-09-28): 按**三套机制**分组比对而不是数总数：:root（浅色）、
+// @media (prefers-color-scheme: dark)（跟随系统）、:root[data-theme='dark']（手动
+// 选深色）。此前只断言「恰好 2 个定义」——而 data-theme 块整块缺 --mark-bg 也能
+// 过（浅色系统上手动选深色时 ==高亮== 用亮黄底铺暗色正文）。总数等于 3 也说明不了
+// 谁在哪儿，所以这里按机制点名。
+describe('荧光笔底色（P29 + 批6 H5）', () => {
+  it('.md-lite mark 用 --mark-bg token', () => {
     expect(bodyOf('.md-lite mark')).toContain('background: var(--mark-bg)')
+  })
+
+  it('三套主题机制各自定义了 --mark-bg，且两个暗色机制同值', () => {
     const defs = [...stripped.matchAll(/--mark-bg:\s*([^;]+);/g)].map((m) => m[1].trim())
-    expect(defs.length, '浅色 + 暗色各一份定义').toBe(2)
+    // 机制 1：:root（浅色）
+    const lightBlock = stripped.slice(stripped.indexOf(':root'), stripped.indexOf('@media'))
+    expect(defs.filter((v) => v === defs[0]).length).toBe(1)
+    expect(lightBlock).toContain(`--mark-bg: ${defs[0]};`)
+    // 机制 2：@media (prefers-color-scheme: dark)
+    const mediaBlock = stripped.slice(stripped.indexOf('@media (prefers-color-scheme: dark)'), stripped.indexOf(":root[data-theme='dark']"))
+    expect(mediaBlock).toContain('--mark-bg:')
+    // 机制 3：:root[data-theme='dark']——H5 修的正是这块整块缺失
+    const dataThemeBlock = stripped.slice(stripped.indexOf(":root[data-theme='dark']"))
+    expect(dataThemeBlock).toContain('--mark-bg:')
+    // 浅/暗两档值不许串（暗色取低透明度那档，两侧必须一致）
+    const darkValue = defs.find((v) => v !== defs[0])
+    expect(darkValue, '暗色必须与浅色取不同的透明度档').toBeDefined()
+    expect(mediaBlock).toContain(`--mark-bg: ${darkValue};`)
+    expect(dataThemeBlock).toContain(`--mark-bg: ${darkValue};`)
     for (const value of defs) expect(value).toMatch(/^rgba\(/)
+    expect(defs.length, '浅色 + 两个暗色机制共三份定义').toBe(3)
   })
 })
 

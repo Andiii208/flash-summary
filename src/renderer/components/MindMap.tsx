@@ -3,8 +3,10 @@ import type { JSX } from 'preact'
 import type { Concept, ConceptLink, QuizItem, TreeNode } from '../../shared/notes/schema'
 import { collapsedSetForMaxDepth, computeMindMapLayout, labelBoxWidth, titleBaseline, type LayoutNode } from '../../shared/notes/mindmap-layout'
 import { computeRelationLayout } from '../../shared/notes/relation-layout'
+import { toPlainText } from '../../shared/notes/md-lite'
 import { QuizCards } from './NoteBlocks'
 import { InlineText } from './InlineText'
+import { SvgLineTspans, SvgTspans } from './SvgInline'
 
 /**
  * P51 (plan 2026-09-22-qa-dock-float-window): 导图回归「普通内容块」——**内部缩放/平移
@@ -453,7 +455,8 @@ export function MindMap({
         ) : (
           crumbsFor(tree, focusPath).map((crumb, index, all) => (
             <button key={crumb.path} class="btn small ghost" disabled={index === all.length - 1} onClick={() => focusAt(crumb.path)}>
-              {crumb.title}
+              {/* 批4 (H3): 面包屑节点标题是模型文本 */}
+              <InlineText text={crumb.title} />
             </button>
           ))
         )}
@@ -467,7 +470,7 @@ export function MindMap({
         height={Math.round(frame.height * scale)}
         viewBox={`0 0 ${frame.width} ${frame.height}`}
         role="img"
-        aria-label={`知识导图：${tree.title}`}
+        aria-label={`知识导图：${toPlainText(tree.title)}`}
       >
         {relationMode && relationLayout.nodes.length > 0 ? (
           /* 批5 关系模式：`conceptLinks` 当主结构。边全部可见（不再受 ≤5 条限制），
@@ -479,15 +482,17 @@ export function MindMap({
                 {edge.label !== '' && (
                   <g transform={`translate(${edge.lx}, ${edge.ly})`}>
                     <rect
-                      x={-labelBoxWidth(edge.label, LABEL_FONT_SIZE) / 2}
+                      x={-labelBoxWidth(toPlainText(edge.label), LABEL_FONT_SIZE) / 2}
                       y={-9}
-                      width={labelBoxWidth(edge.label, LABEL_FONT_SIZE)}
+                      width={labelBoxWidth(toPlainText(edge.label), LABEL_FONT_SIZE)}
                       height={18}
                       rx={9}
                       class="mindmap-link-label-box"
                     />
+                    {/* 批4 (H3): 关系词是模型文本——SVG text 里放不了 <strong>/
+                        <mark>，按 SvgInline 的 tspan 分段映射渲染 */}
                     <text text-anchor="middle" y={3.5} class="mindmap-link-label">
-                      {edge.label}
+                      <SvgTspans text={edge.label} x={0} />
                     </text>
                   </g>
                 )}
@@ -497,11 +502,7 @@ export function MindMap({
               <g key={`relnode-${node.id}`} class="mindmap-relation-node">
                 <rect x={node.x} y={node.y} width={node.width} height={node.height} rx={8} class="mindmap-relation-box" />
                 <text x={node.x + 12} y={node.y + 22} class="mindmap-relation-term">
-                  {node.lines.map((line, i) => (
-                    <tspan key={i} x={node.x + 12} dy={i === 0 ? 0 : 18}>
-                      {line}
-                    </tspan>
-                  ))}
+                  <SvgLineTspans lines={node.lines} x={node.x + 12} lineStep={18} />
                 </text>
               </g>
             ))}
@@ -523,9 +524,10 @@ export function MindMap({
             <path d={link.d} class="mindmap-link-line" fill="none" />
             {link.label !== '' && (
               <g transform={`translate(${link.lx}, ${link.ly})`}>
-                <rect x={-labelBoxWidth(link.label, LABEL_FONT_SIZE) / 2} y={-9} width={labelBoxWidth(link.label, LABEL_FONT_SIZE)} height={18} rx={9} class="mindmap-link-label-box" />
+                <rect x={-labelBoxWidth(toPlainText(link.label), LABEL_FONT_SIZE) / 2} y={-9} width={labelBoxWidth(toPlainText(link.label), LABEL_FONT_SIZE)} height={18} rx={9} class="mindmap-link-label-box" />
+                {/* 批4 (H3): 交叉关系标签同样过 tspan 分段（理由同关系模式） */}
                 <text text-anchor="middle" y={3.5} class="mindmap-link-label">
-                  {link.label}
+                  <SvgTspans text={link.label} x={0} />
                 </text>
               </g>
             )}
@@ -554,17 +556,16 @@ export function MindMap({
               tabIndex={hasChildren ? 0 : undefined}
               role={hasChildren ? 'button' : undefined}
               aria-expanded={hasChildren ? !node.collapsed : undefined}
-              aria-label={hasChildren ? `${node.title}（点击${node.collapsed ? '展开' : '折叠'}，双击聚焦此分支）` : node.title}
+              aria-label={hasChildren ? `${toPlainText(node.title)}（点击${node.collapsed ? '展开' : '折叠'}，双击聚焦此分支）` : toPlainText(node.title)}
             >
-              <title>{hasChildren ? `${node.title}（点击${node.collapsed ? '展开' : '折叠'}，双击聚焦此分支）` : node.title}</title>
+              <title>{hasChildren ? `${toPlainText(node.title)}（点击${node.collapsed ? '展开' : '折叠'}，双击聚焦此分支）` : toPlainText(node.title)}</title>
               <rect width={node.width} height={node.height} rx={8} class="mindmap-box" />
-              {/* 批E: wrapped tspans — long titles are fully shown, no ellipsis. */}
+              {/* 批E: wrapped tspans — long titles are fully shown, no ellipsis.
+                  批4 (H3): 每行再按 md-lite token 分段（SVG 里放不了 <strong>/
+                  <mark>）；x 只落在每行首段，其余分段续在同一文本块里，换行位置
+                  与 x 基准都不变。 */}
               <text x={12} y={titleBaseline(node)} class="mindmap-label">
-                {node.lines.map((line, i) => (
-                  <tspan key={i} x={12} dy={i === 0 ? 0 : 18}>
-                    {line}
-                  </tspan>
-                ))}
+                <SvgLineTspans lines={node.lines} x={12} lineStep={18} />
               </text>
               {/* 批3: 圆点语言——折叠=实心圆点（藏着分支），展开=空心圆环（同尺寸，
                   状态一眼可辨）；替换 ▸/▾ 三角（2026-09-07 审美反馈）。
@@ -588,7 +589,7 @@ export function MindMap({
                   class="mindmap-info"
                   role="button"
                   tabIndex={0}
-                  aria-label={`查看「${node.title}」的关联概念`}
+                  aria-label={`查看「${toPlainText(node.title)}」的关联概念`}
                   transform={`translate(${node.width - 11}, ${node.height - 11})`}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -619,7 +620,7 @@ export function MindMap({
                   rx={8}
                   role="button"
                   tabIndex={0}
-                  aria-label={`揭示「${node.title}」`}
+                  aria-label={`揭示「${toPlainText(node.title)}」`}
                   onClick={(e) => {
                     e.stopPropagation()
                     setRevealed((prev) => new Set(prev).add(node.path))
@@ -646,7 +647,10 @@ export function MindMap({
           <div class="mindmap-popover-backdrop" onClick={() => setPopoverPath(null)} aria-hidden="true" />
           <div class="mindmap-popover" data-testid="mindmap-popover" style={`left:${Math.max(0, Math.min(popoverNode.x + popoverNode.width + 24, layout.width - 324))}px; top:${popoverNode.y}px`}>
             <div class="mindmap-popover-head">
-              <strong>{popoverNode.title}</strong>
+              {/* 批4 (H3): 弹层标题与概念名都是模型文本——同走 InlineText */}
+              <strong>
+                <InlineText text={popoverNode.title} />
+              </strong>
               <button class="btn small ghost" onClick={() => setPopoverPath(null)} aria-label="关闭浮层">
                 ×
               </button>
@@ -659,8 +663,13 @@ export function MindMap({
                     {/* 健康巡查 2026-09-12: definitions go through InlineText —
                         the model freely emits **bold** markers and the detailed
                         view renders them; the popover must not print literal
-                        asterisks (AGENTS 笔记字段渲染约定). */}
-                    <strong>{concept.term}</strong>：<InlineText text={concept.definition} />
+                        asterisks (AGENTS 笔记字段渲染约定).
+                        批4 (H3): 术语名自己也过一遍——上一行刚说完不能印字面星号，
+                        下一行自己犯了同一个错（<strong>{concept.term}</strong>）。 */}
+                    <strong>
+                      <InlineText text={concept.term} />
+                    </strong>
+                    ：<InlineText text={concept.definition} />
                   </p>
                 ))}
               </div>

@@ -106,6 +106,8 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
   // A fresh resolve/import surface per open: a stale preview from a previous
   // session must not survive into the next one. onSessionRefresh is a stable
   // useCallback in App — only `open` may re-trigger this reset.
+  // 批6 (H21): 复位连 busy 三件套一起——上次残留的在途态（尤其 startLoginFlow
+  // 中途关闭对话框）会让重开时主按钮停在「登录中…」+禁用，用户以为坏了。
   useEffect(() => {
     if (open) {
       setPreview(null)
@@ -114,39 +116,50 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
       setQrImage(null)
       setQrStatus('')
       setQrScanStatus(null)
+      setBusy(false)
+      setBusyKind(null)
       onSessionRefresh()
     }
   }, [open])
 
+  // 批6 (H21/H30): setBusy 补 try/finally——IPC reject 时 finally 照旧解锁，
+  // 此前 reject 会把 busy 永真（按钮永远「解析中…」+disabled，只能关对话框重开）。
   const resolve = async (): Promise<void> => {
     if (input.trim() === '' || busy) return
     setBusy(true)
     setBusyKind('resolve')
-    const res = await bridge.bilibili.resolve(input.trim())
-    setBusy(false)
-    setBusyKind(null)
-    if (!res.ok || res.value == null) {
-      toast(res.error ?? '解析失败', 'error')
-      return
+    try {
+      const res = await bridge.bilibili.resolve(input.trim())
+      if (!res.ok || res.value == null) {
+        toast(res.error ?? '解析失败', 'error')
+        return
+      }
+      setPreview({ ...res.value, selected: defaultSelection(res.value) })
+    } finally {
+      setBusy(false)
+      setBusyKind(null)
     }
-    setPreview({ ...res.value, selected: defaultSelection(res.value) })
   }
 
+  // 批6 (H21/H30): 同上——reject 不再把 busy 锁死。
   const doImport = async (pages: number[]): Promise<void> => {
     if (preview == null) return
     setBusy(true)
     setBusyKind('import')
-    const res = await bridge.bilibili.import({ bvid: preview.bvid, pages })
-    setBusy(false)
-    setBusyKind(null)
-    if (!res.ok || res.value == null) {
-      toast(res.error ?? '导入失败', 'error')
-      return
+    try {
+      const res = await bridge.bilibili.import({ bvid: preview.bvid, pages })
+      if (!res.ok || res.value == null) {
+        toast(res.error ?? '导入失败', 'error')
+        return
+      }
+      setPreview(null)
+      setInput('')
+      onImported(res.value.courseId, res.value.lessonIds)
+      onClose()
+    } finally {
+      setBusy(false)
+      setBusyKind(null)
     }
-    setPreview(null)
-    setInput('')
-    onImported(res.value.courseId, res.value.lessonIds)
-    onClose()
   }
 
   // QR login polling: one effect owns the interval so unmount / close /
@@ -253,7 +266,9 @@ export function BiliImportDialog({ bridge, open, sessionState, onSessionRefresh,
       aria-label="导入B站视频"
       data-testid="bili-import-dialog"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        // 批6 (H21): 解析/登录/导入在途时点背衬不关窗——关掉会打断正在进行的
+        // QR 登录轮询（pendingPages 与轮询 effect 一起没了），导入半途而废。
+        if (e.target === e.currentTarget && !busy) onClose()
       }}
     >
       <div class="bili-dialog-card" ref={cardRef}>

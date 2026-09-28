@@ -59,6 +59,35 @@ function matchFilter(row: TaskRowInfo, filter: HistoryFilter): boolean {
   return row.state === filter
 }
 
+/**
+ * 批4 + 批6 (H21): 行级在途态——取消/删除 IPC 在途时该行按钮置灰（连点会发出
+ * 第二个 cancel/remove）。ref 关掉同一 tick 的连点 race，state 供渲染。
+ * 批6 抽到模块级：TaskStatusCard 的「取消任务/取消排队」与全局历史的「显示更多」
+ * 也要同一把尺（AGENTS busy 约定：文案加省略号 + disabled + in-flight 守卫）。
+ */
+function useRowBusy(): { busy: ReadonlySet<string>; run: (key: string, run: (key: string) => void | Promise<void>) => void } {
+  const busyRef = useRef(new Set<string>())
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+  const run = (key: string, action: (key: string) => void | Promise<void>): void => {
+    if (busyRef.current.has(key)) return
+    busyRef.current.add(key)
+    setBusy(new Set(busyRef.current))
+    void (async () => {
+      try {
+        await action(key)
+      } finally {
+        busyRef.current.delete(key)
+        setBusy((prev) => {
+          const next = new Set(prev)
+          next.delete(key)
+          return next
+        })
+      }
+    })()
+  }
+  return { busy, run }
+}
+
 /** 课程名 · 课时名 with the raw id as the fallback/tooltip (M1-2). */
 function taskLabel(row: TaskRowInfo): string {
   const names = [row.course_name, row.lesson_title].filter((n): n is string => n != null && n !== '')
@@ -98,6 +127,9 @@ export function TaskPanel({
 }: TaskPanelProps): JSX.Element {
   const noLesson = currentLesson === ''
   const hasNoteAlready = history.some((row) => row.state === 'succeeded')
+  // 批6 (H21): 「显示更多」的在途态（同 tick 连点会让分页跳两页）
+  const { busy: rowBusy, run: withRowBusy } = useRowBusy()
+  const moreBusy = rowBusy.has('more')
   const chip =
     lessonContext != null ? (
       <LessonChip
@@ -142,10 +174,12 @@ export function TaskPanel({
                 onOpenNote={onOpenNote}
                 onReportError={onReportError}
               />
-              {/* 批C 批3: 与笔记库同一套「分块 + 显式展开」（不做虚拟滚动）。 */}
+              {/* 批C 批3: 与笔记库同一套「分块 + 显式展开」（不做虚拟滚动）。
+                  批6 (H21): 防连点——同 tick 点两次会让 limit 一次跳两页（打两次
+                  IPC），用行级在途守卫挡住。 */}
               {onMoreHistory != null && globalHistoryTotal != null && globalHistoryTotal > globalHistory.length && (
-                <button class="btn small ghost list-more" onClick={onMoreHistory}>
-                  显示更多（还有 {globalHistoryTotal - globalHistory.length} 条）
+                <button class="btn small ghost list-more" onClick={() => withRowBusy('more', onMoreHistory)} disabled={moreBusy}>
+                  {moreBusy ? '加载中…' : `显示更多（还有 ${globalHistoryTotal - globalHistory.length} 条）`}
                 </button>
               )}
             </>
@@ -221,6 +255,9 @@ function sealFor(row: Pick<TaskRowInfo, 'state' | 'error_kind'>): { char: string
 }
 
 function TaskStatusCard({ progress, taskRow, cancellable = false, onCancel }: TaskStatusCardProps): JSX.Element {
+  // 批6 (H21): 取消在途时按钮读「取消中…」并禁用——连点会打第二次 tasks.cancel。
+  const { busy: rowBusy, run: withRowBusy } = useRowBusy()
+  const cancelBusy = rowBusy.has(progress.taskId)
   const failed = progress.state === 'failed'
   const succeeded = progress.state === 'succeeded'
   // Position of the furthest reached stage on the rail.
@@ -261,13 +298,13 @@ function TaskStatusCard({ progress, taskRow, cancellable = false, onCancel }: Ta
       {progress.detail != null && <p class="task-detail">{progress.detail}</p>}
       {failed && <p class="task-error">{progress.message}</p>}
       {cancellable && !queued && onCancel != null && (
-        <button class="btn small danger" onClick={() => onCancel()}>
-          取消任务
+        <button class="btn small danger" onClick={() => withRowBusy(progress.taskId, () => onCancel())} disabled={cancelBusy}>
+          {cancelBusy ? '取消中…' : '取消任务'}
         </button>
       )}
       {queued && onCancel != null && (
-        <button class="btn small ghost" onClick={() => onCancel()}>
-          取消排队
+        <button class="btn small ghost" onClick={() => withRowBusy(progress.taskId, () => onCancel())} disabled={cancelBusy}>
+          {cancelBusy ? '取消中…' : '取消排队'}
         </button>
       )}
     </div>
@@ -290,27 +327,7 @@ interface HistoryListProps {
 function HistoryList({ history, onRetry, disabled, onCancel, onDelete, onClearFinished, onOpenNote, onReportError }: HistoryListProps): JSX.Element {
   const [filter, setFilter] = useState<HistoryFilter>('all')
   const [confirmClear, setConfirmClear] = useState(false)
-  // 批4（AGENTS.md busy 约定）: 行级取消/删除 IPC 在途时该行按钮置灰——连点
-  // 会发出第二个 cancel/remove。ref 关掉同一 tick 的连点 race，state 供渲染。
-  const rowBusyRef = useRef(new Set<string>())
-  const [rowBusy, setRowBusy] = useState<ReadonlySet<string>>(new Set())
-  const withRowBusy = (taskId: string, run: (taskId: string) => void | Promise<void>): void => {
-    if (rowBusyRef.current.has(taskId)) return
-    rowBusyRef.current.add(taskId)
-    setRowBusy(new Set(rowBusyRef.current))
-    void (async () => {
-      try {
-        await run(taskId)
-      } finally {
-        rowBusyRef.current.delete(taskId)
-        setRowBusy((prev) => {
-          const next = new Set(prev)
-          next.delete(taskId)
-          return next
-        })
-      }
-    })()
-  }
+  const { busy: rowBusy, run: withRowBusy } = useRowBusy()
   if (history.length === 0) return <p class="msg">暂无任务</p>
   const visible = history.filter((row) => matchFilter(row, filter))
   const clearable = history.filter((row) => row.state === 'succeeded' || row.state === 'failed').length

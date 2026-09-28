@@ -61,6 +61,20 @@ export function parseInline(text: string): MdInline[] {
   return spans.length > 0 ? spans : [{ t: 'text', v: '' }]
 }
 
+/**
+ * 把行内 markdown 还原成纯文本（批4, plan 2026-09-28 H3）。
+ *
+ * 用在哪：`title=` / `aria-label=` / `alt=` 这些**放不了元素**的属性上下文——
+ * 模型会在概念名、术语、章节摘要里自由输出 `**加粗**` 与 `==高亮==`，原样插值
+ * 会把字面星号印进 tooltip 和无障碍名。这里复用 `parseInline` 的 token 序列取
+ * 出文本值（**不另写一套正则**——解析规则全站只有一份）。
+ */
+export function toPlainText(text: string): string {
+  return parseInline(text)
+    .map((span) => span.v)
+    .join('')
+}
+
 const HEADING = /^(#{1,4})\s+(.*)$/
 const BULLET = /^[-*]\s+(.*)$/
 const ORDERED = /^(\d+)[.、]\s*(.*)$/

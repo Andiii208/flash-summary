@@ -741,6 +741,7 @@ prevLesson={state.lessonNeighbors.prev}
                   : undefined
               }
               onCopy={state.copyNote}
+              copyBusy={state.copyBusy}
               polishBusy={state.notePolishBusy}
               onPolish={state.currentLesson !== '' ? (feedback) => state.polishNote(state.currentLesson, feedback) : undefined}
             />
@@ -869,7 +870,8 @@ interface AppState extends NotesDomain, TasksDomain {
   openBili: () => void
   closeBili: () => void
   refreshBiliSession: () => void
-  biliLogout: () => void
+  /** 批6 (H21): 返回 Promise——设置页「退出登录」据此置灰 + 省略号。 */
+  biliLogout: () => Promise<void>
   /** A course-list refresh is in flight (network + possible login round-trip). */
   refreshBusy: boolean
   /** Loaded/total boundary after the last paged refresh (B2). */
@@ -917,7 +919,8 @@ interface AppState extends NotesDomain, TasksDomain {
   settings: AppSettingsInfo | null
   /** 批4: per-domain load failure with a retry affordance on the settings page. */
   configLoadError: { providers: string | null; settings: string | null }
-  retryConfigLoad: () => void
+  /** 批6 (H21): 返回 Promise——设置页「重试」据此置灰 + 省略号。 */
+  retryConfigLoad: () => Promise<void>
   /** 声明批4: 导出前的版权提醒——非 null 表示有待办导出等着用户确认。 */
   exportNotice: { remember: boolean } | null
   setExportNoticeRemember: (value: boolean) => void
@@ -945,7 +948,8 @@ interface AppState extends NotesDomain, TasksDomain {
   collapseAll: () => void
   setQuery: (q: string) => void
   harvestLessons: (courseId: string) => void
-  toggleMine: (courseId: string, mine: boolean) => void
+  /** 批6 (H21): 返回 Promise——侧栏/课程卡星标据此置灰（连点不再发两次 setMine）。 */
+  toggleMine: (courseId: string, mine: boolean) => Promise<void>
   selectLesson: (lessonId: string) => void
   /** 批A: clear the lesson selection (breadcrumb course crumb) — stays put. */
   clearLesson: () => void
@@ -1065,16 +1069,16 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
     refreshBiliSession()
   }, [refreshBiliSession])
   const closeBili = useCallback((): void => setBiliDialogOpen(false), [])
-  const biliLogout = useCallback((): void => {
-    void (async () => {
-      const res = await bridge.bilibili.logout()
-      if (!res.ok) {
-        toast(res.error ?? '退出失败', 'error')
-        return
-      }
-      setBiliSession('logged_out')
-      toast('已退出B站登录', 'info')
-    })()
+  // 批6 (H21)：返回 Promise——设置页的「退出登录」按钮据此禁用 + 省略号
+  // （连点会打两次 bilibili.logout）。
+  const biliLogout = useCallback(async (): Promise<void> => {
+    const res = await bridge.bilibili.logout()
+    if (!res.ok) {
+      toast(res.error ?? '退出失败', 'error')
+      return
+    }
+    setBiliSession('logged_out')
+    toast('已退出B站登录', 'info')
   }, [bridge, toast])
   const config = useConfigDomain(bridge, toast)
   const lessonRef = useRef('')
@@ -1099,9 +1103,10 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   }, [settings])
 
   /** 批4: the settings page's 重试 for a failed providers/settings load. */
-  const retryConfigLoad = useCallback((): void => {
-    void refreshProviders()
-    void refreshSettings()
+  // 批6 (H21)：返回 Promise（等两轮都回来）——「重试」按钮据此禁用 + 省略号；
+  // 领域内部还有 refreshBusyRef 守同 tick 连点，双保险。
+  const retryConfigLoad = useCallback(async (): Promise<void> => {
+    await Promise.all([refreshProviders(), refreshSettings()])
   }, [refreshProviders, refreshSettings])
 
   // 声明批4 (plan 2026-09-11, D3=B/D6=A): 导出前的版权提醒。spec §9 与 README
@@ -1439,6 +1444,10 @@ const copyReport = useCallback((): void => {
           const doneLesson = row?.lesson_id ?? lid
           void notes.loadNoteIndex()
           if (doneLesson !== '') {
+            // 批5 (H4): 任务完成走 loadNote 刷新——「成功但该课无笔记」由 loadNote
+            // 的响应分支清空面板（切课残留的修复点在本域内部，判据只有一份）。
+            // 这里**不**先调 clearLessonData：那会把当前正看课的附件清单一起清掉，
+            // 而任务完成常常就是当前课（用户正看着笔记等它生成完）。
             void notes.loadNote(doneLesson)
             void tasks.loadHistory(doneLesson)
           }
@@ -1741,20 +1750,19 @@ const currentCourseLessons = useMemo<LessonChipLesson[]>(
 
   // C2: pin/unpin «my course»; re-read the local tree so the ordering applies.
   // 批F: a favorite now confirms itself (the star is small; state must be heard).
+  // 批6 (H21)：返回 Promise——星标按钮据此在途禁用（连点此前会发两次 setMine）。
   const toggleMine = useCallback(
-    (courseId: string, mine: boolean): void => {
-      void (async () => {
-        const res = await bridge.school.setMine(courseId, mine)
-        if (!res.ok) {
-          toast(res.error ?? '操作失败', 'error')
-          return
-        }
-        if (mine) {
-          const course = tree.find((c) => c.id === courseId)
-          toast(`已收藏「${course?.name ?? courseId}」`, 'success')
-        }
-        await applyLocalTree()
-      })()
+    async (courseId: string, mine: boolean): Promise<void> => {
+      const res = await bridge.school.setMine(courseId, mine)
+      if (!res.ok) {
+        toast(res.error ?? '操作失败', 'error')
+        return
+      }
+      if (mine) {
+        const course = tree.find((c) => c.id === courseId)
+        toast(`已收藏「${course?.name ?? courseId}」`, 'success')
+      }
+      await applyLocalTree()
     },
     [bridge, toast, applyLocalTree, tree]
   )

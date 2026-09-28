@@ -184,3 +184,23 @@ describe('ProviderPanel 首启默认值（批4 P8/D4）', () => {
     expect(host.textContent).not.toContain('text')
   })
 })
+
+// 批4 (plan 2026-09-28 H3): 测试回显是服务商 API 的原文（端点可能回带 markdown
+// 记号）。原实现直接插值，会把 ** 印给用户——与笔记字段同纪律过 InlineText。
+describe('ProviderPanel 批4 H3: 测试回显走 InlineText', () => {
+  it('testResult 含 **加粗** 时不印字面星号', () => {
+    const host = mount(
+      <ProviderPanel
+        providers={null}
+        busy={false}
+        onSave={vi.fn(async () => true)}
+        onRemove={() => undefined}
+        testResult={{ ok: false, text: '连接失败：端点返回 **Bad Request**' }}
+      />
+    )
+    const line = host.querySelector('.provider-test')
+    expect(line?.classList.contains('fail')).toBe(true)
+    expect(line?.textContent).toBe('连接失败：端点返回 Bad Request')
+    expect(line?.querySelector('strong')?.textContent).toBe('Bad Request')
+  })
+})

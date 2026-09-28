@@ -181,3 +181,65 @@ describe('PrintHandout cross-links (M3.1, 2026-09-05)', () => {
     expect(texts.some((t) => t.includes('前提'))).toBe(true)
   })
 })
+
+/**
+ * 批4 (plan 2026-09-28 H3): PDF 讲义的文本渲染纪律。讲义渲染进真实 DOM 后
+ * printToPDF，HTML 字段直接走 MdLite/InlineText；导图走 SVG tspan 分段
+ * （SvgInline）。这里钉住「模型输出的 **xxx** / ==xxx== 不印字面符号」。
+ */
+describe('批4 H3: PDF 讲义不印字面 markdown 记号', () => {
+  const MARKED_NOTE: Note = {
+    ...NOTE,
+    tldr: '一句话**总结**全讲',
+    chapters: [{ at: 0, title: '==开场==', summary: '回顾**上讲**内容' }],
+    quotes: [{ at: 120, text: '极限是一种**态度**' }],
+    knowledgeTree: {
+      title: '复杂度',
+      children: [{ title: '**O(n) 上界**', terms: ['大O'], children: [] }]
+    },
+    concepts: [{ term: '**大O**', definition: '渐进**上界**记号', refs: [] }],
+    timeline: [
+      { at: 65, title: '**引入**', detail: '先看定义', refs: [{ at: 60, text: '**重点**在这里' }], evidence: [] }
+    ],
+    conceptLinks: [{ from: '大O', to: '复杂度', label: '**属于**' }]
+  }
+
+  it('HTML 字段（tldr/章头/金句/时间线）走 MdLite/InlineText，无字面记号', () => {
+    const host = document.createElement('div')
+    render(<PrintHandout note={MARKED_NOTE} attachments={ATTACHMENTS} courseName="课程" lessonTitle="第1节课" generatedAt="t" />, host)
+    const text = host.textContent ?? ''
+    expect(text).not.toContain('**')
+    expect(text).not.toContain('==')
+    // tldr 走 MdLite（原 :43 裸插值）
+    expect(host.querySelector('.ph-cover-tldr strong')?.textContent).toBe('总结')
+    // 章头标题（mark）与章摘要（strong）
+    expect(host.querySelector('.ph-chapter h3 mark')?.textContent).toBe('开场')
+    expect(host.querySelector('.ph-chapter p strong')?.textContent).toBe('上讲')
+    // 金句与时间线转写引文
+    expect(host.querySelector('.ph-quote p strong')?.textContent).toBe('态度')
+    expect(host.querySelector('.ph-timeline-quote strong')?.textContent).toBe('重点')
+    // 时间线条目标题
+    expect(host.querySelector('.ph-timeline-head h3 strong')?.textContent).toBe('引入')
+  })
+
+  it('StaticMindMap 的节点标题/术语子行/关系标签走 tspan 分段', () => {
+    const host = document.createElement('div')
+    render(<PrintHandout note={MARKED_NOTE} attachments={ATTACHMENTS} courseName="课程" lessonTitle="第1节课" generatedAt="t" />, host)
+    const svg = host.querySelector<SVGSVGElement>('.ph-mindmap-page svg')!
+    expect(svg.textContent).not.toContain('**')
+    expect(svg.textContent).not.toContain('==')
+    // 节点标题的加粗分段（与关系标签「属于」同为 md-svg-bold，取全文集合比对）
+    const boldTexts = [...svg.querySelectorAll<SVGTSpanElement>('tspan.md-svg-bold')].map((t) => t.textContent)
+    expect(boldTexts).toContain('O(n) 上界')
+    // 术语子行同样过分段（M2.1 的 subline）
+    const sublineText = [...svg.querySelectorAll<SVGTextElement>('text')].map((t) => t.textContent).join('|')
+    expect(sublineText).toContain('O(n) 上界')
+    // 关系标签的加粗分段 + 纸面固定深色（print.css 的 .ph-doc .md-svg-mark 规则之外，
+    // 加粗走 md-svg-bold——两条类都由 print.css/style.css 定义，这里只验分段存在）
+    const link = [...svg.querySelectorAll<SVGTextElement>('text')].find((t) => t.textContent === '属于')
+    expect(link).toBeDefined()
+    expect(link!.querySelector('tspan.md-svg-bold')?.textContent).toBe('属于')
+    // 导图的 aria-label（svg 工具提示）不含记号
+    expect(svg.getAttribute('aria-label')).toBe('知识导图：复杂度')
+  })
+})

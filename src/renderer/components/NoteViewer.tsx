@@ -5,6 +5,9 @@ import type { NoteIndexInfo, NoteAttachmentInfo, AttachmentManifestEntry } from 
 import { evidenceHitRate, allocateTimelineImagesLazy, formatTime } from '../../shared/notes/evidence'
 import { noteHealth, HEALTH_FIELD_LABELS } from '../../shared/notes/health'
 import { projectNoteBlocks, VIEW_IDS, type ViewId } from '../../shared/notes/views'
+import { toPlainText } from '../../shared/notes/md-lite'
+import { escapeSelectorValue } from '../../shared/notes/dom'
+import { InlineText } from './InlineText'
 import { VIEW_LABELS } from '../labels'
 import { NoteBlocks, EvidenceGallery } from './NoteBlocks'
 import { NoteExportMenu } from './NoteExportMenu'
@@ -106,6 +109,8 @@ export interface NoteViewerProps {
   onExportPng?: () => void
   /** Copy the markdown rendering to the clipboard (best-effort). */
   onCopy?: () => void
+  /** 批6 (H21): 复制在途——按钮读「复制中…」并禁用（连点不再并发写剪贴板）。 */
+  copyBusy?: boolean
   /** 批5: feedback polish in flight (button busy state). */
   polishBusy?: boolean
   /** 批5: submit feedback → the model revises the latest note into version N+1. */
@@ -167,6 +172,7 @@ export function NoteViewer({
   onExportSvg,
   onExportPng,
   onCopy,
+  copyBusy = false,
   polishBusy = false,
   onPolish
 }: NoteViewerProps): JSX.Element {
@@ -188,7 +194,10 @@ export function NoteViewer({
     if (view !== 'detailed' || pendingAnchor == null) return
     // Wait a frame so the detailed projection mounts before scrolling.
     requestAnimationFrame(() => {
-      const escaped = pendingAnchor.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      // 批5 (H12): 概念名是模型文本，拼进属性选择器前必须转义——含 " 或 \ 时
+      // querySelector 直接 SyntaxError，跳转静默失效（转义判据唯一一份在
+      // shared/notes/dom.ts，下面 TOC 高亮处复用同一个）。
+      const escaped = escapeSelectorValue(pendingAnchor)
       const card = document.querySelector(`[data-concept-term="${escaped}"]`)
       if (card != null && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'center' })
       setPendingAnchor(null)
@@ -242,7 +251,9 @@ export function NoteViewer({
         const el =
           anchor.startsWith('chapter:')
             ? document.querySelector(`[data-chapter-at="${anchor.slice(8)}"]`)
-            : document.querySelector(`[data-concept-term="${anchor.slice(8)}"]`)
+            // 批5 (H12): 概念名未转义就拼进选择器——含引号/反斜杠的概念
+            // （模型自由文本）会让这一行抛 SyntaxError，高亮静默失效。
+            : document.querySelector(`[data-concept-term="${escapeSelectorValue(anchor.slice(8))}"]`)
         if (el != null && (el as HTMLElement).offsetTop <= window.scrollY + 80) active = anchor
       }
       setTocActive(active)
@@ -376,8 +387,9 @@ function noteReadMinutes(note: Note): number {
             <span class="note-action-group">
               <span class="toolbar-divider" aria-hidden="true" />
               {onCopy != null && note != null && (
-                <button class="btn small" onClick={onCopy}>
-                  复制 Markdown
+                /* 批6 (H21): 复制终于有了在途态——导出家族唯一漏 busy 的按钮 */
+                <button class="btn small" onClick={onCopy} disabled={copyBusy}>
+                  {copyBusy ? '复制中…' : '复制 Markdown'}
                 </button>
               )}
               <NoteExportMenu
@@ -392,8 +404,15 @@ function noteReadMinutes(note: Note): number {
             <span class="note-action-group note-action-primary">
               <span class="toolbar-divider" aria-hidden="true" />
               {onExportPdf != null && (
-                <button class="btn small primary note-pdf-btn" onClick={onExportPdf} disabled={pdfBusy}>
-                  {pdfBusy ? '生成 PDF 中…' : '导出 PDF 讲义'}
+                /* 批5 (plan 2026-09-28 H11): PDF 与其它导出串行化——任一导出在途
+                   时本按钮也禁用（否则两个原生保存框同时弹）。在途的正是 PDF 时
+                   读「生成 PDF 中…」，别的导出在途时读「导出中…」（与菜单同口径）。 */
+                <button
+                  class="btn small primary note-pdf-btn"
+                  onClick={onExportPdf}
+                  disabled={pdfBusy || exportBusy != null}
+                >
+                  {pdfBusy ? '生成 PDF 中…' : exportBusy != null ? '导出中…' : '导出 PDF 讲义'}
                 </button>
               )}
             </span>
@@ -457,8 +476,9 @@ function noteReadMinutes(note: Note): number {
           {(note.chapters ?? []).length > 0 && (
             <nav class="note-chapter-chips" aria-label="章节导航">
               {note.chapters.map((c) => (
-                <button key={c.at} class="chapter-chip" onClick={() => jumpToChapter(c.at)} title={`${formatTime(c.at)} ${c.summary}`}>
-                  {c.title}
+                <button key={c.at} class="chapter-chip" onClick={() => jumpToChapter(c.at)} title={`${formatTime(c.at)} ${toPlainText(c.summary)}`}>
+                  {/* 批4 (H3): chip 文字与 summary tooltip 都是模型文本 */}
+                  <InlineText text={c.title} />
                 </button>
               ))}
             </nav>
@@ -533,7 +553,7 @@ function noteReadMinutes(note: Note): number {
                 }}
               >
                 <span class="toc-item-at">{formatTime(c.at)}</span>
-                {c.title}
+                <InlineText text={c.title} />
               </button>
             ))}
             {note.concepts.map((c) => (
@@ -544,9 +564,9 @@ function noteReadMinutes(note: Note): number {
                   setTocActive(`concept:${c.term}`)
                   jumpToConcept(c.term)
                 }}
-                title={`概念：${c.term}（点击定位）`}
+                title={`概念：${toPlainText(c.term)}（点击定位）`}
               >
-                {c.term}
+                <InlineText text={c.term} />
               </button>
             ))}
           </nav>

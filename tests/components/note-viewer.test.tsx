@@ -1125,3 +1125,164 @@ describe('批2 (plan 2026-09-20, P7): 体检徽标与升级列表同源（转写
     expect(panel?.textContent).toContain('0/1')
   })
 })
+
+/**
+ * 批4 (plan 2026-09-28 H3): AGENTS 硬规定——笔记字段的用户可见文本一律经
+ * MdLite/InlineText。此前以下位置直接插值模型文本，模型自由输出的 `**加粗**`
+ * 与 `==高亮==` 会把字面星号/等号印到用户眼前：
+ *   概念术语、时间线条目标题、时间线章标题/章摘要、转写引文、金句、树节点
+ *   标题、章节 chip 文字、sticky 目录标题与 tooltip。
+ * 这里钉住「**xxx** / ==xxx== 不印字面符号，且渲染成 strong/mark 元素」。
+ */
+describe('批4 H3: 模型文本经 InlineText 渲染（不印字面星号）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+  // 一份「模型自由发挥」的笔记：每个可见字段都带 markdown 记号。
+  const MARKDOWN_NOTE: Note = {
+    ...NOTE,
+    tldr: '一句话**总结全讲**',
+    chapters: [{ at: 0, title: '==开场==', summary: '回顾**上讲**内容' }],
+    knowledgeTree: {
+      title: '复杂度',
+      children: [{ title: '**O(n)**', children: [{ title: '叶子', children: [] }] }]
+    },
+    timeline: [
+      {
+        at: 65,
+        title: '**引入**',
+        detail: '先看 `上界` 定义',
+        refs: [{ at: 60, text: '**重点**在这里' }],
+        evidence: []
+      }
+    ],
+    concepts: [{ term: '**大O**', definition: '渐进**上界**', refs: [] }],
+    quotes: [{ at: 300, text: '极限是一种**态度**' }]
+  }
+
+  it('每个模型字段都渲染成元素，全文不出现字面 ** / == / ` 记号', () => {
+    const host = mount(<NoteViewer note={MARKDOWN_NOTE} lesson={lesson} />)
+    const text = host.textContent ?? ''
+    expect(text).not.toContain('**')
+    expect(text).not.toContain('==')
+    expect(text).not.toContain('`')
+    // 概念术语（原 :60 裸插值 c.term）
+    expect(host.querySelector('.concept-term strong')?.textContent).toBe('大O')
+    // 时间线条目标题与转写引文
+    expect(host.querySelector('.timeline-title strong')?.textContent).toBe('引入')
+    expect(host.querySelector('.timeline-quote strong')?.textContent).toBe('重点')
+    // 章标题（mark）与章摘要（strong）
+    expect(host.querySelector('.timeline-chapter-title mark')?.textContent).toBe('开场')
+    expect(host.querySelector('.timeline-chapter-summary strong')?.textContent).toBe('上讲')
+    // 金句正文
+    expect(host.querySelector('.quote-pull-text strong')?.textContent).toBe('态度')
+    // 树节点标题（分支行与叶子行两处）
+    expect(host.querySelector('.tree-title strong')?.textContent).toBe('O(n)')
+    // 行内代码仍是 <code>，反引号不出现
+    expect(host.querySelector('.timeline-detail code')?.textContent).toBe('上界')
+  })
+
+  it('tooltip / aria 属性里的模型文本走 toPlainText——悬停不出现字面记号', () => {
+    const host = mount(<NoteViewer note={MARKDOWN_NOTE} lesson={lesson} />)
+    // 章节 chip：title = 时间 + 章摘要（纯文本）
+    const chip = host.querySelector<HTMLButtonElement>('.chapter-chip')
+    expect(chip?.getAttribute('title')).toBe('00:00 回顾上讲内容')
+    // sticky 目录：概念 tooltip 与章节标题
+    const tocConcept = host.querySelector<HTMLButtonElement>('.toc-concept')
+    expect(tocConcept?.getAttribute('title')).toBe('概念：大O（点击定位）')
+    const tocChapter = host.querySelector<HTMLButtonElement>('.toc-item:not(.toc-concept)')
+    expect(tocChapter?.querySelector('mark')?.textContent).toBe('开场')
+    // 树行的 aria-label 同样不含记号
+    const treeRow = host.querySelector<HTMLElement>('[role="treeitem"]')
+    expect(treeRow?.getAttribute('aria-label')).toBe('复杂度')
+  })
+})
+
+/**
+ * 批5 (plan 2026-09-28 H11/H12):
+ *  H11——PDF 与其它导出串行化：此前 PDF 只用自己的 pdfBusy，与 markdown/obsidian/
+ *      anki/svg/png 互不串行，两个原生保存框可以同时弹。现在 PDF 走同一个
+ *      withExportBusy，按钮读两个在途态。
+ *  H12——概念名（模型文本）拼进 document.querySelector 做锚点跳转，含引号/反斜杠
+ *      时 SyntaxError、目录高亮与跳转静默失效。转义判据抽到 shared/notes/dom.ts。
+ */
+describe('批5 H11: PDF 与其它导出串行化', () => {
+  it('任一导出在途时 PDF 按钮禁用；导出菜单同步禁用（两个保存框不得同时弹）', () => {
+    const busy = mount(
+      <NoteViewer note={NOTE} onExportPdf={() => undefined} onExport={() => undefined} onExportAnki={() => undefined} exportBusy="markdown" />
+    )
+    const pdf = busy.querySelector<HTMLButtonElement>('.note-pdf-btn')
+    expect(pdf?.disabled).toBe(true)
+    expect(pdf?.textContent).toBe('导出中…')
+    // 菜单项在 exportBusy 下同样全禁（含 PDF 在途时——kind 就是 'pdf'）
+    click(busy.querySelector('.note-export-trigger'))
+    const menuItems = [...busy.querySelectorAll<HTMLButtonElement>('.note-export-items button')]
+    expect(menuItems.length).toBeGreaterThan(0)
+    for (const item of menuItems) expect(item.disabled).toBe(true)
+
+    const pdfFlight = mount(
+      <NoteViewer note={NOTE} onExportPdf={() => undefined} onExport={() => undefined} exportBusy="pdf" />
+    )
+    expect(pdfFlight.querySelector<HTMLButtonElement>('.note-pdf-btn')?.disabled).toBe(true)
+    click(pdfFlight.querySelector('.note-export-trigger'))
+    for (const item of pdfFlight.querySelectorAll<HTMLButtonElement>('.note-export-items button')) {
+      expect(item.disabled).toBe(true)
+    }
+  })
+
+  it('PDF 自己在途时按钮读「生成 PDF 中…」', () => {
+    const host = mount(<NoteViewer note={NOTE} onExportPdf={() => undefined} pdfBusy />)
+    const pdf = host.querySelector<HTMLButtonElement>('.note-pdf-btn')
+    expect(pdf?.disabled).toBe(true)
+    expect(pdf?.textContent).toBe('生成 PDF 中…')
+  })
+
+  it('空闲时 PDF 按钮可点、文案如常', () => {
+    const host = mount(<NoteViewer note={NOTE} onExportPdf={() => undefined} />)
+    const pdf = host.querySelector<HTMLButtonElement>('.note-pdf-btn')
+    expect(pdf?.disabled).toBe(false)
+    expect(pdf?.textContent).toBe('导出 PDF 讲义')
+  })
+})
+
+describe('批5 H12: 概念名拼进 querySelector 前必须转义', () => {
+  it('概念名含引号与反斜杠时锚点跳转不抛 SyntaxError（选择器被转义）', async () => {
+    const term = '大"O\\'
+    const note: Note = { ...NOTE, concepts: [{ term, definition: '渐进上界', refs: [] }] }
+    // spy 挡住真查询：happy-dom 的选择器引擎不实现 CSS 字符串转义（Chromium 实现，
+    // 产品跑在 Electron 里），这里要断言的是「传进去的**形态**」而不是查询结果。
+    // 必须在 mount 前装上——sticky 目录的 effect 挂载时就跑一次 onScroll。
+    const spy = vi.spyOn(document, 'querySelector').mockImplementation(() => null)
+    try {
+      const host = mount(<NoteViewer note={note} />)
+      const toc = host.querySelector<HTMLButtonElement>('.toc-concept')
+      expect(toc).not.toBeNull()
+      click(toc)
+      // jumpToConcept → 下一帧才查锚点；等一个 rAF 让查询发生
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+      const selectorCalls = spy.mock.calls.map((args) => String(args[0]))
+      expect(selectorCalls).toContain('[data-concept-term="大\\"O\\\\"]')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})
+
+// 批6 (H21, plan 2026-09-28): 「复制 Markdown」是导出家族里唯一没有 busy 态的
+// 按钮——连点会并发写剪贴板、toast 也叠两三条。现在 copyBusy 驱动禁用 + 省略号。
+describe('批6 H21: 复制 Markdown 的在途态', () => {
+  it('复制在途时按钮读「复制中…」并禁用', () => {
+    const host = mount(<NoteViewer note={NOTE} onCopy={() => undefined} copyBusy />)
+    const button = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('复制'))
+    expect(button?.textContent).toBe('复制中…')
+    expect(button?.disabled).toBe(true)
+  })
+
+  it('空闲时按钮可点、文案如常', () => {
+    const onCopy = vi.fn()
+    const host = mount(<NoteViewer note={NOTE} onCopy={onCopy} />)
+    const button = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('复制'))
+    expect(button?.textContent).toBe('复制 Markdown')
+    expect(button?.disabled).toBe(false)
+    click(button ?? null)
+    expect(onCopy).toHaveBeenCalledOnce()
+  })
+})

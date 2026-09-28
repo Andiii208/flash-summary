@@ -37,6 +37,10 @@
   /* P29 (plan 2026-09-21): 荧光笔底色——==高亮== 专用。暖黄但不与 brass 系
      强调色抢戏；暗色下提亮度保对比。屏幕与 PDF（print.css）各一份同值定义。 */
   --mark-bg: rgba(233, 196, 106, 0.45);
+  /* 批4 (plan 2026-09-28 H3): SVG 内 ==高亮== 的文字色——荧光笔底色的深色变体。
+     SVG <text> 里放不了 <mark> 元素、tspan 也铺不了背景矩形，导图与 PDF 的 SVG
+     路径改用文字色区分（与 --mark-bg 同族暖黄的深色档），暗色取亮档。 */
+  --mark-ink: #6f5310;
   --border: #e3dccc;
   --border-strong: #cfc8b4;
   /* 批8 (T7/暗色): 六个「学科墨水」色升为**主题 token**——此前是渲染层内联注入的
@@ -136,6 +140,8 @@
     --warning-soft: rgba(224, 163, 106, 0.13);
     /* P29: 荧光笔底色（暗色提亮度保对比，与浅色同族暖黄）。 */
     --mark-bg: rgba(233, 196, 106, 0.32);
+    /* 批4 (H3): SVG 荧光笔文字色——暗面取亮档（与 --mark-ink 浅色档成对）。 */
+    --mark-ink: #e9c46a;
     --border: #2c332f;
     --border-strong: #3d453f;
     --scrim: rgba(0, 0, 0, 0.62);
@@ -184,6 +190,12 @@
   --border: #2c332f;
   --border-strong: #3d453f;
   --scrim: rgba(0, 0, 0, 0.62);
+  /* 批6 (H5, plan 2026-09-28): 荧光笔底色补进显式深色块——此前只有 :root 与
+     @media 暗色两份，浅色系统上手动选深色时 ==高亮== 会用亮黄底（0.45）铺暗色
+     正文。值与 @media 暗色块同值（两块必须同步）。 */
+  --mark-bg: rgba(233, 196, 106, 0.32);
+  /* 批4 (H3): SVG 荧光笔文字色——与 @media 暗色块同值（两块必须同步）。 */
+  --mark-ink: #e9c46a;
   /* 与上面 @media 块同值（两处必须同步改）。 */
   --subject-ink-1: #789f87;
   --subject-ink-2: #b39e78;
@@ -209,8 +221,10 @@
 /* ---- 分段标签：主导航、笔记视图切换、追问坞头是同一个角色（D4 = 14px / 6px 16px）。
         三者都允许换行——此前 .tabs 不换行而 .note-tabs 换行，缩窗时行为不一致。
         批2 (plan 2026-09-22-wide-screen-blank-space)：.qa-dock-tabs 入列（坞头
-        「追问 | 目录」）——不再给坞单写第三套 tab 形制。 ---- */
-.seg-tabs, .tabs, .note-tabs, .qa-dock-tabs {
+        「追问 | 目录」）——不再给坞单写第三套 tab 形制。
+        批6 (H22, plan 2026-09-28)：.seg-tabs 基类本身删除——全仓没有任何组件
+        挂它（选择器写在基元列表里只是登记用），成员组保留。 ---- */
+.tabs, .note-tabs, .qa-dock-tabs {
   display: inline-flex;
   flex-wrap: wrap;
   gap: var(--space-1);
@@ -219,7 +233,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-.seg-tabs button, .tabs button, .note-tabs button, .qa-dock-tabs button {
+.tabs button, .note-tabs button, .qa-dock-tabs button {
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -231,13 +245,14 @@
   transition: color var(--speed), background var(--speed), box-shadow var(--speed);
 }
 
-/* ---- 卡片：单值 padding（12px；大卡 16px），圆角 --radius ---- */
+/* ---- 卡片：单值 padding（12px；大卡 16px），圆角 --radius ----
+        批6 (H22)：.card-lg 基类本身从未被任何组件挂载，删除；成员组保留。 ---- */
 .card, .note-health-panel, .timeline-card, .concept-card, .formula-item, .quiz-card,
 .course-card {
   padding: var(--space-3);
   border-radius: var(--radius);
 }
-.card-lg, .task-status, .settings-block {
+.task-status, .settings-block {
   padding: var(--space-4);
   border-radius: var(--radius);
 }
@@ -247,7 +262,8 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);
 }
-.row-sm, .provider-row, .course-head, .note-upgrade-row {
+/* 批6 (H22)：.row-sm 基类本身从未被任何组件挂载，删除；成员组保留。 */
+.provider-row, .course-head, .note-upgrade-row {
   padding: var(--space-2) var(--space-2);
   border-radius: var(--radius);
 }
@@ -773,7 +789,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-export-items button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .menu-lesson-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---- tabs（度量见基元 .seg-tabs） ---- */
+/* ---- tabs（分段标签基元，度量见文件顶部基元块） ---- */
 .tabs { margin-bottom: var(--space-4); }
 .tabs button:hover { color: var(--text); }
 .tabs button.active {
@@ -1084,7 +1100,6 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .dialog-actions-extra { margin-right: auto; }
 
 /* M3 批 D: provider form helpers */
-.provider-hint { margin: 2px 0 0; color: var(--text-muted); font-size: var(--font-size-xs); }
 .provider-actions { display: flex; gap: var(--space-2); }
 .provider-test { margin: 6px 0 0; font-size: var(--font-size-sm); }
 .provider-test.ok { color: var(--success); }
@@ -1599,7 +1614,7 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 .note-upgrade-grade.fair { color: var(--warning); }
 .note-upgrade-grade.good { color: var(--success); }
 .note-upgrade-status { flex: none; min-width: 64px; text-align: right; color: var(--text-muted); font-size: var(--font-size-xs); }
-/* ---- note-tabs（度量见基元 .seg-tabs） ---- */
+/* ---- note-tabs（分段标签基元，度量见文件顶部基元块） ---- */
 .note-tabs button:hover { color: var(--text); }
 .qa-dock-tabs button:hover { color: var(--text); }
 .note-tabs button.active { background: var(--surface); color: var(--text); font-weight: 620; box-shadow: var(--shadow-sm); }
@@ -1749,7 +1764,6 @@ span.lesson-chip-btn.passive:hover { border-color: var(--border); background: tr
 /* 批4 (plan 2026-09-22 qa-dock-float-window, P41): 卡片窗口感——头部分隔线把
    「标题 + 课时 chip + 收起键」与对话流分层；坞整体 padding 维持 --space-3。 */
 .qa-dock-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
-.qa-dock-title { font-size: var(--font-size-sm); font-weight: 600; color: var(--text); flex-shrink: 0; }
 .qa-dock-no-lesson { font-size: var(--font-size-xs); color: var(--text-muted); }
 .qa-dock-collapse { margin-left: auto; flex-shrink: 0; }
 /* 批4 (P41): margin-bottom: 0 兜底已删（base 规则也不再写 margin）——
@@ -2157,7 +2171,6 @@ span.timeline-stamp { cursor: default; }
   background: var(--brass-soft);
   border-radius: 0 var(--radius) var(--radius) 0;
 }
-.timeline-images { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .timeline-thumb { position: relative; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: zoom-in; background: var(--surface-2); padding: 0; width: 168px; height: 96px; flex-shrink: 0; }
 /* P26 (plan 2026-09-21): contain——PPT 页是 4:3，cover 会裁掉约四分之一；
    关键帧 16:9 在 1.75:1 盒里两侧微裁也随之消除（卡片自带 surface-2 底， Letterbox 不突兀）。 */
@@ -2323,9 +2336,6 @@ button.concept-ref:hover { color: var(--accent); }
 .mindmap-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-bottom: 8px; }
 .mindmap-toolbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 .mindmap-toolbar-spacer { flex: 1; }
-/* P27 (plan 2026-09-21): 缩放倍率常驻显示。等宽数字（tabular-nums）避免百分比
-   跳动时文本宽度抖动；字号/颜色走既有 token，不新增第三种字阶。 */
-.mindmap-zoom-label { font-size: var(--font-size-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .mindmap-search {
   font: inherit; font-size: var(--font-size-sm); color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -2875,3 +2885,16 @@ button.concept-ref:hover { color: var(--accent); }
 .bili-qr img { border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: #fff; }
 .bili-qr-hint { font-size: var(--font-size-sm); color: var(--text); }
 .bili-qr-status { font-size: var(--font-size-xs); color: var(--text-muted); }
+
+/* ==========================================================================
+   批4 (plan 2026-09-28 H3): SVG 内的行内 markdown —— md-lite token 的表现映射。
+   SVG <text> 里放不了 <strong>/<mark>，导图与 PDF 讲义把 token 序列切成 tspan
+   分段（src/renderer/components/SvgInline.tsx）：strong → font-weight，
+   ==高亮== → 文字色取 --mark-ink（荧光笔底色的深色变体；tspan 铺不了背景矩形，
+   用文字色区分，纸面白底另有 print.css 的固定深色钉住）。
+   放在文件末尾是有意的：mindmap 的 .mindmap-link-label/.mindmap-label 等同级
+   特异度规则各设了 fill/font-weight，晚定义才能压过它们（成员规则自己不重写
+   这两个属性，仍是「同一角色一处定义」）。
+   ========================================================================== */
+.md-svg-bold { font-weight: 700; }
+.md-svg-mark { fill: var(--mark-ink); font-weight: 600; }

@@ -113,6 +113,11 @@
   color: inherit;
   padding: 0 1px;
 }
+/* 批4 (plan 2026-09-28 H3): 导图 SVG 里的 ==高亮==——tspan 铺不了背景，改用
+   文字色（荧光笔底色的深色变体）。讲义恒定印在纸面白底（printBackground +
+   .ph-doc 强制白底），所以这里钉固定深色而不是 :root 的 --mark-ink：用户选
+   深色主题时 --mark-ink 是亮档，印到白纸上会看不见。 */
+.ph-doc .md-svg-mark { fill: #6f5310; font-weight: 600; }
 .ph-quote-at {
   font-family: monospace;
   font-size: 9pt;

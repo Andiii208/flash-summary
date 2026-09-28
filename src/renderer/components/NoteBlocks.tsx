@@ -8,6 +8,7 @@ import { groupTimelineByChapters } from '../../shared/notes/chapters'
 import { foldNearDuplicateFrames } from '../../shared/notes/evidence-groups'
 import { groupFramesByChapters } from '../../shared/notes/frame-groups'
 import { formatTime } from '../../shared/notes/format'
+import { toPlainText } from '../../shared/notes/md-lite'
 import type { NoteAttachmentInfo } from '../../shared/bridge'
 import type { ViewBlock } from '../../shared/notes/views'
 import { MdLite } from './MdLite'
@@ -55,7 +56,11 @@ function BlockRenderer({ block, getAttachment, manifest, version, onOpenSource }
         <div class="concept-grid">
           {block.items.map((c) => (
             <div key={c.term} class="concept-card" data-concept-term={c.term}>
-              <span class="concept-term">{c.term}</span>
+              {/* 批4 (H3): 术语名同样是模型文本——**加粗** 会印字面星号，
+                  与下面的定义同待遇过 InlineText（AGENTS 硬规定）。 */}
+              <span class="concept-term">
+                <InlineText text={c.term} />
+              </span>
               {/* 批4: 定义里的 ** 加粗照模型本意渲染（与 PDF 同待遇） */}
               <p class="concept-def">
                 <InlineText text={c.definition} />
@@ -149,10 +154,12 @@ export function QuizCards({ items }: { items: QuizItem[] }): JSX.Element {
       {items.map((item) => {
         const key = item.question
         const open = revealed.has(key)
-        const anchor = item.source === 'concept' ? `概念 · ${item.term ?? ''}` : '考点'
         return (
           <article key={key} class={`quiz-card${open ? ' revealed' : ''}`}>
-            <span class="quiz-tag">{anchor}</span>
+            {/* 批4 (H3): 概念锚点里的术语名也是模型文本 */}
+            <span class="quiz-tag">
+              {item.source === 'concept' ? <>概念 · <InlineText text={item.term ?? ''} /></> : '考点'}
+            </span>
             <button class="quiz-flip" onClick={() => toggle(key)} aria-expanded={open}>
               <p class="quiz-question">
                 <InlineText text={item.question} />
@@ -183,7 +190,8 @@ function QuoteList({ items }: { items: Quote[] }): JSX.Element {
       {items.map((item) => (
         <blockquote key={`${item.at}:${item.text.slice(0, 12)}`} class="quote-pull">
           <span class="quote-pull-at">{formatTime(item.at)}</span>
-          <p class="quote-pull-text">「{item.text}」</p>
+          {/* 批4 (H3): 讲者原话也可能被模型加 ** 强调——原样插值印字面星号 */}
+          <p class="quote-pull-text">「<InlineText text={item.text} />」</p>
         </blockquote>
       ))}
     </div>
@@ -223,7 +231,7 @@ function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: num
     <div
       class="tree-row-wrap"
       role="treeitem"
-      aria-label={node.title}
+      aria-label={toPlainText(node.title)}
       aria-level={depth + 1}
       aria-expanded={hasChildren ? open : undefined}
     >
@@ -233,13 +241,16 @@ function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: num
              tabindex），Tab 落在按钮上时展开态仍要报得出来。 */
           <button class="tree-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
             <span class="tree-caret">{open ? <ChevronDown size={11} strokeWidth={1.75} /> : <ChevronRight size={11} strokeWidth={1.75} />}</span>
-            <span class="tree-title">{node.title}</span>
+            {/* 批4 (H3): 节点标题是模型文本——加粗与荧光笔记号都走 InlineText */}
+            <span class="tree-title">
+              <InlineText text={node.title} />
+            </span>
             {!open && <span class="tree-count">{node.children.length}</span>}
           </button>
         ) : (
           <span class="tree-leaf" style={`margin-left:${depth === 0 ? 22 : 22}px`}>
             <span class="tree-dot" />
-            {node.title}
+            <InlineText text={node.title} />
           </span>
         )}
       </div>
@@ -297,8 +308,13 @@ function TimelineCards({ entries, chapters, getAttachment, manifest, version: ve
           return (
             <div class="timeline-chapter" key={`chapter-${item.chapter.at}-${i}`} data-chapter-at={item.chapter.at}>
               <span class="timeline-chapter-at">{formatTime(item.chapter.at)}</span>
-              <h4 class="timeline-chapter-title">{item.chapter.title}</h4>
-              <p class="timeline-chapter-summary">{item.chapter.summary}</p>
+              {/* 批4 (H3): 章标题与章摘要同是模型文本 */}
+              <h4 class="timeline-chapter-title">
+                <InlineText text={item.chapter.title} />
+              </h4>
+              <p class="timeline-chapter-summary">
+                <InlineText text={item.chapter.summary} />
+              </p>
             </div>
           )
         }
@@ -331,14 +347,14 @@ function TimelineCards({ entries, chapters, getAttachment, manifest, version: ve
               <span class="timeline-open-src-label">原片</span>
               </button>
               )}
-<h4 class="timeline-title">{entry.title}</h4>
+<h4 class="timeline-title"><InlineText text={entry.title} /></h4>
             </header>
             <p class="timeline-detail">
               <InlineText text={entry.detail} />
             </p>
             {refs.map((ref, j) => (
               <blockquote key={j} class={`timeline-quote${j === 0 && !showAllRefs ? ' best' : ''}${!side && j === 0 && !showAllRefs ? ' hero' : ''}`}>
-                「{ref.text}」<span class="quote-at">{formatTime(ref.at)}</span>
+                「<InlineText text={ref.text} />」<span class="quote-at">{formatTime(ref.at)}</span>
               </blockquote>
             ))}
             {entry.refs.length > 1 && (
@@ -356,7 +372,8 @@ function TimelineCards({ entries, chapters, getAttachment, manifest, version: ve
                     title={`放大查看（${img.origin === 'evidence' ? '笔记引用的画面' : '临近关键帧'}${img.origin === 'nearest' && frameAt(img.ref) != null ? ` · 画面在 ${formatTime(frameAt(img.ref) as number)}` : ''}）`}
                     onClick={() => setZoom({ img, entryTitle: entry.title, at: entry.at })}
                   >
-                    <img src={img.dataUrl} alt={`${entry.title}的课堂画面`} loading="lazy" />
+                    {/* 批4 (H3): alt 同样面向用户——模型标题里的 ** 不进 alt */}
+                    <img src={img.dataUrl} alt={`${toPlainText(entry.title)}的课堂画面`} loading="lazy" />
                     <span class={`thumb-origin ${img.origin}`}>{img.origin === 'evidence' ? '引用画面' : '临近画面'}</span>
                   </button>
                 ))}
@@ -369,7 +386,7 @@ function TimelineCards({ entries, chapters, getAttachment, manifest, version: ve
       <Dialog
         open={zoom != null}
         kind="view"
-        title={zoom != null ? `${zoom.entryTitle} · ${formatTime(zoom.at)}` : ''}
+        title={zoom != null ? `${toPlainText(zoom.entryTitle)} · ${formatTime(zoom.at)}` : ''}
         confirmLabel="关闭"
         extraActions={
           onOpenSource != null && zoom != null ? (
@@ -533,8 +550,10 @@ export function EvidenceGallery({ note, getAttachment, manifest, version: versio
               {cg.chapter != null ? (
                 <>
                   <span class="gallery-chapter-at">{formatTime(cg.chapter.at)}</span>
-                  {cg.chapter.title}
-                  <span class="gallery-chapter-summary">{cg.chapter.summary}</span>
+                  <InlineText text={cg.chapter.title} />
+                  <span class="gallery-chapter-summary">
+                    <InlineText text={cg.chapter.summary} />
+                  </span>
                 </>
               ) : (
                 <span class="gallery-chapter-loose">其他画面</span>

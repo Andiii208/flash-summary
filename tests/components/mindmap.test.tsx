@@ -145,7 +145,10 @@ describe('MindMap M1.2 工具栏', () => {
     const toolbar = withoutCb.querySelector('[data-testid="mindmap-toolbar"]')!
     expect(Array.from(toolbar.querySelectorAll('button')).map((b) => b.textContent)).not.toContain('全图')
     expect(toolbar.querySelector('[data-testid="mindmap-zoom-in"]')).toBeNull()
-    expect(toolbar.querySelector('.mindmap-zoom-label')).toBeNull()
+    // 批6 (H22, plan 2026-09-28)：原先这里还有一条「.mindmap-zoom-label 为 null」的
+    // 反向断言——随该选择器从 style.css 删除一并移除。理由：它断言的控件已不存在于
+    // 任何一处（零输出），继续留着只是对一个死字符串喊话；缩放入口确实已撤由上一行
+    // 的 zoom-in/zoom-out 断言与工具栏按钮清单共同钉住。
     let opened = 0
     const withCb = mountMindMap(TREE, { onOpenFullMap: () => { opened += 1 } })
     const full = withCb.querySelector<HTMLButtonElement>('[data-testid="mindmap-full-map"]')!
@@ -657,5 +660,149 @@ describe('批5 关系模式 + PNG 导出（2026-09-17）', () => {
 
     const none = mount({})
     expect([...none.querySelectorAll('button')].some((b) => b.textContent === '导出 PNG')).toBe(false)
+  })
+})
+
+/**
+ * 批4 (plan 2026-09-28 H3): SVG 路径的文本渲染纪律。SVG <text> 里放不了
+ * <strong>/<mark> HTML 元素，md-lite 的 token 序列映射为多个 <tspan> 分段
+ * （src/renderer/components/SvgInline.tsx）：strong → font-weight，
+ * ==高亮== → 文字色（荧光笔底色的深色变体）。这里钉住三件事：
+ *   1. 模型输出的 **xxx** / ==xxx== 不印字面记号；
+ *   2. 分段渲染成了 tspan（不是把记号硬塞进 text）；
+ *   3. 错位纪律——x 只落在每行首段，后续分段续在同一文本块里，
+ *      同一个 text-anchor 基准不被破坏。
+ */
+describe('批4 H3: SVG 内联 markdown 的 tspan 分段', () => {
+  const MARKED_TREE: TreeNode = {
+    title: '根',
+    children: [
+      { title: '**第一章**', children: [{ title: '==重点==', children: [] }] },
+      { title: '第二章', children: [] }
+    ]
+  }
+
+  it('节点标题的 **加粗** / ==高亮== 切成 tspan 分段，不印字面记号', () => {
+    const host = mountMindMap(MARKED_TREE)
+    const texts = [...host.querySelectorAll('.mindmap-label')]
+    expect(texts.map((t) => t.textContent).join('|')).toBe('根|第一章|重点|第二章')
+    // 全文没有字面记号
+    expect(host.querySelector('svg')!.textContent).not.toContain('**')
+    expect(host.querySelector('svg')!.textContent).not.toContain('==')
+    // strong/mark 分段存在，且带表现类
+    const bold = host.querySelector<SVGTSpanElement>('.mindmap-label tspan.md-svg-bold')
+    expect(bold?.textContent).toBe('第一章')
+    const marked = host.querySelector<SVGTSpanElement>('.mindmap-label tspan.md-svg-mark')
+    expect(marked?.textContent).toBe('重点')
+    // 普通文本段不带类（继承父 <text> 的字色）
+    const plain = [...host.querySelectorAll<SVGTSpanElement>('.mindmap-label tspan')].filter((s) => s.getAttribute('class') == null)
+    expect(plain.map((s) => s.textContent)).toContain('根')
+  })
+
+  it('错位纪律：x 只落在每行首段，后续分段不带 x（同一 text-anchor 基准）', () => {
+    const host = mountMindMap(MARKED_TREE)
+    const bold = host.querySelector<SVGTSpanElement>('.mindmap-label tspan.md-svg-bold')!
+    const parentText = bold.closest('text')!
+    const tspans = [...parentText.querySelectorAll<SVGTSpanElement>('tspan')]
+    // 首段带绝对 x=12；bold 分段不带 x 也不带 dy——它续在首段之后
+    expect(tspans[0]?.getAttribute('x')).toBe('12')
+    expect(tspans[1]?.getAttribute('x') ?? null).toBeNull()
+    expect(tspans[1]?.getAttribute('dy') ?? null).toBeNull()
+    // 长标题换行后：每个新行重新拿绝对 x，续段则没有——换行位置不因分段漂移
+    const multi = mountMindMap({ title: '很长很长的标题'.repeat(30) + '**粗结尾**', children: [] })
+    const lines = [...multi.querySelectorAll<SVGTSpanElement>('.mindmap-label tspan')]
+    expect(lines.filter((s) => s.getAttribute('x') === '12').length).toBeGreaterThan(1)
+    // 不成立的形态：只有 dy 没有 x（会脱离绝对基准）必须一次都不出现
+    for (const line of lines) {
+      expect(line.getAttribute('dy') != null && line.getAttribute('x') == null).toBe(false)
+    }
+  })
+
+  it('aria-label 与 <title> 工具提示走 toPlainText——悬停不出现字面记号', () => {
+    const host = mountMindMap(MARKED_TREE)
+    const branch = Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node[role="button"]')).find((g) =>
+      g.getAttribute('aria-label')?.startsWith('第一章')
+    )
+    // aria-label 与 <title> 都是纯文本（去掉记号），但可读性不丢
+    expect(branch?.getAttribute('aria-label')).toBe('第一章（点击折叠，双击聚焦此分支）')
+    expect(branch?.querySelector('title')?.textContent).toBe('第一章（点击折叠，双击聚焦此分支）')
+    // 叶子节点同理（荧光笔记号也去掉）
+    const leaf = Array.from(host.querySelectorAll<SVGGElement>('.mindmap-node')).find((g) => g.getAttribute('aria-label') === '重点')
+    expect(leaf).toBeDefined()
+  })
+
+  it('交叉关系标签与关系模式的关系词同样切 tspan 分段', () => {
+    const linked = mountMindMap(TREE, {
+      conceptLinks: [{ from: '1.1 概念', to: '第二章', label: '**对比**' }]
+    })
+    const label = linked.querySelector('.mindmap-link-label')!
+    expect(label.textContent).toBe('对比')
+    expect(label.querySelector('tspan.md-svg-bold')?.textContent).toBe('对比')
+    expect(label.closest('svg')!.textContent).not.toContain('**')
+
+    // 关系模式：概念节点标题与边标签
+    const concepts = [
+      { term: '**学习率**', definition: '步长参数'.repeat(3), refs: [] },
+      { term: '过拟合', definition: '训练高测试低'.repeat(3), refs: [] }
+    ]
+    const rel = mountMindMap(TREE, {
+      concepts,
+      conceptLinks: [{ from: '**学习率**', to: '过拟合', label: '==因果==' }]
+    })
+    const toggle = [...rel.querySelectorAll('button')].find((b) => b.textContent === '关系模式') as HTMLButtonElement
+    act(() => toggle.click())
+    const term = rel.querySelector<SVGTextElement>('.mindmap-relation-term')!
+    expect(term.textContent).toBe('学习率')
+    // 术语被断成两行：**学习 / 率** —— 两半都带加粗类（跨行延续态），无字面星号
+    const termBold = [...term.querySelectorAll<SVGTSpanElement>('tspan.md-svg-bold')]
+    expect(termBold.length).toBeGreaterThanOrEqual(2)
+    expect(termBold.map((s) => s.textContent).join('')).toBe('学习率')
+    const edge = rel.querySelector('.mindmap-link-label')!
+    expect(edge.textContent).toBe('因果')
+    expect(edge.querySelector('tspan.md-svg-mark')?.textContent).toBe('因果')
+  })
+
+  it('跨行样式连续：一对记号被断行拆开时两半都保持样式，且不印字面记号', () => {
+    // 足够长的标题让 wrapTitleLines 在 **加粗** 中间断行（几何层按**原文字符数**
+    // 断行，行界上会剩孤零零的记号）——这正是 tspan 方案必须守住的形态。
+    const boldText = '一条长得必须跨行的加粗结论'.repeat(3)
+    const long: TreeNode = { title: '引言与背景'.repeat(10) + `**${boldText}**`, children: [] }
+    const host = mountMindMap(long)
+    const svg = host.querySelector('svg')!
+    // 标题确实被断成多行（否则本用例测不到跨行形态）
+    expect(svg.querySelectorAll<SVGTSpanElement>('.mindmap-label tspan').length).toBeGreaterThan(2)
+    expect(svg.textContent).not.toContain('**')
+    const boldParts = [...svg.querySelectorAll<SVGTSpanElement>('tspan.md-svg-bold')]
+    // 加粗文字被断行切开：两半都带加粗类，拼回来仍是完整原文
+    expect(boldParts.length).toBeGreaterThanOrEqual(2)
+    expect(boldParts.map((s) => s.textContent).join('')).toBe(boldText)
+    // 跨行时每行首段仍带绝对 x=12（换行基准不漂移）
+    expect([...svg.querySelectorAll<SVGTSpanElement>('.mindmap-label tspan')].some((s) => s.getAttribute('x') === '12')).toBe(true)
+  })
+
+  it('弹出层标题与概念术语过 InlineText（原 <strong> 裸插值会印字面星号）', () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const tree: TreeNode = {
+      title: '根',
+      children: [{ title: '第一章', terms: ['**递归**'], children: [{ title: '1.1', children: [] }] }]
+    }
+    // 概念术语带荧光笔记号——浮层标题是节标题（第一章，无记号），术语行过 InlineText
+    act(() => {
+      render(<MindMap tree={tree} concepts={[{ term: '**递归**', definition: '函数**调用自身**的过程', refs: [] }]} />, host)
+    })
+    act(() => {
+      host.querySelector('.mindmap-info')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const popover = host.querySelector('[data-testid="mindmap-popover"]')!
+    expect(popover.textContent).not.toContain('**')
+    // 浮层标题是节点标题（原裸插值点）——纯文本无记号
+    expect(popover.querySelector('.mindmap-popover-head strong')?.textContent).toBe('第一章')
+    // 概念术语行：两层 strong（外层是结构 <strong>，内层是 InlineText 渲染的记号）
+    expect(popover.querySelector('.mindmap-popover-concept strong strong')?.textContent).toBe('递归')
+    const bolds = Array.from(popover.querySelectorAll('.mindmap-popover-concept strong strong')).map((s) => s.textContent)
+    expect(bolds).toEqual(['递归'])
+    // 定义里的 **调用自身** 渲染成同级的 <strong>（不再是字面星号）
+    expect(Array.from(popover.querySelectorAll('.mindmap-popover-concept strong')).map((s) => s.textContent)).toContain('调用自身')
   })
 })

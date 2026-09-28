@@ -79,7 +79,7 @@ function jumpToChapter(at: number): void {
  * 批2 (plan 2026-09-22-wide-screen-blank-space)：R1+ 升格——
  * ① 头部从「追问 + 收起」改为**分段 tab（追问 / 目录）**——坞从「一个聊天框」
  *    升格为「笔记副驾驶面板」，目录吃掉笔记页右侧空白的一大块；tab 基态复用
- *    .seg-tabs 基元（选择器列表在 style.css 顶部基元块），不新增第三套 tab 样式；
+ *    分段标签基元（.tabs 组，选择器列表在 style.css 顶部基元块），不新增第三套 tab 样式；
  * ② 空对话态给**建议问题**（章节标题现成数据，点一下即问）；
  * ③ 长答案可**全宽查看**——挂 .fullscreen-overlay 基元 + scroll lock + focus trap +
  *    Esc 只关本层（与 CourseBrowser 同款挂法），窄卡里挤着的长回答有了出口。
