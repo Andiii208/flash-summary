@@ -746,10 +746,11 @@ async function probeMindmap(cdp, out) {
   await sleep(1500)
   out.mindmap = await cdp.json(MINDMAP_GEOMETRY)
   // ① 无内部缩放入口：工具栏里没有 放大/缩小/倍率/适应窗口。
+  // 批6 (H22, plan 2026-09-28)：zoomLabel 探测随 .mindmap-zoom-label 规则一并删除
+  // ——P51 起缩放整套移除，该选择器已从 style.css 删掉，探到 null 也不再说明任何问题。
   out.mindmapNoZoomControls = await cdp.json(`(() => ({
     zoomIn: document.querySelector('[data-testid="mindmap-zoom-in"]') != null,
     zoomOut: document.querySelector('[data-testid="mindmap-zoom-out"]') != null,
-    zoomLabel: document.querySelector('.mindmap-zoom-label') != null,
     fitBtn: [...document.querySelectorAll('.mindmap-toolbar button')].some(b => b.textContent === '适应窗口'),
     fullBtn: [...document.querySelectorAll('.mindmap-toolbar button')].some(b => b.textContent === '全图')
   }))()`)

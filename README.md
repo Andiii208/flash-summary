@@ -64,7 +64,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 +------------------------------+------------------------------+
 | Main (src/main)                                             |
 | app-context      assemble library/session/Provider/ffmpeg   |
-| ipc              62 channels: school/providers/tasks/qa/    |
+| ipc              66 channels: school/providers/tasks/qa/    |
 |                  lessons/settings/log; serial, cancelable   |
 | tasks/orchestrator  6-stage pipeline (ASR/multimodal)       |
 | media           ffmpeg audio/keyframes/timeout; phash dedup |
@@ -85,7 +85,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（1516 个用例，140 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（1572 个用例，142 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -95,7 +95,7 @@ src/
   preload/    类型化桥接（contextBridge）
   renderer/   Preact UI（课程树/任务/笔记/设置三页签 + 笔记页右侧追问坞，CSS 变量设计系统）
   shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
-tests/       140 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
+tests/       142 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
 promo/       宣发宣传动画：promo.html 分镜舞台（1920×1080，t 的纯函数）+ build-assets.mjs 备料
              + main.mjs 渲染宿主；产物 = promo/out/promo.mp4（27s / 九拍，帧精确、零新依赖）
 docs/skills/   工艺规范（note-craft 笔记工艺 / ui-layout 排版规范——改对应链路的会话先读）
@@ -133,7 +133,7 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 ## ✅ 当前状态
 
 - **v0.7.11 已发布（2026-09-23）**：本版主题为**宽屏吃空白整改**——窗口化 ↔ 最大化不再「越放大越空」：任务面板弹性撑满 + 任务卡双列、笔记正文装订线居中（640 阅读轴不变）、追问坞升格为「追问/目录」双 tab 的笔记副驾面板（宽屏常显、高度放宽、建议问题、长答案全宽查看）、设置页两栏、「我的学习/全部课程」弹层解除宽度封顶、零课程首页引导 + 数据流向双卡；另有 P51 思维导图改版（去内部缩放、页面下滑浏览、「全图」近全屏弹层）随本版归位发布。仓库同期更名为 `Andiii208/flash-summary`（appId / userData / 包名未动，登录态与密钥不受影响）。
-- **1516 个测试**（lint / typecheck / test / build / smoke 五道已全绿；smoke 40/40、打包产物 asar 抽验与构建逐 sha256 一致；CI 与 Smoke 两条工作流对当前提交 success）。含笔记体验整改 v4、批 D、UX 整改批1–批6 + 补批、追问坞悬浮小卡片整改全部批次、宽屏吃空白四批 + 补批；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **1572 个测试**（lint / typecheck / test / build / smoke 五道已全绿；smoke 40/40、打包产物 asar 抽验与构建逐 sha256 一致；CI 与 Smoke 两条工作流对当前提交 success）。含笔记体验整改 v4、批 D、UX 整改批1–批6 + 补批、追问坞悬浮小卡片整改全部批次、宽屏吃空白四批 + 补批；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - **装机走查项（等真人验收）**：三个页签（任务/笔记/设置）与零课程首页在宽屏的观感、小窗一次性提示、追问坞目录跳转、导图全图弹层、最大化装订线居中观感（浅/暗实拍存 `.ui-shots/`）。
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
@@ -153,7 +153,7 @@ npm install
 npm run dev          # 开发模式（热重载）
 npm run lint         # ESLint
 npm run typecheck    # TypeScript strict（node + web 双工程）
-npm test             # vitest（1516 用例 / 140 文件）
+npm test             # vitest（1572 用例 / 142 文件）
 npm run build        # electron-vite 构建到 out/
 npm run smoke        # 构建并运行 CDP 进程级烟测（40 项组合断言）
 npm run dist         # 构建 NSIS 安装包到 release/

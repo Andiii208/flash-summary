@@ -36,7 +36,7 @@ version: 1.0.0
 
 **纪律**：`gap` / `line-height` / `letter-spacing` 只能取上表的 token（`gap: 0` 例外），
 由 `tests/style-scale.test.ts` 强制，新增裸值即红。`padding` 同刻度但走**基线 allowlist**
-（2026-09-20 批8 起）：存量野值（73 处 / 46 个值）登记在测试的
+（2026-09-20 批8 起）：存量野值（71 处 / 44 个值）登记在测试的
 `KNOWN_PADDING_VIOLATIONS` 里并注明归属，规则**只减不增**——出现 allowlist 外的新野值
 或该删未删的条目都会红；allowlist 用 `node scripts/style-padding-baseline.mjs` 重新生成
 （打印当前值清单与出现位置）。修 padding 时优先直接改走 token 并从清单里删条目。
@@ -48,9 +48,9 @@ version: 1.0.0
 
 | 基元 | 规格 | 成员（选择器列表在 style.css 顶部基元块） |
 |---|---|---|
-| `.seg-tabs` | 14px / `8px 16px`，容器 `gap 4px + padding 4px`，允许换行 | `.tabs`（主导航）、`.note-tabs`（笔记视图切换）、`.qa-dock-tabs`（追问坞头「追问/目录」，2026-09-22 批2 入列） |
-| `.card` / `.card-lg` | padding 12px / 16px，圆角 `--radius` | 概念卡、公式卡、自测卡、时间线卡、体检面板、课程卡（大卡：任务状态条、设置块） |
-| `.row` / `.row-sm` | padding `8px 12px` / `8px 8px`，圆角 `--radius` | 历史行、笔记库行、考点卡 / provider 行、课程行、升级行（`.row-sm` 的横向内缩是 `--space-2`=8px——2026-09-21 批7 订正：规格表此前沿用了 8057786 收敛前的旧值 10px） |
+| 分段标签（原 `.seg-tabs` 基类，2026-09-28 批6 删除——全仓无组件挂它，登记用基类是死重量） | 14px / `8px 16px`，容器 `gap 4px + padding 4px`，允许换行 | `.tabs`（主导航）、`.note-tabs`（笔记视图切换）、`.qa-dock-tabs`（追问坞头「追问/目录」，2026-09-22 批2 入列） |
+| `.card`（原另有 `.card-lg` 基类，批6 删除） | padding 12px / 16px，圆角 `--radius` | 概念卡、公式卡、自测卡、时间线卡、体检面板、课程卡（大卡：任务状态条、设置块） |
+| `.row`（原另有 `.row-sm` 基类，批6 删除） | padding `8px 12px` / `8px 8px`，圆角 `--radius` | 历史行、笔记库行、考点卡 / provider 行、课程行、升级行（`.row-sm` 的横向内缩是 `--space-2`=8px——2026-09-21 批7 订正：规格表此前沿用了 8057786 收敛前的旧值 10px） |
 | `.group-head` | 12.5px / 620 / `--text-secondary` | 笔记库分组标题、`MyStudyPanel` 组头（侧栏一级 `.sidebar-head h2` 是 14px/650，内容区小节标题见 `.subheading` 14px/620） |
 | `.count-pill` | 高 16px 药丸、等宽数字、`flex-shrink: 0` | 树节点数、笔记库计数、侧栏课程数、全部课程数 |
 | `.tag` | 高 18px 药丸（去掉半像素 padding） | `.chip`、`.badge`、`.formula-tag`、`.callout-tag`、`.quiz-tag`、`.bili-chip` |
