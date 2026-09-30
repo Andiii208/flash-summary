@@ -2,9 +2,9 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.13] — 2026-09-30 · 发布前体检收口 + 仓库公开 + 检查更新
 
-> 方案：docs/plans/2026-09-30-public-release-autoupdate.md（发布前第二轮流体检 + 仓库转公开 + 指向 GitHub Releases 的更新功能）。版本号未 bump，按 scripts/release.md 发布时收编。
+> 方案：docs/plans/2026-09-30-public-release-autoupdate.md（发布前第二轮流体检 + 仓库转公开 + 指向 GitHub Releases 的更新功能）。
 
 ### 新增
 
