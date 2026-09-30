@@ -2,6 +2,19 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+> 方案：docs/plans/2026-09-30-public-release-autoupdate.md（发布前第二轮流体检 + 仓库转公开 + 指向 GitHub Releases 的更新功能）。版本号未 bump，按 scripts/release.md 发布时收编。
+
+### 新增
+
+- **检查更新（指向 GitHub Releases）**：设置 → 关于与声明新增「更新」区块——手动点「检查更新」才会联网，只从本项目 GitHub Releases 读取版本与安装包信息（无使用数据、无后台检查）；发现新版本先弹层确认，下载过程显示进度，完成后可「立即重启安装」或「稍后」（已下载的更新包会在下次退出应用时自动装上）。安装包未签名，Windows 安装/更新时可能提示 SmartScreen（DISCLAIMER §8 已写明）。
+
+### 工程与契约
+
+- **新运行时依赖 electron-updater（MIT）**：THIRD-PARTY-NOTICES + LICENSES/electron-updater-MIT.txt 同步；桥面新增 `update` 组（check/download/install/onEvent），三个 invoke 均不接 URL（更新源钉死在 main 侧 UPDATE_FEED 常量）；smoke EXPECTED_BRIDGE 同步并增补 update:check 探针。
+- **测试基建**：补完上次 H17 flaky 收尾漏掉的一半——waitForGone 的 3s 窗口抬到 8s（上次只抬了 waitForSelector），两条 P13 用例 it 级超时留量到 15s；全量 1572→1599。
+
 ## [0.7.12] — 2026-09-28 · 全项目体检整改（安全红线 + 文本纪律 + 契约防漂移）
 
 > 方案：docs/plans/2026-09-28-full-project-health-audit.md（Andiii 要求发版宣发前做一次全方位体检：找屎山、汇总、出优化计划）。四路并行审计（main / renderer / shared+tests / 构建依赖文档）+ 全量门禁实测，30 项问题分九批修复，测试 1467→1572、smoke 40/40。
