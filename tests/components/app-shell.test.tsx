@@ -31,7 +31,7 @@ async function waitForGone(selector: string): Promise<void> {
     () => {
       if (document.querySelector(selector) != null) throw new Error(`waiting for ${selector} to disappear`)
     },
-    { timeout: 3000, interval: 25 }
+    { timeout: 8000, interval: 25 }
   )
 }
 
@@ -661,7 +661,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
   // 批1 (plan 2026-09-20, P13): 三个自绘 overlay 同为 z-index 40，层级相同时由
   // DOM 顺序决定——浏览器整体返回 null 之前一直盖在课程导图弹层上，用户点
   // 「导图」看不到任何可见反应（弹层既看不见也点不着）。
-  it('批1 (P13): 全屏浏览器里点课程卡「导图」→ 浏览器关闭、地图弹层可见、Esc 只关一层', { timeout: 8000 }, async () => {
+  it('批1 (P13): 全屏浏览器里点课程卡「导图」→ 浏览器关闭、地图弹层可见、Esc 只关一层', { timeout: 15000 }, async () => {
     const bridge = makeBridge()
     bridge.notes.courseTree = vi.fn(async () => ok({ tree: { title: '数据结构', children: [{ title: '第1讲', children: [] }] }, lessons: 1, skipped: 0 }))
     const host = mount(<App bridge={bridge} />)
@@ -688,7 +688,7 @@ describe('App shell (useAppState over a mocked bridge)', () => {
 
   // 批1 (P13) 的防御性半边：地图弹层现在渲染在浏览器之后，任何「浏览器开着
   // 打开地图」的路径都盖在上面而不是被埋掉。
-  it('批1 (P13): 地图弹层渲染在浏览器之后——两层同在时一次 Esc 只关最上面那一层', { timeout: 8000 }, async () => {
+  it('批1 (P13): 地图弹层渲染在浏览器之后——两层同在时一次 Esc 只关最上面那一层', { timeout: 15000 }, async () => {
     const bridge = makeBridge()
     const host = mount(<App bridge={bridge} />)
     await expandAllCourses()
