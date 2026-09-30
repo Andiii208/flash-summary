@@ -129,7 +129,10 @@ describe('feedback IPC（声明批6：只给入口、不上报）', () => {
     // 红线「只给入口、不上报」的自动化形式：真要在反馈通道里加自动发送，
     // 这个断言会先红，逼着人回来看这条红线。
     const preloadSource = await import('fs').then((fs) => fs.readFileSync('src/preload/index.ts', 'utf8'))
-    const feedbackBlock = preloadSource.slice(preloadSource.indexOf('  feedback: {'))
+    // 精确切 feedback 组：从 `  feedback: {` 到下一处两空格缩进的 `},` 收尾。
+    // （曾切到文件末尾——后续新增的组会被卷进来，那时这条红线断言就失真了。）
+    const rest = preloadSource.slice(preloadSource.indexOf('  feedback: {'))
+    const feedbackBlock = rest.slice(0, rest.indexOf('\n  },'))
     const methods = [...feedbackBlock.matchAll(/^\s{4}(\w+):/gm)].map((matched) => matched[1])
     expect(methods).toEqual(['openForm', 'diagnostics'])
     // 顺便：通道里不出现常见的上报词汇。
