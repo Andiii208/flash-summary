@@ -4,6 +4,7 @@ import type { AppSettingsInfo } from '../../shared/bridge'
 import { formatStamp } from '../../shared/format'
 import { ProviderPanel, type ProviderPanelProps } from './ProviderPanel'
 import { AboutPanel } from './AboutPanel'
+import type { UpdatePanelProps } from './UpdatePanel'
 import type { SessionState } from './TopBar'
 import { OWN_ACCOUNT_HINT } from './TopBar'
 import { Colonnade } from '../ui/Colonnade'
@@ -55,6 +56,8 @@ export interface SettingsPanelProps {
   onOpenFeedback?: () => void
   /** 2026-09-21: 打开作者的 GitHub 主页（地址在 main 侧，无参 IPC）。 */
   onOpenAuthor?: () => void
+  /** 2026-09-30: 「关于与声明」里的手动更新检查（未接线时整块不渲染）。 */
+  update?: UpdatePanelProps
 }
 
 const SESSION_LABELS: Record<SessionState, string> = {
@@ -317,7 +320,7 @@ export function SettingsPanel(props: SettingsPanelProps): JSX.Element {
       </section>
 
       {/* 声明批3: 常驻的「关于与声明」——首启闸门是一次性的，这里是随时可查的那一半。 */}
-      <AboutPanel version={props.settings?.version} onOpenFeedback={props.onOpenFeedback} onOpenAuthor={props.onOpenAuthor} />
+      <AboutPanel version={props.settings?.version} onOpenFeedback={props.onOpenFeedback} onOpenAuthor={props.onOpenAuthor} update={props.update} />
 
       <footer class="settings-footer">
         <Colonnade size={18} />

@@ -113,4 +113,75 @@ describe('设置页「关于与声明」面板', () => {
     mount(<AboutPanel version="1.0.0" />)
     expect(document.querySelector('[data-testid="open-author-github"]')).toBeNull()
   })
+
+  // 2026-09-30 (plan 2026-09-30-public-release-autoupdate): 更新区块。
+  it('更新：没接线就不渲染；接线后 idle 显示来源说明与「检查更新」', () => {
+    mount(<AboutPanel version="1.2.3" />)
+    expect(document.querySelector('[data-testid="update-block"]')).toBeNull()
+
+    mount(
+      <AboutPanel
+        version="1.2.3"
+        update={{ state: { phase: 'idle' }, onCheck: () => undefined, onDownload: () => undefined, onInstall: () => undefined, onDismiss: () => undefined }}
+      />
+    )
+    expect(document.querySelector('[data-testid="update-block"]')).not.toBeNull()
+    expect(document.body.textContent ?? '').toContain('GitHub Releases')
+    const button = document.querySelector('[data-testid="check-update"]') as HTMLButtonElement | null
+    expect(button?.textContent).toBe('检查更新')
+    expect(button?.disabled).toBe(false)
+  })
+
+  it('更新：检查中点按钮 = 「检查中…」+ disabled（busy 三件套）', () => {
+    mount(
+      <AboutPanel
+        update={{ state: { phase: 'checking' }, onCheck: () => undefined, onDownload: () => undefined, onInstall: () => undefined, onDismiss: () => undefined }}
+      />
+    )
+    const button = document.querySelector('[data-testid="check-update"]') as HTMLButtonElement | null
+    expect(button?.textContent).toBe('检查中…')
+    expect(button?.disabled).toBe(true)
+  })
+
+  it('更新：发现新版本弹层带版本号，确认走 onDownload，DOM 不含任何地址', () => {
+    const onDownload = vi.fn()
+    mount(
+      <AboutPanel
+        update={{ state: { phase: 'available', version: '9.9.9' }, onCheck: () => undefined, onDownload, onInstall: () => undefined, onDismiss: () => undefined }}
+      />
+    )
+    const dialog = document.querySelector('.dialog')
+    expect(dialog?.textContent ?? '').toContain('发现新版本 v9.9.9')
+    expect(document.body.textContent ?? '').not.toContain('github.com')
+    const confirm = Array.from(dialog?.querySelectorAll('button') ?? []).find((b) => b.textContent === '下载并安装')
+    expect(confirm).not.toBeUndefined()
+    click(confirm ?? null)
+    expect(onDownload).toHaveBeenCalledTimes(1)
+  })
+
+  it('更新：下载中按钮显示百分比且禁用', () => {
+    mount(
+      <AboutPanel
+        update={{ state: { phase: 'downloading', version: '9.9.9', percent: 42 }, onCheck: () => undefined, onDownload: () => undefined, onInstall: () => undefined, onDismiss: () => undefined }}
+      />
+    )
+    const button = document.querySelector('[data-testid="check-update"]') as HTMLButtonElement | null
+    expect(button?.textContent).toBe('下载中… 42%')
+    expect(button?.disabled).toBe(true)
+  })
+
+  it('更新：下载完成后「立即重启安装」走 onInstall，「稍后」走 onDismiss', () => {
+    const onInstall = vi.fn()
+    const onDismiss = vi.fn()
+    mount(
+      <AboutPanel
+        update={{ state: { phase: 'downloaded', version: '9.9.9', downloaded: '9.9.9' }, onCheck: () => undefined, onDownload: () => undefined, onInstall, onDismiss }}
+      />
+    )
+    const dialog = document.querySelector('.dialog')
+    click(Array.from(dialog?.querySelectorAll('button') ?? []).find((b) => b.textContent === '立即重启安装') ?? null)
+    expect(onInstall).toHaveBeenCalledTimes(1)
+    click(Array.from(dialog?.querySelectorAll('button') ?? []).find((b) => b.textContent === '稍后') ?? null)
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+  })
 })

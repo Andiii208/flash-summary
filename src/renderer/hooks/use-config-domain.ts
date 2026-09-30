@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { AppSettingsInfo, ProvidersListResult, SeuSummaryBridge } from '../../shared/bridge'
+import type { UpdatePanelState } from '../components/UpdatePanel'
 import type { ToastKind } from '../components/ToastArea'
 
 export type Toast = (message: string, kind?: ToastKind, action?: { actionLabel: string; onAction: () => void }) => void
@@ -54,6 +55,12 @@ export interface ConfigDomain {
   openFeedbackForm: () => void
   /** 2026-09-21: 打开作者的 GitHub 主页（地址在 main 侧，无参 IPC）。 */
   openAuthorGithub: () => void
+  /** 2026-09-30: 手动更新检查（指向 GitHub Releases；plan 2026-09-30-public-release-autoupdate）。 */
+  update: UpdatePanelState
+  checkForUpdate: () => void
+  downloadUpdate: () => void
+  installUpdate: () => void
+  dismissUpdate: () => void
   /** 批6 (D4): 资料库备份导出（busy 三件套同其它慢操作按钮）。 */
   libraryBackupBusy: boolean
   exportLibraryBackup: () => void
@@ -73,6 +80,19 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
   const [migrationProgress, setMigrationProgress] = useState<{ copied: number; total: number } | null>(null)
   /** 批6 (D4): 备份进行中——按钮禁用 + 文案省略号，防连点重复写盘。 */
   const [libraryBackupBusy, setLibraryBackupBusy] = useState(false)
+  // 2026-09-30 (plan 2026-09-30-public-release-autoupdate): 更新检查状态机。
+  // 事件（下载进度 / 下载完成 / 失败）经 bridge.update.onEvent 进来。没有后台
+  // 检查——用户不点「检查更新」，这里什么都不会发生。
+  const [update, setUpdate] = useState<UpdatePanelState>({ phase: 'idle' })
+  useEffect(
+    () =>
+      bridge.update.onEvent((event) => {
+        if (event.type === 'progress') setUpdate((s) => ({ ...s, phase: 'downloading', percent: event.percent }))
+        else if (event.type === 'downloaded') setUpdate({ phase: 'downloaded', version: event.version, downloaded: event.version })
+        else setUpdate((s) => ({ ...s, phase: 'failed', message: event.message }))
+      }),
+    [bridge]
+  )
 
   /** 批6 (H21, plan 2026-09-28): 两个刷新入口各自的连点守卫——设置页「重试」
    *  连点两次此前会打两轮 providers.list + settings.get，两轮都写 loadError，用户
@@ -376,6 +396,51 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     })()
   }, [bridge, toast])
 
+  /** 2026-09-30: 检查更新。在跑守卫就是 phase 本身——按钮禁用（省略号文案）
+   *  与这里读同一个事实，不另记 ref。 */
+  const checkForUpdate = useCallback((): void => {
+    void (async () => {
+      setUpdate({ phase: 'checking' })
+      const res = await bridge.update.check()
+      if (!res.ok || res.value == null) {
+        setUpdate({ phase: 'failed', message: res.error ?? '检查更新失败，请稍后重试。' })
+        return
+      }
+      const info = res.value
+      if (info.status === 'available') setUpdate({ phase: 'available', version: info.version })
+      else if (info.status === 'up-to-date') setUpdate({ phase: 'up-to-date' })
+      else setUpdate({ phase: info.status === 'unsupported' ? 'unsupported' : 'failed', message: info.message })
+    })()
+  }, [bridge])
+
+  const downloadUpdate = useCallback((): void => {
+    void (async () => {
+      const res = await bridge.update.download()
+      if (!res.ok) {
+        setUpdate((s) => ({ ...s, phase: 'failed', message: res.error ?? '下载更新失败，请稍后重试。' }))
+        return
+      }
+      // started=false = 在跑守卫生效（对话框只在非下载态出现，正常到不了）；
+      // 此时不覆写状态，让继续走的事件流说话。
+      if (res.value?.started === true) setUpdate((s) => ({ ...s, phase: 'downloading', percent: 0 }))
+    })()
+  }, [bridge])
+
+  /** quitAndInstall 之后应用即退出——没有回头路可写状态。 */
+  const installUpdate = useCallback((): void => {
+    void bridge.update.install()
+  }, [bridge])
+
+  /** 对话框「稍后」：available/downloading 回 idle；downloaded 留住已下载版本
+   *  （状态行说明 + 主按钮变「重启并安装」——点过稍后也不丢安装路径）。 */
+  const dismissUpdate = useCallback((): void => {
+    setUpdate((s) => {
+      if (s.phase === 'downloaded') return { phase: 'idle', downloaded: s.downloaded ?? s.version }
+      if (s.phase === 'available' || s.phase === 'downloading') return { phase: 'idle' }
+      return s
+    })
+  }, [])
+
   return {
     providers,
     providerBusy,
@@ -402,6 +467,11 @@ export function useConfigDomain(bridge: SeuSummaryBridge, toast: Toast): ConfigD
     acceptDisclaimer,
     optOutCopyrightNotice,
     openFeedbackForm,
-    openAuthorGithub
+    openAuthorGithub,
+    update,
+    checkForUpdate,
+    downloadUpdate,
+    installUpdate,
+    dismissUpdate
   }
 }

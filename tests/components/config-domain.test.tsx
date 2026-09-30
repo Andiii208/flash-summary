@@ -136,3 +136,106 @@ describe('useConfigDomain · 取消勾选即解绑（批4 P14）', () => {
     expect(bridge.providers.list).toHaveBeenCalledTimes(2) // 刷新列表让界面说出真实状态
   })
 })
+
+/**
+ * 2026-09-30 (plan 2026-09-30-public-release-autoupdate): 更新检查状态机。
+ * 在跑守卫 = phase 本身（按钮禁用与这里读同一个事实，不另记 ref）；
+ * 「稍后」后不丢安装路径（downloaded 版本保留，主按钮变「重启并安装」）。
+ */
+describe('useConfigDomain · 更新检查', () => {
+  async function mountUpdate(checkResult: unknown): Promise<{ bridge: SeuSummaryBridge; domain: () => ConfigDomain }> {
+    const bridge = makeBridge()
+    bridge.update.check = vi.fn(async () => checkResult as never)
+    api = null
+    mount(<Probe bridge={bridge} toast={vi.fn()} />)
+    await vi.waitFor(() => {
+      expect(api?.providers).not.toBeNull()
+    }, { timeout: 2000 })
+    return { bridge, domain: () => api! }
+  }
+
+  it('有新版本 → phase available + 版本号（弹层据此出现）', async () => {
+    const { domain } = await mountUpdate(ok({ status: 'available', version: '9.9.9' }))
+    await act(async () => {
+      domain().checkForUpdate()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(domain().update).toEqual({ phase: 'available', version: '9.9.9' })
+  })
+
+  it('已是最新 / unsupported / 信封失败 → 各自落地，不都挤成 failed', async () => {
+    const latest = await mountUpdate(ok({ status: 'up-to-date' }))
+    await act(async () => {
+      latest.domain().checkForUpdate()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(latest.domain().update).toEqual({ phase: 'up-to-date' })
+
+    const dev = await mountUpdate(ok({ status: 'unsupported', message: '开发模式下不检查更新' }))
+    await act(async () => {
+      dev.domain().checkForUpdate()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(dev.domain().update).toEqual({ phase: 'unsupported', message: '开发模式下不检查更新' })
+
+    const bad = await mountUpdate({ ok: false, error: '通道忙' })
+    await act(async () => {
+      bad.domain().checkForUpdate()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(bad.domain().update).toEqual({ phase: 'failed', message: '通道忙' })
+  })
+
+  it('下载进度 / 完成事件经 onEvent 落到状态机', async () => {
+    const bridge = makeBridge()
+    let fire: ((e: unknown) => void) | null = null
+    bridge.update.onEvent = vi.fn((cb: (e: unknown) => void) => {
+      fire = cb
+      return () => undefined
+    })
+    api = null
+    mount(<Probe bridge={bridge} toast={vi.fn()} />)
+    await vi.waitFor(() => {
+      expect(api?.providers).not.toBeNull()
+    }, { timeout: 2000 })
+
+    await act(async () => {
+      fire?.({ type: 'progress', percent: 30 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(api!.update).toEqual({ phase: 'downloading', percent: 30 })
+
+    await act(async () => {
+      fire?.({ type: 'downloaded', version: '9.9.9' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(api!.update).toEqual({ phase: 'downloaded', version: '9.9.9', downloaded: '9.9.9' })
+  })
+
+  it('「稍后」不丢安装路径：downloaded → idle 但留住已下载版本', async () => {
+    const bridge = makeBridge()
+    let fire: ((e: unknown) => void) | null = null
+    bridge.update.onEvent = vi.fn((cb: (e: unknown) => void) => {
+      fire = cb
+      return () => undefined
+    })
+    api = null
+    mount(<Probe bridge={bridge} toast={vi.fn()} />)
+    await vi.waitFor(() => {
+      expect(api?.providers).not.toBeNull()
+    }, { timeout: 2000 })
+
+    await act(async () => {
+      fire?.({ type: 'downloaded', version: '9.9.9' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(api!.update.phase).toBe('downloaded')
+
+    await act(async () => {
+      api!.dismissUpdate()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    // 对话框关了，但已下载版本留住：状态行说明 + 主按钮变「重启并安装」。
+    expect(api!.update).toEqual({ phase: 'idle', downloaded: '9.9.9' })
+  })
+})

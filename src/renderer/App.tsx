@@ -17,6 +17,7 @@ import { NoteViewer, type LessonContext } from './components/NoteViewer'
 import { QaDock, type QaEntry } from './components/QaDock'
 import { TopBar, type SessionState } from './components/TopBar'
 import { ToastArea, type ToastItem, type ToastKind } from './components/ToastArea'
+import type { UpdatePanelState } from './components/UpdatePanel'
 import type { LessonChipLesson } from './components/LessonChip'
 import { Dialog } from './ui/Dialog'
 import { CourseMapDialog } from './components/CourseMapDialog'
@@ -780,6 +781,13 @@ prevLesson={state.lessonNeighbors.prev}
               onOpenPath={state.openPath}
               onOpenFeedback={state.openFeedbackForm}
               onOpenAuthor={state.openAuthorGithub}
+              update={{
+                state: state.update,
+                onCheck: state.checkForUpdate,
+                onDownload: state.downloadUpdate,
+                onInstall: state.installUpdate,
+                onDismiss: state.dismissUpdate
+              }}
             />
             </div>
           )}
@@ -936,6 +944,12 @@ interface AppState extends NotesDomain, TasksDomain {
   openFeedbackForm: () => void
   /** 2026-09-21: 打开作者的 GitHub 主页（地址在 main 侧）。 */
   openAuthorGithub: () => void
+  /** 2026-09-30: 手动更新检查（指向 GitHub Releases；plan 2026-09-30-public-release-autoupdate）。 */
+  update: UpdatePanelState
+  checkForUpdate: () => void
+  downloadUpdate: () => void
+  installUpdate: () => void
+  dismissUpdate: () => void
   toasts: ToastItem[]
   dismissToast: (id: number) => void
   /** Toast emitter (BiliImport and other sidebar components push here). */
@@ -1092,7 +1106,7 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
    *  clobber a session state the user just set by logging in. */
   const sessionReadDone = useRef(false)
 
-  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, libraryBackupBusy, exportLibraryBackup, openPath, acceptDisclaimer, optOutCopyrightNotice, openFeedbackForm, openAuthorGithub } = config
+  const { providers, providerBusy, providerTest, providerTestBusy, settings, loadError, chosenCacheDir, libraryBusy, libraryMigrated, migrationProgress, refreshProviders, refreshSettings, saveProvider, removeProvider, testProvider, setCacheDir, chooseCacheDir, setTheme, chooseLibrary, libraryBackupBusy, exportLibraryBackup, openPath, acceptDisclaimer, optOutCopyrightNotice, openFeedbackForm, openAuthorGithub, update, checkForUpdate, downloadUpdate, installUpdate, dismissUpdate } = config
 
   // Theme override (U3): auto follows the system via CSS; explicit light/dark
   // sets an html data attribute that wins over prefers-color-scheme.
@@ -1948,6 +1962,11 @@ const currentCourseLessons = useMemo<LessonChipLesson[]>(
     closeReport,
     openFeedbackForm,
     openAuthorGithub,
+    update,
+    checkForUpdate,
+    downloadUpdate,
+    installUpdate,
+    dismissUpdate,
     toasts,
     dismissToast,
     toast,

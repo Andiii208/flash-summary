@@ -1,6 +1,7 @@
 import type { JSX } from 'preact'
 import { useState } from 'preact/hooks'
 import { Dialog } from '../ui/Dialog'
+import { UpdatePanel, type UpdatePanelProps } from './UpdatePanel'
 import { MdLite } from './MdLite'
 import { DISCLAIMER_FULL_TEXT, THIRD_PARTY_NOTICES_TEXT, toReaderMarkdown } from '../legal-text'
 import { DISCLAIMER_TITLE, DISCLAIMER_TEXT_VERSION } from '../../shared/disclaimer'
@@ -20,7 +21,7 @@ import feedbackQr from '../assets/feedback-form-qr.png'
  *    一堆竖线；而「许可声明」本来就该让人看到与随包文件逐字一致的原文。
  *  两者都只输出 JSX，不碰 innerHTML。
  */
-export function AboutPanel({ version, onOpenFeedback, onOpenAuthor }: { version?: string; onOpenFeedback?: () => void; onOpenAuthor?: () => void }): JSX.Element {
+export function AboutPanel({ version, onOpenFeedback, onOpenAuthor, update }: { version?: string; onOpenFeedback?: () => void; onOpenAuthor?: () => void; update?: UpdatePanelProps }): JSX.Element {
   const [open, setOpen] = useState<'none' | 'disclaimer' | 'licenses'>('none')
   const close = (): void => setOpen('none')
 
@@ -34,6 +35,9 @@ export function AboutPanel({ version, onOpenFeedback, onOpenAuthor }: { version?
           <span class="about-text-version"> · 使用须知第 {DISCLAIMER_TEXT_VERSION} 版</span>
         </span>
       </div>
+      {/* 2026-09-30: 手动更新检查（指向 GitHub Releases）。未接线时整块不渲染，
+          与反馈/作者按钮同款条件渲染。 */}
+      {update != null && <UpdatePanel version={version} {...update} />}
       {/* 2026-09-21: 作者入口。地址只存在于 main 侧，IPC 不接参数（与反馈表同一条红线）。 */}
       {onOpenAuthor != null && (
         <div class="settings-row">
