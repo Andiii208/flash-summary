@@ -11,7 +11,7 @@
  */
 
 /** 文本版本：改动任一条款都必须递增此值，并同步更新 `DISCLAIMER.md`。 */
-export const DISCLAIMER_TEXT_VERSION = 2
+export const DISCLAIMER_TEXT_VERSION = 3
 
 export const DISCLAIMER_TITLE = '使用须知与免责声明'
 
