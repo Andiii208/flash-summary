@@ -92,7 +92,7 @@ describe('批7 (H13): fake bridge 与真桥面逐键一致', () => {
       expect(methods.length, `${group} 解析到的方法数`).toBeGreaterThanOrEqual(1)
     }
     expect(Object.keys(groups).sort()).toEqual(
-      ['bilibili', 'feedback', 'lessons', 'log', 'notes', 'providers', 'qa', 'school', 'settings', 'tasks'].sort()
+      ['bilibili', 'feedback', 'lessons', 'log', 'notes', 'providers', 'qa', 'school', 'settings', 'tasks', 'update'].sort()
     )
   })
 

@@ -128,7 +128,10 @@ const EXPECTED_BRIDGE = {
   lessons: ['openSource'],
   settings: ['get', 'setCacheDir', 'chooseCacheDir', 'setTheme', 'chooseLibrary', 'openPath', 'openAuthor', 'acceptDisclaimer', 'optOutCopyrightNotice', 'exportLibraryBackup', 'onMigrateProgress'],
   log: ['rendererError'],
-  feedback: ['openForm', 'diagnostics']
+  feedback: ['openForm', 'diagnostics'],
+  // 2026-09-30 (plan 2026-09-30-public-release-autoupdate): 手动更新检查——
+  // 三个 invoke 都不接 URL（更新源钉死在 main 侧 UPDATE_FEED 常量）。
+  update: ['check', 'download', 'install', 'onEvent']
 }
 
 // Ipc probes: channel, expression returning the envelope, and a predicate.
@@ -165,7 +168,10 @@ const PROBES = [
   ['providers:unbind (bad capability)', "s.providers.unbind('bogus')", (r) => r.ok === false && typeof r.error === 'string'],
   ['log:rendererError', `s.log.rendererError(${JSON.stringify(PROBE_LOG_LINE)})`, (r) => r.ok === true && r.value === true],
   // 批 D (plan 2026-09-19): 原片跳转只探**错误路径**——成功路径会真的打开浏览器（有副作用）。
-  ['lessons:openSource (missing lesson)', "s.lessons.openSource('smoke-none', 60)", (r) => r.ok === false && typeof r.error === 'string']
+  ['lessons:openSource (missing lesson)', "s.lessons.openSource('smoke-none', 60)", (r) => r.ok === false && typeof r.error === 'string'],
+  // 2026-09-30: 更新检查只探「能通到 handler」——打包构建里 isPackaged=true 会真的
+  // 打 GitHub Releases（冒烟环境可能无外网），所以断言放宽到「信封完好 + 状态字符合法」。
+  ['update:check', 's.update.check()', (r) => r.ok === true && ['available', 'up-to-date', 'unsupported', 'error'].includes(r.value?.status)]
 ]
 
 async function main() {

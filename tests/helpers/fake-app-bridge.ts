@@ -222,6 +222,13 @@ export function makeBridge(): SeuSummaryBridge {
     feedback: {
       openForm: vi.fn(async () => ok(true)),
       diagnostics: vi.fn(async () => ok({ text: '—— Flash Summary 诊断信息 ——\n应用版本：0.0.0-test' }))
+    },
+    // 2026-09-30: 更新检查假实现——默认「已是最新」，组件测试按需覆写 check。
+    update: {
+      check: vi.fn(async () => ok({ status: 'up-to-date' as const })),
+      download: vi.fn(async () => ok({ started: true })),
+      install: vi.fn(async () => ok({ installed: true })),
+      onEvent: vi.fn((): (() => void) => () => undefined)
     }
   }
   return bridge

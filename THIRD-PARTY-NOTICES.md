@@ -81,6 +81,7 @@ ffprobe（4.0.2）与 ffmpeg 同属 FFmpeg 项目，源码同样从 <https://ffm
 | [zod](https://zod.dev/) | 笔记数据结构校验 | MIT | [`zod-MIT.txt`](LICENSES/zod-MIT.txt) |
 | [qrcode](https://github.com/soldair/node-qrcode) | 二维码生成（B 站登录） | MIT | [`qrcode-MIT.txt`](LICENSES/qrcode-MIT.txt) |
 | [jpeg-js](https://github.com/jpeg-js/jpeg-js) | JPEG 解码（关键帧感知哈希） | BSD-3-Clause | [`jpeg-js-BSD-3-Clause.txt`](LICENSES/jpeg-js-BSD-3-Clause.txt) |
+| [electron-updater](https://www.electron.build/auto-update) | 更新检查与下载（指向本项目的 GitHub Releases） | MIT | [`electron-updater-MIT.txt`](LICENSES/electron-updater-MIT.txt) |
 | [pngjs](https://github.com/pngjs/pngjs) | PNG 解码（平台 PPT 页感知哈希；PPT×关键帧视觉融合） | MIT | [`pngjs-MIT.txt`](LICENSES/pngjs-MIT.txt) |
 | [KaTeX](https://katex.org/) | 数学公式排版（笔记/讲义里的 LaTeX 渲染，矢量输出） | MIT | [`katex-MIT.txt`](LICENSES/katex-MIT.txt) |
 | [LXGW WenKai Screen](https://github.com/lxgw/LxgwWenKai-Screen) | 中文字体 | MIT | [`lxgw-wenkai-screen-webfont-MIT.txt`](LICENSES/lxgw-wenkai-screen-webfont-MIT.txt) |

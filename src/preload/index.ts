@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiResult } from '../shared/api-result'
-import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, LatestNoteResult, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, PolishResult, ProvidersListResult, QaRecentInfo, RegenerateResult, RepairResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, LatestNoteResult, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, PolishResult, ProvidersListResult, QaRecentInfo, RegenerateResult, RepairResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo, UpdateCheckInfo, UpdateEvent } from '../shared/bridge'
 import type { TreeNode } from '../shared/notes/schema'
 import type { SessionStateValue } from '../shared/types'
 
@@ -161,6 +161,18 @@ const api: SeuSummaryBridge = {
   feedback: {
     openForm: (): Promise<ApiResult<boolean>> => ipcRenderer.invoke('feedback:openForm'),
     diagnostics: (taskId: string): Promise<ApiResult<{ text: string }>> => ipcRenderer.invoke('feedback:diagnostics', taskId)
+  },
+  // 2026-09-30 (plan 2026-09-30-public-release-autoupdate): 手动更新检查——
+  // 三个 invoke 都不接 URL：更新源钉死在 main 侧 UPDATE_FEED 常量。
+  update: {
+    check: (): Promise<ApiResult<UpdateCheckInfo>> => ipcRenderer.invoke('update:check'),
+    download: (): Promise<ApiResult<{ started: boolean }>> => ipcRenderer.invoke('update:download'),
+    install: (): Promise<ApiResult<{ installed: boolean }>> => ipcRenderer.invoke('update:install'),
+    onEvent: (cb: (e: UpdateEvent) => void): (() => void) => {
+      const listener = (_e: unknown, event: UpdateEvent): void => cb(event)
+      ipcRenderer.on('update:event', listener)
+      return () => ipcRenderer.removeListener('update:event', listener)
+    }
   }
 }
 

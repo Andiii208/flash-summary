@@ -1,9 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, session, Tray, Menu } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { APP_TITLE } from '../shared/types'
 import { createContext } from './app-context'
 import { registerIpc, setAppRendererOrigin, webContentsSender } from './ipc'
+import { createUpdateController } from './update'
 import { attachNavigationGuards, loadMainRenderer, rendererDevUrl, rendererIndexPath } from './nav-guard'
 import { DIRECT_NET_SWITCHES, PROXY_BYPASS_RULES, directNetRequested } from './net-diagnostics'
 import { Logger } from './logger'
@@ -217,7 +219,12 @@ if (!gotSingleInstanceLock) {
         `media binaries: ffmpeg=${ctx.ffmpegPath()} (${binaryFingerprint(ctx.ffmpegPath())}), ` +
           `ffprobe=${ctx.ffprobePath()} (${binaryFingerprint(ctx.ffprobePath())})`
       )
-      const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+      // 2026-09-30 (plan 2026-09-30-public-release-autoupdate): 更新控制器——
+      // 全应用唯一一处 import electron-updater。autoDownload=false（下载前必须
+      // 经用户在设置页弹层确认）与 autoInstallOnAppQuit=true（用户点「稍后」
+      // 后，下载好的包在下次退出时自动装上）在 createUpdateController 里设。
+      const updateController = createUpdateController({ app, updater: autoUpdater })
+      const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow), updateController })
       ipcHandleRef = ipcHandle
 
       // M1-3 + D4: closing with a task running must be an informed choice —
@@ -268,7 +275,7 @@ if (!gotSingleInstanceLock) {
           bindWindowLifecycle(ctx, mainWindow)
           // registerIpc now clears its previous handlers before re-registering,
           // so a recreated window gets a fresh progress sender.
-          ipcHandleRef = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow) })
+          ipcHandleRef = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow), updateController })
         }
       })
     } catch (err) {

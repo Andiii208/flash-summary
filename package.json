@@ -21,6 +21,12 @@
     "directories": {
       "output": "release"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "Andiii208",
+      "repo": "flash-summary",
+      "releaseType": "release"
+    },
     "files": [
       "out/**",
       "package.json",
@@ -121,6 +127,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "electron-updater": "^6.8.9",
     "jpeg-js": "^0.4.4"
   }
 }

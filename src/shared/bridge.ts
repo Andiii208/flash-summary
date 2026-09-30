@@ -449,6 +449,29 @@ export interface LessonsBridge {
   openSource(lessonId: string, at: number): Promise<ApiResult<true>>
 }
 
+/** 2026-09-30 (plan 2026-09-30-public-release-autoupdate): 更新检查。
+ *  形态是用户手动触发——没有后台检查；更新源钉死在 main 侧常量（owner/repo），
+ *  渲染层传任何参数都不能改变它。 */
+export interface UpdateCheckInfo {
+  status: 'available' | 'up-to-date' | 'unsupported' | 'error'
+  /** status === 'available' 时的新版本号。 */
+  version?: string
+  /** unsupported / error 时的人话原因。 */
+  message?: string
+}
+
+export type UpdateEvent =
+  | { type: 'progress'; percent: number }
+  | { type: 'downloaded'; version: string }
+  | { type: 'error'; message: string }
+
+export interface UpdateBridge {
+  check(): Promise<ApiResult<UpdateCheckInfo>>
+  download(): Promise<ApiResult<{ started: boolean }>>
+  install(): Promise<ApiResult<{ installed: boolean }>>
+  onEvent(cb: (e: UpdateEvent) => void): () => void
+}
+
 export interface SeuSummaryBridge {
   school: SchoolBridge
   bilibili: BilibiliBridge
@@ -462,4 +485,6 @@ export interface SeuSummaryBridge {
   log: LogBridge
   /** 声明批6: 反馈入口（只给入口、不上报）。 */
   feedback: FeedbackBridge
+  /** 2026-09-30: 指向 GitHub Releases 的手动更新检查。 */
+  update: UpdateBridge
 }

@@ -43,6 +43,7 @@ import { DISCLAIMER_TEXT_VERSION } from '../shared/disclaimer'
 import { COPYRIGHT_NOTICE_VERSION } from '../shared/copyright-notice'
 import { FEEDBACK_FORM_URL } from '../shared/feedback'
 import { AUTHOR_GITHUB_URL } from '../shared/author'
+import type { UpdateController } from './update'
 import { buildDiagnostics, type DiagnosticsTask } from './feedback/diagnostics'
 import { redactCredentials } from './logger'
 import { claimNoteInflight, releaseNoteInflight } from './notes/inflight'
@@ -243,6 +244,9 @@ export interface IpcOptions {
   netLookupOverride?: (host: string) => Promise<Array<{ address: string }>>
   /** Test hook: provider connectivity probe (tests avoid real HTTP). */
   providerTestOverride?: (baseUrl: string, apiKey: string, model: string) => Promise<{ latencyMs: number; answer: string }>
+  /** 2026-09-30: 更新控制器——index.ts 用真实 electron-updater 装配，测试给假的；
+   *  不提供时更新通道如实回答 unsupported（老测试/不带更新的构建不会因此红）。 */
+  updateController?: UpdateController
 }
 
 export interface IpcHandle {
@@ -1125,6 +1129,14 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
       return err(e)
     }
   })
+
+  // ---- 2026-09-30: 更新检查（plan 2026-09-30-public-release-autoupdate）----
+  //
+  // 红线同 feedback:openForm——三个通道**都不接 URL**：更新源钉死在
+  // src/main/update.ts 的 UPDATE_FEED（github / Andiii208 / flash-summary），
+  // 渲染层传任何参数都不能改变它。检查只在用户点了「检查更新」之后发生，
+  // 没有后台任务、没有定时器（spec §9 Update check 条）。
+  registerUpdateHandlers(ipc, options.updateController, options.sender)
 
   // ---- tasks ----
   handle(ipc, 'tasks:create', (_e, lessonId: unknown) => {
@@ -2122,5 +2134,31 @@ export function webContentsSender(win: { webContents: WebContents } | null): Pro
     send: (channel, payload) => {
       if (!win.webContents.isDestroyed()) win.webContents.send(channel, payload)
     }
+  }
+}
+
+/**
+ * 2026-09-30: 更新检查通道（plan 2026-09-30-public-release-autoupdate）。
+ * controller 由 registerIpc 的 options.updateController 传入（index.ts 用真实
+ * electron-updater 装配，tests/ipc-update 给假的）。缺省时三个 invoke 如实
+ * 回答 unsupported——通道永远存在，行为取决于构建，不抛「通道不存在」。
+ */
+export function registerUpdateHandlers(ipc: HandleLike, controller: UpdateController | undefined, sender?: ProgressSender): void {
+  handle(ipc, 'update:check', async () => {
+    if (controller == null) return ok({ status: 'unsupported', message: '当前构建不支持检查更新' })
+    return ok(await controller.check())
+  })
+  handle(ipc, 'update:download', async () => {
+    if (controller == null) return ok({ started: false })
+    return ok(await controller.download())
+  })
+  handle(ipc, 'update:install', async () => {
+    if (controller == null) return ok({ installed: false })
+    return ok(await controller.install())
+  })
+  // 事件（下载进度 / 下载完成 / 失败）经同一 sender 推到渲染层；没有 controller
+  // 或没有窗口时订阅根本不建立——不留存一个永远触发不了的回调。
+  if (controller != null && sender != null) {
+    controller.subscribe((event) => sender.send('update:event', event))
   }
 }
