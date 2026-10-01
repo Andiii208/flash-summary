@@ -223,7 +223,13 @@ if (!gotSingleInstanceLock) {
       // 全应用唯一一处 import electron-updater。autoDownload=false（下载前必须
       // 经用户在设置页弹层确认）与 autoInstallOnAppQuit=true（用户点「稍后」
       // 后，下载好的包在下次退出时自动装上）在 createUpdateController 里设。
-      const updateController = createUpdateController({ app, updater: autoUpdater })
+      // 2026-10-01：检查失败的原始详情（含上游 URL 与打包堆栈）只进日志，
+      // 设置页状态行只收脱敏短句（v0.7.13 透传堆栈实锤）。
+      const updateController = createUpdateController({
+        app,
+        updater: autoUpdater,
+        onCheckFailure: (raw) => ctx.logger.warn(`update check failed: ${raw}`)
+      })
       const ipcHandle = registerIpc(ctx, ipcMain, { sender: webContentsSender(mainWindow), updateController })
       ipcHandleRef = ipcHandle
 

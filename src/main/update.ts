@@ -41,6 +41,21 @@ function messageOf(e: unknown): string {
   return e instanceof Error && e.message !== '' ? e.message : String(e)
 }
 
+/**
+ * 检查失败的用户可读文案（2026-10-01，plan 2026-10-01-note-inline-images-and-updater-feed）：
+ * 上游原始 message 形如 `Cannot find latest.yml ... (url): HttpError: 404 ... at createHttpError`，
+ * 含内部 URL 与打包堆栈——只经 onCheckFailure 进日志，渲染层一律只收这里的短句。
+ * ERR_UPDATER_CHANNEL_FILE_NOT_FOUND = feed 渠道文件（latest.yml）不在 release 资产里
+ * （electron-updater GitHubProvider 在 404 时抛的 code，比解析 message 文本稳）。
+ */
+function checkFailureMessage(e: unknown): string {
+  const code = (e as { code?: unknown } | null)?.code
+  if (code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND') {
+    return '暂时无法检查更新：发布渠道信息缺失，请稍后重试或前往本项目 GitHub 发布页查看。'
+  }
+  return '暂时无法检查更新：网络或发布服务器无响应，请稍后重试。'
+}
+
 function percentOf(info: unknown): number {
   const percent = (info as { percent?: number } | null)?.percent
   return typeof percent === 'number' && Number.isFinite(percent) ? Math.round(percent) : 0
@@ -51,7 +66,12 @@ function versionOf(info: unknown): string {
   return typeof version === 'string' ? version : ''
 }
 
-export function createUpdateController(deps: { app: UpdateAppLike; updater: AutoUpdaterLike }): UpdateController {
+export function createUpdateController(deps: {
+  app: UpdateAppLike
+  updater: AutoUpdaterLike
+  /** 原始失败详情的落点（日志）；UI 只收脱敏短句。不传则详情无处可查——装配处应传。 */
+  onCheckFailure?: (raw: string) => void
+}): UpdateController {
   const listeners = new Set<(event: UpdateEvent) => void>()
   const emit = (event: UpdateEvent): void => {
     for (const listener of listeners) listener(event)
@@ -78,7 +98,10 @@ export function createUpdateController(deps: { app: UpdateAppLike; updater: Auto
       if (result == null) return { status: 'up-to-date' }
       return { status: 'available', version: result.updateInfo.version }
     } catch (e) {
-      return { status: 'error', message: messageOf(e) }
+      // 2026-10-01：v0.7.13 上线时 feed 缺 latest.yml，原始 message（含 URL 与打包
+      // 堆栈）被原样印在设置页。现在原始详情只走 onCheckFailure 进日志。
+      deps.onCheckFailure?.(messageOf(e))
+      return { status: 'error', message: checkFailureMessage(e) }
     }
   }
 

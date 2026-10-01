@@ -81,12 +81,50 @@ describe('update controller', () => {
     await expect(controller.check()).resolves.toEqual({ status: 'up-to-date' })
   })
 
-  it('检查抛错（无外网/上游故障）→ error + 可展示消息，不吞异常', async () => {
+  // 2026-10-01 契约变更（plan 2026-10-01-note-inline-images-and-updater-feed）：v0.7.13
+  // 上线时 feed 缺 latest.yml，上游原始 message（含 URL 与打包堆栈）被原样印在设置页。
+  // 原断言写的是「info.message === 原文（透传）」——新契约是脱敏短句 + 原始进 onCheckFailure。
+  it('检查抛错（无外网/上游故障）→ error + 脱敏短句，原始 message 进 onCheckFailure', async () => {
     const updater = makeUpdater({ checkError: new Error('net::ERR_INTERNET_DISCONNECTED') })
-    const controller = createUpdateController({ app: packaged(), updater })
+    const raws: string[] = []
+    const controller = createUpdateController({ app: packaged(), updater, onCheckFailure: (raw) => raws.push(raw) })
     const info = await controller.check()
     expect(info.status).toBe('error')
-    expect(info.message).toBe('net::ERR_INTERNET_DISCONNECTED')
+    expect(info.message).toBe('暂时无法检查更新：网络或发布服务器无响应，请稍后重试。')
+    expect(info.message).not.toContain('ERR_INTERNET_DISCONNECTED')
+    expect(raws).toEqual(['net::ERR_INTERNET_DISCONNECTED'])
+  })
+
+  it('feed 渠道文件缺失（latest.yml 404）→ 渠道缺失文案，不带上游 URL 与堆栈', async () => {
+    const httpError = Object.assign(
+      new Error(
+        'Cannot find latest.yml in the latest release artifacts (https://github.com/Andiii208/flash-summary/releases/download/v0.7.13/latest.yml): HttpError: 404 at createHttpError'
+      ),
+      { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' }
+    )
+    const updater = makeUpdater({ checkError: httpError })
+    const raws: string[] = []
+    const controller = createUpdateController({ app: packaged(), updater, onCheckFailure: (raw) => raws.push(raw) })
+    const info = await controller.check()
+    expect(info.status).toBe('error')
+    expect(info.message).toBe('暂时无法检查更新：发布渠道信息缺失，请稍后重试或前往本项目 GitHub 发布页查看。')
+    expect(info.message).not.toContain('github.com')
+    expect(info.message).not.toContain('createHttpError')
+    expect(raws).toHaveLength(1)
+    expect(raws[0]).toContain('latest.yml')
+  })
+
+  it('checkForUpdates 抛非 Error 值 → 仍走脱敏文案且不吞原始详情', async () => {
+    const updater = makeUpdater()
+    updater.checkForUpdates = vi.fn(async () => {
+      throw 'raw string failure'
+    })
+    const raws: string[] = []
+    const controller = createUpdateController({ app: packaged(), updater, onCheckFailure: (raw) => raws.push(raw) })
+    const info = await controller.check()
+    expect(info.status).toBe('error')
+    expect(info.message).toBe('暂时无法检查更新：网络或发布服务器无响应，请稍后重试。')
+    expect(raws).toEqual(['raw string failure'])
   })
 
   it('download 转发；在跑期间再来一次返回 started:false（连点守卫）', async () => {
