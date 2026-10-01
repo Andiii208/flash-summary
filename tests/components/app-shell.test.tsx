@@ -35,6 +35,24 @@ async function waitForGone(selector: string): Promise<void> {
   )
 }
 
+/**
+ * 2026-10-01（CI 对 0d23570 实锤）：弹层的 Esc 监听挂在 useEffect 里，而
+ * waitForSelector/waitForGone 见到的是**已提交的 DOM**——同一个 flush 队列里的
+ * effect 尚未跑完时立刻派发 Esc 会丢事件，之后 waitForGone 只能蹲满 8s 超时
+ * （0.7.13 把窗口从 3s 抬到 8s 只治了标，竞态本身还在，CI 全负载下复现）。
+ * CourseMapDialog 的 useModalScrollLock 在同一组件内先于 Esc 监听声明，同步
+ * flush 内先执行——等到 body.overflow=hidden 即证明该 flush 队列已跑完、
+ * Esc 监听已挂。只加在「异步开弹层后立刻派发键」的位置（P13 两条）。
+ */
+async function waitForModalLayer(): Promise<void> {
+  await vi.waitFor(
+    () => {
+      if (document.body.style.overflow !== 'hidden') throw new Error('waiting for modal layer effects to flush')
+    },
+    { timeout: 8000, interval: 25 }
+  )
+}
+
 /** 批3 (P1): 一个能过渲染层的最小笔记（封面回填用例只需 masthead 出现）。 */
 const COVER_NOTE: Note = {
   chapters: [],
@@ -681,6 +699,8 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     expect(host.querySelectorAll('.course-browser-overlay, .course-map-overlay, .bili-dialog-overlay, .fullscreen-overlay')).toHaveLength(1)
 
     // Esc 只关地图这一层——浏览器不会「跟着一起被关」（它已经关了，也不会回来）。
+    // 先等地图弹层的 effect flush（Esc 监听挂载）再派发，否则按键丢在竞态窗口里。
+    await waitForModalLayer()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await waitForGone('[data-testid="course-map-dialog"]')
     expect(host.querySelector('[data-testid="course-browser"]')).toBeNull()
@@ -705,6 +725,8 @@ describe('App shell (useAppState over a mocked bridge)', () => {
     // 批1 补口（验收项「Esc 只关一层」）：两层同开时，一次 Esc 关掉的只有**最上面
     // 那一层**（地图渲染在浏览器之后 = DOM 后者居上）。旧断言是「一次 Esc 两层全关」，
     // 与验收项字面相反，且这条路径真实可达（侧栏「查看课程导图」+ Ctrl+K/侧栏入口）。
+    // 同 P13 第一条：等地图弹层 effect flush（Esc 监听挂载）后再派发。
+    await waitForModalLayer()
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await waitForGone('[data-testid="course-map-dialog"]')
     expect(host.querySelector('[data-testid="course-browser"]')).not.toBeNull()

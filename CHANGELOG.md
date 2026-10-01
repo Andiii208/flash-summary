@@ -15,6 +15,7 @@
 ### 工程与契约
 
 - 测试 1599→1604：note-viewer 懒加载时序回归 3 例 + update 脱敏与渠道缺失 3 例（其中 1 例按新契约改写）。
+- **测试基建（P13 flake 根治）**：收尾提交 `0d23570` 上 CI 实锤 `app-shell` P13 用例偶发红——0.7.13 把超时窗口 3s→8s 只治了标，竞态本身还在：弹层的 Esc 监听挂在 `useEffect`，而 `waitForSelector` 见到的是**已提交的 DOM**，同一 flush 队列未跑完时派发 Esc 会丢事件、随后 `waitForGone` 蹲满 8s 超时。修法：在「异步开弹层后立刻派发键」的两处（两条 P13）加 effect-flush 护栏——等 `useModalScrollLock` 把 `body.overflow` 置 `hidden`（同一组件内先于 Esc 监听声明、同一同步 flush 内先执行），再派发按键。测试数不变（1604）。
 
 ## [0.7.13] — 2026-09-30 · 发布前体检收口 + 仓库公开 + 检查更新
 
