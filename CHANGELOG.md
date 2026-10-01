@@ -2,6 +2,20 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+> 方案：docs/plans/2026-10-01-note-inline-images-and-updater-feed.md（Andiii 试用 0.7.13 实测两个问题：新版本生成的 B 站笔记截图不再穿插、全堆文末；点「检查更新」报 latest.yml 404）。
+
+### 修正
+
+- **时间线配图永不出现（v0.7.10–v0.7.13）**：`TimelineCards` 的贪心配图分配 `useMemo` 化（P32，`91b8e31`）时依赖数组漏了 `attachmentVersion`——附件懒加载首渲染全部未解析、分配结果为空，解析完成后的版本 bump 无法触发 memo 重算，时间线卡片永久停在零图态，截图全掉进文末「课堂画面」图集（0.7.8 及更早逐渲染重算，所以是穿插的）。同型第二处 `NoteViewer.imageCoverage` 令体检面板误报「时间线均无配图」。存量笔记无需重新生成——切换视图 tab 卸载重挂即自愈，修复后打开即正确。回归测试为全仓首处懒加载时序快照对（getAttachment 先 undefined → attachmentVersion bump → 断言插图回到卡片），反向验证已做实。
+- **v0.7.13 检查更新 404（latest.yml 未上传）**：electron-builder 随包生成 feed 渠道文件 `release/latest.yml`，但发布命令只上传了 Setup exe（历史上 13 个 release 全都没传）——应用内「检查更新」报 `Cannot find latest.yml ... 404`，且发生在版本比较之前，属硬失败。已给 v0.7.13 Release 补传 latest.yml（与构建产物逐字节一致，electron-updater 请求的真实 URL 实测 200）；scripts/release.md §3 清单、§5 命令与 checklist 补上传步骤与发布后只读自检，堵住流程缺口。
+- **检查更新失败呈现脱敏**：此前上游原始 message（含内部 URL 与 `createHttpError` 打包堆栈）被原样 IPC 到设置页状态行。现在原始详情只经注入的 onCheckFailure 进日志，UI 收分类短句（feed 渠道文件缺失 / 网络或发布服务器无响应）。不新增用户可见承诺、不动 IPC 契约结构。
+
+### 工程与契约
+
+- 测试 1599→1604：note-viewer 懒加载时序回归 3 例 + update 脱敏与渠道缺失 3 例（其中 1 例按新契约改写）。
+
 ## [0.7.13] — 2026-09-30 · 发布前体检收口 + 仓库公开 + 检查更新
 
 > 方案：docs/plans/2026-09-30-public-release-autoupdate.md（发布前第二轮流体检 + 仓库转公开 + 指向 GitHub Releases 的更新功能）。

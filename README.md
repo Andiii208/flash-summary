@@ -85,7 +85,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 - **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
 - **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
 - **zod**：笔记 JSON schema 校验
-- **vitest**：测试（1605 个用例，144 个文件）；**electron-builder**：NSIS 安装包
+- **vitest**：测试（1604 个用例，144 个文件）；**electron-builder**：NSIS 安装包
 
 ### 项目结构
 
@@ -133,7 +133,7 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 ## ✅ 当前状态
 
 - **v0.7.13 已发布（2026-09-30）**：本版三件事——发布前第二轮流体检（全绿收尾）、**仓库转为公开**（Andiii208/flash-summary）、**「检查更新」功能**（设置 → 关于与声明：手动触发，只从本项目 GitHub Releases 读版本与安装包信息，无后台检查、无数据上报；下载进度可见，「立即重启安装 / 稍后（下次退出自动装）」）。顺带修掉上版遗留的一条测试偶发红（helper 超时窗口没收尾完，非产品缺陷）。测试 1572→1599、smoke 40→41。上一版 v0.7.12（2026-09-28）主题为**全项目体检整改**——安全红线两条（B站出站 URL 白名单堵 SSRF 凭据外带、registerIpc 二次注册状态分裂修复）、笔记文本渲染纪律 28 处（**加粗**/==高亮== 不再印字面符号）、切课残留笔记/PDF 卡死/暗色荧光笔错色等用户可见缺陷、契约防漂移与声明层如实化（ffprobe 许可订正 GPL-3.0-or-later）；测试 1467→1572。更早的 v0.7.11（2026-09-23）主题为**宽屏吃空白整改**——任务面板弹性撑满 + 任务卡双列、笔记正文装订线居中（640 阅读轴不变）、追问坞升格为「追问/目录」双 tab 的笔记副驾面板、设置页两栏、「我的学习/全部课程」弹层解除宽度封顶、零课程首页引导 + 数据流向双卡；另有 P51 思维导图改版随本版归位发布。仓库同期更名为 `Andiii208/flash-summary`（appId / userData / 包名未动，登录态与密钥不受影响）。
-- **1605 个测试**（lint / typecheck / test / build / smoke 五道已全绿；smoke 41/41、打包产物 asar 抽验与构建逐 sha256 一致；CI 与 Smoke 两条工作流对当前提交 success）。含笔记体验整改 v4、批 D、UX 整改批1–批6 + 补批、追问坞悬浮小卡片整改全部批次、宽屏吃空白四批 + 补批；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
+- **1604 个测试**（lint / typecheck / test / build / smoke 五道已全绿；smoke 41/41、打包产物 asar 抽验与构建逐 sha256 一致；CI 与 Smoke 两条工作流对当前提交 success）。含笔记体验整改 v4、批 D、UX 整改批1–批6 + 补批、追问坞悬浮小卡片整改全部批次、宽屏吃空白四批 + 补批；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
 - **装机走查项（等真人验收）**：三个页签（任务/笔记/设置）与零课程首页在宽屏的观感、小窗一次性提示、追问坞目录跳转、导图全图弹层、最大化装订线居中观感（浅/暗实拍存 `.ui-shots/`）。
 - **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
 - **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
@@ -153,7 +153,7 @@ npm install
 npm run dev          # 开发模式（热重载）
 npm run lint         # ESLint
 npm run typecheck    # TypeScript strict（node + web 双工程）
-npm test             # vitest（1605 用例 / 144 文件）
+npm test             # vitest（1604 用例 / 144 文件）
 npm run build        # electron-vite 构建到 out/
 npm run smoke        # 构建并运行 CDP 进程级烟测（40 项组合断言）
 npm run dist         # 构建 NSIS 安装包到 release/
