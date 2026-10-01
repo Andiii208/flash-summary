@@ -219,11 +219,13 @@ export function NoteViewer({
   const hitRate = note != null ? evidenceHitRate(note, attachmentManifest) : null
   // B6 (plan 2026-09-19): 时间线配图覆盖率——与时间线卡片同一分配函数＋体检面板
   // 据此诚实呈现「多少条没有图」（无图是合法态，只报 info 不拉低评级）。
+  // 依赖里的 attachmentVersion 不能去（与 TimelineCards/coverSrc 同款口径）：懒加载
+  // 首渲染 get(ref) 全 undefined → 覆盖率算成 0/N；附件解析完成 bump 后才会算对。
   const imageCoverage = useMemo(() => {
     if (note == null || note.timeline.length === 0) return null
     const allocated = allocateTimelineImagesLazy(note.timeline, getAttachment ?? (() => null), attachmentManifest)
     return { withImage: allocated.filter((images) => images.length > 0).length, total: note.timeline.length }
-  }, [note, getAttachment, attachmentManifest])
+  }, [note, getAttachment, attachmentManifest, attachmentVersion])
   // 批 A2: 封面 data URL 优先；没有封面（SEU 源/导入失败）退回最早的关键帧。
   // 依赖里带 attachmentVersion——首帧是懒加载的，解析到位后会重算。
   const coverSrc = useMemo(() => {

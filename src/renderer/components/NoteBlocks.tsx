@@ -268,8 +268,7 @@ function TreeNodeRows({ node, depth, defaultOpen }: { node: TreeNode; depth: num
  *  (the collapsed card shows only the closest one).
  *  批 A5 (plan 2026-09-19): 配图改为整份时间线的贪心一对一分配——稀缺帧优先给
  *  离得最近的那条，18 帧 18 条全部配上（旧 90s 筛子实测只有 28%）。 */
-function TimelineCards({ entries, chapters, getAttachment, manifest, version: versionForRerender, onOpenSource }: { entries: Note['timeline']; chapters?: Chapter[]; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void }): JSX.Element {
-  void versionForRerender
+function TimelineCards({ entries, chapters, getAttachment, manifest, version, onOpenSource }: { entries: Note['timeline']; chapters?: Chapter[]; getAttachment?: (ref: string) => NoteAttachmentInfo | null | undefined; manifest: AttachmentManifestEntry[]; version: number; onOpenSource?: (at: number) => void }): JSX.Element {
   const [zoom, setZoom] = useState<{ img: TimelineImage; entryTitle: string; at: number } | null>(null)
   // 批6: expansion keys on content (at+title), not the index — regenerating
   // the note must not leave «open» stuck onto different entries.
@@ -284,10 +283,12 @@ function TimelineCards({ entries, chapters, getAttachment, manifest, version: ve
     })
   }
   // P32 (plan 2026-09-21): 贪心分配 memo 化——本地态（展开组/放大图）变化不再重跑
-  // 整份时间线的分配；entries/getAttachment/manifest 三者不变就是同一份结果。
+  // 整份时间线的分配。version（attachmentVersion）必须留在依赖里：附件是懒加载，
+  // 首渲染时 get(ref) 全 undefined → 分配全空；解析完成后的 bump 是唯一重算信号
+  // （2026-10-01 修复：漏它会让卡片永久停在零图态——与 NoteViewer coverSrc 同款口径）。
   const allocated = useMemo(
     () => allocateTimelineImagesLazy(entries, getAttachment ?? (() => null), manifest),
-    [entries, getAttachment, manifest]
+    [entries, getAttachment, manifest, version]
   )
   const frameAt = (ref: string): number | null => manifest.find((m) => m.ref === ref)?.at ?? null
   // B1: 有章节时按章分组（章头 + 组内卡片）；无章节/空章节 → 平铺（旧笔记渲染逐字节不变）。

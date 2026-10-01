@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NoteViewer } from '../../src/renderer/components/NoteViewer'
 import { mount, click, input } from '../helpers/preact'
+import { render } from 'preact'
+import { act } from 'preact/test-utils'
 import type { Note } from '../../src/shared/notes/schema'
 import type * as mdLiteModule from '../../src/shared/notes/md-lite'
 import type * as viewsModule from '../../src/shared/notes/views'
@@ -848,6 +850,95 @@ describe('NoteViewer 图文并排卡片（C4, plan 2026-09-19）', () => {
     const host = mount(<NoteViewer note={withImages} lesson={lesson} attachmentManifest={[]} getAttachment={() => null} />)
     expect(host.querySelector('.timeline-card.has-images')).toBeNull()
     expect(host.querySelector('.timeline-quote.hero')).not.toBeNull()
+  })
+})
+
+// 2026-10-01（plan 2026-10-01-note-inline-images-and-updater-feed）回归：附件懒加载
+// 时序。use-notes-domain 逐张解析附件（getAttachment 先 undefined）、一批完成后
+// setAttachmentVersion(v+1)——TimelineCards 的分配 memo 依赖里漏 version 会让卡片
+// 永久停在快照1 的零图态（图全掉进文末图集），v0.7.10–v0.7.13 已实测复现。
+describe('NoteViewer 懒加载配图时序（2026-10-01 回归）', () => {
+  const lesson = { courseName: '算法导论', teacher: '汪海', lessonTitle: '第五讲' }
+  const lazyNote: Note = {
+    ...NOTE,
+    timeline: [
+      { at: 65, title: '引入', detail: '开始讲解', refs: [{ at: 66, text: '讲者原话：复杂度是算法的灵魂。' }], evidence: [{ kind: 'keyframe', ref: 'kf:kf-3' }] },
+      { at: 300, title: '示例', detail: '举例说明', refs: [], evidence: [] }
+    ]
+  }
+
+  /** 复刻 use-notes-domain 的时序：稳定引用的 getAttachment——isLoaded() 前全 undefined。 */
+  const mountLazy = (note: Note, isLoaded: () => boolean): { host: HTMLElement; renderNote: (version: number) => void } => {
+    const getAttachment = (ref: string) => (isLoaded() ? (ref === 'kf:kf-3' ? ATTACHMENT : null) : undefined)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    // manifest 提成稳定引用（真实场景是 state，引用不变）——否则引用变化本身就会
+    // 让 memo 重算，掩盖「漏 version」这个缺陷，反向验证失效。
+    const manifest = [{ ref: 'kf:kf-3', at: 300 }]
+    const renderNote = (version: number): void => {
+      act(() =>
+        render(
+          <NoteViewer
+            note={note}
+            lesson={lesson}
+            attachmentManifest={manifest}
+            getAttachment={getAttachment}
+            attachmentVersion={version}
+          />,
+          host
+        )
+      )
+    }
+    return { host, renderNote }
+  }
+
+  it('附件解析完成（attachmentVersion bump）后插图回到时间线卡片——快照对', () => {
+    let loaded = false
+    const { host, renderNote } = mountLazy(lazyNote, () => loaded)
+    renderNote(0)
+    // 快照 1：附件未解析——卡片无图（bug 现场：此后永远不再出现）
+    expect(host.querySelector('.timeline-card.has-images')).toBeNull()
+    // 快照 2：一批解析完成，version 推进（getAttachment/manifest 引用都没变）
+    loaded = true
+    renderNote(1)
+    const card = host.querySelector('.timeline-card.has-images')
+    expect(card).not.toBeNull()
+    expect(card?.querySelector('.timeline-side .timeline-thumb img')?.getAttribute('src')).toBe(ATTACHMENT.dataUrl)
+    expect(card?.querySelector('.thumb-origin.evidence')).not.toBeNull()
+    act(() => render(null, host))
+    document.body.removeChild(host)
+  })
+
+  it('同一时序下体检面板不再误报「时间线均无配图」', () => {
+    let loaded = false
+    const { host, renderNote } = mountLazy(lazyNote, () => loaded)
+    renderNote(0)
+    loaded = true
+    renderNote(1)
+    click(host.querySelector('.note-health-toggle'))
+    const panel = host.querySelector('.note-health-panel')
+    // 修复前：coverage 恒为 0/2 → 「时间线 2 条均无配图」；修复后：1/2 部分无图口径
+    expect(panel?.textContent).toContain('1 条无配图')
+    expect(panel?.textContent).not.toContain('均无配图')
+    act(() => render(null, host))
+    document.body.removeChild(host)
+  })
+
+  it('memo 修复不破坏 P32 初衷：展开引文后分配结果仍在', () => {
+    const twoRefs: Note = {
+      ...lazyNote,
+      timeline: [
+        { at: 65, title: '引入', detail: '开始讲解', refs: [{ at: 66, text: '引文一' }, { at: 70, text: '引文二' }], evidence: [{ kind: 'keyframe', ref: 'kf:kf-3' }] },
+        { at: 300, title: '示例', detail: '举例说明', refs: [], evidence: [] }
+      ]
+    }
+    const { host, renderNote } = mountLazy(twoRefs, () => true)
+    renderNote(0)
+    click(host.querySelector('.timeline-stamp'))
+    expect(host.querySelectorAll('.timeline-quote')).toHaveLength(2)
+    expect(host.querySelector('.timeline-card.has-images .timeline-side .timeline-thumb')).not.toBeNull()
+    act(() => render(null, host))
+    document.body.removeChild(host)
   })
 })
 
