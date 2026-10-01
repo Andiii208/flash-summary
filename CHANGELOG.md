@@ -2,7 +2,7 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.14] — 2026-10-01 · 笔记穿插回归修复 + 检查更新 feed 修复
 
 > 方案：docs/plans/2026-10-01-note-inline-images-and-updater-feed.md（Andiii 试用 0.7.13 实测两个问题：新版本生成的 B 站笔记截图不再穿插、全堆文末；点「检查更新」报 latest.yml 404）。
 
