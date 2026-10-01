@@ -30,7 +30,8 @@
 
 ### 2.2 技术选型：electron-updater + github provider
 
-- 新运行时依赖 `electron-updater`（MIT）——electron-builder 官方配套，唯一事实源 `app-update.yml`，由 `build.publish`（provider github / owner Andiii208 / repo flash-summary / releaseType release）在 `npm run dist` 时生成；`dist` 不带 `--publish`，**构建不自动发布**，发布动作仍在用户手里（scripts/release.md 不变）。
+- 新运行时依赖 `electron-updater`（MIT）——electron-builder 官方配套，唯一事实源 `app-update.yml`，由 `build.publish`（provider github / owner Andiii208 / repo flash-summary / releaseType release）在 `npm run dist` 时生成；`dist` 不带 `--publish`，**构建不自动发布**，发布动作仍在用户手里。
+  - **2026-10-01 订正**：本条原写「scripts/release.md 不变」是漏洞——electron-builder 会生成 feed 渠道文件 `latest.yml`，但发布命令只传了 Setup exe，v0.7.13 上线后「检查更新」报 404。已按 [2026-10-01 方案](./2026-10-01-note-inline-images-and-updater-feed.md) 修正：release.md §3 清单、§5 命令与 checklist 已补 latest.yml 上传与自检步骤。
 - main 侧新模块 `src/main/update.ts`：**纯逻辑 + 依赖注入**（`app`/`autoUpdater` 都是注入面，测试给假的），不 import electron-updater；真实装配只发生在 `src/main/index.ts`（`autoUpdater.autoDownload=false; autoInstallOnAppQuit=true`）。
 - 红线遵守：feed 常量钉死（owner/repo 在模块常量），`check()` 不接参数——渲染层传什么都不能改变更新源（同 `settings:openAuthor` 纪律，有钉住用例）。
 

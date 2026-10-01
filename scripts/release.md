@@ -27,7 +27,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 npm run dist
 ```
 
-- [ ] 产物生成：`release/Flash Summary Setup <version>.exe` 与 `release/win-unpacked/`。
+- [ ] 产物生成：`release/Flash Summary Setup <version>.exe`、`release/win-unpacked/` 与 **`release/latest.yml`**。latest.yml 由 electron-builder 与 exe 同次构建生成（版本号 / `path` / `sha512` / `size` 四项），是 electron-updater 的 feed 渠道文件——**漏传它，应用内「检查更新」必然 404**（2026-09-30 v0.7.13 实锤：Release 只传了 exe，检查更新报 `Cannot find latest.yml ... 404`）。文件名必须**正好** `latest.yml`，不要改。
 - [ ] **目视安装器许可页**（`./release/Flash Summary Setup <version>.exe` 打开看一眼，看完点「取消」——不点「我同意」不会写任何东西）：正文必须是**可读中文**。编码不对时 NSIS 会把 UTF-8 当 CP936 读，整屏乱码（2026-09-11 0.7.3 实锤：`build/installer-license.txt` 缺 UTF-8 BOM）。**这一步代码层面查不出来**，只能看。
 
 ## 4. asar 抽验（防资产过期事故）
@@ -53,12 +53,19 @@ node scripts/smoke-cdp.mjs --packaged
 ```bash
 git tag vX.Y.Z
 git push origin master vX.Y.Z
-gh release create vX.Y.Z "release/Flash Summary Setup <version>.exe" --title "vX.Y.Z" --notes "<CHANGELOG 摘要>"
+gh release create vX.Y.Z "release/Flash Summary Setup <version>.exe" release/latest.yml --title "vX.Y.Z" --notes "<CHANGELOG 摘要>"
 ```
 
 - [ ] release 资产与 tag 同一提交（`git log --oneline -1` 与 release 的 target commit 一致）。
 - [ ] release 页面资产可下载，说明含版本号。
-- [ ] **资产名会被 GitHub 规范化**：文件名里的空格换成点（`Flash Summary Setup 0.7.3.exe` → `Flash.Summary.Setup.0.7.3.exe`）。README 的「安装」一节按**下载后的名字**写（2026-09-11 已对齐）。
+- [ ] **渠道文件必须真的在 release 上**（发布后立刻只读自检，没有这行输出就是发布未完成——检查更新会 404）：
+
+  ```bash
+  gh api repos/Andiii208/flash-summary/releases/tags/vX.Y.Z --jq '.assets[].name' | grep -x latest.yml
+  ```
+
+- [ ] **资产名会被 GitHub 规范化**：文件名里的空格换成点（`Flash Summary Setup 0.7.3.exe` → `Flash.Summary.Setup.0.7.3.exe`）。README 的「安装」一节按**下载后的名字**写（2026-09-11 已对齐）。latest.yml 里的 `path`/`url` 是 electron-builder 按规范化后的名字写的，天然自洽，不要手改。
+- [ ] 万一漏传 latest.yml（tag 已打、包内容不变）：**不必删 tag 重发**——`gh release upload vX.Y.Z release/latest.yml` 追加即可（2026-10-01 v0.7.13 补传实测：资产与内容一致、electron-updater 请求的 URL 返回 200）。
 
 ## 6. 收尾
 
