@@ -9,94 +9,27 @@
  * 专项机位（拍完即退出，不走主流程清单）：--bili（B站导入对话框）、
  * --compliance（声明层四个界面）、--my-study（「我的学习」全屏弹层，批4 P9）。
  *
- * Library isolation: copies app.db(-wal/-shm) into a temp dir and points
- * SEU_SUMMARY_DOCS_OVERRIDE at it — the running installed app and the real
- * Library are never touched. userData stays the normal `-dev` one.
+ * Library isolation: copies app.db(-wal/-shm) plus attachments/ into a temp
+ * dir and points SEU_SUMMARY_DOCS_OVERRIDE at it — the running installed app
+ * and the real Library are never touched. userData stays the normal `-dev` one.
  * Requires Node >= 22 (native WebSocket/fetch) and a fresh `npm run build`.
  */
-import { spawn, execFileSync } from 'child_process'
-import { createServer } from 'http'
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { tmpdir, homedir } from 'os'
-import { createRequire } from 'module'
+import {
+  sleep,
+  waitFor,
+  waitForShell,
+  acceptConsentGate,
+  clickByText,
+  killApp,
+  removeDir,
+  spawnApp,
+  connect,
+  prepareThrowawayDocs
+} from './lib/ui-cdp.mjs'
 
-const require = createRequire(import.meta.url)
 const ROOT = join(import.meta.dirname, '..')
-const APP_TITLE = 'Flash Summary'
-const REAL_LIBRARY = join(homedir(), 'Documents', 'SEU Summary', 'Library')
-
-/** Await a predicate with a deadline; throws with the last observation. */
-async function waitFor(label, predicate, timeoutMs, intervalMs = 300) {
-  const deadline = Date.now() + timeoutMs
-  let last = null
-  while (Date.now() < deadline) {
-    last = await predicate()
-    if (last.ok) return last.value
-    await new Promise((resolve) => setTimeout(resolve, intervalMs))
-  }
-  throw new Error(`${label} not reached within ${timeoutMs}ms (last: ${JSON.stringify(last?.value ?? null)})`)
-}
-
-/** Minimal CDP client over the DevTools WebSocket. */
-class Cdp {
-  constructor(ws) {
-    this.ws = ws
-    this.nextId = 1
-    this.pending = new Map()
-    ws.addEventListener('message', (event) => {
-      const msg = JSON.parse(String(event.data))
-      if (msg.id != null && this.pending.has(msg.id)) {
-        const { resolve, reject } = this.pending.get(msg.id)
-        this.pending.delete(msg.id)
-        if (msg.error != null) reject(new Error(`CDP error ${msg.error.code}: ${msg.error.message}`))
-        else resolve(msg.result)
-      }
-    })
-  }
-
-  send(method, params = {}) {
-    const id = this.nextId++
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      this.ws.send(JSON.stringify({ id, method, params }))
-    })
-  }
-
-  async eval(expression) {
-    const result = await this.send('Runtime.evaluate', {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-      userGesture: true
-    })
-    if (result.exceptionDetails != null) {
-      const desc = result.exceptionDetails.exception?.description ?? result.exceptionDetails.text
-      throw new Error(`evaluate threw: ${desc}`)
-    }
-    return result.result?.value
-  }
-
-  async shot(path) {
-    const { data } = await this.send('Page.captureScreenshot', { format: 'png' })
-    writeFileSync(path, Buffer.from(data, 'base64'))
-    console.log(`shot  ${path}`)
-  }
-}
-
-function findFreePort(start) {
-  return new Promise((resolve) => {
-    const probe = (port) => {
-      const s = createServer()
-      s.once('error', () => probe(port + 1))
-      s.once('listening', () => s.close(() => resolve(port)))
-      s.listen(port, '127.0.0.1')
-    }
-    probe(start)
-  })
-}
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function main() {
   const outDir = process.argv[2] != null && !process.argv[2].startsWith('--') ? process.argv[2] : join(ROOT, '.ui-shots')
@@ -105,14 +38,9 @@ async function main() {
   mkdirSync(outDir, { recursive: true })
   const shotName = (name) => join(outDir, `${prefix}${name}.png`)
 
-  // Throwaway library copy: the real db stays untouched (WAL-safe by copy).
-  const tmpDocs = mkdtempSync(join(tmpdir(), 'seu-ui-docs-'))
-  const tmpLib = join(tmpDocs, 'SEU Summary', 'Library')
-  mkdirSync(tmpLib, { recursive: true })
-  for (const f of ['app.db', 'app.db-wal', 'app.db-shm']) {
-    const src = join(REAL_LIBRARY, f)
-    if (existsSync(src)) copyFileSync(src, join(tmpLib, f))
-  }
+  // Throwaway library copy (db + attachments — note-page shots need the
+  // timeline images); the real Library stays untouched (WAL-safe by copy).
+  const tmpDocs = prepareThrowawayDocs({ withAttachments: true })
 
   const outMain = join(ROOT, 'out', 'main', 'index.cjs')
   if (!existsSync(outMain)) {
@@ -120,35 +48,10 @@ async function main() {
     process.exit(1)
   }
 
-  const port = await findFreePort(9500 + Math.floor(Math.random() * 200))
-  const electron = spawn(require('electron'), ['.', `--remote-debugging-port=${port}`], {
-    cwd: ROOT,
-    env: { ...process.env, SEU_SUMMARY_DOCS_OVERRIDE: tmpDocs, ELECTRON_RENDERER_URL: '' },
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
-  electron.stderr.on('data', (d) => process.stderr.write(String(d).slice(0, 400)))
+  const { electron, port } = await spawnApp(tmpDocs)
 
   try {
-    const target = await waitFor(
-      'main window target',
-      async () => {
-        try {
-          const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
-          const match = list.find((t) => t.type === 'page' && t.title.includes(APP_TITLE))
-          return { ok: match != null, value: match }
-        } catch {
-          return { ok: false }
-        }
-      },
-      30000
-    )
-    const ws = new WebSocket(target.webSocketDebuggerUrl)
-    await new Promise((resolve, reject) => {
-      ws.addEventListener('open', resolve, { once: true })
-      ws.addEventListener('error', () => reject(new Error('WebSocket connect failed')), { once: true })
-    })
-    const cdp = new Cdp(ws)
-    await cdp.send('Page.enable')
+    const cdp = await connect(port)
 
     // 声明批2: a library without recorded consent stops at the 使用须知 gate, so
     // the shell (and the course tree) does not exist yet. Wait for EITHER, then
@@ -157,23 +60,7 @@ async function main() {
       await cdp.eval(`document.documentElement.dataset.theme = ${JSON.stringify(theme)}`)
       await sleep(350)
     }
-    const readingState = () =>
-      cdp.eval(`JSON.stringify({
-        gate: document.querySelector('[data-testid="consent-clauses"]') != null,
-        shell: document.querySelector(".app-shell") != null
-      })`)
-
-    await waitFor('shell or consent gate', async () => {
-      try {
-        const raw = await readingState()
-        const parsed = JSON.parse(raw)
-        return { ok: parsed.gate === true || parsed.shell === true, value: raw }
-      } catch {
-        return { ok: false }
-      }
-    }, 20000)
-
-    const gated = JSON.parse(await readingState()).gate === true
+    const gated = (await waitForShell(cdp)) === 'gate'
     if (process.argv.includes('--compliance') && gated) {
       // The gate itself is one of the surfaces under review — shoot it in both
       // themes BEFORE accepting (accepting re-reads settings, which re-runs the
@@ -184,33 +71,7 @@ async function main() {
       await cdp.shot(shotName('c1-consent-dark'))
       await applyTheme('light')
     }
-    if (gated) {
-      const ticked = await cdp.eval(`(() => {
-        const box = document.querySelector(".dialog-check input")
-        if (box == null) return false
-        box.checked = true
-        box.dispatchEvent(new Event("change", { bubbles: true }))
-        return true
-      })()`)
-      if (ticked !== true) throw new Error("consent checkbox not found")
-      // Preact re-renders on a microtask: in the same synchronous block the
-      // confirm button is still disabled and the click would be swallowed.
-      await sleep(250)
-      const accepted = await cdp.eval(`(() => {
-        const btn = [...document.querySelectorAll(".dialog-actions button")].find((b) => b.textContent === "同意并继续")
-        if (btn == null || btn.disabled) return false
-        btn.click()
-        return true
-      })()`)
-      if (accepted !== true) throw new Error("consent accept click failed")
-      await waitFor('consent lifted', async () => {
-        try {
-          return { ok: (await cdp.eval('document.querySelector(".app-shell") != null')) === true }
-        } catch {
-          return { ok: false }
-        }
-      }, 15000)
-    }
+    if (gated) await acceptConsentGate(cdp)
 
     await waitFor('course tree', async () => {
       try {
@@ -451,13 +312,6 @@ async function main() {
     if (process.argv.includes('--compliance')) {
       // The walk above ends in the dark override — pin light for the first half.
       await applyTheme('light')
-      const clickByText = (selector, label) =>
-        cdp.eval(`(() => {
-          const b = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.textContent.trim() === ${JSON.stringify(label)})
-          if (b == null) return false
-          b.click()
-          return true
-        })()`)
       const waitForSel = (label, selector, timeout = 8000) =>
         waitFor(label, async () => {
           try {
@@ -498,17 +352,17 @@ async function main() {
       await cdp.shot(shotName('c3-feedback-qr-light'))
 
       // 两份全文：使用须知走渲染，第三方许可走原文
-      if ((await clickByText('[data-testid="about-panel"] button', '查看使用须知全文')) !== true) throw new Error('disclaimer entry not found')
+      if ((await clickByText(cdp, '[data-testid="about-panel"] button', '查看使用须知全文')) !== true) throw new Error('disclaimer entry not found')
       await waitForSel('disclaimer dialog', '[data-testid="legal-disclaimer"]')
       await sleep(400)
       await cdp.shot(shotName('c4-disclaimer-light'))
-      if ((await clickByText('.dialog-actions button', '关闭')) !== true) throw new Error('disclaimer close failed')
+      if ((await clickByText(cdp, '.dialog-actions button', '关闭')) !== true) throw new Error('disclaimer close failed')
       await sleep(350)
-      if ((await clickByText('[data-testid="about-panel"] button', '第三方许可')) !== true) throw new Error('licenses entry not found')
+      if ((await clickByText(cdp, '[data-testid="about-panel"] button', '第三方许可')) !== true) throw new Error('licenses entry not found')
       await waitForSel('licenses dialog', '[data-testid="legal-licenses"]')
       await sleep(400)
       await cdp.shot(shotName('c5-licenses-light'))
-      if ((await clickByText('.dialog-actions button', '关闭')) !== true) throw new Error('licenses close failed')
+      if ((await clickByText(cdp, '.dialog-actions button', '关闭')) !== true) throw new Error('licenses close failed')
       await sleep(300)
 
       // 暗色重拍：白底二维码卡片是这批唯一「外来」视觉，重点看它
@@ -517,11 +371,11 @@ async function main() {
       await scrollTo('[data-testid="about-panel"]')
       await sleep(350)
       await cdp.shot(shotName('c8-about-dark'))
-      await clickByText('[data-testid="about-panel"] button', '查看使用须知全文')
+      await clickByText(cdp, '[data-testid="about-panel"] button', '查看使用须知全文')
       await waitForSel('disclaimer dialog (dark)', '[data-testid="legal-disclaimer"]')
       await sleep(400)
       await cdp.shot(shotName('c9-disclaimer-dark'))
-      await clickByText('.dialog-actions button', '关闭')
+      await clickByText(cdp, '.dialog-actions button', '关闭')
       await sleep(300)
       await scrollTo('[data-testid="feedback-block"]')
       await sleep(400)
@@ -532,7 +386,7 @@ async function main() {
       // 批4: 导出前的版权提醒（屏幕上得有一个可点的导出按钮）
       await goTab('笔记')
       await sleep(900)
-      if ((await clickByText('.note-toolbar button', '导出 Markdown')) !== true) {
+      if ((await clickByText(cdp, '.note-toolbar button', '导出 Markdown')) !== true) {
         throw new Error('no export button on screen — the walk did not land on a noted lesson')
       }
       await waitFor('copyright notice', async () => {
@@ -550,7 +404,7 @@ async function main() {
       await applyTheme('light')
       await sleep(300)
       // Cancel — this run must not write an export file nobody asked for.
-      if ((await clickByText('.dialog-actions button', '取消')) !== true) throw new Error('notice cancel failed')
+      if ((await clickByText(cdp, '.dialog-actions button', '取消')) !== true) throw new Error('notice cancel failed')
       await sleep(400)
 
       // 批6: 失败任务的诊断弹层（真实库里有失败任务可点）。
@@ -571,7 +425,7 @@ async function main() {
         await sleep(450)
         await cdp.shot(shotName('c12-diagnostics-dark'))
         await applyTheme('light')
-        await clickByText('.dialog-actions button', '关闭')
+        await clickByText(cdp, '.dialog-actions button', '关闭')
       } else {
         console.log('note  no failed-task row visible — skipped the diagnostics shots')
       }
@@ -580,21 +434,8 @@ async function main() {
 
     await cdp.eval('delete document.documentElement.dataset.theme')
   } finally {
-    if (electron.pid != null) {
-      try {
-        execFileSync('taskkill', ['/PID', String(electron.pid), '/T', '/F'], { stdio: 'ignore' })
-      } catch {
-        // already gone
-      }
-    }
-    for (let attempt = 0; attempt < 8; attempt++) {
-      try {
-        rmSync(tmpDocs, { recursive: true, force: true })
-        break
-      } catch {
-        await sleep(500)
-      }
-    }
+    killApp(electron)
+    await removeDir(tmpDocs)
   }
   console.log(`\nDONE → ${outDir}`)
 }
