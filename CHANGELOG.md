@@ -2,6 +2,21 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+> 方案：docs/plans/2026-10-06-readme-screenshot-overhaul.md（其他 agent 反馈：仓库 README 作为电脑软件门面不合格、没有软件截图是大大扣分项；D1-D6 全按推荐）。
+
+### 文档
+
+- **README 门面重写**：旧版 186 行面向贡献者（功能表单元格 300–600 字、混内部批号与「试用实测」记录、「当前状态」是开发日志），访客三问（是什么/长什么样/去哪下载）全在第四屏以后，且全文零截图。新版 135 行：首屏 hero 实拍 + 一句话定位 + 按钮式下载入口；新增「界面一览」——9 张真实界面截图 + 核心流程 GIF（浏览课程 → 导入即排队 → 笔记生成 → 追问 → 导图/五视图/PDF）；功能表压缩为一行一条；「当前状态」版本信息并入安装节；内部批号/P 号/装机走查项全部移除（发布史归 CHANGELOG、开发台账归 PROGRESS）。**声明层摘要（隐私与安全 + 合规与使用声明）逐字保留**，无任何新增用户可见承诺。
+- **新增截图管线 scripts/readme-shots.mjs**：真库副本（app.db + attachments）CDP 实拍 README 机位 → user32 钉窗 1920×1200（zoom 口径实测 CSS 视口 1600）→ 浅色主题 → ffmpeg-static 裁自绘标题栏 + 缩放 + JPEG，产出 docs/assets/readme/ 13 资产共 2.03MB（manifest.json 记账）；GIF 以 DOM 字幕烧字，零字体依赖。**UI 大改后重跑即重建**，防腐烂纪律已写入 AGENTS.md 命令节。
+- **dev 脚本公共库抽取 scripts/lib/ui-cdp.mjs**：ui-shots 的 CDP 客户端/等待助手/闸门走查/钉窗等抽为共享模块，readme-shots 复用（纯机械重构，ui-shots 默认模式复跑一致）。顺带修一个 latent 缺口：ui-shots 的库副本从前不拷 attachments/，笔记页截图一直缺时间线配图。
+
+### 已知问题（非本次引入，留待后续）
+
+- scripts/ui-shots.mjs `--bili` 机位假设未登录态：dev userData 现有 B站会话时「导入并生成笔记」直接导入、不出二维码，20s 等待超时（与重构前 HEAD 版本在相同条件下报错逐字一致）。
+- scripts/ui-shots.mjs `--compliance` 的「导出 Markdown」选择器陈旧：该按钮已改为「复制 Markdown」，Markdown 导出收进「其它导出」菜单（同上，HEAD 版本同样失败）。
+
 ## [0.7.14] — 2026-10-01 · 笔记穿插回归修复 + 检查更新 feed 修复
 
 > 方案：docs/plans/2026-10-01-note-inline-images-and-updater-feed.md（Andiii 试用 0.7.13 实测两个问题：新版本生成的 B 站笔记截图不再穿插、全堆文末；点「检查更新」报 latest.yml 404）。

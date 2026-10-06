@@ -18,6 +18,7 @@ npm run lint && npm run typecheck && npm test
 
 - `npm run build` 为 electron-vite 构建（Phase 7 起含安装包打包）。
 - **改了 IPC 契约 / 桥面（`src/shared/bridge.ts`、`preload`、`ipc.ts` 的返回结构）时，四门禁之外必须另跑 `npm run smoke`**——它才是校验桥面形状的那道门（2026-09-18 实锤：批C1 把两条列表改成 `{items,total,limit}`，四门禁全绿而 smoke 30/32）。
+- **README 截图防腐烂**：README 配图在 `docs/assets/readme/`（`manifest.json` 记账），由 `node scripts/readme-shots.mjs` 一键重建（真库副本 CDP 实拍 + user32 钉窗 + ffmpeg-static 压缩，零新依赖；**改了 renderer 可见样式后必须重跑**）。CI 不渲染 UI、不设截图门禁——防腐烂靠这条纪律。
 - 测试不许 skip/todo/删除断言/mock 被测关键路径来制造绿灯；测试数只增不减。
 
 ## 提交纪律
