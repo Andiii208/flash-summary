@@ -8,105 +8,69 @@
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Electron](https://img.shields.io/badge/Electron-44-47848F)
 
-Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 SEU CAS 账号登录（或导入 B 站视频），把课程视频（教师流 + 屏幕/PPT 流 + 平台 PPT）自动加工成**多模态结构化笔记**，并支持在阅读时**随时追问**。
+![Flash Summary 笔记页：课程树 + 时间线图文笔记 + 追问坞](docs/assets/readme/hero.jpg)
+
+Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 SEU CAS 账号登录（或导入 B 站视频），把课程视频（教师流 + 屏幕/PPT 流 + 平台 PPT）自动加工成**多模态结构化笔记**，阅读时还能**随时追问**。
 
 - 没有开发者自有服务器——音频、文字、图片只发给**你自己配置**的 ASR / LLM Provider（OpenAI 兼容接口）。
 - 你的资料库、转写、关键帧、笔记全部保存在本地。
 - 全流程可断点续跑：失败的任务从失败阶段恢复，不重复已完成的工作。
-- **宽屏自适应**：窗口放大后界面按物理宽度等比缩放铺满，内容区（任务双列 / 笔记装订线居中 / 追问坞常显）随窗口连续增减，不出现「大窗口 + 半屏空白」。
+- **宽屏自适应**：窗口放大后界面按物理宽度等比缩放铺满，不出现「大窗口 + 半屏空白」。
+
+## 🖥️ 界面一览
+
+核心流程：① 浏览课程 → ② 导入 B站视频即自动排队 → ③ 笔记生成 → ④ 阅读中追问 → ⑤ 导图 / 五视图 / PDF 讲义。
+
+![核心流程动图](docs/assets/readme/demo.gif)
+
+| 任务流水线（六阶段实时可见） | 同一份笔记的四种视图 |
+| :---: | :---: |
+| ![任务流水线](docs/assets/readme/running.jpg) | ![四种阅读视图](docs/assets/readme/views-strip.jpg) |
+
+| 全部课程一屏浏览 | 追问坞（读到哪里问到哪里） |
+| :---: | :---: |
+| ![全部课程全屏浏览](docs/assets/readme/browser.jpg) | ![课时追问坞](docs/assets/readme/qa.jpg) |
+
+| 思维导图（按容器宽适合比例） | PDF 讲义导出（矢量文本） |
+| :---: | :---: |
+| ![思维导图](docs/assets/readme/mindmap.jpg) | ![PDF 讲义内页](docs/assets/readme/handout.jpg) |
+
+| 导入 B站视频：粘贴链接即解析预览 | 分P勾选后与校内课程同规格生成笔记 |
+| :---: | :---: |
+| ![B站视频导入对话框](docs/assets/readme/bili.jpg) | ![B站解析预览](docs/assets/readme/bili-preview.jpg) |
 
 ## ✨ 功能
 
 | 模块 | 说明 |
 |---|---|
-| 🖥️ Preact 界面 | «quiet academia» 设计语言：分层表面 + 渐变强调、任务卡阶段轨道与进度流光、卡片式 toast；CSS 变量设计系统（间距/行高/字距刻度 token + 七个共享基元），明暗主题（跟随系统或手动指定）；宽屏下内容连续铺满无死白（追问坞见「课时追问」行） |
-| 🔐 平台登录 | 登录在主窗口内完成（进入学校平台授权后自动返回应用并刷新课程）；完成以「课程列表接口真实可用」为准；会话用 Windows DPAPI 加密持久化，重启免登录；JWT 过期本地判定，徽标区分「已登录/已过期/未登录」，重登由你主动点击触发；登录失败如实弹窗提示（导航会卸载原页面，结果经一次性通道带回）；启动即对校园域名绕过系统代理，检测到代理 Fake-IP 接管会给出具体修复指引（`SEU_LOGIN_WINDOW=1` 可回退独立登录窗） |
-| 📚 课程/课时 | **「我的学习」聚合区置顶**：已提取（有笔记自动识别）→ 我的收藏（星标，≥2 门可折叠）→ 同课其他老师推荐；全部课程折叠分组按 150 门增量渲染；分页拉取（默认前 4 页 = 2000 门，`courseListMaxPages` 可调，侧栏明示「本地已收录/本次刷新/平台列表约」三口径边界）；课程卡片显示教师·上课时间·教室（与官网一致）；搜索 300ms 防抖（覆盖课程名/教师/学期/教室/讲次/课程号/课时标题）；**课程全屏浏览**（「全部课程」行尾按钮或 Ctrl+K）：近全屏网格 + 学期/来源/状态筛选 + 排序 + 点教师名即筛选，点卡片展开课时、点课时直接选中；手动 ID 后备入口 |
-| ⏱️ 任务队列 | 6 阶段流水线**串行执行**，**任意阶段 2 秒内可取消**（下载/转写/关键帧全链路接信号）且如实显示「已取消」；运行卡显示阶段轨道 + 已下载大小/速度；历史记录显示课程·课时名与**教师·上课时间·教室**、可筛选/单条删除/一键清空（自绘确认框）；失败原因翻译成人话；窗口关闭前确认任务去向 |
-| 🎬 媒体管线 | 课时详情自播放页收割（视频直链 + 课时目录，主窗口内完成并恢复界面）；教师流取音频（无音频轨自动回退屏幕流）；屏幕流抽关键帧并**感知哈希去重**；全景流按规格不下载；平台 PPT 优先，关键帧补充；ffmpeg 超时（30 分钟）与停滞检测（60 秒无输出即终止） |
-| 🗣️ ASR 转写 | 分片转写（默认 120 秒/片——按真实网关校准，解除大请求体上限），拼接保留片偏移，静音分片自动跳过；HTTP 下载支持 **Range 断点续传** |
-| 🧠 多模态笔记 | 转写 + **真实 PPT/关键帧图片**（每张带证据ID标注，上限 20 张）→ 多模态模型生成结构化笔记（JSON）；转写带 `[mm:ss]` 时间锚喂入（引文可核验：生成后逐条核对摘引能否在转写里找到，核对不上的降级而非留假引文）；模型输出偏差容错归一（时间戳/证据引用格式过滤，**丢弃计数在生成结果里可见**）；不支持视觉输入时自动回退纯文本；笔记可**一键重新生成**（复用已存转写与关键帧，不重下载），生成后跑**内容体检**、不达标时**自动返修一次**（返修不发图、只采纳确实改善的稿，无论结果都照常出笔记） |
-| 📖 五种阅读视图 | 详细笔记（时间线图文卡片）/ 标准总结 / 要点 / 方法论 / **思维导图**——**同一份 JSON** 投影，非多份独立总结；时间线卡片自动绑定课堂关键帧（证据引用精确匹配 → 时间就近兜底）；概念卡带**具体例子**；公式以 **LaTeX 排版**（KaTeX，讲义里仍是矢量文本）、表格与代码块正常渲染（代码块 ≥3 行显示行号，复制不带行号）；行内 `==荧光笔高亮==`（屏幕与 PDF 同底色）；导图按容器宽适合比例呈现、**页面原生下滑看完**，工具栏「全图」开近全屏浏览（整图完整在视口内），另有**关系模式**（把概念关联当主结构画成关系图）；导出 **PDF 整册讲义**（封面 + 整页导图 + 图文正文 + 图集，矢量文本）、**Markdown**、**Anki 牌组**、**Obsidian 结构化笔记**（frontmatter + wikilink + 间隔重复卡）、导图 **SVG** 与 **PNG**；复制到剪贴板 |
-| ⚙️ 设置 | Provider 预设模板（OpenAI/DeepSeek/硅基流动/小米 MiMo）+「测试连接」探活；任务缓存目录可改（即时生效）、资料库迁移（失败回滚；不产 .bak 快照——源库即兜底）、**资料库备份**（独立入口：SQLite WAL 一致快照另存到自选路径，只含数据库文件）、主题、打开日志目录；**「关于与声明」**（使用须知全文 + 第三方许可 + 测试期反馈入口 + 作者 GitHub 主页 + **检查更新**——手动触发，只从本项目 GitHub Releases 读版本与安装包信息，下载完成后重启安装） |
-| 📺 B站视频源 | 侧栏「B站视频导入」：粘贴视频链接/BV号/b23.tv 短链 → 解析预览（标题/分P列表勾选）→ 应用内扫码登录（SESSDATA DPAPI 加密落盘）→ 与校内课程同规格生成笔记；**字幕优先**（B站 CC/AI 字幕直插，秒级时间戳），无字幕自动回退 **ASR 兜底**（DASH 音频流）；360P 视频流抽关键帧保时间线配图；付费/充电专属内容明确拒绝；导入后自动排队生成 |
-| 💬 课时追问 | **笔记页右侧悬浮坞**（读到哪里问到哪里，不用切页）：上下文 = 本课时转写 + 笔记 + PPT + 关键帧 + 历史问答（严格课时边界）；无笔记的课时不可问（硬门禁）；坞内「追问 / 目录」双 tab，空对话给章节建议问题，长答案可全宽查看；滚到题头自动收成悬浮小球、宽屏常驻 |
-| 🗑️ 临时文件治理 | 音频转写成功后删除、视频抽帧成功后删除、>24h 缓存启动时清理（**跳过运行中任务**） |
-| 🩹 可诊断性 | 日志落盘（`userData/logs/`，每日轮转、凭据脱敏）、单实例锁（二次启动聚焦主窗口） |
+| 🖥️ 界面 | Preact + «quiet academia» 设计语言：明暗主题、任务阶段轨道与进度、卡片 toast；宽屏按物理宽度等比缩放铺满 |
+| 🔐 平台登录 | 主窗口内完成 CAS 授权并自动返回；会话 DPAPI 加密、重启免登录；徽标区分已登录/已过期；启动即对校园域名绕过系统代理 |
+| 📚 课程/课时 | 「我的学习」聚合置顶（已提取/收藏/同课推荐）；折叠分组增量渲染 + 分页拉取；搜索防抖；**全屏课程浏览器**（Ctrl+K，筛选/排序）；手动 ID 后备入口 |
+| ⏱️ 任务队列 | 六阶段流水线串行执行、**任意阶段可取消**；运行卡显示阶段轨道与进度；历史记录可筛选/重试/单条删除；失败原因翻译成人话 |
+| 🎬 媒体管线 | 播放页收割视频直链与课时目录；教师流取音频（无音频轨回退屏幕流）；感知哈希抽关键帧去重；ffmpeg 超时与停滞检测 |
+| 🗣️ ASR 转写 | 120 秒分片转写、片偏移拼接、静音分片跳过；HTTP Range 断点续传 |
+| 🧠 多模态笔记 | 转写 + **真实 PPT/关键帧图片** → 多模态模型生成结构化笔记；时间锚引文逐条核验（核对不上的降级）；**一键重新生成**（复用已存转写与关键帧）+ 内容体检自动返修一次 |
+| 📖 五种阅读视图 | 详细笔记（时间线图文卡片）/ 标准总结 / 要点 / 方法论 / **思维导图**——**同一份 JSON 投影**；时间线卡片自动绑定课堂关键帧；公式 LaTeX 排版；导图按容器宽适合比例、可全图浏览 |
+| 💬 课时追问 | 笔记页右侧悬浮坞，上下文严格限本课时（转写 + 笔记 + PPT + 关键帧 + 历史问答）；空对话给章节建议问题 |
+| 📤 导出 | **PDF 整册讲义**（封面 + 整页导图 + 图文正文 + 图集，矢量文本）、Markdown、Anki 牌组、Obsidian 结构化笔记、导图 SVG/PNG、剪贴板 |
+| ⚙️ 设置 | Provider 预设模板 + 测试连接；任务缓存目录可改、资料库迁移与备份；主题、日志目录；「关于与声明」+ **检查更新**（只读本项目 GitHub Releases） |
+| 📺 B站视频源 | 粘贴链接/BV号/b23.tv 短链 → 解析预览（分P勾选）→ 应用内扫码登录；**字幕优先**、无字幕 ASR 兜底；付费/充电专属内容明确拒绝 |
+| 🗑️ 文件治理 | 音频转写成功后删除、视频抽帧成功后删除、>24h 缓存启动时清理（跳过运行中任务） |
 
 ## 🚀 安装
 
-从 [GitHub Releases](https://github.com/Andiii208/flash-summary/releases) 下载最新的安装包，双击安装即可。
+**[⬇ 下载最新版（GitHub Releases）](https://github.com/Andiii208/flash-summary/releases/latest)** — 需要 **Windows 10/11 x64**；ffmpeg 已内置，无需额外安装。当前版本 **v0.7.14**（2026-10-01），逐版本变更见 [CHANGELOG](CHANGELOG.md)，开发进度台账见 [PROGRESS.md](PROGRESS.md)。
 
-- **文件名**：GitHub 会把资产名里的空格换成点，所以下到的是 `Flash.Summary.Setup.<version>.exe`；本地 `npm run dist` 产出的是 `release\Flash Summary Setup <version>.exe`——同一个包，只是分隔符不同。
+- 下到的是 `Flash.Summary.Setup.<version>.exe`（GitHub 会把资产名里的空格换成点；与本地 `npm run dist` 产物是同一个包）。
 - 安装程序会先显示**使用须知与第三方许可**（含内置 ffmpeg 的 GPL-3.0 说明与源码获取途径），需点「我同意」才能继续；条款全文随包放在安装目录的 `resources\legal\`。
-- 需要 **Windows 10/11 x64**。
-- **无需**安装 ffmpeg——安装包已内置 ffmpeg/ffprobe。
-- 首次启动会先弹出**使用须知与免责声明**（九条，须勾选同意；不同意则退出应用），随后按引导配置 Provider（ASR 转写 + 多模态总结）。须知文本改版（版本号变化）后会在下次启动重新提示一次。
+- 首次启动会先弹出**使用须知与免责声明**（九条，须勾选同意；不同意则退出应用），随后按引导配置 Provider（ASR 转写 + 多模态总结）。
 
-## 🖥️ 快速开始
+## ▶️ 快速开始
 
-1. 双击应用启动，点击「登录 CAS」——主窗口进入学校平台完成授权，成功后自动返回应用，课程树自动刷新（会话加密保存，重启免登录）。
-2. 在左侧课程树点击课时（无课时目录的课点「抓取课时目录」；或用「手动添加」输入课程/课时 ID 作为后备）；侧栏搜索可快速定位课程；课程多时点「全部课程」行尾的展开按钮（或 Ctrl+K）进入全屏浏览，用搜索和筛选找到目标课，点卡片展开课时、点课时直接选中。
-3. 点「创建并运行」——任务排队并串行执行，界面实时显示阶段与分片进度；需要时点「取消任务」；窗口重载后运行中任务的状态会自动恢复显示。
-4. 完成后笔记自动出现，五种视图切换阅读（思维导图按容器宽适合比例呈现、下滑看完，也可点工具栏「全图」近全屏浏览）；点「导出 PDF 讲义」生成整册讲义（A4、封面、页码、含课堂画面），或「导出 Markdown」；「重新生成」仅重跑总结阶段。
-5. 阅读中在**笔记页右侧的追问坞**里随时就本课时提问（滚到题头会自动收成小球、点球再打开）；任务失败时点历史任务中的「重试」——只会从失败阶段继续。
-6. 「设置」页可配置 Provider、更改任务缓存目录、迁移资料库、切换主题、打开日志目录。
-7. **窗口放大/最大化**后界面按物理宽度等比缩放铺满：任务卡自动双列、正文列居中成装订线、追问坞宽屏常驻——不需要任何手动设置（窗口偏小首次启动会给一条一次性提示）。
-
-## 🏗️ 架构
-
-```
-+-------------------------------------------------------------+
-| Renderer (src/renderer, Preact)                             |
-| 课程树 / 任务 / 笔记 / 设置三页签 / 追问坞 / 引导卡 / Toast |
-+------------------------------+------------------------------+
-                               | IPC (contextBridge)
-+------------------------------+------------------------------+
-| Main (src/main)                                             |
-| app-context      assemble library/session/Provider/ffmpeg   |
-| ipc              66 channels: school/providers/tasks/qa/    |
-|                  lessons/settings/log; serial, cancelable   |
-| tasks/orchestrator  6-stage pipeline (ASR/multimodal)       |
-| media           ffmpeg audio/keyframes/timeout; phash dedup |
-|                  retry + Range resume                       |
-| providers        OpenAI-compatible client; DPAPI key        |
-| school          play-page harvest (url+lessons); course API |
-| auth             in-window login; DPAPI session             |
-| notes            schema / 5 views / attachments / regen /   |
-|                  PDF handout / evidence align / QA context  |
-| db               better-sqlite3 + migrations                |
-+-------------------------------------------------------------+
-```
-
-### 技术栈
-
-- **Electron 44 + TypeScript strict**（electron-vite 构建，main/preload/renderer 三进程隔离，sandbox + contextIsolation 开启）
-- **Preact**：renderer UI（happy-dom 组件测试）
-- **better-sqlite3**：本地资料库（课程/课时/任务/转写/PPT/关键帧/笔记/问答/设置）
-- **ffmpeg-static / ffprobe-static**：媒体处理（已打包进安装包）
-- **zod**：笔记 JSON schema 校验
-- **vitest**：测试（1604 个用例，144 个文件）；**electron-builder**：NSIS 安装包
-
-### 项目结构
-
-```
-src/
-  main/       主进程（数据库、任务队列、媒体管线、Provider、IPC handlers、日志）
-  preload/    类型化桥接（contextBridge）
-  renderer/   Preact UI（课程树/任务/笔记/设置三页签 + 笔记页右侧追问坞，CSS 变量设计系统）
-  shared/     main 与 renderer 共享的纯逻辑与类型（notes schema、bridge 契约）
-tests/       144 个测试文件（含真实 HTTP 集成与六阶段端到端，含 B站源两条 e2e）
-promo/       宣发宣传动画：promo.html 分镜舞台（1920×1080，t 的纯函数）+ build-assets.mjs 备料
-             + main.mjs 渲染宿主；产物 = promo/out/promo.mp4（27s / 九拍，帧精确、零新依赖）
-docs/skills/   工艺规范（note-craft 笔记工艺 / ui-layout 排版规范——改对应链路的会话先读）
-scripts/      release.md（发布清单）· verify-asar.mjs（asar 抽验）· smoke-cdp.mjs（进程级烟测）· ui-shots.mjs / ui-probe.mjs（排版实拍与几何探针）
-docs/
-  plans/ROADMAP.md         阶段计划（8 阶段 + 验收命令）
-  plans/2026-09-22-wide-screen-blank-space.md  宽屏吃空白整改（最新一批）
-  acceptance/MVP.md        spec 第 11 条逐项验收记录（诚实标注人工验证项）
-  superpowers/specs/      唯一设计规格
-PROGRESS.md   断点续跑台账（新会话先读它）
-```
+1. 双击启动，点「登录 CAS」——主窗口内完成学校平台授权后自动返回，课程树自动刷新（会话加密保存，重启免登录）。
+2. 左侧课程树点击课时即可创建任务；课程多用「全部课程」（行尾按钮或 Ctrl+K）全屏浏览，搜索/筛选后点课时直接选中；B站视频点侧栏「导入 B站视频」。
+3. 任务排队串行执行，界面实时显示阶段与分片进度；需要时点「取消任务」；失败点历史任务中的「重试」——只会从失败阶段继续。
+4. 完成后自动进入笔记：五种视图切换阅读，右侧追问坞随时就本课时提问；「导出 PDF 讲义」生成整册讲义（A4、封面、页码、含课堂画面），也可导出 Markdown / Anki / Obsidian。**窗口放大/最大化**后界面按物理宽度等比缩放铺满（任务卡双列、正文装订线居中、追问坞常驻），无需手动设置。
 
 ## 🔒 隐私与安全
 
@@ -130,56 +94,41 @@ PROGRESS.md   断点续跑台账（新会话先读它）
 
 > 以上为摘要。**全文（九条）见 [DISCLAIMER.md](DISCLAIMER.md)**；随包分发的第三方组件与许可（含内置 ffmpeg 的 **GPL-3.0** 说明与源码获取途径）见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。应用内可在「设置 → 关于与声明」查看同一份文本。
 
-## ✅ 当前状态
+## 🧯 常见问题
 
-- **v0.7.14 已发布（2026-10-01）**：修 Andiii 试用 0.7.13 实测的三个问题——① **笔记时间线配图回归**（v0.7.10 起截图全堆文末不穿插：配图分配的 memo 漏了附件版本依赖，懒加载完成后不重算；存量笔记打开即恢复，无需重新生成）；② **检查更新 404**（feed 渠道文件 `latest.yml` 从未上传过——已给 v0.7.13 与 v0.7.14 两个 Release 补齐，发布清单同时补上上传与发布后自检步骤，不再复发）；③ **检查更新失败呈现脱敏**（不再把上游 URL 与堆栈印在设置页，详情只进日志）。另根治一条 CI 偶发红（P13 的 Esc 竞态，实质不是超时预算问题）。测试 1599→1604。
-- **v0.7.13 已发布（2026-09-30）**：本版三件事——发布前第二轮流体检（全绿收尾）、**仓库转为公开**（Andiii208/flash-summary）、**「检查更新」功能**（设置 → 关于与声明：手动触发，只从本项目 GitHub Releases 读版本与安装包信息，无后台检查、无数据上报；下载进度可见，「立即重启安装 / 稍后（下次退出自动装）」）。顺带修掉上版遗留的一条测试偶发红（helper 超时窗口没收尾完，非产品缺陷）。测试 1572→1599、smoke 40→41。上一版 v0.7.12（2026-09-28）主题为**全项目体检整改**——安全红线两条（B站出站 URL 白名单堵 SSRF 凭据外带、registerIpc 二次注册状态分裂修复）、笔记文本渲染纪律 28 处（**加粗**/==高亮== 不再印字面符号）、切课残留笔记/PDF 卡死/暗色荧光笔错色等用户可见缺陷、契约防漂移与声明层如实化（ffprobe 许可订正 GPL-3.0-or-later）；测试 1467→1572。更早的 v0.7.11（2026-09-23）主题为**宽屏吃空白整改**——任务面板弹性撑满 + 任务卡双列、笔记正文装订线居中（640 阅读轴不变）、追问坞升格为「追问/目录」双 tab 的笔记副驾面板、设置页两栏、「我的学习/全部课程」弹层解除宽度封顶、零课程首页引导 + 数据流向双卡；另有 P51 思维导图改版随本版归位发布。仓库同期更名为 `Andiii208/flash-summary`（appId / userData / 包名未动，登录态与密钥不受影响）。
-- **1604 个测试**（lint / typecheck / test / build / smoke 五道已全绿；smoke 41/41、打包产物 asar 抽验与构建逐 sha256 一致；CI 与 Smoke 两条工作流对当前提交 success）。含笔记体验整改 v4、批 D、UX 整改批1–批6 + 补批、追问坞悬浮小卡片整改全部批次、宽屏吃空白四批 + 补批；组合层体检 L1-L3 全绿（见 [docs/health/2026-09-02-combined-audit.md](docs/health/2026-09-02-combined-audit.md)）。
-- **装机走查项（等真人验收）**：三个页签（任务/笔记/设置）与零课程首页在宽屏的观感、小窗一次性提示、追问坞目录跳转、导图全图弹层、最大化装订线居中观感（浅/暗实拍存 `.ui-shots/`）。
-- **已知环境事项**：视频直链域名 dncvsvod 在部分网络路径下被重置（疑似代理分流或平台策略收紧，定性中）——表现为课时收割/播放失败时请检查代理规则或等待平台恢复，详见 [PROGRESS](PROGRESS.md) 失败与卡点节。
-- **人工验收项见 [docs/acceptance/MVP.md](docs/acceptance/MVP.md)**：干净机器安装、≥45 分钟课程端到端与 auth_key 时效（真实 CAS 登录、课程拉取、过期重登恢复均已实测）。
-
-## 🧯 常见问题（troubleshooting）
-
-- **课时收割失败 / 播放提示「播放资源获取失败」**：若你在使用 Clash 等代理的 **TUN 模式**（虚拟网卡接管全局流量），学校视频服务器 `dncvsvod.seu.edu.cn` 通常不在常见分流库里，会被送去代理出口而连不上。解决：代理规则加一条 `DOMAIN-SUFFIX,seu.edu.cn,DIRECT`，或临时关闭 TUN 模式。**注意：订阅更新会把自加规则冲掉**——应用检测到 Fake-IP 解析（`nslookup dncvsvod.seu.edu.cn` 返回 172.19.x.x 即中招）会明确提示，重插规则即可。
-- **登录跳转白屏 / 平台页超时**：应用已对 `*.seu.edu.cn` 自动绕过系统代理（无需配置）；若仍失败请检查 Clash TUN 是否接管（见上一条）。也可用 `SEU_DIRECT_NET=1` 启动（Chromium 层绕过系统代理，与代理上外网互不影响）。
-- **安装版与开发版数据隔离**：安装版使用 `%APPDATA%\seu-summary`，开发运行（`npm run dev` / `npx electron .`）使用 `%APPDATA%\seu-summary-dev`——两者的会话互不相通；课程资料库（文档目录）仍为两者共用。
+- **课时收割失败 / 播放提示「播放资源获取失败」**：若你在用 Clash 等代理的 **TUN 模式**，学校视频服务器 `dncvsvod.seu.edu.cn` 通常不在常见分流库里，会被送去代理出口而连不上。解决：代理规则加 `DOMAIN-SUFFIX,seu.edu.cn,DIRECT`，或临时关闭 TUN 模式（**订阅更新会冲掉自加规则**；应用检测到 Fake-IP 解析时会明确提示）。
+- **登录跳转白屏 / 平台页超时**：应用已对 `*.seu.edu.cn` 自动绕过系统代理；若仍失败请检查 Clash TUN 是否接管（见上一条）。
 - **会话频繁过期**：学校平台会话本身有时效，过期后点「登录 CAS」重新授权即可（已保存的资料库与笔记不受影响）。
-- **`npm` 报 "cannot execute"**（Windows + git-bash/cygwin 环境）：请使用 `npm.cmd`。
+- **安装版与开发版数据隔离**：安装版用 `%APPDATA%\seu-summary`，开发运行（`npm run dev`）用 `%APPDATA%\seu-summary-dev`，两者会话互不相通；课程资料库共用。
 
-## 🛠️ 开发
+## 🛠️ 开发者
 
 ```bash
-npm install
 npm run dev          # 开发模式（热重载）
 npm run lint         # ESLint
 npm run typecheck    # TypeScript strict（node + web 双工程）
-npm test             # vitest（1604 用例 / 144 文件）
+npm test             # vitest
 npm run build        # electron-vite 构建到 out/
-npm run smoke        # 构建并运行 CDP 进程级烟测（40 项组合断言）
+npm run smoke        # 构建并运行 CDP 进程级烟测
 npm run dist         # 构建 NSIS 安装包到 release/
-npm run verify:asar  # 抽验安装包 asar 与 out/ 一致（发布门禁）
 ```
 
-CI（GitHub Actions，windows-latest）在每个 push 上运行两条工作流：**CI**（lint + typecheck + test + build）与 **Smoke**（打包产物进程级烟测）。
-
-> 环境提示：Windows 上若 `npm` 直接调用报 "cannot execute"，请用 `npm.cmd`。
+- 技术栈：**Electron 44 + TypeScript strict**（三进程隔离，sandbox + contextIsolation）；renderer 用 **Preact**；本地库 **better-sqlite3**；媒体 **ffmpeg-static/ffprobe-static**（已打包）；笔记 schema 用 **zod** 校验；安装包 **electron-builder**；测试 **vitest**（**1604 个用例 / 144 个文件**，含真实 HTTP 集成与六阶段端到端 e2e）。架构与目录结构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+- CI（GitHub Actions，windows-latest）每个 push 跑两条工作流：**CI**（lint + typecheck + test + build）与 **Smoke**（打包产物进程级烟测）。
+- README 配图由 `node scripts/readme-shots.mjs` 生产（真库副本 CDP 实拍，零新依赖）；**UI 大改后重跑它以更新截图**。
+- 测试基线：**1604 个用例 / 144 个测试文件**（`npm test`，只增不减）；提交前跑全四门禁（`npm run lint && npm run typecheck && npm test`），改 IPC 桥面另跑 `npm run smoke`。
+- Windows + git-bash 环境下若 `npm` 报 "cannot execute"，请用 `npm.cmd`。
 
 ## 📖 更多文档
 
-- [设计规格](docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md)（唯一规格来源）
-- [使用须知与免责声明](DISCLAIMER.md)（九条全文，应用内同源）
-- [第三方组件与许可](THIRD-PARTY-NOTICES.md)（含 ffmpeg GPL-3.0 说明）
-- [ROADMAP](docs/plans/ROADMAP.md)（阶段计划与验收命令）
-- [MVP 验收记录](docs/acceptance/MVP.md)（spec 第 11 条逐项）
-- [CHANGELOG](CHANGELOG.md)（逐版本变更）
-- [AGENTS.md](AGENTS.md)（工程约定，供 AI 协作者）
+- [设计规格](docs/superpowers/specs/2026-08-30-seu-summary-desktop-mvp-design.md)（唯一规格来源）· [ROADMAP](docs/plans/ROADMAP.md)（阶段计划）· [MVP 验收记录](docs/acceptance/MVP.md)
+- [AGENTS.md](AGENTS.md)（工程约定）· [PROGRESS.md](PROGRESS.md)（断点续跑台账）
 
 ## 🤝 贡献
 
-MVP 范围明确不做：云端同步、多用户、本地 ASR、macOS。
-已交付并超出初版 MVP 边界（均经用户批准，见 [ROADMAP](docs/plans/ROADMAP.md) 与相应方案）：PDF 讲义导出（2026-09-04）、**B 站作为第二视频源**（2026-09-06）、Obsidian / Anki 结构化导出（2026-09-08）。
-欢迎在 issue 中讨论需求；改动请保持小而聚焦的 Conventional Commits，并在提交前通过全部门禁。
+MVP 范围明确不做：云端同步、多用户、本地 ASR、macOS。已交付并超出初版 MVP 边界（均经用户批准，见 [ROADMAP](docs/plans/ROADMAP.md) 与相应方案）：PDF 讲义导出、**B 站作为第二视频源**、Obsidian / Anki 结构化导出。
+
+欢迎在 issue 中讨论需求；改动请保持小而聚焦的 Conventional Commits，并在提交前通过全部门禁（`npm run lint && npm run typecheck && npm test`）。
 
 ## 📄 License
 
