@@ -8,7 +8,7 @@
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Electron](https://img.shields.io/badge/Electron-44-47848F)
 
-![Flash Summary 笔记页：课程树 + 时间线图文笔记 + 追问坞](docs/assets/readme/hero.jpg)
+![Flash Summary 笔记页：课程树 + 时间线图文笔记，右下角绿色小球为追问入口](docs/assets/readme/hero.jpg)
 
 Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己的 SEU CAS 账号登录（或导入 B 站视频），把课程视频（教师流 + 屏幕/PPT 流 + 平台 PPT）自动加工成**多模态结构化笔记**，阅读时还能**随时追问**。
 
@@ -23,21 +23,17 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 
 ![核心流程动图](docs/assets/readme/demo.gif)
 
-| 任务流水线（六阶段实时可见） | 同一份笔记的四种视图 |
-| :---: | :---: |
-| ![任务流水线](docs/assets/readme/running.jpg) | ![四种阅读视图](docs/assets/readme/views-strip.jpg) |
+**五种阅读视图**（同一份 JSON 投影；拼图左起：标准总结 / 要点 / 方法论 / 思维导图）：
 
-| 全部课程一屏浏览 | 追问坞（读到哪里问到哪里） |
-| :---: | :---: |
-| ![全部课程全屏浏览](docs/assets/readme/browser.jpg) | ![课时追问坞](docs/assets/readme/qa.jpg) |
+![四种阅读视图](docs/assets/readme/views-strip.jpg)
 
-| 思维导图（按容器宽适合比例） | PDF 讲义导出（矢量文本） |
-| :---: | :---: |
-| ![思维导图](docs/assets/readme/mindmap.jpg) | ![PDF 讲义内页](docs/assets/readme/handout.jpg) |
+![思维导图（按容器宽适合比例，可全图浏览）](docs/assets/readme/mindmap.jpg)
 
-| 导入 B站视频：粘贴链接即解析预览 | 分P勾选后与校内课程同规格生成笔记 |
+![任务流水线（六阶段实时进度，任意阶段可取消）](docs/assets/readme/taskcard.jpg)
+
+| 追问坞（读到哪里，问到哪里） | PDF 讲义导出（矢量文本，含课堂原帧） |
 | :---: | :---: |
-| ![B站视频导入对话框](docs/assets/readme/bili.jpg) | ![B站解析预览](docs/assets/readme/bili-preview.jpg) |
+| ![追问坞](docs/assets/readme/qa-crop.jpg) | ![PDF 讲义内页](docs/assets/readme/handout.jpg) |
 
 ## ✨ 功能
 

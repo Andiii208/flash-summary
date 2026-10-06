@@ -1,55 +1,25 @@
 {
- "hero": {
+ "hero.jpg": {
   "station": "hero",
   "width": 1440,
-  "bytes": 227915
+  "bytes": 183442
  },
- "tasks": {
-  "station": "tasks",
-  "width": 1320,
-  "bytes": 141319
- },
- "qa": {
-  "station": "qa",
-  "width": 1320,
-  "bytes": 157928
- },
- "mindmap": {
+ "mindmap.jpg": {
   "station": "mindmap",
   "width": 1320,
   "bytes": 126712
  },
- "browser": {
-  "station": "browser",
-  "width": 1320,
-  "bytes": 137910
+ "taskcard.jpg": {
+  "station": "taskcard",
+  "width": 1180,
+  "bytes": 37323
  },
- "running": {
-  "station": "running",
-  "width": 1320,
-  "bytes": 91283
+ "qa-crop.jpg": {
+  "station": "qa-crop",
+  "width": 1200,
+  "bytes": 148090
  },
- "empty": {
-  "station": "empty",
-  "width": 1320,
-  "bytes": 73723
- },
- "gate": {
-  "station": "gate",
-  "width": 1320,
-  "bytes": 95118
- },
- "bili": {
-  "station": "bili",
-  "width": 960,
-  "bytes": 59824
- },
- "bili-preview": {
-  "station": "bili-preview",
-  "width": 960,
-  "bytes": 64049
- },
- "handout": {
+ "handout.jpg": {
   "station": "handout",
   "width": 1100,
   "bytes": 235123
@@ -57,11 +27,11 @@
  "views-strip": {
   "station": "views",
   "width": 1120,
-  "bytes": 244790
+  "bytes": 149065
  },
  "demo.gif": {
   "station": "gif",
-  "width": 960,
-  "bytes": 468700
+  "width": 840,
+  "bytes": 397804
  }
 }
