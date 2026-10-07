@@ -2,37 +2,37 @@
  "hero": {
   "station": "hero",
   "width": 1440,
-  "bytes": 227915
+  "bytes": 231017
  },
  "tasks": {
   "station": "tasks",
   "width": 1320,
-  "bytes": 141319
+  "bytes": 136191
  },
  "qa": {
   "station": "qa",
   "width": 1320,
-  "bytes": 157928
+  "bytes": 158446
  },
  "mindmap": {
   "station": "mindmap",
   "width": 1320,
-  "bytes": 126712
+  "bytes": 128523
  },
  "browser": {
   "station": "browser",
   "width": 1320,
-  "bytes": 137910
+  "bytes": 158115
  },
  "running": {
   "station": "running",
   "width": 1320,
-  "bytes": 91283
+  "bytes": 92083
  },
  "empty": {
   "station": "empty",
   "width": 1320,
-  "bytes": 73723
+  "bytes": 70267
  },
  "gate": {
   "station": "gate",
@@ -42,12 +42,12 @@
  "bili": {
   "station": "bili",
   "width": 960,
-  "bytes": 59824
+  "bytes": 60587
  },
  "bili-preview": {
   "station": "bili-preview",
   "width": 960,
-  "bytes": 64049
+  "bytes": 66470
  },
  "handout": {
   "station": "handout",
@@ -57,11 +57,11 @@
  "views-strip": {
   "station": "views",
   "width": 1120,
-  "bytes": 244790
+  "bytes": 213249
  },
  "demo.gif": {
   "station": "gif",
   "width": 960,
-  "bytes": 468700
+  "bytes": 513446
  }
 }
