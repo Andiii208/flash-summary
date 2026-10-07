@@ -132,8 +132,13 @@ export function createMainWindow(onLoadError?: (message: string) => void): Brows
     // white on a dark system (or dark on light).
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0F1211' : '#F5F1E6',
     title: APP_TITLE,
-    // The smoke probe drives the window over CDP; keep it invisible there.
-    show: process.env.SEU_SMOKE !== '1',
+    // The smoke probe drives the window over CDP; keep it invisible there —
+    // except when SEU_SHOW=1 (readme-shots, 2026-10-07): that run needs a REAL
+    // visible window because Page.captureScreenshot hangs on a never-shown
+    // window and the PDF export resolves its target via getFocusedWindow(),
+    // which stays null for a window created hidden and only SW_RESTOREd after
+    // the fact (no activation).
+    show: process.env.SEU_SMOKE !== '1' || process.env.SEU_SHOW === '1',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,

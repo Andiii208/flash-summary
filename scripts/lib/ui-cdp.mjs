@@ -15,6 +15,7 @@
  */
 import { spawn, execFileSync } from 'child_process'
 import { createServer } from 'http'
+import { setTimeout, clearTimeout } from 'node:timers'
 import { mkdirSync, mkdtempSync, copyFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir, homedir } from 'os'
@@ -68,6 +69,51 @@ export class Cdp {
     })
   }
 
+  /**
+   * send() with a client-side deadline. On timeout the pending entry is
+   * DROPPED, so a late response finds no waiter and is ignored — the socket
+   * stays usable. (2026-10-07: Page.captureScreenshot can sit unanswered for
+   * a long time right after the shot window is un-hidden; without a deadline
+   * the whole run hangs forever.)
+   */
+  sendWithTimeout(method, params = {}, timeoutMs) {
+    const id = this.nextId++
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`CDP timeout after ${timeoutMs}ms: ${method}`))
+      }, timeoutMs)
+      this.pending.set(id, {
+        resolve: (r) => {
+          clearTimeout(timer)
+          resolve(r)
+        },
+        reject: (e) => {
+          clearTimeout(timer)
+          reject(e)
+        }
+      })
+      this.ws.send(JSON.stringify({ id, method, params }))
+    })
+  }
+
+  /**
+   * Page.captureScreenshot with abandoned-timeout retries. The first capture
+   * after a hidden→visible window transition can take a long time to produce
+   * a frame; dropping the timed-out request and retrying gets one normally.
+   */
+  async captureWithRetry(params, { attempts = 3, timeoutMs = 10000 } = {}) {
+    let lastError = null
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await this.sendWithTimeout('Page.captureScreenshot', params, timeoutMs)
+      } catch (e) {
+        lastError = e
+      }
+    }
+    throw lastError ?? new Error('capture failed')
+  }
+
   async eval(expression) {
     const result = await this.send('Runtime.evaluate', {
       expression,
@@ -88,7 +134,7 @@ export class Cdp {
 
   async shot(path) {
     mkdirSync(join(path, '..'), { recursive: true })
-    const { data } = await this.send('Page.captureScreenshot', { format: 'png' })
+    const { data } = await this.captureWithRetry({ format: 'png' })
     const { writeFileSync } = await import('fs')
     writeFileSync(path, Buffer.from(data, 'base64'))
     console.log(`shot  ${path}`)
@@ -282,8 +328,23 @@ export async function selectNotedLesson(cdp, { preferCover = false } = {}) {
  * the same title, and the GW_HWNDNEXT chain is unreliable (misses windows
  * before the start). SW_RESTORE first: SetWindowPos on a minimized window
  * returns True without resizing.
+ *
+ * 2026-10-07 (plan 2026-10-07 收尾): `pid` scopes the enum to the spawned
+ * instance's window. Title-only matching also hits the user's LIVE app (same
+ * product title): every run moved their window to 60,60 1920×1200, and the
+ * shared window-bounds state raced the pin — the dev window was pinned and
+ * then shrunk back by its own bounds restore, leaving the CSS viewport at
+ * 1063 (`window pin failed`, three runs in a row). Callers that omit pid
+ * keep the old title-wide behavior.
  */
-function osWindowScript(body) {
+function osWindowScript(body, pid = null) {
+  const pidFilter =
+    pid == null
+      ? ''
+      : `
+  $procId = 0
+  [void]$t::GetWindowThreadProcessId($h, [ref]$procId)
+  if ($procId -ne ${pid}) { return $true }`
   return `
 $src = @'
 using System;
@@ -295,6 +356,7 @@ public static class WE {
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int hh, uint f);
   [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint procId);
 }
 '@
 $t = @(Add-Type -TypeDefinition $src -PassThru | Where-Object { $_.Name -eq 'WE' })[0]
@@ -303,7 +365,7 @@ $cb = {
   param($h, $l)
   $sb = New-Object System.Text.StringBuilder 256
   [void]$t::GetWindowText($h, $sb, 256)
-  if ($sb.ToString() -eq '${APP_TITLE}') {
+  if ($sb.ToString() -eq '${APP_TITLE}') {${pidFilter}
     $script:found++
     [void]$t::ShowWindow($h, 9)
     ${body}
@@ -320,8 +382,31 @@ export function screenWidth() {
   return Number(String(out).trim()) || 1920
 }
 
-export function setOsWindowSize(width, height) {
-  execFileSync('powershell', ['-NoProfile', '-Command', osWindowScript(`$t::SetWindowPos($h, [IntPtr]::Zero, 60, 60, ${width}, ${height}, 0) | Out-Null`)], { stdio: 'pipe' })
+/** Primary screen size (physical px) — the target for a screen-filling shot window. */
+export function screenSize() {
+  const out = execFileSync(
+    'powershell',
+    ['-NoProfile', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; "$($b.Width)x$($b.Height)"'],
+    { encoding: 'latin1' }
+  )
+  const [w, h] = String(out).trim().split('x').map(Number)
+  return { width: w || 1920, height: h || 1200 }
+}
+
+export function setOsWindowSize(width, height, pid = null, x = 60, y = 60) {
+  execFileSync('powershell', ['-NoProfile', '-Command', osWindowScript(`$t::SetWindowPos($h, [IntPtr]::Zero, ${x}, ${y}, ${width}, ${height}, 0) | Out-Null`, pid)], { stdio: 'pipe' })
+}
+
+/**
+ * SW_RESTORE (9) the pid-scoped window so it is actually visible and its
+ * compositor produces frames — `Page.captureScreenshot` waits for one and
+ * hangs forever on a window that was created hidden (SEU_SMOKE show:false).
+ * 2026-10-07 field-verified: hidden → shot hangs; SW_RESTORE → shot OK;
+ * SW_MAXIMIZE after a hidden start → shot STILL hangs, so the window is
+ * screen-filled with SetWindowPos instead (below).
+ */
+export function restoreOsWindow(pid = null) {
+  execFileSync('powershell', ['-NoProfile', '-Command', osWindowScript('[void]$t::ShowWindow($h, 9)', pid)], { stdio: 'pipe' })
 }
 
 /**
@@ -346,6 +431,36 @@ export function prepareThrowawayDocs({ withAttachments = false, empty = false } 
     }
   }
   return tmpDocs
+}
+
+/**
+ * Throwaway userData holding ONLY the encrypted credential material, so a
+ * README run renders the logged-in shell (2026-10-07: the -dev userData
+ * carries a stale school session, which hides the new semester selector
+ * from every sidebar shot). Copies `Local State` (the os_crypt key that
+ * seals both session.bin files) + `school-session/session.bin` +
+ * `bilibili-session/session.bin` — nothing else: no cache, no logs, no
+ * provider vault. The B站 session matters too: without it the import dialog
+ * parks on the QR-login state and the running station (which imports a real
+ * public video) finds no import button. The copy lives in %TEMP% and the
+ * caller removes it in `finally`; credentials never enter the repo and
+ * never leave the machine.
+ */
+export function prepareThrowawayUserData() {
+  const src = join(process.env.APPDATA || '', 'seu-summary')
+  const dst = mkdtempSync(join(tmpdir(), 'seu-ui-udata-'))
+  const localState = join(src, 'Local State')
+  if (existsSync(localState)) copyFileSync(localState, join(dst, 'Local State'))
+  for (const dir of ['school-session', 'bilibili-session']) {
+    const from = join(src, dir)
+    if (!existsSync(from)) continue
+    mkdirSync(join(dst, dir), { recursive: true })
+    for (const file of ['session.bin']) {
+      const src2 = join(from, file)
+      if (existsSync(src2)) copyFileSync(src2, join(dst, dir, file))
+    }
+  }
+  return dst
 }
 
 export function killApp(electron) {

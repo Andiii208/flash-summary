@@ -11,7 +11,7 @@
  * handout export (dev-only seam, bypasses the native save dialog).
  *
  *   node scripts/readme-shots.mjs [--out=docs/assets/readme] [--raw=.ui-shots/readme]
- *                                 [--window=1920x1200] [--stations=hero,tasks,...]
+ *                                 [--stations=hero,tasks,...]
  *                                 [--gif-width=960] [--no-gif] [--no-handout]
  *                                 [--keep-raw] [--diag]
  *
@@ -54,14 +54,14 @@ import {
   killApp,
   removeDir,
   prepareThrowawayDocs,
+  prepareThrowawayUserData,
+  restoreOsWindow,
   setOsWindowSize
 } from './lib/ui-cdp.mjs'
 
 const require = createRequire(import.meta.url)
 const FFMPEG = require('ffmpeg-static')
 
-/** Fixed window the shots are pinned to (physical px). */
-const DEFAULT_WINDOW = '1920x1200'
 /** CSS viewport anchor from src/main/window-zoom.ts (z = client/1600). */
 const CSS_VIEWPORT_ANCHOR = 1600
 /** Final asset widths (px in the committed JPEG). */
@@ -94,15 +94,27 @@ const setNoteView = (cdp, label) => clickByText(cdp, '.note-tabs button', label)
 const scrollNoteToTop = (cdp) =>
   cdp.eval(`(() => { const c = document.querySelector('.content'); if (c != null) c.scrollTop = 0; return true })()`)
 
-/** Scroll the note into the body band — the 追问坞 expands to a card there (P50-2). */
-const scrollNoteIntoBody = (cdp) =>
-  cdp.eval(`(() => {
-    const c = document.querySelector('.content')
-    const m = document.querySelector('.note-masthead')
-    if (c == null) return false
-    c.scrollTop = m == null ? 400 : Math.round(m.getBoundingClientRect().height + c.getBoundingClientRect().top + 200)
-    return true
-  })()`)
+/**
+ * Scroll the note into the body band — the 追问坞 expands to a card there
+ * (P50-2). Two passes with a settle gap: the cover image decodes late and
+ * grows the masthead by ~600px, which would otherwise leave the body's tail
+ * at the fold (2026-10-07: the full-screen window made this visible — the
+ * views tiles came out 144px tall).
+ */
+const scrollNoteIntoBody = async (cdp) => {
+  const scrollOnce = () =>
+    cdp.eval(`(() => {
+      const c = document.querySelector('.content')
+      const m = document.querySelector('.note-masthead')
+      if (c == null) return false
+      c.scrollTop = m == null ? 400 : Math.round(m.getBoundingClientRect().height + c.getBoundingClientRect().top + 200)
+      return true
+    })()`)
+  if ((await scrollOnce()) !== true) return false
+  await sleep(700)
+  await scrollOnce()
+  return true
+}
 
 /** Close any toast (e.g. the Fake-IP proxy warning) so it stays out of shots. */
 const dismissToasts = (cdp) =>
@@ -128,34 +140,56 @@ const waitForSelector = (cdp, selector, timeoutMs) =>
   }, timeoutMs)
 
 /**
- * Pin the OS window with user32 (Electron 44 has no Browser.setWindowBounds).
- * The invisible-border inset is calibrated while zoom is still 1 (the default
- * window is narrower than the 1600 anchor), then the zoom expectation is
- * min(width - inset, 1600) — verified against the real innerWidth with
- * retries, because a minimized window silently ignores SetWindowPos.
+ * 2026-10-07: pid of the spawned dev instance. Every window operation is
+ * scoped to it so the user's own Flash Summary window is never touched.
  */
-async function pinWindow(cdp, width, height) {
-  const base = await cdp.json(`(() => ({ outer: window.outerWidth, inner: innerWidth }))()`)
-  const inset = base.outer - base.inner
-  const expected = Math.min(width - inset, CSS_VIEWPORT_ANCHOR)
+let devPid = null
+
+/**
+ * Fill the screen, then verify the CSS viewport settled at the 1600 anchor.
+ * 2026-10-07 plan: the window is SCREEN-FILLING (Andiii: «没有铺满全屏就直接
+ * 截图了») instead of floated at 60,60 — window-zoom clamps physical/1600, so
+ * a screen-wide window still renders at 1600 CSS and the captured composition
+ * is unchanged, only sharper. Two field-verified constraints shape the steps:
+ * SW_RESTORE first (a window created hidden under SEU_SMOKE never produces
+ * capture frames — Page.captureScreenshot waits forever), and SW_MAXIMIZE is
+ * NOT usable (it hangs capture the same way after a hidden start), so the
+ * fill is a SetWindowPos to the primary-screen size plus the invisible-border
+ * inset. Verification is not optional: a live run showed the zoom factor
+ * silently reset to 1 mid-run (innerWidth 1906, dpr 1.5), which shrank every
+ * later capture to 1433 CSS.
+ */
+async function fillWindow(cdp, pid = devPid) {
+  // Physical screen size comes from the renderer (screen.width × devicePixelRatio);
+  // PowerShell's Screen.Bounds reports DIPs and SetWindowPos wants physical px.
+  const base = await cdp.json(`(() => ({ outer: window.outerWidth, inner: innerWidth, sw: screen.width, sh: screen.height, dpr: devicePixelRatio }))()`)
+  const inset = Math.max(0, base.outer - base.inner)
+  const screen = { width: Math.round(base.sw * base.dpr), height: Math.round(base.sh * base.dpr) }
   let last = null
   for (let attempt = 1; attempt <= 4; attempt++) {
-    setOsWindowSize(width, height)
+    restoreOsWindow(pid)
+    setOsWindowSize(screen.width + inset, screen.height + inset, pid, 0, 0)
     for (let poll = 0; poll < 8; poll++) {
       await sleep(500)
       last = await cdp.json(`(() => innerWidth)()`)
-      if (Math.abs(last - expected) <= 2) break
+      if (Math.abs(last - CSS_VIEWPORT_ANCHOR) <= 2) break
     }
-    if (last != null && Math.abs(last - expected) <= 2) {
-      return { windowWidth: width, windowHeight: height, inset, expectedCssWidth: expected, cssWidth: last }
+    if (last != null && Math.abs(last - CSS_VIEWPORT_ANCHOR) <= 2) {
+      return { windowFilled: true, screen, expectedCssWidth: CSS_VIEWPORT_ANCHOR, cssWidth: last }
     }
   }
-  throw new Error(`window pin failed: expected css viewport ~${expected}, last ${last}`)
+  throw new Error(`window fill failed: expected css viewport ~${CSS_VIEWPORT_ANCHOR}, last ${last}`)
+}
+
+/** Cheap per-station guard: the zoom can drift mid-run; re-fill before shooting. */
+async function ensureFullWindow(cdp) {
+  const inner = await cdp.json(`(() => innerWidth)()`)
+  if (Math.abs(inner - CSS_VIEWPORT_ANCHOR) <= 2) return
+  await fillWindow(cdp)
 }
 
 /** Crop reference: the self-drawn topbar row is cropped off every full-window shot. */
-const measureGeometry = (cdp) =>
-  cdp.json(`(() => {
+const measureGeometry = (cdp) =>  cdp.json(`(() => {
     const topbar = document.querySelector('.topbar')
     return {
       cssWidth: innerWidth,
@@ -209,7 +243,7 @@ async function clipShot(cdp, path, selectors) {
   })()`)
   if (rect == null) return null
   mkdirSync(join(path, '..'), { recursive: true })
-  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { ...rect, scale: 1 } })
+  const { data } = await cdp.captureWithRetry({ format: 'png', clip: { ...rect, scale: 1 } })
   writeFileSync(path, Buffer.from(data, 'base64'))
   console.log(`clip  ${path} (${rect.width}×${rect.height} css)`)
   return rect
@@ -245,6 +279,7 @@ async function waitLiveTaskCard(cdp) {
 /* ---------------- stations (session 1: real library) ---------------- */
 
 async function stationHero(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   await selectNotedLesson(cdp)
   await clickTab(cdp, '笔记')
   await sleep(900)
@@ -258,6 +293,7 @@ async function stationHero(cdp, rawDir) {
 }
 
 async function stationViews(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   const tiles = [
     { view: '标准总结', file: 'view-standard.png' },
     { view: '要点', file: 'view-points.png' },
@@ -279,6 +315,7 @@ async function stationViews(cdp, rawDir) {
 }
 
 async function stationQa(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   await scrollNoteIntoBody(cdp)
   await waitForSelector(cdp, '.qa-dock', 8000)
   await sleep(1200) // markdown answer renders
@@ -287,6 +324,7 @@ async function stationQa(cdp, rawDir) {
 }
 
 async function stationMindmap(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   if ((await setNoteView(cdp, '思维导图')) !== true) throw new Error('思维导图 view tab not found')
   await waitForSelector(cdp, '.mindmap-scroll svg', 10000)
   await sleep(1600) // fit-ratio layout settles
@@ -295,6 +333,7 @@ async function stationMindmap(cdp, rawDir) {
 }
 
 async function stationBrowser(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   const opened = await cdp.eval(`(() => { document.querySelector('[data-testid="course-browser-open"]')?.click(); return true })()`)
   if (opened !== true) throw new Error('course browser entry not found')
   await waitForSelector(cdp, '.course-browser-card', 15000)
@@ -306,6 +345,7 @@ async function stationBrowser(cdp, rawDir) {
 }
 
 async function stationBili(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   const opened = await cdp.eval(`(() => {
     const btn = [...document.querySelectorAll('.sidebar-head button')].find((b) => b.textContent.trim() === '导入 B站视频')
     if (btn == null) return false
@@ -339,6 +379,7 @@ async function stationBili(cdp, rawDir) {
 }
 
 async function stationTasks(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   await goHome(cdp)
   await sleep(500)
   await clickTab(cdp, '任务')
@@ -362,6 +403,7 @@ async function stationTasks(cdp, rawDir) {
  * attachments dir), so the import always creates a fresh lesson.
  */
 async function stationRunning(cdp, rawDir) {
+  await ensureFullWindow(cdp)
   const opened = await cdp.eval(`(() => {
     const btn = [...document.querySelectorAll('.sidebar-head button')].find((b) => b.textContent.trim() === '导入 B站视频')
     if (btn == null) return false
@@ -384,7 +426,17 @@ async function stationRunning(cdp, rawDir) {
     await pressEscape(cdp)
     return
   }
-  await waitForSelector(cdp, '.bili-preview', 25000)
+  // Optional station: a failed public resolve (bilibili risk control 412, or
+  // the resolve rate-limiting after the bili station) must skip, not kill the
+  // whole run (2026-10-07: it threw here and took the handout/empty stations
+  // down with it).
+  try {
+    await waitForSelector(cdp, '.bili-preview', 25000)
+  } catch {
+    console.log('note  bili preview not resolved — running station skipped')
+    await pressEscape(cdp)
+    return
+  }
   await sleep(1200)
   if ((await clickByText(cdp, '.bili-import-btn', '导入并生成笔记')) !== true) {
     console.log('note  导入并生成笔记 not clickable — running station skipped')
@@ -411,6 +463,7 @@ async function stationRunning(cdp, rawDir) {
 
 /** Export the real handout through the app (SEU_PDF_PATH seam), then rasterize. */
 async function stationHandout(cdp, rawDir, pdfPath) {
+  await ensureFullWindow(cdp)
   await selectNotedLesson(cdp)
   await clickTab(cdp, '笔记')
   await sleep(1200)
@@ -434,10 +487,11 @@ async function stationHandout(cdp, rawDir, pdfPath) {
 
 /* ---------------- session 2: empty library ---------------- */
 
-async function stationEmpty(rawDir, width, height) {
+async function stationEmpty(rawDir) {
   // The single-instance lock forces a fresh boot after session 1 is killed.
   const tmpDocs = prepareThrowawayDocs({ empty: true })
   const { electron, port } = await spawnApp(tmpDocs)
+  devPid = electron.pid ?? null
   try {
     const cdp = await connect(port)
     if ((await waitForShell(cdp)) === 'gate') {
@@ -446,7 +500,7 @@ async function stationEmpty(rawDir, width, height) {
       await cdp.shot(join(rawDir, 'gate.png'))
       await acceptConsentGate(cdp)
     }
-    await pinWindow(cdp, width, height)
+    await fillWindow(cdp)
     await dismissWindowHint(cdp)
     await applyTheme(cdp, 'light')
     await waitForSelector(cdp, '.empty-state', 15000)
@@ -537,7 +591,6 @@ function buildGif(rawDir, outDir, width) {
 async function main() {
   const outDir = argOf('--out=') ?? join(ROOT, 'docs', 'assets', 'readme')
   const rawDir = argOf('--raw=') ?? join(ROOT, '.ui-shots', 'readme')
-  const [windowWidth, windowHeight] = (argOf('--window=') ?? DEFAULT_WINDOW).split('x').map(Number)
   const stationFilter = argOf('--stations=')?.split(',').filter(Boolean) ?? null
   const want = (name) => stationFilter == null || stationFilter.includes(name)
   mkdirSync(outDir, { recursive: true })
@@ -551,16 +604,28 @@ async function main() {
 
   const tmpDocs = prepareThrowawayDocs({ withAttachments: true })
   const pdfPath = join(tmpDocs, 'handout.pdf')
-  const { electron, port } = await spawnApp(tmpDocs, { SEU_PDF_PATH: pdfPath })
+  // 2026-10-07: the smoke userData seam + a throwaway copy of the encrypted
+  // session, so the run renders the logged-in shell (the -dev userData's
+  // stale session would hide the semester selector from every sidebar shot).
+  const tmpUserData = prepareThrowawayUserData()
+  const { electron, port } = await spawnApp(tmpDocs, {
+    SEU_PDF_PATH: pdfPath,
+    SEU_SMOKE: '1',
+    SEU_SHOW: '1',
+    SEU_SMOKE_USER_DATA: tmpUserData
+  })
+  // The spawned instance's pid scopes every window operation to the dev app
+  // — the user may have their own Flash Summary window open.
+  devPid = electron.pid ?? null
   const geometry = {}
   try {
     const cdp = await connect(port)
     await passConsentGate(cdp)
     await dismissWindowHint(cdp)
-    Object.assign(geometry, await pinWindow(cdp, windowWidth, windowHeight))
+    Object.assign(geometry, await fillWindow(cdp, devPid))
     Object.assign(geometry, await measureGeometry(cdp))
     writeFileSync(join(rawDir, 'geometry.json'), `${JSON.stringify(geometry, null, 1)}\n`)
-    console.log(`pinned ${geometry.windowWidth}×${geometry.windowHeight} → css viewport ${geometry.cssWidth}×${geometry.cssHeight} · topbar ${geometry.topbarCssHeight} css · dpr ${geometry.devicePixelRatio}`)
+    console.log(`filled screen → css viewport ${geometry.cssWidth}×${geometry.cssHeight} · topbar ${geometry.topbarCssHeight} css · dpr ${geometry.devicePixelRatio}`)
     await applyTheme(cdp, 'light')
 
     if (has('--diag')) {
@@ -587,9 +652,10 @@ async function main() {
   } finally {
     killApp(electron)
     await removeDir(tmpDocs)
+    await removeDir(tmpUserData)
   }
 
-  if (want('empty')) await stationEmpty(rawDir, windowWidth, windowHeight)
+  if (want('empty')) await stationEmpty(rawDir)
   if (has('--diag')) return
 
   // ---- process raw captures into committed assets ----
