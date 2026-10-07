@@ -13,7 +13,7 @@
 +------------------------------+------------------------------+
 | Main (src/main)                                             |
 | app-context      assemble library/session/Provider/ffmpeg   |
-| ipc              69 channels: school/bilibili/lessons/      |
+| ipc              72 channels: school/bilibili/lessons/      |
 |                  notes/qa/tasks/settings/providers/         |
 |                  feedback/update/log; serial, cancelable    |
 | tasks/orchestrator  6-stage pipeline (ASR/multimodal)       |
