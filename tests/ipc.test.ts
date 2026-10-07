@@ -88,7 +88,12 @@ function fakeJsonResponse(body: unknown): {
   }
 }
 
-describe('ipc handlers over a real context', () => {
+// 2026-10-07: this block opens a real sqlite context per test (71 of them);
+// under CI load the per-test wall time crosses vitest's 5s default even for
+// trivial round-trips (observed: tasks:create timed out at 6311ms). The repo
+// pattern for heavy describe blocks is an explicit timeout (app-shell uses
+// 8000); 15s keeps headroom without hiding a real hang.
+describe('ipc handlers over a real context', { timeout: 15000 }, () => {
   it('registers the full API surface', () => {
     const ctx = makeCtx()
     registerIpc(ctx, ipc as never)
