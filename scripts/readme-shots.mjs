@@ -19,15 +19,14 @@
  * skip when their precondition is missing instead of failing the run):
  *   hero       note page (详细笔记) with course tree — the README hero shot
  *   views      四视图正文裁条（标准总结/要点/方法论/思维导图）→ 2×2 拼图
- *   qa         note column + the floating 追问坞, clipped as one frame
- *   mindmap    思维导图 view (full window)
- *   browser    「全部课程」fullscreen overlay — GIF frame ① only
- *   running    imports a real B站 video (auto-queues), clips the live task card
+ *   qa         note page with the floating 追问坞 expanded (real Q&A history)
+ *   mindmap    思维导图 view
+ *   browser    「全部课程」fullscreen overlay (all courses + filters)
+ *   bili       B站导入对话框 (+ resolved preview, best effort, public endpoints)
+ *   tasks      task page (history / filters / retry)
+ *   running    starts a REAL task, captures the live 6-stage card, then cancels
  *   handout    exports the PDF handout through the app and rasterizes a page
- *
- * The README embeds exactly seven assets: hero / demo.gif / views-strip /
- * mindmap / taskcard / qa-crop / handout (README_ASSETS below). Raw stations
- * that only feed the GIF (browser) are captured but not emitted.
+ *   empty      zero-course first run (second boot, empty library)
  *
  * Requires Node >= 22, a fresh `npm run build`, python+pymupdf (handout only)
  * and ffmpeg-static (bundled devDependency). Raw captures land in .ui-shots/
@@ -44,9 +43,12 @@ import {
   argOf,
   waitFor,
   clickTab,
+  goHome,
   clickByText,
   selectNotedLesson,
   passConsentGate,
+  waitForShell,
+  acceptConsentGate,
   spawnApp,
   connect,
   killApp,
@@ -62,14 +64,20 @@ const FFMPEG = require('ffmpeg-static')
 const DEFAULT_WINDOW = '1920x1200'
 /** CSS viewport anchor from src/main/window-zoom.ts (z = client/1600). */
 const CSS_VIEWPORT_ANCHOR = 1600
-/** The assets the README embeds: raw station → committed file (display width). */
-const README_ASSETS = [
-  { file: 'hero.jpg', from: 'hero.png', width: 1440 },
-  { file: 'mindmap.jpg', from: 'mindmap.png', width: 1320 },
-  { file: 'taskcard.jpg', from: 'taskcard.png', width: 1180 },
-  { file: 'qa-crop.jpg', from: 'qa-crop.png', width: 1200 },
-  { file: 'handout.jpg', from: 'handout.png', width: 1100, topbar: false }
-]
+/** Final asset widths (px in the committed JPEG). */
+const STATION_WIDTH = {
+  hero: 1440,
+  tasks: 1320,
+  qa: 1320,
+  mindmap: 1320,
+  browser: 1320,
+  running: 1320,
+  empty: 1320,
+  gate: 1320,
+  bili: 960,
+  'bili-preview': 960,
+  handout: 1100
+}
 /** GIF step captions — order here is the playback order. */
 const GIF_FRAMES = ['gif-1-browser.png', 'gif-2-running.png', 'gif-3-note.png', 'gif-4-qa.png', 'gif-5-mindmap.png']
 
@@ -181,83 +189,27 @@ async function captionShot(cdp, path, text) {
 }
 
 /**
- * Clip captures render at DSF (no zoom) while full-window captures render at
- * DSF × zoom — so a clip rect in CSS px only covers rect/zoom of the content.
- * Calibrate the ratio once per run (full shot width / cssWidth vs probe clip
- * width / requested width) and multiply every clip rect by it.
- */
-let clipZoom = 1
-
-async function measureClipZoom(cdp) {
-  const full = await cdp.send('Page.captureScreenshot', { format: 'png' })
-  const fullWidth = Buffer.from(full.data, 'base64').readUInt32BE(16)
-  const probe = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 100, height: 50, scale: 1 } })
-  const probeWidth = Buffer.from(probe.data, 'base64').readUInt32BE(16)
-  const cssWidth = await cdp.eval('innerWidth')
-  clipZoom = fullWidth / cssWidth / (probeWidth / 100)
-  console.log(`clip zoom calibrated: full ${fullWidth}px/${cssWidth}css · probe ${probeWidth}px/100css → ×${clipZoom.toFixed(4)}`)
-}
-
-/**
  * Capture the VISIBLE band of one element (views strip tiles). Tries the
  * selectors in order; the rect is clamped to the viewport, because a clip
  * taller than the fold captures the whole (offscreen) element.
  */
-async function clipShot(cdp, path, selectors, pad = 0) {
+async function clipShot(cdp, path, selectors) {
   const rect = await cdp.json(`(() => {
     for (const selector of ${JSON.stringify(selectors)}) {
       const el = document.querySelector(selector)
       if (el == null) continue
       const box = el.getBoundingClientRect()
       if (box.width < 50 || box.height < 50) continue
-      const top = Math.max(0, Math.round(box.top) - ${pad})
-      const bottom = Math.min(innerHeight, Math.round(box.bottom) + ${pad})
+      const top = Math.max(0, Math.round(box.top))
+      const bottom = Math.min(innerHeight, Math.round(box.bottom))
       if (bottom - top < 50) continue
-      return { x: Math.max(0, Math.round(box.left) - ${pad}), y: top, width: Math.round(box.width) + ${pad} * 2, height: bottom - top }
+      return { x: Math.round(box.left), y: top, width: Math.round(box.width), height: bottom - top }
     }
     return null
   })()`)
   if (rect == null) return null
   mkdirSync(join(path, '..'), { recursive: true })
-  const scaled = {
-    x: Math.round(rect.x * clipZoom),
-    y: Math.round(rect.y * clipZoom),
-    width: Math.round(rect.width * clipZoom),
-    height: Math.round(rect.height * clipZoom),
-    scale: 1
-  }
-  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', clip: scaled })
-  writeFileSync(path, Buffer.from(data, 'base64'))
-  console.log(`clip  ${path} (${rect.width}×${rect.height} css)`)
-  return rect
-}
-
-/** Clip the union of two elements (note column + floating dock), viewport-clamped. */
-async function clipUnionShot(cdp, path, selectors, pad = 12, padRight = pad) {
-  const rect = await cdp.json(`(() => {
-    const boxes = ${JSON.stringify(selectors)}
-      .map((selector) => document.querySelector(selector))
-      .filter((el) => el != null)
-      .map((el) => el.getBoundingClientRect())
-      .filter((box) => box.width >= 50 && box.height >= 20)
-    if (boxes.length === 0) return null
-    const left = Math.max(0, Math.floor(Math.min(...boxes.map((b) => b.left))) - ${pad})
-    const right = Math.min(innerWidth, Math.ceil(Math.max(...boxes.map((b) => b.right))) + ${padRight})
-    const top = Math.max(0, Math.floor(Math.min(...boxes.map((b) => b.top))) - ${pad})
-    const bottom = Math.min(innerHeight, Math.ceil(Math.max(...boxes.map((b) => b.bottom))) + ${pad})
-    if (right - left < 50 || bottom - top < 50) return null
-    return { x: left, y: top, width: right - left, height: bottom - top }
-  })()`)
-  if (rect == null) return null
-  mkdirSync(join(path, '..'), { recursive: true })
-  const scaled = {
-    x: Math.round(rect.x * clipZoom),
-    y: Math.round(rect.y * clipZoom),
-    width: Math.round(rect.width * clipZoom),
-    height: Math.round(rect.height * clipZoom),
-    scale: 1
-  }
-  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', clip: scaled })
+  const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { ...rect, scale: 1 } })
   writeFileSync(path, Buffer.from(data, 'base64'))
   console.log(`clip  ${path} (${rect.width}×${rect.height} css)`)
   return rect
@@ -301,14 +253,6 @@ async function stationHero(cdp, rawDir) {
   await sleep(1500) // cover + first timeline frames decode
   await scrollNoteToTop(cdp)
   await sleep(400)
-  // Wide viewports keep the dock expanded even on the hero band (P50-2 auto) —
-  // collapse it so the hero frames the note, not a card over the cover.
-  await cdp.eval(`(() => {
-    const btn = [...document.querySelectorAll('.qa-dock button')].find((x) => x.textContent.trim() === '收起')
-    if (btn != null) { btn.click(); return true }
-    return false
-  })()`)
-  await sleep(500)
   await cdp.shot(join(rawDir, 'hero.png'))
   await captionShot(cdp, join(rawDir, 'gif-3-note.png'), '③ 多模态笔记自动生成')
 }
@@ -336,18 +280,9 @@ async function stationViews(cdp, rawDir) {
 
 async function stationQa(cdp, rawDir) {
   await scrollNoteIntoBody(cdp)
-  await sleep(400)
-  // The hero station collapses the dock (sticky) — re-open it via the ball.
-  if ((await cdp.eval(`document.querySelector('.qa-dock') != null`)) !== true) {
-    await cdp.eval(`(() => { document.querySelector('.qa-dock-launcher')?.click(); return true })()`)
-    await sleep(500)
-  }
   await waitForSelector(cdp, '.qa-dock', 8000)
   await sleep(1200) // markdown answer renders
-  // One frame with the note column AND the dock — full-window shots shrink both
-  // to unreadable when the README shows them side by side.
-  const rect = await clipUnionShot(cdp, join(rawDir, 'qa-crop.png'), ['.note-body', '.qa-dock'])
-  if (rect == null) throw new Error('qa frame clip failed')
+  await cdp.shot(join(rawDir, 'qa.png'))
   await captionShot(cdp, join(rawDir, 'gif-4-qa.png'), '④ 读到哪里，问到哪里')
 }
 
@@ -368,6 +303,55 @@ async function stationBrowser(cdp, rawDir) {
   await captionShot(cdp, join(rawDir, 'gif-1-browser.png'), '① 全部课程一屏浏览，点课时即入')
   await pressEscape(cdp)
   await sleep(700)
+}
+
+async function stationBili(cdp, rawDir) {
+  const opened = await cdp.eval(`(() => {
+    const btn = [...document.querySelectorAll('.sidebar-head button')].find((b) => b.textContent.trim() === '导入 B站视频')
+    if (btn == null) return false
+    btn.click()
+    return true
+  })()`)
+  if (opened !== true) throw new Error('sidebar B站 entry button not found')
+  await waitForSelector(cdp, "[data-testid='bili-import-dialog']", 20000)
+  await sleep(1000)
+  await cdp.shot(join(rawDir, 'bili.png'))
+  try {
+    // Resolved preview: public endpoints only (ui-shots --bili precedent), no account writes.
+    await cdp.eval(`(() => { const input = document.querySelector('.bili-dialog-card .qa-input'); if (input == null) return false; input.focus(); return true })()`)
+    await cdp.send('Input.insertText', { text: 'BV1GJ411x7h7' })
+    await sleep(300)
+    const resolved = await cdp.eval(`(() => {
+      const btn = [...document.querySelectorAll('.bili-dialog-card button')].find((b) => b.textContent.trim() === '解析')
+      if (btn == null) return false
+      btn.click()
+      return true
+    })()`)
+    if (resolved !== true) throw new Error('解析 button not found')
+    await waitForSelector(cdp, '.bili-preview', 25000)
+    await sleep(1600) // cover data URL decode
+    await cdp.shot(join(rawDir, 'bili-preview.png'))
+  } catch (error) {
+    console.log(`note  bili preview skipped (${error.message})`)
+  }
+  await pressEscape(cdp)
+  await sleep(700)
+}
+
+async function stationTasks(cdp, rawDir) {
+  await goHome(cdp)
+  await sleep(500)
+  await clickTab(cdp, '任务')
+  await waitFor('task history rows', async () => {
+    try {
+      const rows = await cdp.eval(`document.querySelectorAll('.history-row').length`)
+      return { ok: typeof rows === 'number' && rows > 0, value: rows }
+    } catch {
+      return { ok: false }
+    }
+  }, 10000)
+  await sleep(900)
+  await cdp.shot(join(rawDir, 'tasks.png'))
 }
 
 /**
@@ -416,52 +400,10 @@ async function stationRunning(cdp, rawDir) {
     console.log(`note  running station skipped (task card failed immediately: ${card.text})`)
     return
   }
-  // Wait for a live, non-failed frame with visible progress — the summarize
-  // call can die mid-flight (provider/network), and a failed card must never
-  // reach the README.
-  let frame = null
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const state = await cdp.json(`(() => {
-      const el = document.querySelector('[data-testid="task-status"]')
-      if (el == null) return null
-      const percent = el.querySelector('.task-percent')
-      return { failed: el.classList.contains('failed'), percent: percent == null ? null : parseInt(percent.textContent, 10) }
-    })()`)
-    if (state == null) break
-    if (state.failed) break
-    if ((state.percent ?? 0) >= 2) {
-      frame = state
-      break
-    }
-    await sleep(500)
-  }
-  if (frame == null) {
-    console.log('note  running station skipped (task failed before a live frame)')
-    await clickByText(cdp, 'button', '取消任务')
-    return
-  }
+  await sleep(2000) // stage track + progress bar fill in
   await dismissToasts(cdp) // the Fake-IP proxy warning must stay out of the shopfront
-  await sleep(200)
-  // Buttons row + card as one frame; the stage rail (and its last step) paint
-  // past the card box, so both join the union, with extra right overhang so the
-  // 6th node's label is not shaved. Full-window fallback if clipped.
-  const geom = await cdp.json(`(() => {
-    const card = document.querySelector('[data-testid="task-status"]')
-    const rail = document.querySelector('.stage-rail')
-    const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)] }
-    return {
-      vw: innerWidth,
-      card: card == null ? null : box(card),
-      rail: rail == null ? null : box(rail),
-      steps: [...document.querySelectorAll('.stage-step')].map((s) => [...box(s), s.textContent.trim()])
-    }
-  })()`)
-  console.log(`taskcard geometry ${JSON.stringify(geom)}`)
-  const rect = await clipUnionShot(cdp, join(rawDir, 'taskcard.png'), ['.panel-actions', '.stage-rail', '.stage-step:last-child', '[data-testid="task-status"]'], 14, 60)
-  if (rect == null) {
-    console.log('note  task card clip failed — full-window fallback')
-    await cdp.shot(join(rawDir, 'taskcard.png'))
-  }
+  await sleep(300)
+  await cdp.shot(join(rawDir, 'running.png'))
   await captionShot(cdp, join(rawDir, 'gif-2-running.png'), '② 导入即排队，六阶段流水线实时可见')
   await clickByText(cdp, 'button', '取消任务')
   await sleep(1500)
@@ -490,6 +432,32 @@ async function stationHandout(cdp, rawDir, pdfPath) {
   console.log(`raster  ${outPng} <- handout.pdf`)
 }
 
+/* ---------------- session 2: empty library ---------------- */
+
+async function stationEmpty(rawDir, width, height) {
+  // The single-instance lock forces a fresh boot after session 1 is killed.
+  const tmpDocs = prepareThrowawayDocs({ empty: true })
+  const { electron, port } = await spawnApp(tmpDocs)
+  try {
+    const cdp = await connect(port)
+    if ((await waitForShell(cdp)) === 'gate') {
+      await applyTheme(cdp, 'light')
+      await sleep(500)
+      await cdp.shot(join(rawDir, 'gate.png'))
+      await acceptConsentGate(cdp)
+    }
+    await pinWindow(cdp, width, height)
+    await dismissWindowHint(cdp)
+    await applyTheme(cdp, 'light')
+    await waitForSelector(cdp, '.empty-state', 15000)
+    await sleep(1200)
+    await cdp.shot(join(rawDir, 'empty.png'))
+  } finally {
+    killApp(electron)
+    await removeDir(tmpDocs)
+  }
+}
+
 /* ---------------- processing ---------------- */
 
 const pngSize = (file) => {
@@ -508,16 +476,17 @@ function processShot(srcPng, destJpg, { targetWidth, cropTopFraction = 0, qualit
   return { width: targetWidth, bytes: statSync(destJpg).size }
 }
 
-/** 2×2 grid of the four view-body tiles: uniform width, cropped to a short
- *  uniform height so the strip stays a compact band (not a tall wall). */
-function buildViewsStrip(rawDir, destJpg, tileWidth = 560, tileHeight = 360) {
+/** 2×2 grid of the four view-body tiles, uniform tile width/height. */
+function buildViewsStrip(rawDir, destJpg, tileWidth = 560) {
   const tiles = ['view-standard.png', 'view-points.png', 'view-methodology.png', 'view-mindmap.png'].map((file) => {
     const src = join(rawDir, file)
     if (!existsSync(src)) throw new Error(`views strip tile missing: ${file}`)
-    return { src, scaled: join(rawDir, `strip-${file.replace('.png', '.jpg')}`) }
+    const size = pngSize(src)
+    return { src, scaled: join(rawDir, `strip-${file.replace('.png', '.jpg')}`), width: tileWidth, height: Math.round((size.height * tileWidth) / size.width) }
   })
+  const tileHeight = Math.min(...tiles.map((tile) => tile.height))
   for (const tile of tiles) {
-    execFileSync(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error', '-i', tile.src, '-vf', `scale=${tileWidth}:-1:flags=lanczos,crop=${tileWidth}:${tileHeight}:0:0`, '-q:v', '3', tile.scaled])
+    execFileSync(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error', '-i', tile.src, '-vf', `scale=${tileWidth}:${tileHeight}:flags=lanczos`, '-q:v', '3', tile.scaled])
   }
   const filter = '[0:v][1:v]hstack=inputs=2[top];[2:v][3:v]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[out]'
   execFileSync(FFMPEG, [
@@ -526,7 +495,7 @@ function buildViewsStrip(rawDir, destJpg, tileWidth = 560, tileHeight = 360) {
     '-filter_complex', filter,
     '-map', '[out]', '-q:v', '3', destJpg
   ])
-  return { width: tileWidth * 2, height: tileHeight * 2, bytes: statSync(destJpg).size }
+  return { width: tileWidth * 2, bytes: statSync(destJpg).size }
 }
 
 /** Assemble the step GIF from the captioned frames (discrete steps, ~1.2s each). */
@@ -593,7 +562,6 @@ async function main() {
     writeFileSync(join(rawDir, 'geometry.json'), `${JSON.stringify(geometry, null, 1)}\n`)
     console.log(`pinned ${geometry.windowWidth}×${geometry.windowHeight} → css viewport ${geometry.cssWidth}×${geometry.cssHeight} · topbar ${geometry.topbarCssHeight} css · dpr ${geometry.devicePixelRatio}`)
     await applyTheme(cdp, 'light')
-    await measureClipZoom(cdp)
 
     if (has('--diag')) {
       await selectNotedLesson(cdp)
@@ -612,6 +580,8 @@ async function main() {
     if (want('qa')) await stationQa(cdp, rawDir)
     if (want('mindmap')) await stationMindmap(cdp, rawDir)
     if (want('browser')) await stationBrowser(cdp, rawDir)
+    if (want('bili')) await stationBili(cdp, rawDir)
+    if (want('tasks')) await stationTasks(cdp, rawDir)
     if (want('running')) await stationRunning(cdp, rawDir)
     if (want('handout') && !has('--no-handout')) await stationHandout(cdp, rawDir, pdfPath)
   } finally {
@@ -619,6 +589,7 @@ async function main() {
     await removeDir(tmpDocs)
   }
 
+  if (want('empty')) await stationEmpty(rawDir, windowWidth, windowHeight)
   if (has('--diag')) return
 
   // ---- process raw captures into committed assets ----
@@ -626,19 +597,13 @@ async function main() {
   const finalGeometry = existsSync(geometryFile) ? JSON.parse(readFileSync(geometryFile, 'utf8')) : geometry
   const topbarFraction = finalGeometry.topbarCssHeight / finalGeometry.cssHeight
   const manifest = {}
-  for (const asset of README_ASSETS) {
-    const src = join(rawDir, asset.from)
-    if (!existsSync(src)) {
-      console.log(`note  ${asset.from} missing — ${asset.file} skipped`)
-      continue
-    }
-    const dest = join(outDir, asset.file)
-    const result = processShot(src, dest, {
-      targetWidth: asset.width,
-      cropTopFraction: asset.topbar === false ? 0 : topbarFraction
-    })
-    manifest[asset.file] = { station: asset.from.replace('.png', ''), width: result.width, bytes: result.bytes }
-    console.log(`asset ${asset.file} ${result.width}w ${(result.bytes / 1024).toFixed(0)}KB`)
+  for (const [name, width] of Object.entries(STATION_WIDTH)) {
+    const src = join(rawDir, `${name}.png`)
+    if (!existsSync(src)) continue
+    const dest = join(outDir, `${name}.jpg`)
+    const result = processShot(src, dest, { targetWidth: width, cropTopFraction: name === 'handout' ? 0 : topbarFraction })
+    manifest[name] = { station: name, width: result.width, bytes: result.bytes }
+    console.log(`asset ${name}.jpg ${result.width}w ${(result.bytes / 1024).toFixed(0)}KB`)
   }
   if (existsSync(join(rawDir, 'view-standard.png'))) {
     const strip = buildViewsStrip(rawDir, join(outDir, 'views-strip.jpg'))
@@ -646,7 +611,7 @@ async function main() {
     console.log(`asset views-strip.jpg ${strip.width}w ${(strip.bytes / 1024).toFixed(0)}KB`)
   }
   if (!has('--no-gif')) {
-    const gif = buildGif(rawDir, outDir, Number(argOf('--gif-width=') ?? 840))
+    const gif = buildGif(rawDir, outDir, Number(argOf('--gif-width=') ?? 960))
     if (gif != null) {
       manifest['demo.gif'] = { station: 'gif', width: gif.width, bytes: gif.bytes }
       console.log(`asset demo.gif ${gif.width}w ${(gif.bytes / 1024 / 1024).toFixed(2)}MB`)
