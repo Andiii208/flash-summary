@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { courseAvatarChar } from '../src/shared/course-display'
+import { courseAvatarChar, termLabel } from '../src/shared/course-display'
 
 /** A6 (plan 2026-09-13): the one-glyph course avatar must not render a lone
  *  bracket for names that open with punctuation (Bilibili imports do). */
@@ -22,5 +22,26 @@ describe('courseAvatarChar', () => {
     expect(courseAvatarChar('《《》》')).toBe('《')
     expect(courseAvatarChar('···')).toBe('·')
     expect(courseAvatarChar('')).toBe('')
+  })
+})
+
+/** Plan 2026-10-07: one label definition for the platform term catalog and
+ *  the stored course term. `2026-2027-2` must read as a semester, not a
+ *  build number. */
+describe('termLabel / termOrdinal', () => {
+  it('renders academic-year + Chinese ordinal', () => {
+    expect(termLabel('2026-2027-2')).toBe('2026-2027 第二学期')
+    expect(termLabel('2026-2027-1')).toBe('2026-2027 第一学期')
+    expect(termLabel('2025-2026-3')).toBe('2025-2026 第三学期')
+  })
+
+  it('passes legacy year-only and unrecognized values through unchanged', () => {
+    expect(termLabel('2026-2027')).toBe('2026-2027')
+    expect(termLabel('')).toBe('')
+    expect(termLabel('2026')).toBe('2026')
+  })
+
+  it('numbers terms beyond the known ordinals', () => {
+    expect(termLabel('2026-2027-5')).toBe('2026-2027 第5学期')
   })
 })

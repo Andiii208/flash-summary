@@ -5,7 +5,8 @@ import {
   mergeCookieStrings,
   parseCourseList,
   parseCoursePageCount,
-  parseLessonDetail
+  parseLessonDetail,
+  parseTermList
 } from '../src/main/school/api-parse'
 
 describe('login redirect detection', () => {
@@ -198,5 +199,49 @@ describe('parseCourseList course metadata (C1/C3)', () => {
   it('omits metadata fields when the record carries none', () => {
     const courses = parseCourseList([{ id: 'x1' }])
     expect(courses[0]).toEqual({ id: 'x1', name: '' })
+  })
+})
+
+describe('parseTermList (platform term catalog, plan 2026-10-07)', () => {
+  it('parses the live /v1/list/termYear shape (field sample 2026-10-07, redacted)', () => {
+    const terms = parseTermList([
+      { acteBeginDate: 1789920000000, acteEndDate: 1800806400000, acteTerm: 2, acyeCode: '2026-2027', currentTerm: false, id: 37 },
+      { acteBeginDate: 1787500800000, acteEndDate: 1800806400000, acteTerm: 1, acyeCode: '2026-2027', currentTerm: true, id: 36 },
+      { acteBeginDate: 1772380800000, acteEndDate: 1784908800000, acteTerm: 3, acyeCode: '2025-2026', currentTerm: false, id: 35 }
+    ])
+    expect(terms).toEqual([
+      { id: 37, academicYear: '2026-2027', term: 2, currentTerm: false, label: '2026-2027 第二学期' },
+      { id: 36, academicYear: '2026-2027', term: 1, currentTerm: true, label: '2026-2027 第一学期' },
+      { id: 35, academicYear: '2025-2026', term: 3, currentTerm: false, label: '2025-2026 第三学期' }
+    ])
+  })
+
+  it('tolerates envelope wrapping and string ids', () => {
+    const terms = parseTermList({ code: null, data: [{ id: '29', acyeCode: '2024-2025', acteTerm: 1, currentTerm: false }] })
+    expect(terms).toEqual([{ id: 29, academicYear: '2024-2025', term: 1, currentTerm: false, label: '2024-2025 第一学期' }])
+  })
+
+  it('drops records the refresh could not filter on (no id / no year)', () => {
+    expect(parseTermList([{ acyeCode: '2026-2027', acteTerm: 1 }, { id: 5, acteTerm: 1 }])).toEqual([])
+  })
+})
+
+describe('parseCourseList canonical term (plan 2026-10-07)', () => {
+  it('builds YYYY-YYYY-N from acyeBeginYear/acyeEndYear + acteName', () => {
+    const courses = parseCourseList([
+      {
+        id: '1778445',
+        subjName: '大学物理(B)Ⅱ',
+        acyeBeginYear: 2026,
+        acyeEndYear: 2027,
+        acteName: '2'
+      }
+    ])
+    expect(courses[0].term).toBe('2026-2027-2')
+  })
+
+  it('falls back to the year range alone when the term number is missing (legacy shape)', () => {
+    const courses = parseCourseList([{ id: '1691584', subjName: '网络信息编程（全英文）', acyeBeginYear: 2026, acyeEndYear: 2027 }])
+    expect(courses[0].term).toBe('2026-2027')
   })
 })

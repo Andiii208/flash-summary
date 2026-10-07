@@ -35,3 +35,32 @@ export function courseSubLine(course: CourseTreeInfo): string | null {
   const parts = courseSubParts(course)
   return parts.length > 0 ? parts.join(' · ') : null
 }
+
+/**
+ * Chinese ordinal for the platform's acteTerm values (1/2 = 上学期/下学期,
+ * 3 = 小学期). One definition shared by the term catalog parser (main) and
+ * the course-term renderer (renderer) — plan 2026-10-07.
+ */
+export function termOrdinal(term: number): string {
+  switch (term) {
+    case 1:
+      return '第一'
+    case 2:
+      return '第二'
+    case 3:
+      return '第三'
+    default:
+      return `第${term}`
+  }
+}
+
+/**
+ * Display label for a stored course term: `2026-2027-2` → `2026-2027
+ * 第二学期`. Legacy rows harvested before the acteId semester filter carry
+ * the year range only (`2026-2027`) and pass through unchanged, as does
+ * anything unrecognized.
+ */
+export function termLabel(term: string): string {
+  const match = /^(\d{4}-\d{4})-(\d+)$/.exec(term)
+  return match == null ? term : `${match[1]} ${termOrdinal(Number(match[2]))}学期`
+}

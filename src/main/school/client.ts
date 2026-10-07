@@ -3,8 +3,10 @@ import {
   parseCourseList,
   parseCoursePageCount,
   parseLessonDetail,
+  parseTermList,
   type CourseSummary,
-  type LessonDetail
+  type LessonDetail,
+  type TermOption
 } from './api-parse'
 
 /** Page size of the platform course list (field-calibrated: 500/page). */
@@ -17,9 +19,17 @@ const PAGE_SIZE = 500
  */
 const DEFAULT_MAX_PAGES = 4
 
-function courseListPath(pageIndex: number): string {
-  return `/v1/group_subject_vod_list/t-1?page.pageIndex=${pageIndex}&page.pageSize=${PAGE_SIZE}`
+function courseListPath(pageIndex: number, acteId?: number): string {
+  const base = `/v1/group_subject_vod_list/t-1?page.pageIndex=${pageIndex}&page.pageSize=${PAGE_SIZE}`
+  // The term filter is a plain acteId query param (field-verified 2026-10-07:
+  // acteId=37 returns only 2026-2027 term 2). A wrong param NAME is silently
+  // ignored by the platform — it answers with the current term instead — so
+  // tests pin this spelling.
+  return acteId == null ? base : `${base}&acteId=${acteId}`
 }
+
+/** Path of the platform term catalog — the source of the site's semester dropdown. */
+const TERM_CATALOG_PATH = '/v1/list/termYear'
 
 /** Progress of a paged course refresh (x of the pages we will fetch). */
 export interface CourseListProgress {
@@ -140,21 +150,33 @@ export class SchoolClient {
    * Paged refresh (B1): walk the platform's course pages up to maxPages,
    * reporting progress per page. platformTotal comes from the platform's
    * own pageCount so the UI can state the loaded/total boundary honestly.
+   * acteId (optional) narrows the list to one semester — the same filter
+   * the official site's semester dropdown applies (plan 2026-10-07).
    */
   async listCoursesPaged(
-    options: { maxPages?: number; onProgress?: (p: CourseListProgress) => void } = {}
+    options: { maxPages?: number; acteId?: number; onProgress?: (p: CourseListProgress) => void } = {}
   ): Promise<CoursePageResult> {
     const maxPages = Math.max(1, Math.floor(options.maxPages ?? DEFAULT_MAX_PAGES))
-    const first = await this.request(courseListPath(1))
+    const first = await this.request(courseListPath(1, options.acteId))
     const courses = parseCourseList(first)
     const platformPages = Math.max(1, parseCoursePageCount(first))
     const targetPages = Math.min(platformPages, maxPages)
     options.onProgress?.({ page: 1, pageCount: targetPages })
     for (let pageIndex = 2; pageIndex <= targetPages; pageIndex++) {
-      courses.push(...parseCourseList(await this.request(courseListPath(pageIndex))))
+      courses.push(...parseCourseList(await this.request(courseListPath(pageIndex, options.acteId))))
       options.onProgress?.({ page: pageIndex, pageCount: targetPages })
     }
     return { courses, platformPages, fetchedPages: targetPages, platformTotal: platformPages * PAGE_SIZE }
+  }
+
+  /**
+   * Every semester the platform offers (verified live 2026-10-07: eight
+   * terms, 2024-2025 through 2026-2027, one flagged currentTerm). Feeds
+   * the refresh-area semester selector so the app mirrors the site's
+   * dropdown instead of showing only semesters already in the library.
+   */
+  async listTerms(): Promise<TermOption[]> {
+    return parseTermList(await this.request(TERM_CATALOG_PATH))
   }
 
   async lessonDetail(lessonId: string, courseId: string): Promise<LessonDetail> {

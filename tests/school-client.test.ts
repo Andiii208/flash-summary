@@ -227,3 +227,68 @@ describe('SchoolApiError kinds drive user-facing messages', () => {
     expect(new SchoolApiError('bad_response', 'x').kind).toBe('bad_response')
   })
 })
+
+describe('SchoolClient semester filter (plan 2026-10-07)', () => {
+  const COURSE_LIST_URL_A37 = `${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=1&page.pageSize=500&acteId=37`
+  const TERM_CATALOG_URL = `${API_BASE}/v1/list/termYear`
+
+  it('appends the acteId term filter with the platform-exact param name', async () => {
+    // Only the acteId route exists: a wrong param name (or a missing one)
+    // would miss this fixture and throw, so the spelling is pinned.
+    const client = new SchoolClient(
+      API_BASE,
+      async () => 'C=1',
+      makeFetch({
+        [COURSE_LIST_URL_A37]: jsonResponse({ code: null, data: { records: [{ id: 's1', subjName: '大学物理(B)Ⅱ', acteName: '2' }], pageIndex: 1, pageCount: 6 } })
+      })
+    )
+    const result = await client.listCoursesPaged({ acteId: 37, maxPages: 1 })
+    expect(result.courses.map((c) => c.id)).toEqual(['s1'])
+    expect(result.platformPages).toBe(6)
+  })
+
+  it('walks every page of the filtered semester with the filter on each request', async () => {
+    const client = new SchoolClient(
+      API_BASE,
+      async () => 'C=1',
+      makeFetch({
+        [COURSE_LIST_URL_A37]: jsonResponse({ code: null, data: { records: [{ id: 'p1' }], pageIndex: 1, pageCount: 2 } }),
+        [`${API_BASE}/v1/group_subject_vod_list/t-1?page.pageIndex=2&page.pageSize=500&acteId=37`]: jsonResponse({
+          code: null,
+          data: { records: [{ id: 'p2' }], pageIndex: 2, pageCount: 2 }
+        })
+      })
+    )
+    const result = await client.listCoursesPaged({ acteId: 37 })
+    expect(result.courses.map((c) => c.id)).toEqual(['p1', 'p2'])
+  })
+
+  it('parses the term catalog from the live bare-array shape', async () => {
+    const client = new SchoolClient(
+      API_BASE,
+      async () => '',
+      makeFetch({
+        [TERM_CATALOG_URL]: jsonResponse([
+          { id: 37, acyeCode: '2026-2027', acteTerm: 2, currentTerm: false },
+          { id: 36, acyeCode: '2026-2027', acteTerm: 1, currentTerm: true }
+        ])
+      })
+    )
+    expect(await client.listTerms()).toEqual([
+      { id: 37, academicYear: '2026-2027', term: 2, currentTerm: false, label: '2026-2027 第二学期' },
+      { id: 36, academicYear: '2026-2027', term: 1, currentTerm: true, label: '2026-2027 第一学期' }
+    ])
+  })
+
+  it('keeps the unfiltered URL when no acteId is given (probe/legacy path)', async () => {
+    const client = new SchoolClient(
+      API_BASE,
+      async () => '',
+      makeFetch({
+        [COURSE_LIST_URL]: jsonResponse({ code: null, data: { records: [{ id: 'a', acteName: '1' }], pageCount: 3 } })
+      })
+    )
+    const result = await client.listCoursesPaged({ maxPages: 1 })
+    expect(result.courses[0].term).toBe(undefined)
+  })
+})

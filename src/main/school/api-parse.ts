@@ -4,6 +4,7 @@
  * Kept side-effect free so they can be unit-tested against recorded fixtures
  * without any network access.
  */
+import { termOrdinal } from '../../shared/course-display'
 
 /**
  * H30 (audit 2026-09-28): 已知 CAS/SSO 主机清单——这些主机上出现的任何 URL
@@ -55,6 +56,12 @@ export function isCasLoginRedirect(url: string): boolean {
 export interface CourseSummary {
   id: string
   name: string
+  /**
+   * Canonical `YYYY-YYYY-N` (academic year + platform term number), e.g.
+   * `2026-2027-2`. Legacy rows harvested before 2026-10-07 carry the
+   * year range only (`2026-2027`) — the term number arrived with the
+   * `acteId` semester filter (plan 2026-10-07).
+   */
   term?: string
   teacher?: string
   /** Recording-class id for the play-page route (live t-1 field, 2026-09). */
@@ -80,6 +87,23 @@ export interface LessonDetail {
   /** Screen/PPT stream (1170195-5) URL, if present. */
   screenStreamUrl?: string
   pptCourseId?: string
+}
+
+/**
+ * One semester from the platform's term catalog (`/v1/list/termYear`,
+ * verified live 2026-10-07 — this is the source of the official site's
+ * semester dropdown, ids 29…37 covering 2024-2025 through 2026-2027).
+ */
+export interface TermOption {
+  /** `acteId` — the value the course list endpoint filters on. */
+  id: number
+  /** `acyeCode`, e.g. `2026-2027`. */
+  academicYear: string
+  /** `acteTerm`: 1/2 = 上学期/下学期, 3 = 小学期. */
+  term: number
+  currentTerm: boolean
+  /** Display label, e.g. `2026-2027 第二学期`. */
+  label: string
 }
 
 /**
@@ -109,12 +133,13 @@ export function mergeCookieStrings(existing: string, incoming: string): string {
 }
 
 /**
- * Best-effort: find the course array inside a platform envelope. The
+ * Best-effort: find the record array inside a platform envelope. The
  * cloud-classroom API (field-calibrated 2026-09) wraps pages as
  * {code,result:{records|list|rows|data}} or returns a bare array;
- * tolerate every observed shape.
+ * tolerate every observed shape. Shared by the course list and the term
+ * catalog (both verified live 2026-10-07).
  */
-function findCourseArray(payload: unknown): unknown[] {
+function findRecordArray(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload
   if (payload == null || typeof payload !== 'object') return []
   const obj = payload as Record<string, unknown>
@@ -159,13 +184,14 @@ export function parseCoursePageCount(payload: unknown): number {
  * stay as candidates; unknown fields map to ''.
  */
 export function parseCourseList(payload: unknown): CourseSummary[] {
-  const list = findCourseArray(payload)
+  const list = findRecordArray(payload)
   return list
     .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
     .map((item) => {
       const id = pickString(item, ['courId', 'courseId', 'course_id', 'id', 'courseNo', 'resId'])
       const name = pickString(item, ['subjName', 'courName', 'courseName', 'course_name', 'name', 'title'])
-      const term = pickString(item, ['acyeName', 'term', 'semester', 'termName', 'yearName']) || pickYearRange(item)
+      const term = buildTerm(item) ||
+        pickString(item, ['acyeName', 'term', 'semester', 'termName', 'yearName'])
       const teacher = pickString(item, ['teacher', 'teacherName', 'lecturer', 'speakerName']) ||
         pickStringArray(item, ['teacNames', 'teacherNames'])
       const teclId = pickString(item, ['teclId', 'tecl_id'])
@@ -267,6 +293,43 @@ function pickYearRange(obj: Record<string, unknown>): string {
   const end = obj.acyeEndYear
   if (typeof begin === 'number' && typeof end === 'number') return `${begin}-${end}`
   return ''
+}
+
+/**
+ * Canonical term for a course list record: `YYYY-YYYY-N` from the live
+ * acyeBeginYear/acyeEndYear + acteName trio (all three present in the
+ * real t-1 payload since 2026-09, field sample 2026-10-07). Falls back to
+ * the year range alone when the term number is missing — that shape is
+ * what legacy rows carry.
+ */
+function buildTerm(obj: Record<string, unknown>): string {
+  const yearRange = pickYearRange(obj)
+  if (yearRange === '') return ''
+  const termNumber = pickString(obj, ['acteName', 'term', 'semester'])
+  return termNumber === '' ? yearRange : `${yearRange}-${termNumber}`
+}
+
+/**
+ * Parse the platform term catalog (`/v1/list/termYear`, verified live
+ * 2026-10-07: a bare array of {id, acyeCode, acteTerm, currentTerm,
+ * acteBeginDate, acteEndDate}). Records without a usable id or year are
+ * dropped — a semester the refresh cannot filter on is worse than absent.
+ */
+export function parseTermList(payload: unknown): TermOption[] {
+  return findRecordArray(payload)
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+    .map((item) => {
+      const academicYear = pickString(item, ['acyeCode', 'acyeName', 'yearName'])
+      const term = pickNumber(item, ['acteTerm', 'term']) ?? 0
+      return {
+        id: pickNumber(item, ['id', 'acteId']) ?? 0,
+        academicYear,
+        term,
+        currentTerm: item.currentTerm === true,
+        label: academicYear === '' ? '' : `${academicYear} ${termOrdinal(term)}学期`
+      }
+    })
+    .filter((t) => t.id > 0 && t.academicYear !== '')
 }
 
 function pickNumber(obj: Record<string, unknown>, keys: string[]): number | undefined {
