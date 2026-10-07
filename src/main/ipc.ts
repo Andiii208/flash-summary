@@ -85,6 +85,33 @@ function maxPagesFrom(db: Db): number | undefined {
 }
 
 /**
+ * 批2 (plan 2026-10-07): page budget for a refresh. A semester-scoped
+ * refresh (acteId present) wants the whole semester — the platform's
+ * pageCount for one term measured 3…9 pages, so the client default of 4
+ * would silently truncate larger ones. A hard cap keeps a runaway
+ * platform pageCount from pinning the refresh; the user's
+ * courseListMaxPages setting still wins when set.
+ */
+const SEMESTER_REFRESH_MAX_PAGES = 20
+
+function refreshMaxPages(db: Db, acteId: number | undefined): number | undefined {
+  const userCap = maxPagesFrom(db)
+  if (userCap != null) return userCap
+  return acteId == null ? undefined : SEMESTER_REFRESH_MAX_PAGES
+}
+
+/**
+ * acteId from the renderer. Anything that is not a positive integer is
+ * ignored (refresh falls back to the platform's current term) — the
+ * parameter is newer than every installed renderer, and a bad value
+ * must not turn a refresh into an error dialog.
+ */
+function parseTermIdParam(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) return undefined
+  return value
+}
+
+/**
  * 批3 (P1 评审补口): B 站 view 接口失败 → 人话。
  *
  * `BilibiliClient` 抛的是英文技术串（`bilibili risk control (HTTP 412) for …`），
@@ -539,10 +566,14 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
   // course tree (school:courseTree) has durable data even offline.
   // B1: paged refresh — progress events stream via 'school:refreshProgress'
   // and the envelope carries the loaded/total boundary for the UI.
-  handle(ipc, 'school:listCourses', async () => {
+  // 批2 (plan 2026-10-07): optional acteId narrows the refresh to one
+  // semester — the same filter the official site's dropdown applies.
+  handle(ipc, 'school:listCourses', async (_e, acteId: unknown) => {
     try {
+      const termId = parseTermIdParam(acteId)
       const page = await ctx.school.listCoursesPaged({
-        maxPages: maxPagesFrom(ctx.db),
+        maxPages: refreshMaxPages(ctx.db, termId),
+        ...(termId != null ? { acteId: termId } : {}),
         onProgress: (p) => options.sender?.send('school:refreshProgress', p)
       })
       const now = new Date().toISOString()
@@ -567,6 +598,33 @@ export function registerIpc(ctx: AppContext, ipc = ipcMain, options: IpcOptions 
     } catch (e) {
       return err(e)
     }
+  })
+
+  // 批2 (plan 2026-10-07): the platform term catalog — every semester the
+  // official site offers (field-verified live: eight terms, one flagged
+  // currentTerm). The renderer's semester selector renders these, so a
+  // catalog failure degrades to «current term only» instead of blocking
+  // the refresh.
+  handle(ipc, 'school:listTerms', async () => {
+    try {
+      return ok(await ctx.school.listTerms())
+    } catch (e) {
+      return err(e)
+    }
+  })
+
+  // 批2: the remembered refresh semester ('' = platform current term).
+  // Read/write pair so the selector survives restarts without the renderer
+  // keeping any durable state of its own.
+  handle(ipc, 'school:refreshTerm', () => {
+    const raw = getSetting(ctx.db, SETTINGS_KEYS.courseRefreshTermId, '')
+    const parsed = Number(raw)
+    return ok({ acteId: Number.isInteger(parsed) && parsed > 0 ? parsed : null })
+  })
+  handle(ipc, 'school:setRefreshTerm', (_e, acteId: unknown) => {
+    const termId = parseTermIdParam(acteId)
+    ctx.setSetting(SETTINGS_KEYS.courseRefreshTermId, termId == null ? '' : String(termId))
+    return ok({ acteId: termId ?? null })
   })
 
   // V1.3: harvest the course's «第N节课» catalog from the play page DOM in

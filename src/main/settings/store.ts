@@ -16,6 +16,8 @@ export const SETTINGS_KEYS = {
   theme: 'theme',
   courseListMaxPages: 'courseListMaxPages',
   cacheQuotaGb: 'cacheQuotaGb',
+  /** 批2 (plan 2026-10-07): acteId of the semester the user last refreshed ('' = platform current term). */
+  courseRefreshTermId: 'courseRefreshTermId',
   /** 声明批2: the DISCLAIMER_TEXT_VERSION the user accepted ('' = never). */
   disclaimerAcceptedVersion: 'disclaimerAcceptedVersion',
   /** 声明批4: the COPYRIGHT_NOTICE_VERSION the user opted out of ('' = never). */

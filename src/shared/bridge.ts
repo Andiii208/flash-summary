@@ -25,6 +25,23 @@ export interface CourseSummaryInfo {
   courTimes?: string
 }
 
+/**
+ * One semester of the platform term catalog (plan 2026-10-07). The single
+ * definition shared by the main-side parser (`school/api-parse.ts`) and
+ * the renderer's semester selector — `id` is both the `acteId` the course
+ * list filters on and the option value.
+ */
+export interface TermOption {
+  id: number
+  /** `acyeCode`, e.g. `2026-2027`. */
+  academicYear: string
+  /** `acteTerm`: 1/2 = 上学期/下学期, 3 = 小学期. */
+  term: number
+  currentTerm: boolean
+  /** Display label, e.g. `2026-2027 第二学期`. */
+  label: string
+}
+
 export interface LessonTreeInfo {
   id: string
   title: string
@@ -85,8 +102,18 @@ export interface SchoolBridge {
     savedAt?: string | null
     expiresAt?: number | null
   }>>
-  /** Paged refresh (B1): returns the loaded/total boundary the platform reports. */
-  listCourses(): Promise<ApiResult<{ loaded: number; platformTotal: number; platformPages: number }>>
+  /**
+   * Paged refresh (B1): returns the loaded/total boundary the platform
+   * reports. acteId (plan 2026-10-07) narrows the refresh to one semester
+   * — the filter the official site's semester dropdown applies; omitted
+   * keeps the platform's current-term default.
+   */
+  listCourses(acteId?: number): Promise<ApiResult<{ loaded: number; platformTotal: number; platformPages: number }>>
+  /** Every semester the platform offers (site dropdown parity). Failure → single «current term». */
+  listTerms(): Promise<ApiResult<TermOption[]>>
+  /** acteId of the semester the user last chose to refresh (null = platform current term). */
+  refreshTerm(): Promise<ApiResult<{ acteId: number | null }>>
+  setRefreshTerm(acteId: number | null): Promise<ApiResult<{ acteId: number | null }>>
   addManualCourse(courseId: string, lessonId: string): Promise<ApiResult<{ courseId: string; lessonId: string }>>
   courseTree(): Promise<ApiResult<CourseTreeInfo[]>>
   /** V1.3: harvest the course's lesson catalog from the play page (main window navigates away and back). */

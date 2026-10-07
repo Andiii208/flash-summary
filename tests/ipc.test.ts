@@ -1766,3 +1766,96 @@ describe('H27: providers() 解密失败降级为空列表并落 error 日志', (
     expect(text).not.toContain('providers load failed')
   })
 })
+
+describe('ipc semester filter (plan 2026-10-07, 批2)', () => {
+  /** Stub school client that records what listCoursesPaged was asked for. */
+  function stubSchoolWithCapture(
+    captured: { calls: Array<{ maxPages?: number; acteId?: number }> },
+    terms?: unknown
+  ): void {
+    captured.calls.length = 0
+    const ctx = makeCtx()
+    ;(ctx as { school: unknown }).school = {
+      listCoursesPaged: async (opts: { maxPages?: number; acteId?: number }) => {
+        captured.calls.push({ maxPages: opts.maxPages, acteId: opts.acteId })
+        return { courses: [], platformPages: 1, fetchedPages: 1, platformTotal: 0 }
+      },
+      listTerms: async () => terms ?? []
+    }
+    lastCtx = ctx
+  }
+
+  let lastCtx: AppContext
+  const captured: { calls: Array<{ maxPages?: number; acteId?: number }> } = { calls: [] }
+
+  it('passes a valid acteId through and lifts the page cap for the semester scope', async () => {
+    stubSchoolWithCapture(captured)
+    registerIpc(lastCtx, ipc as never)
+    const res = (await ipc.invoke('school:listCourses', 37)) as { ok: boolean }
+    expect(res.ok).toBe(true)
+    expect(captured.calls[0]).toEqual({ maxPages: 20, acteId: 37 })
+  })
+
+  it('ignores a malformed acteId and keeps the current-term default budget', async () => {
+    stubSchoolWithCapture(captured)
+    registerIpc(lastCtx, ipc as never)
+    for (const bad of ['37', 0, -1, 3.5, null, undefined]) {
+      const res = (await ipc.invoke('school:listCourses', bad)) as { ok: boolean; error?: string }
+      expect(res.ok, `acteId=${JSON.stringify(bad)} should be ignored, got ${res.error ?? ''}`).toBe(true)
+    }
+    expect(captured.calls).toHaveLength(6)
+    expect(captured.calls.every((c) => c.acteId === undefined && c.maxPages === undefined)).toBe(true)
+  })
+
+  it('lets the user courseListMaxPages setting override the semester cap', async () => {
+    stubSchoolWithCapture(captured)
+    lastCtx.db.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('courseListMaxPages', '2', '2026-10-07T00:00:00Z')").run()
+    registerIpc(lastCtx, ipc as never)
+    await ipc.invoke('school:listCourses', 37)
+    expect(captured.calls[0]).toEqual({ maxPages: 2, acteId: 37 })
+  })
+
+  it('school:listTerms returns the platform term catalog', async () => {
+    stubSchoolWithCapture(captured, [
+      { id: 37, academicYear: '2026-2027', term: 2, currentTerm: false, label: '2026-2027 第二学期' }
+    ])
+    registerIpc(lastCtx, ipc as never)
+    const res = (await ipc.invoke('school:listTerms')) as { ok: boolean; value?: unknown[] }
+    expect(res.value).toEqual([{ id: 37, academicYear: '2026-2027', term: 2, currentTerm: false, label: '2026-2027 第二学期' }])
+  })
+
+  it('school:listTerms reports a catalog failure as the err envelope, not a rejection', async () => {
+    const ctx = makeCtx()
+    ;(ctx as { school: unknown }).school = {
+      listCoursesPaged: async () => ({ courses: [], platformPages: 1, fetchedPages: 1, platformTotal: 0 }),
+      listTerms: async () => {
+        throw new Error('term catalog unavailable')
+      }
+    }
+    registerIpc(ctx, ipc as never)
+    const failed = (await ipc.invoke('school:listTerms')) as { ok: boolean }
+    expect(failed.ok).toBe(false)
+  })
+
+  it('remembers the chosen semester across restarts (settings roundtrip)', async () => {
+    stubSchoolWithCapture(captured)
+    registerIpc(lastCtx, ipc as never)
+    const start = (await ipc.invoke('school:refreshTerm')) as { ok: boolean; value?: { acteId: number | null } }
+    expect(start.value).toEqual({ acteId: null })
+
+    const set = (await ipc.invoke('school:setRefreshTerm', 37)) as { ok: boolean; value?: { acteId: number | null } }
+    expect(set.value).toEqual({ acteId: 37 })
+    const readBack = (await ipc.invoke('school:refreshTerm')) as { value?: { acteId: number | null } }
+    expect(readBack.value).toEqual({ acteId: 37 })
+
+    // Clearing falls back to the platform current term, not a stale id.
+    await ipc.invoke('school:setRefreshTerm', null)
+    const cleared = (await ipc.invoke('school:refreshTerm')) as { value?: { acteId: number | null } }
+    expect(cleared.value).toEqual({ acteId: null })
+
+    // A string id from a stale/third-party caller must not stick.
+    await ipc.invoke('school:setRefreshTerm', '37')
+    const afterBad = (await ipc.invoke('school:refreshTerm')) as { value?: { acteId: number | null } }
+    expect(afterBad.value).toEqual({ acteId: null })
+  })
+})

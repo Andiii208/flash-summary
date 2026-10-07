@@ -10,7 +10,7 @@
  * stubs read it lazily at call time, which is what makes that work).
  */
 import { vi } from 'vitest'
-import type { AppSettingsInfo, CourseTreeInfo, ListPage, NoteIndexInfo, ProvidersListResult, SeuSummaryBridge, TaskRowInfo } from '../../src/shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, ListPage, NoteIndexInfo, ProvidersListResult, SeuSummaryBridge, TaskRowInfo, TermOption } from '../../src/shared/bridge'
 import type { SessionStateValue } from '../../src/shared/types'
 import type { ApiResult } from '../../src/shared/api-result'
 import { DISCLAIMER_TEXT_VERSION } from '../../src/shared/disclaimer'
@@ -97,6 +97,9 @@ export function makeBridge(): SeuSummaryBridge {
       logout: vi.fn(async () => ok({ state: 'logged_out' })),
       session: vi.fn(async (): Promise<ApiResult<{ state: SessionStateValue }>> => ok({ state: 'logged_out' })),
       listCourses: vi.fn(async () => ok({ loaded: 0, platformTotal: 0, platformPages: 1 })),
+      listTerms: vi.fn(async () => ok<TermOption[]>([])),
+      refreshTerm: vi.fn(async () => ok({ acteId: null })),
+      setRefreshTerm: vi.fn(async () => ok({ acteId: null })),
       addManualCourse: vi.fn(async () => ok({ courseId: 'c', lessonId: 'l' })),
       courseTree: vi.fn(async () => ok(fakeState.courses)),
       harvestLessons: vi.fn(async () => ok({ lessons: 0 })),

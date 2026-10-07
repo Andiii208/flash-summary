@@ -5,9 +5,9 @@ import {
   parseLessonDetail,
   parseTermList,
   type CourseSummary,
-  type LessonDetail,
-  type TermOption
+  type LessonDetail
 } from './api-parse'
+import type { TermOption } from '../../shared/bridge'
 
 /** Page size of the platform course list (field-calibrated: 500/page). */
 const PAGE_SIZE = 500

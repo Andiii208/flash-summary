@@ -4,6 +4,7 @@
  * Kept side-effect free so they can be unit-tested against recorded fixtures
  * without any network access.
  */
+import type { TermOption } from '../../shared/bridge'
 import { termOrdinal } from '../../shared/course-display'
 
 /**
@@ -87,23 +88,6 @@ export interface LessonDetail {
   /** Screen/PPT stream (1170195-5) URL, if present. */
   screenStreamUrl?: string
   pptCourseId?: string
-}
-
-/**
- * One semester from the platform's term catalog (`/v1/list/termYear`,
- * verified live 2026-10-07 — this is the source of the official site's
- * semester dropdown, ids 29…37 covering 2024-2025 through 2026-2027).
- */
-export interface TermOption {
-  /** `acteId` — the value the course list endpoint filters on. */
-  id: number
-  /** `acyeCode`, e.g. `2026-2027`. */
-  academicYear: string
-  /** `acteTerm`: 1/2 = 上学期/下学期, 3 = 小学期. */
-  term: number
-  currentTerm: boolean
-  /** Display label, e.g. `2026-2027 第二学期`. */
-  label: string
 }
 
 /**

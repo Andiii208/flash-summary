@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ApiResult } from '../shared/api-result'
-import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, LatestNoteResult, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, PolishResult, ProvidersListResult, QaRecentInfo, RegenerateResult, RepairResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo, UpdateCheckInfo, UpdateEvent } from '../shared/bridge'
+import type { AppSettingsInfo, AttachmentManifestEntry, BilibiliResolveResult, CourseTreeInfo, LatestNoteResult, ListPage, ListPageQuery, NoteAttachmentInfo, NoteHealthInfo, NoteIndexInfo, PolishResult, ProvidersListResult, QaRecentInfo, RegenerateResult, RepairResult, SeuSummaryBridge, TaskProgressInfo, TaskRowInfo, TermOption, UpdateCheckInfo, UpdateEvent } from '../shared/bridge'
 import type { TreeNode } from '../shared/notes/schema'
 import type { SessionStateValue } from '../shared/types'
 
@@ -22,8 +22,12 @@ const api: SeuSummaryBridge = {
         expiresAt?: number | null
       }>
     > => ipcRenderer.invoke('school:session'),
-    listCourses: (): Promise<ApiResult<{ loaded: number; platformTotal: number; platformPages: number }>> =>
-      ipcRenderer.invoke('school:listCourses'),
+    listCourses: (acteId?: number): Promise<ApiResult<{ loaded: number; platformTotal: number; platformPages: number }>> =>
+      ipcRenderer.invoke('school:listCourses', acteId ?? null),
+    listTerms: (): Promise<ApiResult<TermOption[]>> => ipcRenderer.invoke('school:listTerms'),
+    refreshTerm: (): Promise<ApiResult<{ acteId: number | null }>> => ipcRenderer.invoke('school:refreshTerm'),
+    setRefreshTerm: (acteId: number | null): Promise<ApiResult<{ acteId: number | null }>> =>
+      ipcRenderer.invoke('school:setRefreshTerm', acteId),
     onRefreshProgress: (cb: (p: { page: number; pageCount: number }) => void): (() => void) => {
       const listener = (_e: unknown, p: { page: number; pageCount: number }): void => cb(p)
       ipcRenderer.on('school:refreshProgress', listener)
