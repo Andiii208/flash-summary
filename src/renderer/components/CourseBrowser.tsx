@@ -3,7 +3,7 @@ import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight, GitBranch, Star, Trash2 } from 'lucide-preact'
 import type { CourseTreeInfo } from '../../shared/bridge'
 import { courseMatchesQuery } from '../../shared/course-search'
-import { courseAvatarChar, courseSubParts } from '../../shared/course-display'
+import { courseAvatarChar, courseSubParts, termLabel } from '../../shared/course-display'
 import { orderMyCoursesFirst } from '../../shared/course-order'
 import { subjectInkVar } from '../../shared/subject-ink'
 import { Dialog } from '../ui/Dialog'
@@ -211,7 +211,7 @@ export function CourseBrowser({
             <option value="all">全部学期</option>
             {terms.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {termLabel(t)}
               </option>
             ))}
             <option value={TERM_NULL}>（无学期）</option>

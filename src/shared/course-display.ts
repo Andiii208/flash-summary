@@ -26,7 +26,10 @@ export function courseAvatarChar(name: string): string {
  * teacher/room is the identity.
  */
 export function courseSubParts(course: CourseTreeInfo): string[] {
-  return [course.teacher, course.courTimes, course.classroom, course.term].filter(
+  // 批3 (plan 2026-10-07): term renders through termLabel so `2026-2027-2`
+  // reads as a semester in both consumers (sidebar line + browser cards).
+  const term = course.term != null && course.term !== '' ? termLabel(course.term) : undefined
+  return [course.teacher, course.courTimes, course.classroom, term].filter(
     (p): p is string => p != null && p !== ''
   )
 }

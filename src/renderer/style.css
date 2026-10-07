@@ -578,6 +578,32 @@ button.session-badge:disabled { opacity: 0.6; cursor: default; }
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }
+/* 批3 (plan 2026-10-07): 刷新学期选择行——与 .tree-meta 同一行位的上一行。
+   度量镜像 .course-browser-select 的 token 配方（同一视觉角色的第二处落点，
+   侧栏与浏览页两个界面，不抽基元避免为 14px 控件引入全局耦合）。 */
+.tree-term-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 2px;
+}
+.tree-term-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.tree-term-select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  flex: 1;
+  min-width: 0;
+}
+.tree-term-select:disabled { opacity: 0.6; cursor: default; }
 /* 批1: 「我的学习」面板此前是全仓唯一用 Tailwind 任意值的组件（text-[12px] /
    text-[11px] / text-[10px] / p-2.5 / tracking-[1px]），与相邻的 .all-courses-head
    各是一套度量。归回 token 类（组头走 .group-head 基元，计数走 .count-pill）。 */

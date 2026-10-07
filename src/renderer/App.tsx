@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { JSX } from 'preact'
 import { ChevronDown, ChevronRight, Maximize2, MessageCircleQuestionMark, PanelLeftClose, PanelLeftOpen } from 'lucide-preact'
-import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskRowInfo } from '../shared/bridge'
+import type { AppSettingsInfo, CourseTreeInfo, ProvidersListResult, QaRecentInfo, SeuSummaryBridge, TaskRowInfo, TermOption } from '../shared/bridge'
 import type { Note } from '../shared/notes/schema'
 import { withSessionRetry } from '../shared/session-retry'
 import { orderMyCoursesFirst, orderTreeLessonsByNumber } from '../shared/course-order'
@@ -69,7 +69,7 @@ export function tabForHotkey(key: string, modifiers: { ctrl: boolean; alt: boole
 export function sidebarMetaLine(
   refreshBusy: boolean,
   progress: { page: number; pageCount: number } | null,
-  meta: { loaded: number; platformTotal: number } | null,
+  meta: { loaded: number; platformTotal: number; termLabel?: string } | null,
   catalogCount: number
 ): string | null {
   if (refreshBusy) {
@@ -80,7 +80,10 @@ export function sidebarMetaLine(
   // ok-envelope with an empty list: state the fact, point at the usual cause
   // (soft-expired session returns a valid but empty payload) without claiming it.
   const empty = meta.loaded === 0 ? '——平台返回了空列表，可重新登录后再试' : ''
-  return `本地已收录 ${catalogCount} 门 · 本次刷新 ${meta.loaded} 门${empty} · 平台列表约 ${meta.platformTotal} 门（搜索只查本地已收录的课）`
+  // 批3 (plan 2026-10-07): name the semester the refresh covered, so an empty
+  // or small yield can be told apart from «当前学期还没课».
+  const scope = meta.termLabel != null ? `（${meta.termLabel}）` : ''
+  return `本地已收录 ${catalogCount} 门 · 本次刷新 ${meta.loaded} 门${scope}${empty} · 平台列表约 ${meta.platformTotal} 门（搜索只查本地已收录的课）`
 }
 
 /** 批C: sidebar/context persistence — the harvest and login flows navigate
@@ -496,6 +499,35 @@ export function App({ bridge }: { bridge: SeuSummaryBridge }): JSX.Element {
               onInput={(e) => state.setQuery((e.target as HTMLInputElement).value)}
             />
           )}
+          {state.session === 'logged_in' && state.termScopeReady && (
+            /* 批3 (plan 2026-10-07): 学期选择——与网站「先选学期再看课」同构。
+               放在头部行下方而不是行内：D2 实测该行在 269px 盒子里已 289px，
+               塞 select 只会复现一次溢出。空目录（加载失败/未登录）=只有
+               「当前学期」，即不过滤的历史行为。 */
+            <div class="tree-term-row">
+              <label class="tree-term-label" for="refresh-term">刷新学期</label>
+              <select
+                id="refresh-term"
+                class="tree-term-select"
+                aria-label="选择要刷新的学期"
+                data-testid="refresh-term-select"
+                value={state.refreshTermId == null ? '' : String(state.refreshTermId)}
+                disabled={state.refreshBusy}
+                onChange={(e) => {
+                  const raw = (e.target as HTMLSelectElement).value
+                  state.chooseRefreshTerm(raw === '' ? null : Number(raw))
+                }}
+              >
+                <option value="">当前学期</option>
+                {state.termOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                    {t.currentTerm ? '（当前）' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* A4/D2 (plan 2026-09-13): three numbers that must not be conflated —
               the last refresh's yield, the platform's page-count approximation,
               and the local catalog (which ACCUMULATES across refreshes: field
@@ -883,7 +915,15 @@ interface AppState extends NotesDomain, TasksDomain {
   /** A course-list refresh is in flight (network + possible login round-trip). */
   refreshBusy: boolean
   /** Loaded/total boundary after the last paged refresh (B2). */
-  refreshMeta: { loaded: number; platformTotal: number } | null
+  refreshMeta: { loaded: number; platformTotal: number; termLabel?: string } | null
+  /** 批3 (plan 2026-10-07): 平台学期目录（空=未加载/加载失败=只有「当前学期」）。 */
+  termOptions: TermOption[]
+  /** 批3: 选中的刷新学期（null=平台当前学期，=不带过滤的历史行为）。 */
+  refreshTermId: number | null
+  /** 批3: 学期目录与 remembered 学期已就绪（select 可见的前置条件）。 */
+  termScopeReady: boolean
+  /** 批3: 选中即持久化（settings courseRefreshTermId，重启后仍记得）。 */
+  chooseRefreshTerm: (acteId: number | null) => void
   /** Live page progress while a paged refresh runs (B2). */
   refreshProgress: { page: number; pageCount: number } | null
   tree: CourseTreeInfo[]
@@ -1045,8 +1085,15 @@ function useAppState(bridge: SeuSummaryBridge, goTasks: () => void, goNotes: () 
   })
   const [sessionBusy, setSessionBusy] = useState(false)
   const [refreshBusy, setRefreshBusy] = useState(false)
-  /** Loaded/total boundary after the last refresh (B2). */
-  const [refreshMeta, setRefreshMeta] = useState<{ loaded: number; platformTotal: number } | null>(null)
+  /** Loaded/total boundary after the last refresh (B2). termLabel: 批3 — 该次刷新覆盖的学期。 */
+  const [refreshMeta, setRefreshMeta] = useState<{ loaded: number; platformTotal: number; termLabel?: string } | null>(null)
+  /** 批3 (plan 2026-10-07): 平台学期目录与选中的刷新学期（null=平台当前学期）。 */
+  const [termOptions, setTermOptions] = useState<TermOption[]>([])
+  const [refreshTermId, setRefreshTermId] = useState<number | null>(null)
+  /** 批3: 目录+ remembered 学期是否已就绪——select 必须等它俩一起到齐再挂载：
+   *  Preact/Chromium 都会把「先于 options 设置 select.value」静默丢弃，
+   *  用户会看到「当前学期」而刷新用的却是记住的学期。 */
+  const [termScopeReady, setTermScopeReady] = useState(false)
   /** Live page progress while a paged refresh runs (B2). */
   const [refreshProgress, setRefreshProgress] = useState<{ page: number; pageCount: number } | null>(null)
   const [tree, setTree] = useState<CourseTreeInfo[]>([])
@@ -1234,22 +1281,45 @@ const copyReport = useCallback((): void => {
     return true
   }, [bridge, toast])
 
+  /** 批3 (plan 2026-10-07): the remembered semester. The ref mirrors the
+   *  state but resolves lazily — a 刷新课程 click that lands before the
+   *  catalog effect settles must still refresh the right scope, not the
+   *  current-term default. `undefined` = not loaded yet. */
+  const refreshTermRef = useRef<number | null | undefined>(undefined)
+  const resolveRefreshTermId = useCallback(async (): Promise<number | null> => {
+    if (refreshTermRef.current !== undefined) return refreshTermRef.current
+    const res = await bridge.school.refreshTerm()
+    const acteId = res.ok && res.value != null ? res.value.acteId : null
+    refreshTermRef.current = acteId
+    setRefreshTermId(acteId)
+    return acteId
+  }, [bridge])
+
   const refreshTree = useCallback(async (): Promise<void> => {
     if (refreshBusy) return
     setRefreshBusy(true)
     try {
       if (await ensureCampusNet()) {
+        // 批3 (plan 2026-10-07): 学期选择——null=平台当前学期（不带过滤的历史行为），
+        // 其余按 acteId 只拉该学期；刷新的是选中项而非「全站一键全学期」。
+        const termId = await resolveRefreshTermId()
+        const termLabel = termId == null ? undefined : termOptions.find((t) => t.id === termId)?.label
         // User-triggered refresh (spec §2): on session expiry the renderer logs
         // in once via the main window and retries the course list.
         const list = (await withSessionRetry(
-          () => bridge.school.listCourses() as Promise<ApiResult<CourseListResult>>,
+          () => bridge.school.listCourses(termId ?? undefined) as Promise<ApiResult<CourseListResult>>,
           () => bridge.school.login()
         )) as ApiResult<CourseListResult>
         if (list.ok && list.value != null) {
-          setRefreshMeta({ loaded: list.value.loaded, platformTotal: list.value.platformTotal })
+          setRefreshMeta({
+            loaded: list.value.loaded,
+            platformTotal: list.value.platformTotal,
+            ...(termLabel != null ? { termLabel } : {})
+          })
           // A4 (plan 2026-09-13): same de-conflation as the sidebar meta line —
           // «全校约» claimed more than pageCount×pageSize can know.
-          toast(`本次刷新 ${list.value.loaded} 门课程 · 平台列表约 ${list.value.platformTotal} 门`, 'success')
+          const scope = termLabel != null ? `（${termLabel}）` : ''
+          toast(`本次刷新 ${list.value.loaded} 门课程${scope} · 平台列表约 ${list.value.platformTotal} 门`, 'success')
         } else if (!list.ok && list.kind === 'session_expired') {
           setSession('logged_out')
           toast('会话已过期，请重新登录', 'error')
@@ -1263,7 +1333,7 @@ const copyReport = useCallback((): void => {
       setRefreshProgress(null)
       setRefreshBusy(false)
     }
-  }, [bridge, toast, applyLocalTree, refreshBusy, ensureCampusNet])
+  }, [bridge, toast, applyLocalTree, refreshBusy, ensureCampusNet, resolveRefreshTermId, termOptions])
   // 健康巡查 2026-09-12 批7: the mount effect depended on refreshTree's
   // identity, which flips with refreshBusy — every 刷新课程 start/end re-ran
   // the whole mount block (progress resubscription + every loader). The
@@ -1271,6 +1341,21 @@ const copyReport = useCallback((): void => {
   // mount-once.
   const refreshTreeRef = useRef(refreshTree)
   refreshTreeRef.current = refreshTree
+
+  // 批3 (plan 2026-10-07): pick the semester the next 刷新课程 covers. The
+  // choice persists (main-side setting) but does NOT trigger a refresh —
+  // «选中即刷新」会把一次误点变成几分钟的拉取。
+  const chooseRefreshTerm = useCallback(
+    (acteId: number | null): void => {
+      refreshTermRef.current = acteId
+      setRefreshTermId(acteId)
+      void (async () => {
+        const res = await bridge.school.setRefreshTerm(acteId)
+        if (!res.ok) toast('学期选择没能记住，不影响本次刷新', 'error')
+      })()
+    },
+    [bridge, toast]
+  )
 
 
 
@@ -1358,6 +1443,34 @@ const copyReport = useCallback((): void => {
 
   // Live refresh progress (B2): stable subscription — the bridge is the only dep.
   useEffect(() => bridge.school.onRefreshProgress((p) => setRefreshProgress(p)), [bridge])
+
+  // 批3 (plan 2026-10-07): the platform term catalog + the remembered
+  // semester, loaded whenever the session is (or becomes) logged in. D7:
+  // a catalog failure leaves the selector on its single «当前学期» entry —
+  // the refresh keeps working with the platform's default scope.
+  useEffect(() => {
+    if (session !== 'logged_in') {
+      setTermOptions([])
+      setRefreshTermId(null)
+      setTermScopeReady(false)
+      // Force the lazy resolver to re-read the setting on the next login.
+      refreshTermRef.current = undefined
+      return
+    }
+    let disposed = false
+    void (async () => {
+      const [terms, remembered] = await Promise.all([bridge.school.listTerms(), bridge.school.refreshTerm()])
+      if (terms.ok && terms.value != null) setTermOptions(terms.value)
+      if (remembered.ok && remembered.value != null) {
+        refreshTermRef.current = remembered.value.acteId
+        setRefreshTermId(remembered.value.acteId)
+      }
+      if (!disposed) setTermScopeReady(true)
+    })()
+    return () => {
+      disposed = true
+    }
+  }, [bridge, session])
 
   useEffect(() => {
     let disposed = false
@@ -1920,6 +2033,10 @@ const currentCourseLessons = useMemo<LessonChipLesson[]>(
     biliLogout,
     refreshBusy,
     refreshMeta,
+    termOptions,
+    refreshTermId,
+    termScopeReady,
+    chooseRefreshTerm,
     refreshProgress,
     tree,
     filteredTree,
