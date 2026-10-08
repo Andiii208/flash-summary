@@ -2,20 +2,30 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [0.7.15] — 2026-10-08 · 课程学期与平台同步 + README 门面落地
 
-> 方案：docs/plans/2026-10-06-readme-screenshot-overhaul.md（其他 agent 反馈：仓库 README 作为电脑软件门面不合格、没有软件截图是大大扣分项；D1-D6 全按推荐）。
+> 方案：docs/plans/2026-10-07-semester-sync-with-platform.md（Andiii 校园网试用报障：学期选择与网站不同步——无法选择 2026-2027 第二学期，也就无法总结第二学期的课程）与 docs/plans/2026-10-06-readme-screenshot-overhaul.md（README 门面整改，D1-D6 全按推荐）。
+
+### 新增
+
+- **课程学期与平台网站同步**：「刷新课程」现可按学期收录课程——侧栏「刷新学期」下拉直接列出平台网站的**全部学期**（`/v1/list/termYear` 目录，实测 8 个学期：2024-2025 至 2026-2027，每学期带「（当前）」标记），选中即只刷新该学期并记住选择（重启仍生效）。此前课程列表只拉当前学期、且学期筛选项由本地已收录课程生成——网站上可选但应用里选不到的学期（如 2026-2027 第二学期）既无法收录也无法总结。课程列表按 `acteId` 过滤（平台 field-verified；错误参数名会被平台静默忽略，已由测试钉住拼写）；单学期刷新默认拉满该学期全部页（20 页硬顶防呆，`courseListMaxPages` 用户设置仍为上限）。学期展示统一为「2026-2027 第二学期」中文标签（存量 `YYYY-YYYY` 旧数据原样兼容）；侧栏 meta 行与完成 toast 注明本次刷新的学期，空结果会说明是哪个学期为空，而非笼统的「平台返回了空列表」。学期目录加载失败时降级为「当前学期」单选、刷新按钮照常可用；「当前学期」= 不过滤的历史行为。
+
+### 修正（截图管线，仅 dev 脚本）
+
+- **README 配图重跑时实锤并修复 scripts/readme-shots.mjs / scripts/lib/ui-cdp.mjs 四个问题**：① 窗口操作按标题枚举会命中用户自己开着的同名应用窗口（钉窗误挪他人窗口三次）——改为按 spawn 出的进程 PID 精确过滤；② 运行中 zoom 静默掉回 1 导致 13 张里有 8 张只拍到 1433 CSS——改为每次重钉并轮询校验 CSS 视口锚点、每机位开拍前复校；③ 隐藏启动的窗口上 `Page.captureScreenshot` 永挂、`SW_MAXIMIZE` 只到 ~1707 物理宽（PowerShell 屏幕尺寸报 DIP）、PDF 导出 `getFocusedWindow()` 为 null——新增 `SEU_SHOW` 窗口接缝 + 按 CDP 物理屏尺寸铺满 + 截图「超时放弃+重试」封装；④ 隐藏窗封面图不解码使 views 裁条只剩 144px——两段式滚动修正。README 13 张配图已整批重建（侧栏机位带登录态与新学期选择行）。
+- **一条 CI 负载假红**：ipc 测试文件用例变重后，既有的 `tasks:create` 用例在 CI 上超过 vitest 5s 默认超时——按仓库既有写法为该重量级 describe 设显式超时。
 
 ### 文档
 
-- **README 门面重写**：旧版 186 行面向贡献者（功能表单元格 300–600 字、混内部批号与「试用实测」记录、「当前状态」是开发日志），访客三问（是什么/长什么样/去哪下载）全在第四屏以后，且全文零截图。新版 135 行：首屏 hero 实拍 + 一句话定位 + 按钮式下载入口；新增「界面一览」——9 张真实界面截图 + 核心流程 GIF（浏览课程 → 导入即排队 → 笔记生成 → 追问 → 导图/五视图/PDF）；功能表压缩为一行一条；「当前状态」版本信息并入安装节；内部批号/P 号/装机走查项全部移除（发布史归 CHANGELOG、开发台账归 PROGRESS）。**声明层摘要（隐私与安全 + 合规与使用声明）逐字保留**，无任何新增用户可见承诺。
-- **新增截图管线 scripts/readme-shots.mjs**：真库副本（app.db + attachments）CDP 实拍 README 机位 → user32 钉窗 1920×1200（zoom 口径实测 CSS 视口 1600）→ 浅色主题 → ffmpeg-static 裁自绘标题栏 + 缩放 + JPEG，产出 docs/assets/readme/ 13 资产共 2.03MB（manifest.json 记账）；GIF 以 DOM 字幕烧字，零字体依赖。**UI 大改后重跑即重建**，防腐烂纪律已写入 AGENTS.md 命令节。
-- **dev 脚本公共库抽取 scripts/lib/ui-cdp.mjs**：ui-shots 的 CDP 客户端/等待助手/闸门走查/钉窗等抽为共享模块，readme-shots 复用（纯机械重构，ui-shots 默认模式复跑一致）。顺带修一个 latent 缺口：ui-shots 的库副本从前不拷 attachments/，笔记页截图一直缺时间线配图。
+- **README 门面重写**：旧版 186 行面向贡献者（功能表单元格 300–600 字、混内部批号与「试用实测」记录、「当前状态」是开发日志），访客三问（是什么/长什么样/去哪下载）全在第四屏以后，且全文零截图。新版 135 行：首屏 hero 实拍 + 一句话定位 + 按钮式下载入口；新增「界面一览」——真实界面截图 + 核心流程 GIF（浏览课程 → 导入即排队 → 笔记生成 → 追问 → 导图/五视图/PDF）；功能表压缩为一行一条；「当前状态」版本信息并入安装节；内部批号/P 号/装机走查项全部移除（发布史归 CHANGELOG、开发台账归 PROGRESS）。**声明层摘要（隐私与安全 + 合规与使用声明）逐字保留**，无任何新增用户可见承诺。
+- **README 配图整批重跑**：`docs/assets/readme/` 13 资产（hero/任务/四视图裁条/全部课程/追问/导图/运行中/空库/闸门/B站×2/PDF 讲义/GIF）由 `node scripts/readme-shots.mjs` 一键重建（真库副本 CDP 实拍 + 窗口铺满物理屏 + ffmpeg 压缩，manifest.json 记账）；窗口铺满后 CSS 视口仍锚定 1600，构图不变、更清晰。
+- **dev 脚本公共库抽取 scripts/lib/ui-cdp.mjs**：ui-shots 的 CDP 客户端/等待助手/闸门走查/钉窗等抽为共享模块，readme-shots 复用（纯机械重构）。顺带修一个 latent 缺口：ui-shots 的库副本从前不拷 attachments/，笔记页截图一直缺时间线配图。
 
 ### 已知问题（非本次引入，留待后续）
 
-- scripts/ui-shots.mjs `--bili` 机位假设未登录态：dev userData 现有 B站会话时「导入并生成笔记」直接导入、不出二维码，20s 等待超时（与重构前 HEAD 版本在相同条件下报错逐字一致）。
+- scripts/ui-shots.mjs `--bili` 机位假设未登录态：dev userData 现有 B站会话时「导入并生成笔记」直接导入、不出二维码，20s 等待超时（与 HEAD 原版在相同条件下报错逐字一致）。
 - scripts/ui-shots.mjs `--compliance` 的「导出 Markdown」选择器陈旧：该按钮已改为「复制 Markdown」，Markdown 导出收进「其它导出」菜单（同上，HEAD 版本同样失败）。
+- 应用内校园请求在 Clash TUN 且未给 `seu.edu.cn` 加 DIRECT 规则时会被 Fake-IP 预检拦截（既有设计，README troubleshooting 有载）；预检放行需要能直连校园域名的网络。
 
 ## [0.7.14] — 2026-10-01 · 笔记穿插回归修复 + 检查更新 feed 修复
 

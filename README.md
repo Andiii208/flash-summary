@@ -59,7 +59,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 
 ## 🚀 安装
 
-**[⬇ 下载最新版（GitHub Releases）](https://github.com/Andiii208/flash-summary/releases/latest)** — 需要 **Windows 10/11 x64**；ffmpeg 已内置，无需额外安装。当前版本 **v0.7.14**（2026-10-01），逐版本变更见 [CHANGELOG](CHANGELOG.md)，开发进度台账见 [PROGRESS.md](PROGRESS.md)。
+**[⬇ 下载最新版（GitHub Releases）](https://github.com/Andiii208/flash-summary/releases/latest)** — 需要 **Windows 10/11 x64**；ffmpeg 已内置，无需额外安装。当前版本 **v0.7.15**（2026-10-08），逐版本变更见 [CHANGELOG](CHANGELOG.md)，开发进度台账见 [PROGRESS.md](PROGRESS.md)。
 
 - 下到的是 `Flash.Summary.Setup.<version>.exe`（GitHub 会把资产名里的空格换成点；与本地 `npm run dist` 产物是同一个包）。
 - 安装程序会先显示**使用须知与第三方许可**（含内置 ffmpeg 的 GPL-3.0 说明与源码获取途径），需点「我同意」才能继续；条款全文随包放在安装目录的 `resources\legal\`。
@@ -67,7 +67,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 
 ## ▶️ 快速开始
 
-1. 双击启动，点「登录 CAS」——主窗口内完成学校平台授权后自动返回，课程树自动刷新（会话加密保存，重启免登录）。
+1. 双击启动，点「登录 CAS」——主窗口内完成学校平台授权后自动返回，课程树自动刷新（会话加密保存，重启免登录）；「刷新课程」上方的学期下拉与平台网站一致——选哪个学期就收录哪个学期的课程（默认当前学期，选择重启后仍生效）。
 2. 左侧课程树点击课时即可创建任务；课程多用「全部课程」（行尾按钮或 Ctrl+K）全屏浏览，搜索/筛选后点课时直接选中；B站视频点侧栏「导入 B站视频」。
 3. 任务排队串行执行，界面实时显示阶段与分片进度；需要时点「取消任务」；失败点历史任务中的「重试」——只会从失败阶段继续。
 4. 完成后自动进入笔记：五种视图切换阅读，右侧追问坞随时就本课时提问；「导出 PDF 讲义」生成整册讲义（A4、封面、页码、含课堂画面），也可导出 Markdown / Anki / Obsidian。**窗口放大/最大化**后界面按物理宽度等比缩放铺满（任务卡双列、正文装订线居中、追问坞常驻），无需手动设置。
