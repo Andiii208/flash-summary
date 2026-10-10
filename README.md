@@ -113,10 +113,10 @@ npm run smoke        # 构建并运行 CDP 进程级烟测
 npm run dist         # 构建 NSIS 安装包到 release/
 ```
 
-- 技术栈：**Electron 44 + TypeScript strict**（三进程隔离，sandbox + contextIsolation）；renderer 用 **Preact**；本地库 **better-sqlite3**；媒体 **ffmpeg-static/ffprobe-static**（已打包）；笔记 schema 用 **zod** 校验；安装包 **electron-builder**；测试 **vitest**（**1632 个用例 / 145 个文件**，含真实 HTTP 集成与六阶段端到端 e2e）。架构与目录结构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+- 技术栈：**Electron 44 + TypeScript strict**（三进程隔离，sandbox + contextIsolation）；renderer 用 **Preact**；本地库 **better-sqlite3**；媒体 **ffmpeg-static/ffprobe-static**（已打包）；笔记 schema 用 **zod** 校验；安装包 **electron-builder**；测试 **vitest**（**1635 个用例 / 146 个文件**，含真实 HTTP 集成与六阶段端到端 e2e）。架构与目录结构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 - CI（GitHub Actions，windows-latest）每个 push 跑两条工作流：**CI**（lint + typecheck + test + build）与 **Smoke**（打包产物进程级烟测）。
 - README 配图由 `node scripts/readme-shots.mjs` 生产（真库副本 CDP 实拍，零新依赖）；**UI 大改后重跑它以更新截图**。
-- 测试基线：**1632 个用例 / 145 个测试文件**（`npm test`，只增不减）；提交前跑全四门禁（`npm run lint && npm run typecheck && npm test`），改 IPC 桥面另跑 `npm run smoke`。
+- 测试基线：**1635 个用例 / 146 个测试文件**（`npm test`，只增不减）；提交前跑全四门禁（`npm run lint && npm run typecheck && npm test`），改 IPC 桥面另跑 `npm run smoke`。
 - Windows + git-bash 环境下若 `npm` 报 "cannot execute"，请用 `npm.cmd`。
 
 ## 📖 更多文档
