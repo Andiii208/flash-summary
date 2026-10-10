@@ -72,7 +72,7 @@ gh release create vX.Y.Z "release/Flash.Summary.Setup.<version>.exe" release/lat
   ```
 
 - [ ] **资产名规范化（2026-10-10 订正，旧结论是错的）**：GitHub 上传时会把资产名里的**空格换成点**（`Flash Summary Setup 0.7.3.exe` → `Flash.Summary.Setup.0.7.3.exe`）；而 electron-builder 写进 latest.yml 的 `path`/`url` 走的是另一套规范化——含空格的默认产物名被 `computeSafeArtifactNameIfNeeded` 换成**连字符**（`Flash-Summary-Setup-0.7.15.exe`）。**两边不一致，feed 从此指着一个不存在的文件，下载必 404**（2026-10-10 实锤：`curl -I` 连字符 URL 404、点号 URL 200；v0.7.13-0.7.15 三个 release 的 latest.yml 全错）。修法= `build.artifactName` 显式写成无空格的点号名，让「本地产物 = latest.yml path = GitHub 资产」三者同名；上面那条 URL 自检就是盯这件事的机械闸门。README 的「安装」一节按**下载后的名字**写（2026-09-11 已对齐，点号名不变）。
-- [ ] 万一漏传 latest.yml（tag 已打、包内容不变）：**不必删 tag 重发**——`gh release upload vX.Y.Z release/latest.yml` 追加即可（2026-10-01 v0.7.13 补传实测：资产与内容一致）。若漏传的是**修正版 latest.yml**（如 2026-10-10 修 v0.7.15 的连字符名），加 `--clobber` 覆盖，并补跑上面那条 URL 200 自检。
+- [ ] 万一漏传 latest.yml（tag 已打、包内容不变）：**不必删 tag 重发**——`gh release upload vX.Y.Z release/latest.yml` 追加即可（2026-10-01 v0.7.13 补传实测：资产与内容一致）。若漏传的是**修正版 latest.yml**（如 2026-10-10 修 v0.7.15 的连字符名），加 `--clobber` 覆盖，并补跑上面那条 URL 200 自检。⚠️ `gh release upload` **按本地文件名落资产名**——本地文件不叫 `latest.yml` 就会传出一个新资产（`--clobber` 只替换同名资产），完事必须 `gh api … --jq '.assets[].name'` 核对资产清单正好是 exe + latest.yml 两件，多一件删一件（`gh api -X DELETE repos/Andiii208/flash-summary/releases/assets/<id>`）。
 
 ## 6. 收尾
 
