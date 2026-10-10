@@ -2,6 +2,21 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的精神，版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.7.16] — 2026-10-10 · 自动更新下载 404 修复 + 发布流程加固
+
+> 方案：docs/plans/2026-10-10-updater-feed-fix-and-release-pipeline.md（Andiii 全面复审「之前强调的问题是否都准确解决 + 自动更新是否正常可用」→ 实锤 v0.7.13 起的更新链路「检查能过、下载必挂」，D1-D4 全按推荐）。
+
+### 修复
+
+- **自动更新「下载并安装」必然失败（自 v0.7.13 起，三个版本全挂）**：设置页点「检查更新」能看到新版本，点「下载并安装」却必然失败——`latest.yml` 里写的安装包文件名是连字符版（`Flash-Summary-Setup-0.7.15.exe`），GitHub Release 上的实际资产是点号版（`Flash.Summary.Setup.0.7.15.exe`），electron-updater 按 feed 里的名字拼下载 URL，请求一个不存在的文件（实测 404）。根因：产物名含空格时，electron-builder 把空格换**连字符**写进 latest.yml，而 GitHub 上传资产时把空格换成**点**，两边规范化方式不一致。修复：`build.artifactName` 显式写成无空格的点号名，本地产物 / latest.yml / GitHub 资产三者从此同名。**v0.7.15 的 feed 已在线上订正**（只改 358 B 的元数据、未动安装包），0.7.14 用户现在即可正常更新到 0.7.15。
+- **下载失败不再把内部 URL 与堆栈印在设置页**：此前下载失败（含上述 404）会把一长串含上游 URL 与打包堆栈的英文原样显示在「更新」状态行。现在与检查失败同一口径——状态行只显示一句人话，原始详情只进本地日志。
+
+### 改进（发布流程）
+
+- **发布清单新增「安装包 URL 必须 200」自检**：从刚上传的 latest.yml 取 `path` 拼出真实下载 URL 打一发，404 即发布未完成——这正是此前三个版本失守的缺口（旧清单只验「latest.yml 资产在不在」，没人验它指的安装包可达不可达）。
+- **订正发布清单里的错误结论**：旧结论「latest.yml 的 path/url 是 electron-builder 按规范化后的名字写的，天然自洽」是错的，且它放行了三个版本的发布；现补完整根因与防复发闸门。
+- **新增离线一致性测试**：断言 `build.artifactName` 渲染后是 GitHub 安全名，且工作区 `release/latest.yml`（若存在）的 `path`/`url` 与它逐字一致——单测注入的假 updater 碰不到真实 URL，这道闸门落在构建产物上。测试 1632 → 1635。
+
 ## [0.7.15] — 2026-10-08 · 课程学期与平台同步 + README 门面落地
 
 > 方案：docs/plans/2026-10-07-semester-sync-with-platform.md（Andiii 校园网试用报障：学期选择与网站不同步——无法选择 2026-2027 第二学期，也就无法总结第二学期的课程）与 docs/plans/2026-10-06-readme-screenshot-overhaul.md（README 门面整改，D1-D6 全按推荐）。

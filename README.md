@@ -59,7 +59,7 @@ Flash Summary 是一款**本地优先**的 Windows 桌面应用：用你自己�
 
 ## 🚀 安装
 
-**[⬇ 下载最新版（GitHub Releases）](https://github.com/Andiii208/flash-summary/releases/latest)** — 需要 **Windows 10/11 x64**；ffmpeg 已内置，无需额外安装。当前版本 **v0.7.15**（2026-10-08），逐版本变更见 [CHANGELOG](CHANGELOG.md)，开发进度台账见 [PROGRESS.md](PROGRESS.md)。
+**[⬇ 下载最新版（GitHub Releases）](https://github.com/Andiii208/flash-summary/releases/latest)** — 需要 **Windows 10/11 x64**；ffmpeg 已内置，无需额外安装。当前版本 **v0.7.16**（2026-10-10），逐版本变更见 [CHANGELOG](CHANGELOG.md)，开发进度台账见 [PROGRESS.md](PROGRESS.md)。
 
 - 下到的是 `Flash.Summary.Setup.<version>.exe`（GitHub 会把资产名里的空格换成点；与本地 `npm run dist` 产物是同一个包）。
 - 安装程序会先显示**使用须知与第三方许可**（含内置 ffmpeg 的 GPL-3.0 说明与源码获取途径），需点「我同意」才能继续；条款全文随包放在安装目录的 `resources\legal\`。
