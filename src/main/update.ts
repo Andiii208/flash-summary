@@ -44,7 +44,7 @@ function messageOf(e: unknown): string {
 /**
  * 检查失败的用户可读文案（2026-10-01，plan 2026-10-01-note-inline-images-and-updater-feed）：
  * 上游原始 message 形如 `Cannot find latest.yml ... (url): HttpError: 404 ... at createHttpError`，
- * 含内部 URL 与打包堆栈——只经 onCheckFailure 进日志，渲染层一律只收这里的短句。
+ * 含内部 URL 与打包堆栈——只经 onFailure 进日志，渲染层一律只收这里的短句。
  * ERR_UPDATER_CHANNEL_FILE_NOT_FOUND = feed 渠道文件（latest.yml）不在 release 资产里
  * （electron-updater GitHubProvider 在 404 时抛的 code，比解析 message 文本稳）。
  */
@@ -54,6 +54,16 @@ function checkFailureMessage(e: unknown): string {
     return '暂时无法检查更新：发布渠道信息缺失，请稍后重试或前往本项目 GitHub 发布页查看。'
   }
   return '暂时无法检查更新：网络或发布服务器无响应，请稍后重试。'
+}
+
+/**
+ * 下载失败的用户可读文案（2026-10-10，plan 2026-10-10-updater-feed-fix-and-release-pipeline）：
+ * 下载这条路径此前的 catch 把原始 message 原样 emit 到设置页——404 时会印出含内部 URL
+ * 与打包堆栈的一长串英文（与 v0.7.13 检查路径同款缺陷，当时只修了 check 漏了 download）。
+ * 现在统一口径：UI 只收一句人话，原始详情只走 onFailure 进日志。
+ */
+function downloadFailureMessage(): string {
+  return '暂时无法下载更新：网络或发布服务器无响应，请稍后重试或前往本项目 GitHub 发布页手动下载。'
 }
 
 function percentOf(info: unknown): number {
@@ -70,7 +80,7 @@ export function createUpdateController(deps: {
   app: UpdateAppLike
   updater: AutoUpdaterLike
   /** 原始失败详情的落点（日志）；UI 只收脱敏短句。不传则详情无处可查——装配处应传。 */
-  onCheckFailure?: (raw: string) => void
+  onFailure?: (raw: string) => void
 }): UpdateController {
   const listeners = new Set<(event: UpdateEvent) => void>()
   const emit = (event: UpdateEvent): void => {
@@ -88,7 +98,12 @@ export function createUpdateController(deps: {
   })
   deps.updater.on('error', (err) => {
     downloading = false
-    emit({ type: 'error', message: messageOf(err) })
+    // 2026-10-10：'error' 是 electron-updater 下载/安装阶段的异步错误通道——
+    // downloadUpdate() 拒绝前会先 dispatchError（AppUpdater.js errorHandler），
+    // 只脱敏 catch 会被这条路径绕过（404 的 HttpError 含内部 URL 与堆栈）。
+    // 与 download() catch 同一把尺：原始详情进日志，UI 收脱敏短句。
+    deps.onFailure?.(messageOf(err))
+    emit({ type: 'error', message: downloadFailureMessage() })
   })
 
   const check = async (): Promise<UpdateCheckInfo> => {
@@ -99,8 +114,8 @@ export function createUpdateController(deps: {
       return { status: 'available', version: result.updateInfo.version }
     } catch (e) {
       // 2026-10-01：v0.7.13 上线时 feed 缺 latest.yml，原始 message（含 URL 与打包
-      // 堆栈）被原样印在设置页。现在原始详情只走 onCheckFailure 进日志。
-      deps.onCheckFailure?.(messageOf(e))
+      // 堆栈）被原样印在设置页。现在原始详情只走 onFailure 进日志。
+      deps.onFailure?.(messageOf(e))
       return { status: 'error', message: checkFailureMessage(e) }
     }
   }
@@ -113,7 +128,9 @@ export function createUpdateController(deps: {
       return { started: true }
     } catch (e) {
       downloading = false
-      emit({ type: 'error', message: messageOf(e) })
+      // 2026-10-10：与 check 同一把尺——原始 message 只进日志，UI 收脱敏短句。
+      deps.onFailure?.(messageOf(e))
+      emit({ type: 'error', message: downloadFailureMessage() })
       return { started: false }
     }
   }

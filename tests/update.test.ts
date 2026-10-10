@@ -83,11 +83,12 @@ describe('update controller', () => {
 
   // 2026-10-01 契约变更（plan 2026-10-01-note-inline-images-and-updater-feed）：v0.7.13
   // 上线时 feed 缺 latest.yml，上游原始 message（含 URL 与打包堆栈）被原样印在设置页。
-  // 原断言写的是「info.message === 原文（透传）」——新契约是脱敏短句 + 原始进 onCheckFailure。
-  it('检查抛错（无外网/上游故障）→ error + 脱敏短句，原始 message 进 onCheckFailure', async () => {
+  // 原断言写的是「info.message === 原文（透传）」——新契约是脱敏短句 + 原始进 onFailure。
+  // 2026-10-10：DI 更名 onCheckFailure → onFailure（下载路径也往这里落原始详情）。
+  it('检查抛错（无外网/上游故障）→ error + 脱敏短句，原始 message 进 onFailure', async () => {
     const updater = makeUpdater({ checkError: new Error('net::ERR_INTERNET_DISCONNECTED') })
     const raws: string[] = []
-    const controller = createUpdateController({ app: packaged(), updater, onCheckFailure: (raw) => raws.push(raw) })
+    const controller = createUpdateController({ app: packaged(), updater, onFailure: (raw) => raws.push(raw) })
     const info = await controller.check()
     expect(info.status).toBe('error')
     expect(info.message).toBe('暂时无法检查更新：网络或发布服务器无响应，请稍后重试。')
@@ -104,7 +105,7 @@ describe('update controller', () => {
     )
     const updater = makeUpdater({ checkError: httpError })
     const raws: string[] = []
-    const controller = createUpdateController({ app: packaged(), updater, onCheckFailure: (raw) => raws.push(raw) })
+    const controller = createUpdateController({ app: packaged(), updater, onFailure: (raw) => raws.push(raw) })
     const info = await controller.check()
     expect(info.status).toBe('error')
     expect(info.message).toBe('暂时无法检查更新：发布渠道信息缺失，请稍后重试或前往本项目 GitHub 发布页查看。')
@@ -120,7 +121,7 @@ describe('update controller', () => {
       throw 'raw string failure'
     })
     const raws: string[] = []
-    const controller = createUpdateController({ app: packaged(), updater, onCheckFailure: (raw) => raws.push(raw) })
+    const controller = createUpdateController({ app: packaged(), updater, onFailure: (raw) => raws.push(raw) })
     const info = await controller.check()
     expect(info.status).toBe('error')
     expect(info.message).toBe('暂时无法检查更新：网络或发布服务器无响应，请稍后重试。')
@@ -143,13 +144,44 @@ describe('update controller', () => {
     await expect(first).resolves.toEqual({ started: true })
   })
 
-  it('下载失败：started:false 且emit error 事件（不裸抛）', async () => {
-    const updater = makeUpdater({ downloadError: new Error('下载中断') })
-    const controller = createUpdateController({ app: packaged(), updater })
+  // 2026-10-10 契约变更（plan 2026-10-10-updater-feed-fix-and-release-pipeline）：下载失败
+  // 此前的 catch 把原始 message 原样 emit 到设置页——latest.yml 指向的安装包 404 时
+  // （v0.7.13-0.7.15 实锤）用户看到一长串含内部 URL 与堆栈的英文。新契约：UI 只收
+  // 脱敏短句，原始详情走 onFailure 进日志。
+  it('下载失败：started:false 且 emit 脱敏 error 事件（不裸抛、不带上游 URL 与堆栈）', async () => {
+    const httpError = Object.assign(
+      new Error(
+        'Failed to fetch https://github.com/Andiii208/flash-summary/releases/download/v0.7.15/Flash-Summary-Setup-0.7.15.exe: HttpError: 404 at createHttpError'
+      ),
+      { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' }
+    )
+    const updater = makeUpdater({ downloadError: httpError })
+    const raws: string[] = []
+    const controller = createUpdateController({ app: packaged(), updater, onFailure: (raw) => raws.push(raw) })
     const events: unknown[] = []
     controller.subscribe((e) => events.push(e))
     await expect(controller.download()).resolves.toEqual({ started: false })
-    expect(events).toEqual([{ type: 'error', message: '下载中断' }])
+    expect(events).toEqual([
+      { type: 'error', message: '暂时无法下载更新：网络或发布服务器无响应，请稍后重试或前往本项目 GitHub 发布页手动下载。' }
+    ])
+    expect(raws).toHaveLength(1)
+    expect(raws[0]).toContain('Flash-Summary-Setup-0.7.15.exe')
+  })
+
+  // 2026-10-10：electron-updater 的 AppUpdater 在 downloadUpdate() 拒绝前会先
+  // dispatchError（errorHandler）——'error' 事件是一条独立于 catch 的异步通道，
+  // 只脱敏 catch 会被它绕过（真实 404 时它先于 catch 到达渲染层）。
+  it("updater 'error' 事件（下载中异步失败）也走脱敏 + 原始详情进 onFailure", () => {
+    const updater = makeUpdater()
+    const raws: string[] = []
+    const controller = createUpdateController({ app: packaged(), updater, onFailure: (raw) => raws.push(raw) })
+    const events: unknown[] = []
+    controller.subscribe((e) => events.push(e))
+    updater.emit('error', new Error('net::ERR_CONNECTION_RESET at .../download/...exe (stack)'))
+    expect(events).toEqual([
+      { type: 'error', message: '暂时无法下载更新：网络或发布服务器无响应，请稍后重试或前往本项目 GitHub 发布页手动下载。' }
+    ])
+    expect(raws[0]).toContain('ERR_CONNECTION_RESET')
   })
 
   it('下载进度 / 完成事件转成渲染层 UpdateEvent', () => {
@@ -159,11 +191,9 @@ describe('update controller', () => {
     controller.subscribe((e) => events.push(e as { type: string }))
     updater.emit('download-progress', { percent: 42.6 })
     updater.emit('update-downloaded', { version: '0.7.13' })
-    updater.emit('error', new Error('炸了'))
     expect(events).toEqual([
       { type: 'progress', percent: 43 },
-      { type: 'downloaded', version: '0.7.13' },
-      { type: 'error', message: '炸了' }
+      { type: 'downloaded', version: '0.7.13' }
     ])
   })
 
