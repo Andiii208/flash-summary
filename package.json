@@ -18,6 +18,7 @@
   "build": {
     "appId": "edu.seu.summary",
     "productName": "Flash Summary",
+    "artifactName": "Flash.Summary.Setup.${version}.${ext}",
     "directories": {
       "output": "release"
     },
